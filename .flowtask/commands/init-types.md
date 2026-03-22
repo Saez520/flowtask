@@ -1,0 +1,31 @@
+---
+description: Scan and index only types/models layer into Engram
+agent: flowtask-initializer
+subtask: true
+---
+Scan the types/models layer of this project:
+
+1. Detect file types:
+   - Run `find . -maxdepth 4 -type f | head -100` to list files
+   - Look for common type file extensions: .ts, .tsx, .java, .py, .go, .rs, .cs, .php
+   - Focus on directories that contain type definitions
+
+2. Identify type directories:
+   - Look for directories with names like: types, models, dto, dto, entity, schema, interfaces, contracts, structures, data
+
+3. Extract naming conventions:
+   - Detect naming patterns from filenames: PascalCase, snake_case, kebab-case, camelCase
+   - Identify common suffixes: DTO, Entity, Model, Type, Schema, Document, Record, VO, POJO
+   - Check for singular vs plural naming
+
+4. Extract type structure patterns:
+   - Read sample type files to understand structure
+   - Note common fields (id, createdAt, updatedAt, status, etc.)
+   - Identify if there's a base/parent type pattern
+
+5. Save to Engram:
+   - mem_save(type: pattern, topic_key: project/types, title: "Types/models conventions")
+   - mem_save(type: pattern, topic_key: project/naming, title: "Naming conventions") if new patterns found
+   - Use mem_suggest_topic_key before saving
+
+6. Report what was detected and saved.
