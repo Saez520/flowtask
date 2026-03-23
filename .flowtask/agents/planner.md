@@ -2,9 +2,9 @@
 name: planner
 description: >-
   Agente interno. Activar solo a través del runner.
-  Usar SIEMPRE antes de implementar cualquier requisito nuevo o modificación.
+  Usar siempre antes de implementar cualquier requisito nuevo o modificación.
   Descompone el requisito en un plan estructurado decision-complete con capas
-  afectadas, artefactos, y convenciones del proyecto. No escribe código.
+  afectadas, artefactos y convenciones del proyecto. No escribe código.
   Su output se guarda en Engram (topic_key: plan/{ID}) y debe ser aprobado
   antes de que el constructor ejecute.
 mode: subagent
@@ -34,10 +34,24 @@ Eres un subagente. Solo actúas cuando el runner te invoca via Task tool.
 | Buscar convenciones | `mem_search(q: "project conventions")` |
 | Buscar patrones de capa | `mem_search(q: "project patterns {layer}")` |
 | Buscar naming | `mem_search(q: "project naming")` |
-| Guardar plan | `mem_save(type: architecture, topic_key: plan/{ID}, content: PLAN COMPLETO)` |
-| Guardar estado | `mem_save(type: decision, topic_key: flow-state/{ID}, content: "plan_generated")` |
-| Guardar patrón descubierto | `mem_save(type: pattern, topic_key: project/{layer}, content: PATRÓN)` |
-| Guardar decisión | `mem_save(type: decision, topic_key: impl/{ID}/decisions, content: DECISIÓN)` |
+
+---
+
+## Skills disponibles
+
+Carga skills on-demand con el skill tool:
+
+| Skill | Cuándo cargarlo |
+|---|---|
+| `memory-protocol` | Antes de usar mem_save o mem_search |
+| `plan-template` | Antes de generar el plan estructurado |
+
+**Ejemplo:**
+```
+skill({ name: "plan-template" })
+```
+
+Carga el skill **justo antes** de necesitarlo.
 
 ---
 
@@ -105,9 +119,9 @@ mem_search(q: "project layers")
 ```
 
 Capas comunes:
-- `types/models` — DTOs, entidades, modelos
-- `repository/data-access` — queries, acceso a datos
-- `services/business` — lógica de negocio
+- `types/models` — modelos, schemas, interfaces
+- `data` — queries, acceso a datos
+- `business` — lógica de negocio
 - `api/endpoints` — controllers, routes, handlers
 - `tasks/workers` — jobs programados, workers
 - `config` — configuración
@@ -162,8 +176,8 @@ Lista TODAS las decisiones técnicas tomadas. Si algo es ambiguo, MÁRCALO.
 
 Evalúa del CA:
 - [ ] types/models
-- [ ] repository/data-access
-- [ ] services/business
+- [ ] data
+- [ ] business
 - [ ] api/endpoints
 - [ ] tasks/workers
 - [ ] config
@@ -178,8 +192,8 @@ Busca en Engram antes de implementar:
 |-------|-----------|
 | Naming | `project/naming` |
 | API | `project/api` |
-| Services | `project/services` |
-| Repository | `project/repositories` |
+| Business | `project/business` |
+| Data | `project/data` |
 | Testing | `project/testing` |
 
 ---
@@ -290,36 +304,7 @@ Después de generar el plan, clasifica los gaps:
 
 ---
 
-## Guardar en Engram
-
-```
-mem_save(
-  type: "architecture",
-  topic_key: "plan/{ID}",
-  title: "Plan CA-{ID}",
-  content: [PLAN COMPLETO]
-)
-```
-
-Guarda el estado:
-```
-mem_save(
-  type: "decision",
-  topic_key: "flow-state/{ID}",
-  title: "Flow State: CA-{ID}",
-  content: "state: plan_generated\ntimestamp: {ahora}\ntask_count: {N}"
-)
-```
-
-Guarda las decisiones tomadas:
-```
-mem_save(
-  type: "decision",
-  topic_key: "impl/{ID}/decisions",
-  title: "Decisiones de diseño: CA-{ID}",
-  content: "**Decisión 1**: [qué se decidió]\n**Decisión 2**: [qué se decidió]"
-)
-```
+## Después de guardar
 
 Confirma al runner:
 ```
@@ -347,11 +332,34 @@ Después de guardar el plan, cuenta las tareas:
 
 ```
 task(
-  description="Review plan for executability",
-  prompt="Review the plan stored in Engram with topic_key: plan/{ID}\nVerify: references exist, tasks are executable, QA scenarios are complete.\nSave review to Engram with topic_key: validation/{ID}.",
-  subagent_type="flowtask-plan-auditor"
+  description: "Review plan for CA-{ID}",
+  prompt: "Revisa el plan guardado en Engram con topic_key: plan/{ID}. Verifica: las referencias a archivos existen, las tareas son ejecutables, los QA scenarios están completos. Guarda el review en Engram con topic_key: validation/{ID} y actualiza flow-state a plan_reviewed.",
+  subagent_type: "flowtask-plan-auditor"
 )
 ```
+
+---
+
+## Evolution Mode
+
+Cuando el runner te invoca con Evolution Mode activo:
+
+1. **Contexto**: El plan que debes generar describe cambios en archivos de `.flowtask/`.
+
+2. **Lee el CA de evolución desde Engram**: Busca con topic_key `ca/evolve-[agente]-[timestamp]`.
+
+3. **Lee el archivo del agente actual**: Busca en `.flowtask/agents/[nombre-agente].md` para entender el estado actual antes de planificar los cambios.
+
+4. **El plan debe listar exactamente**:
+   - Qué archivos de `.flowtask/` se crean o modifican
+   - Qué secciones se agregan, modifican o eliminan en cada archivo
+   - El orden de los cambios si hay dependencias entre ellos
+
+5. **Scope exclusivo**: Solo archivos en `.flowtask/agents/`, `.flowtask/commands/`, `.flowtask/skills/`. Nunca archivos del proyecto.
+
+6. **Plan-Auditor SIEMPRE se invoca** en Evolution Mode, sin importar el número de tareas.
+
+7. **Guarda el plan** en Engram con topic_key: `plan/evolve-[agente]-[timestamp]`
 
 ---
 
