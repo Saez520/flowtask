@@ -88,8 +88,8 @@ mem_save(
 
   ### Skills to load
   - project/api (for endpoint patterns)
-  - project/repositories (for database access)
-  - project/services (for business logic)
+  - project/data (for database access)
+  - project/business (for business logic)
 
   ### Artifacts to create
   | # | Op | Artifact | Path | Notes |

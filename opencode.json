@@ -3,7 +3,10 @@
   "mcp": {
     "engram": {
       "type": "local",
-      "command": ["engram", "mcp"],
+      "command": [
+        "engram",
+        "mcp"
+      ],
       "enabled": true
     }
   },
@@ -11,12 +14,13 @@
     "flowtask-runner": {
       "description": "Orchestrator of FlowTask workflow. Activates subagents, manages state via Engram. Only agent the user talks to directly.",
       "mode": "primary",
-      "prompt": "{file:.flowtask/prompts/runner-context.md}",
+      "prompt": "{file:.flowtask/agents/runner.md}",
       "permission": {
-        "edit": "allow",
-        "bash": "allow"
+        "bash": "allow",
+        "task": "allow"
       },
       "task": {
+        "flowtask-runner": "deny",
         "flowtask-*": "allow",
         "*": "deny"
       }
@@ -100,70 +104,83 @@
         "edit": "allow",
         "bash": "allow"
       }
+    },
+    "flowtask-inspector": {
+      "description": "Explore and validate any aspect of the project without creating a CA. Presents tradeoffs and GAPs.",
+      "mode": "subagent",
+      "hidden": true,
+      "prompt": "{file:.flowtask/agents/inspector.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
     }
   },
   "command": {
     "init": {
       "description": "Initialize FlowTask in current project: install/engram if needed, configure MCP, scan project",
       "template": "Initialize FlowTask in this project:\n1. Check if engram is installed and install if missing\n2. Configure engram MCP server in opencode.json if not present\n3. Scan the project structure and conventions\n4. Populate Engram with project context\n5. Generate project-context.md summary\n$ARGUMENTS",
-      "description": "Initialize FlowTask in current project",
       "agent": "flowtask-initializer",
       "subtask": true
     },
     "init-types": {
       "description": "Scan and index only types/models layer into Engram",
-      "template": "Scan the types/models layer of this project:\n1. Find all type definitions (DTOs, entities, models, interfaces)\n2. Extract naming conventions and structure\n3. Save to Engram with topic_key: project/types\n$ARGUMENTS",
-      "description": "Scan types/models layer",
+      "template": "Scan the types/models layer of this project:\n1. Find all type definitions (models, interfaces, schemas, types)\n2. Extract naming conventions and structure\n3. Save to Engram with topic_key: project/types\n$ARGUMENTS",
       "agent": "flowtask-initializer",
       "subtask": true
     },
-    "init-repository": {
-      "description": "Scan and index only repository/data-access layer into Engram",
-      "template": "Scan the repository/data-access layer of this project:\n1. Find all repository patterns (DB queries, data access classes)\n2. Extract query conventions and data access patterns\n3. Save to Engram with topic_key: project/repositories\n$ARGUMENTS",
-      "description": "Scan repository/data-access layer",
+    "init-data": {
+      "description": "Scan and index only data layer into Engram",
+      "template": "Scan the data layer of this project:\n1. Find all data access patterns (DB queries, data access classes)\n2. Extract query conventions and data patterns\n3. Save to Engram with topic_key: project/data\n$ARGUMENTS",
       "agent": "flowtask-initializer",
       "subtask": true
     },
-    "init-services": {
-      "description": "Scan and index only services/business-logic layer into Engram",
-      "template": "Scan the services/business-logic layer of this project:\n1. Find all service classes and business logic patterns\n2. Extract service conventions and orchestration patterns\n3. Save to Engram with topic_key: project/services\n$ARGUMENTS",
-      "description": "Scan services/business-logic layer",
+    "init-business": {
+      "description": "Scan and index only business logic layer into Engram",
+      "template": "Scan the business logic layer of this project:\n1. Find all business logic patterns (classes, use cases, handlers)\n2. Extract business conventions and orchestration patterns\n3. Save to Engram with topic_key: project/business\n$ARGUMENTS",
       "agent": "flowtask-initializer",
       "subtask": true
     },
     "init-config": {
       "description": "Scan and index only configuration files into Engram",
       "template": "Scan the configuration layer of this project:\n1. Find all configuration files (properties, yaml, env)\n2. Extract configuration patterns and conventions\n3. Save to Engram with topic_key: project/config\n$ARGUMENTS",
-      "description": "Scan configuration layer",
       "agent": "flowtask-initializer",
       "subtask": true
     },
     "init-api": {
       "description": "Scan and index only API/endpoints layer into Engram",
       "template": "Scan the API/endpoints layer of this project:\n1. Find all API definitions (controllers, routes, endpoints)\n2. Extract API conventions and response patterns\n3. Save to Engram with topic_key: project/api\n$ARGUMENTS",
-      "description": "Scan API/endpoints layer",
       "agent": "flowtask-initializer",
       "subtask": true
     },
     "run": {
       "description": "Execute FlowTask workflow for a case (CA-{ID}). Full flow: verify CA, plan, execute, validate.",
       "template": "Execute the FlowTask workflow for the case ID provided.\nExtract the CA-ID from the user's message (format: CA-{NUMBER}).\n$ARGUMENTS",
-      "description": "Execute FlowTask workflow for a case",
       "agent": "flowtask-runner",
       "subtask": true
     },
     "new-ca": {
       "description": "Create a new Acceptance Criteria (CA) with guided clarification",
       "template": "Create a new Acceptance Criteria (CA) with guided clarification.\nExtract the CA-ID from the user's message (format: CA-{NUMBER}).\n$ARGUMENTS",
-      "description": "Create new CA with clarification",
       "agent": "flowtask-ca-writer",
       "subtask": true
     },
     "status": {
       "description": "Show FlowTask and Engram memory statistics",
       "template": "Show FlowTask status:\n1. Call engram mem_stats to get memory statistics\n2. Search Engram for active workflows (topic_key matching flow-state/*)\n3. Search Engram for recent requirements (type: requirement)\n4. Display a summary of active cases, memory usage, and project initialization status",
-      "description": "Show FlowTask and Engram status",
       "agent": "build"
+    },
+    "inspect": {
+      "description": "Explore and validate any aspect of the project without creating a CA",
+      "template": "Activate the Inspector agent to answer questions about the project.\n$ARGUMENTS",
+      "agent": "flowtask-runner",
+      "subtask": true
+    },
+    "evolve-agent": {
+      "description": "Evolve a FlowTask agent using the full CA → Plan → Implement cycle",
+      "template": "Activate Evolution Mode to evolve a FlowTask agent.\n$ARGUMENTS",
+      "agent": "flowtask-runner",
+      "subtask": true
     }
   }
 }

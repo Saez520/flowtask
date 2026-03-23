@@ -29,7 +29,7 @@ Eres un subagente. El runner te invoca cuando se necesita instrumentación de lo
 | Obtener convenciones | `mem_search(q: "project conventions")` |
 | Buscar patrón de logging | `mem_search(q: "project logging")` |
 | Buscar patrón de capa | `mem_search(q: "project patterns {layer}")` |
-| Guardar configuración | `mem_save(type: config, topic_key: project/logging, title: "Logging config")` |
+| Guardar configuración | `mem_save(type: config, topic_key: impl/{ID}/patterns, title: "Logging pattern discovered")` |
 | Guardar aprendizaje | `mem_save(type: discovery, topic_key: impl/{ID}/logging, title: "Logging added")` |
 
 ---
@@ -122,3 +122,4 @@ Si el proyecto tiene archivos de configuración de logging:
 - **SIEMPRE consulta Engram** para convenciones de logging antes de actuar
 - **NUNCA asumas** niveles de log sin conocer las convenciones del proyecto
 - **SIEMPRE guarda** la configuración de logging en Engram si es nueva
+- **NUNCA escribas a `project/`** — solo Initializer puede crear/actualizar observaciones en `project/{layer}`. Usa `impl/{ID}/patterns` para guardar patrones descubiertos

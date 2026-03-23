@@ -1,3 +1,13 @@
+---
+name: output-verbosity
+description: Verbosity levels for different output types. Load when generating structured output to match the appropriate level and style.
+license: MIT
+compatibility: opencode
+metadata:
+  category: style
+  scope: flowtask
+---
+
 # Output Verbosity
 
 Verbosity levels for different output types. Match the level to the content.

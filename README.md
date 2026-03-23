@@ -117,12 +117,12 @@ This will:
 
 Or initialize specific layers:
 
-```bash
+```
 /init-types      # Scan types/models
-/init-repository # Scan data-access layer
-/init-services   # Scan business logic
-/init-config     # Scan configuration
-/init-api        # Scan API endpoints
+/init-data      # Scan data layer
+/init-business  # Scan business logic
+/init-config    # Scan configuration
+/init-api       # Scan API endpoints
 ```
 
 ### Create a new acceptance criteria
@@ -187,18 +187,18 @@ FlowTask/
 │   │   ├── initializer.md    # Project scanning
 │   │   ├── logger.md         # Logging instrumentation
 │   │   └── tester.md         # Test generation
-│   ├── skills/               # Reusable prompt fragments
-│   │   ├── plan-template.md
-│   │   └── output-verbosity.md
-│   ├── commands/             # FlowTask slash commands
-│   │   ├── init.md
-│   │   ├── init-*.md
-│   │   ├── run.md
-│   │   └── status.md
-│   └── prompts/              # Shared prompt fragments
-│       ├── memory-protocol.md
-│       ├── runner-context.md
-│       └── flow-context.md
+│   ├── skills/               # OpenCode skills (copied to .opencode/skills/)
+│   │   ├── memory-protocol/
+│   │   │   └── SKILL.md      # Engram memory usage protocol
+│   │   ├── plan-template/
+│   │   │   └── SKILL.md      # Plan structure template
+│   │   └── output-verbosity/
+│   │       └── SKILL.md      # Output verbosity guidelines
+│   └── commands/             # FlowTask slash commands
+│       ├── init.md
+│       ├── init-*.md
+│       ├── run.md
+│       └── status.md
 ├── examples/
 │   └── workflow-example.md   # Example workflow
 └── docs/

@@ -5,6 +5,37 @@ subtask: true
 ---
 Initialize FlowTask in this project:
 
+## 0. CRITICAL - Verificar MCP Activo PRIMERO
+
+**NUNCA continues without this verification. Este paso es OBLIGATORIO.**
+
+Run: `mem_stats` (herramienta MCP)
+
+- Si la llamada **éxito** → MCP activo, continuar con paso 1
+- Si la llamada **falla** → Mostrar mensaje de reinicio y DETENERSE
+
+**Mensaje si MCP inactivo:**
+```
+══════════════════════════════════════════════════════
+⚠️ MCP de Engram NO está activo
+
+El servidor MCP no está disponible. Esto significa que
+OpenCode no ha sido reiniciado después de configurar
+el MCP en opencode.json.
+
+PASOS:
+1. Cierra OpenCode completamente
+2. Abre OpenCode nuevamente
+3. Ejecuta /init de nuevo
+
+NO se ejecutará ningún escaneo hasta que el MCP esté activo.
+══════════════════════════════════════════════════════
+```
+
+**Solo si MCP activo:** Continuar con los pasos 1-6.
+
+---
+
 ## 1. Verify Engram installation
 
 Run: `engram --version`
@@ -36,14 +67,14 @@ Run parallel scans for all project layers:
 
 ### Detect technology stack
 - Run `find . -maxdepth 3 -type f | head -100` to understand project structure
-- Detect language: look for *.java, *.ts, *.py, *.go, *.rs, etc.
-- Detect build tool: package.json, pom.xml, build.gradle, go.mod, Cargo.toml, etc.
+- Detect language: look for *.ts, *.py, *.go, *.rs, *.js, etc.
+- Detect build tool: package.json, go.mod, Cargo.toml, etc.
 
 ### Scan layers (run in parallel if possible)
-- Types/Models: Look for dto, entity, model, type, schema, interface directories
-- Data Access: Look for repository, dao, data, persistence, db directories
-- Services: Look for service, manager, handler, usecase, business directories
-- API: Look for controller, route, api, endpoint, router directories
+- Types/Models: Look for types, models, schemas, interfaces, structures directories
+- Data: Look for data, db, persistence, storage, accessor, repo, repositories directories
+- Business: Look for business, logic, domain, core, usecase, handler, manager, service directories
+- API: Look for api, route, routes, endpoint, endpoints, handler, handlers, controller directories
 - Config: Look for config, settings, properties, .env files
 
 ## 4. Populate Engram with project context
@@ -66,7 +97,7 @@ mem_save(
   type: "discovery",
   topic_key: "project/layers",
   title: "Project layers",
-  content: "Layers detected:\n- types: {path}\n- data-access: {path}\n- services: {path}\n- api: {path}\n- config: {path}"
+  content: "Layers detected:\n- types: {path}\n- data: {path}\n- business: {path}\n- api: {path}\n- config: {path}"
 )
 ```
 

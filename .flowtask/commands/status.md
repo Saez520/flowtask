@@ -7,7 +7,7 @@ Show FlowTask status:
 1. Call `mem_stats` to get memory statistics (sessions, observations, projects)
 
 2. Search Engram for active workflows:
-   - `mem_search(q: "flow-state")` to find workflows in progress
+   - `mem_search(q: "flow-state")` to find workflows in progress (searches all sub-namespaces: create, plan, audit, construct, validate)
 
 3. Search Engram for recent CAs:
    - `mem_search(q: "type:requirement")` to list recent requirements

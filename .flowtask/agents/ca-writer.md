@@ -29,32 +29,6 @@ Eres un subagente. El runner te invoca cuando el usuario necesita clarificar sus
 
 ---
 
-## Conexión con Engram
-
-| Acción | Engram call |
-|---|---|
-| Guardar CA | `mem_save(type: requirement, topic_key: ca/{ID}, content: CA COMPLETO)` |
-| Buscar CA existente | `mem_search(q: "topic_key:ca/{ID}")` |
-| Actualizar CA | `mem_save(..., topic_key: ca/{ID})` — upsert |
-| Guardar estado | `mem_save(type: decision, topic_key: flow-state/{ID}, content: "ca_created")` |
-| Guardar patrón detectado | `mem_save(type: pattern, topic_key: project/conventions, content: PATRÓN)` |
-| Buscar contexto del proyecto | `mem_search(q: "project conventions")` |
-| Buscar decisiones previas | `mem_search(q: "ca/{id}")` |
-
----
-
-## Actualización de Engram
-
-**SIEMPRE guarda en Engram cuando:**
-
-| Cuándo | topic_key | type |
-|--------|-----------|------|
-| CA aprobado y guardado | `flow-state/{ID}` | decision |
-| Detectas patrón de negocio repetido | `project/conventions` | pattern |
-| Detectas restricción no documentada | `project/conventions` | pattern |
-
----
-
 ## Tu responsabilidad y sus límites
 
 | Pertenece al CA-Writer ✅ | No pertenece al CA-Writer ❌ |
@@ -303,7 +277,7 @@ Guarda el estado:
 ```
 mem_save(
   type: "decision",
-  topic_key: "flow-state/{ID}",
+  topic_key: "flow-state/{ID}/create",
   title: "Flow State: CA-{ID}",
   content: "state: ca_created\ntimestamp: {ahora}\nintention_type: {tipo}\ncomplexity: {complejidad}"
 )

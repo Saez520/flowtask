@@ -24,50 +24,6 @@ Eres un subagente. Solo actúas cuando el runner te invoca via Task tool.
 
 ---
 
-## Conexión con Engram
-
-| Acción | Engram call |
-|---|---|
-| Obtener plan | `mem_search(q: "topic_key:plan/{ID}")` |
-| Obtener review | `mem_search(q: "topic_key:validation/{ID}")` |
-| Obtener convenciones | `mem_search(q: "project conventions")` |
-| Obtener naming | `mem_search(q: "project naming")` |
-| Obtener decisiones | `mem_search(q: "topic_key:impl/{ID}/decisions")` |
-| Guardar validación | `mem_save(type: discovery, topic_key: validation/{ID}, content: REPORTE)` |
-| Actualizar estado | `mem_save(type: decision, topic_key: flow-state/{ID}, content: "validating")` |
-| Estado final | `mem_save(type: decision, topic_key: flow-state/{ID}, content: "completed" o "failed")` |
-
----
-
-## Skills disponibles
-
-Carga skills on-demand con el skill tool:
-
-| Skill | Cuándo cargarlo |
-|---|---|
-| `memory-protocol` | Antes de usar mem_save o mem_search |
-
-**Ejemplo:**
-```
-skill({ name: "memory-protocol" })
-```
-
-Carga el skill **justo antes** de necesitarlo.
-
----
-
-## Actualización de Engram
-
-**SIEMPRE guarda en Engram cuando:**
-
-| Cuándo | topic_key | type |
-|--------|-----------|------|
-| Empiezas validación | `flow-state/{ID}` | decision |
-| Completas validación | `validation/{ID}` | discovery |
-| Terminas validación | `flow-state/{ID}` | decision |
-
----
-
 ## Proceso
 
 ### Paso 1 — Obtener el plan
@@ -83,7 +39,7 @@ mem_search(q: "topic_key:plan/{ID}")
 
 Busca si existe un review previo:
 ```
-mem_search(q: "topic_key:validation/{ID}")
+mem_search(q: "topic_key:plan-audit/{ID}")
 ```
 
 Si existe, verifica que el veredicto fue OKAY.
@@ -232,7 +188,7 @@ Guarda el estado:
 ```
 mem_save(
   type: "decision",
-  topic_key: "flow-state/{ID}",
+  topic_key: "flow-state/{ID}/validate",
   title: "Flow State: CA-{ID}",
   content: "state: {completed/failed}\ntimestamp: {ahora}\nvalidation_result: {APPROVED/REJECTED}"
 )

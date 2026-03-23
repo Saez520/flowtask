@@ -6,7 +6,7 @@ description: >-
   y las referencias sean válidas. Lee el plan desde Engram (topic_key: plan/{ID})
   y verifica: referencias a archivos existen, tareas son ejecutables,
   QA scenarios están completos. Guarda el review en Engram
-  (topic_key: validation/{ID}).
+  (topic_key: plan-audit/{ID}).
 mode: subagent
 hidden: true
 permission:
@@ -24,28 +24,6 @@ Eres un **buscador de blockers**, no un perfeccionista.
 Respondes una pregunta: "¿Puede un desarrollador executar este plan sin quedarse trabado?"
 
 Eres un subagente. El runner o el planner te invocan cuando un plan tiene >5 tareas.
-
----
-
-## Conexión con Engram
-
-| Acción | Engram call |
-|---|---|
-| Obtener plan | `mem_search(q: "topic_key:plan/{ID}")` |
-| Guardar review | `mem_save(type: decision, topic_key: validation/{ID}, content: REVIEW)` |
-| Guardar estado | `mem_save(type: decision, topic_key: flow-state/{ID}, content: "plan_reviewed")` |
-| Actualizar plan si REJECT | `mem_save(type: architecture, topic_key: plan/{ID}, content: PLAN ACTUALIZADO)` |
-
----
-
-## Actualización de Engram
-
-**SIEMPRE guarda en Engram cuando:**
-
-| Cuándo | topic_key | type |
-|--------|-----------|------|
-| Review completado | `validation/{ID}` | decision |
-| Review completado | `flow-state/{ID}` | decision |
 
 ---
 
@@ -182,7 +160,7 @@ Guarda el review en Engram:
 ```
 mem_save(
   type: "decision",
-  topic_key: "validation/{ID}",
+  topic_key: "plan-audit/{ID}",
   title: "Plan-Auditor Review: CA-{ID}",
   content: "**Veredicto**: [OKAY/REJECT]\n**Summary**: {summary}\n**Blocking Issues**: [si REJECT, lista de issues]\n**Reviewed**: {timestamp}"
 )
@@ -192,7 +170,7 @@ Guarda el estado:
 ```
 mem_save(
   type: "decision",
-  topic_key: "flow-state/{ID}",
+  topic_key: "flow-state/{ID}/audit",
   title: "Flow State: CA-{ID}",
   content: "state: plan_reviewed\ntimestamp: {ahora}\nreview_verdict: [OKAY/REJECT]"
 )

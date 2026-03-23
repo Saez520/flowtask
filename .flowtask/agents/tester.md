@@ -29,7 +29,7 @@ Eres un subagente. El runner te invoca cuando se necesitan tests.
 | Obtener convenciones de testing | `mem_search(q: "project testing")` |
 | Obtener convenciones de naming | `mem_search(q: "project naming")` |
 | Buscar patrón de test | `mem_search(q: "project patterns testing")` |
-| Guardar patrón de test | `mem_save(type: pattern, topic_key: project/testing, title: "Testing conventions")` |
+| Guardar patrón de test | `mem_save(type: pattern, topic_key: impl/{ID}/patterns, title: "Testing pattern discovered")` |
 | Guardar aprendizaje | `mem_save(type: discovery, topic_key: impl/{ID}/tests, title: "Tests generated")` |
 
 ---
@@ -119,3 +119,4 @@ Intenta cubrir:
 - **SIEMPRE consulta Engram** para convenciones de testing
 - **SIEMPRE sigue** la estructura de archivos de test del proyecto
 - **SIEMPRE usa** las librerías de testing del proyecto (no instalar nuevas)
+- **NUNCA escribas a `project/`** — solo Initializer puede crear/actualizar observaciones en `project/{layer}`. Usa `impl/{ID}/patterns` para guardar patrones descubiertos

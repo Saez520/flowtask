@@ -1,3 +1,13 @@
+---
+name: memory-protocol
+description: Protocol for using Engram persistent memory. Load when you need to save or search information in Engram (mem_save, mem_search, mem_context, etc.)
+license: MIT
+compatibility: opencode
+metadata:
+  category: memory
+  scope: flowtask
+---
+
 # Engram Memory Protocol
 
 You have access to Engram persistent memory via MCP tools.
@@ -105,12 +115,27 @@ If you see a message about compaction or context reset:
 | Requirement | `ca/{id}` | `ca/001` |
 | Plan | `plan/{id}` | `plan/001` |
 | Validation | `validation/{id}` | `validation/001` |
-| Flow state | `flow-state/{id}` | `flow-state/001` |
+| Flow state | `flow-state/{id}/[namespace]` | `flow-state/001/create` |
 | Project conventions | `project/conventions` | — |
 | Project naming | `project/naming` | — |
-| Project layer | `project/{layer}` | `project/api`, `project/services` |
+| Project layer | `project/{layer}` | `project/api`, `project/business`, `project/data` |
 | Project stack | `project/stack` | — |
 | Implementation | `impl/{id}/{artifact}` | `impl/001/user-service` |
+
+### Ownership Rules
+
+| Topic key | Owner | Who can write |
+|-----------|-------|---------------|
+| `project/{layer}` | **Initializer only** | `initializer` agent via `/init` commands |
+| `project/conventions` | **Initializer only** | `initializer` agent via `/init` commands |
+| `project/naming` | **Initializer only** | `initializer` agent via `/init` commands |
+| `project/stack` | **Initializer only** | `initializer` agent via `/init` commands |
+| `project/protected-files` | **Initializer only** | `initializer` agent via `/init` commands |
+| `impl/{id}/*` | **Constructor** | `constructor` agent during implementation |
+| `flow-state/{id}/*` | **Any agent** | Any agent tracking flow state |
+| `plan/{id}` | **Planner** | `planner` agent generating plans |
+
+**Critical**: `project/{layer}` is owned exclusively by the Initializer. Other agents (constructor, planner, validator) MUST NOT write to `project/{layer}` directly. If a constructor discovers a new pattern, it saves to `impl/{ID}/patterns`. If a planner discovers a convention, it records it in the plan under `impl/{ID}/decisions`.
 
 ---
 

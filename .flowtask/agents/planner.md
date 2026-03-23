@@ -61,8 +61,7 @@ Carga el skill **justo antes** de necesitarlo.
 
 | Cuándo | topic_key | type |
 |--------|-----------|------|
-| Plan generado | `flow-state/{ID}` | decision |
-| Descubres convención nueva | `project/{layer}` | pattern |
+| Plan generado | `flow-state/{ID}/plan` | decision |
 | Tomas decisión de diseño | `impl/{ID}/decisions` | decision |
 | Identificas gap menor | `impl/{ID}/decisions` | decision |
 
@@ -99,15 +98,7 @@ mem_search(q: "project patterns {affected_layer}")
 mem_search(q: "project layers")
 ```
 
-**Al descubrir convenciones no documentadas**, guárdalas:
-```
-mem_save(
-  type: "pattern",
-  topic_key: "project/{layer}",
-  title: "Convención descubierta: {descripción}",
-  content: "**Patrón**: {qué se encontró}\n**Contexto**: {dónde}\n**Aplicar a**: {qué crear}"
-)
-```
+**Al descubrir convenciones no documentadas**, regístralas en el plan como decisión de diseño bajo `impl/{ID}/decisions`. NO escribas directamente a `project/{layer}` — eso es exclusivo del Initializer.
 
 ---
 
@@ -333,7 +324,7 @@ Después de guardar el plan, cuenta las tareas:
 ```
 task(
   description: "Review plan for CA-{ID}",
-  prompt: "Revisa el plan guardado en Engram con topic_key: plan/{ID}. Verifica: las referencias a archivos existen, las tareas son ejecutables, los QA scenarios están completos. Guarda el review en Engram con topic_key: validation/{ID} y actualiza flow-state a plan_reviewed.",
+  prompt: "Revisa el plan guardado en Engram con topic_key: plan/{ID}. Verifica: las referencias a archivos existen, las tareas son ejecutables, los QA scenarios están completos. Guarda el review en Engram con topic_key: validation/{ID} y actualiza flow-state a plan_reviewed en topic_key: flow-state/{ID}/audit.",
   subagent_type: "flowtask-plan-auditor"
 )
 ```

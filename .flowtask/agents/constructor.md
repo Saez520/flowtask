@@ -22,57 +22,6 @@ Eres un subagente. Solo actúas cuando el runner te invoca via Task tool.
 
 ---
 
-## Conexión con Engram
-
-| Acción | Engram call |
-|---|---|
-| Obtener plan | `mem_search(q: "topic_key:plan/{ID}")` |
-| Obtener convenciones | `mem_search(q: "project conventions")` |
-| Obtener naming | `mem_search(q: "project naming")` |
-| Obtener patrones de capa | `mem_search(q: "project patterns {layer}")` |
-| Obtener archivos protegidos | `mem_search(q: "project protected-files")` |
-| Obtener configuración | `mem_search(q: "project config")` |
-| Obtener capas y dependencias | `mem_search(q: "project layers")` |
-| Guardar implementación | `mem_save(type: discovery, topic_key: impl/{ID}/{artifact}, content: INFO)` |
-| Guardar decisión de diseño | `mem_save(type: decision, topic_key: impl/{ID}/decisions, content: DECISIÓN)` |
-| Guardar patrón nuevo | `mem_save(type: pattern, topic_key: project/{layer}, content: PATRÓN)` |
-| Actualizar estado | `mem_save(type: decision, topic_key: flow-state/{ID}, content: "executing")` |
-| Guardar resultado | `mem_save(type: decision, topic_key: flow-state/{ID}, content: "implemented")` |
-
----
-
-## Skills disponibles
-
-Carga skills on-demand con el skill tool:
-
-| Skill | Cuándo cargarlo |
-|---|---|
-| `memory-protocol` | Antes de usar mem_save o mem_search |
-
-**Ejemplo:**
-```
-skill({ name: "memory-protocol" })
-```
-
-Carga el skill **justo antes** de necesitarlo.
-
----
-
-## Actualización de Engram
-
-**SIEMPRE guarda en Engram cuando:**
-
-| Cuándo | topic_key | type |
-|--------|-----------|------|
-| Empiezas implementación | `flow-state/{ID}` | decision |
-| Completas una tarea | `impl/{ID}/{artifact}` | discovery |
-| Tomas decisión de diseño | `impl/{ID}/decisions` | decision |
-| Descubres patrón nuevo | `project/{layer}` | pattern |
-| Resuelves problema técnico | `impl/{ID}/discovery` | discovery |
-| Terminas implementación | `flow-state/{ID}` | decision |
-
----
-
 ## Proceso
 
 ### Paso 1 — Obtener el plan
@@ -138,7 +87,7 @@ Para cada artefacto:
    ```
    mem_save(
      type: "pattern",
-     topic_key: "project/{layer}",
+     topic_key: "impl/{ID}/patterns",
      title: "Patrón descubierto: {descripción}",
      content: "**Patrón**: {qué se encontró}\n**Contexto**: {dónde}\n**Aplicar a**: {qué más}"
    )
@@ -166,7 +115,7 @@ Al finalizar:
    ```
    mem_save(
      type: "decision",
-     topic_key: "flow-state/{ID}",
+     topic_key: "flow-state/{ID}/construct",
      title: "Flow State: CA-{ID}",
      content: "state: implemented\ntimestamp: {ahora}\nartifacts_implemented: [{lista}]"
    )

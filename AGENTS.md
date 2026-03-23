@@ -15,7 +15,11 @@ workflow system with persistent memory via Engram.
 ## Memory Protocol
 
 You have access to Engram persistent memory via MCP tools.
-**ALWAYS read and follow** `.opencode/prompts/memory-protocol.md`.
+**Load the memory-protocol skill** when you need to use Engram:
+
+```
+skill({ name: "memory-protocol" })
+```
 
 Key rules:
 - Save decisions, discoveries, and patterns to Engram after significant work
@@ -76,7 +80,7 @@ Full details are always in Engram memory — `project-context.md` is just a summ
 ## Engram Update Rules
 
 Every agent MUST update Engram when:
-- Completes a phase → update `flow-state/{ID}`
+- Completes a phase → update `flow-state/{ID}/[agent-namespace]`
 - Makes a design decision → save to `impl/{ID}/decisions`
 - Discovers a new pattern → save to `project/{layer}`
 - Completes implementation → save to `impl/{ID}/{artifact}`
@@ -85,10 +89,58 @@ Every agent MUST update Engram when:
 
 - `/init` — Initialize FlowTask in this project (scan and populate Engram)
 - `/init-types` — Scan only types/models layer
-- `/init-repository` — Scan only data-access layer
-- `/init-services` — Scan only services layer
+- `/init-data` — Scan only data layer
+- `/init-business` — Scan only business logic layer
 - `/init-config` — Scan only configuration files
 - `/init-api` — Scan only API/endpoints layer
 - `/new-ca CA-{ID}` — Create a new CA with guided clarification
 - `/run CA-{ID}` — Execute workflow for a case
 - `/status` — Show FlowTask and Engram status
+- `/inspect [pregunta]` — Explore and validate any aspect of the project without creating a CA
+- `/evolve-agent [agente] [descripción]` — Evolve a FlowTask agent using the full CA → Plan → Implement cycle
+
+## Agent Evolution Mode
+
+Modo especial que permite a los sub-agentes modificar archivos en `.flowtask/`.
+
+### Reglas del modo
+
+| Regla | Descripción |
+|-------|-------------|
+| **Runner** | NUNCA modifica `.flowtask/` — solo orquesta |
+| **Sub-agentes** | SÍ pueden modificar `.flowtask/` cuando están en Evolution Mode |
+| **Alcance** | `.flowtask/agents/`, `.flowtask/commands/`, `.flowtask/skills/` únicamente |
+| **Activación** | Solo mediante `/evolve-agent` — nunca se activa solo |
+
+### Flujo de Evolution Mode
+
+```
+/evolve-agent [agente] [descripción]
+  ↓
+Runner invoca CA-Writer (Evolution Mode)
+  ↓
+CA-Writer conversa con el usuario, valida tradeoffs/GAPs, genera SPEC
+  ↓
+Runner invoca Planner
+  ↓
+Planner genera plan de cambios en .flowtask/
+  ↓
+Runner invoca Plan-Auditor (SIEMPRE en Evolution Mode)
+  ↓
+Runner presenta plan al usuario → usuario valida con "ejecutar"
+  ↓
+Runner invoca Constructor (Evolution Mode)
+  ↓
+Constructor modifica archivos en .flowtask/
+```
+
+### Agentes con acceso en Evolution Mode
+
+| Agente | Puede modificar `.flowtask/` |
+|--------|------------------------------|
+| Runner | ❌ NUNCA |
+| CA-Writer | ✅ Solo leer en Evolution Mode |
+| Planner | ✅ Solo leer en Evolution Mode |
+| Plan-Auditor | ✅ Solo leer en Evolution Mode |
+| Constructor | ✅ Leer y escribir en Evolution Mode |
+| Inspector | ✅ Solo leer en Evolution Mode |

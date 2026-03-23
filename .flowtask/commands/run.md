@@ -20,4 +20,4 @@ All state must be persisted in Engram using the appropriate topic_keys:
 - ca/{ID} for requirements
 - plan/{ID} for plans
 - validation/{ID} for validation reports
-- flow-state/{ID} for workflow state
+- flow-state/{ID}/[namespace] for workflow state (create, plan, audit, construct, validate)
