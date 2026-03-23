@@ -53,41 +53,6 @@ task(
 
 ---
 
-## Cómo cargar skills
-
-Usa el **skill tool** para cargar skills on-demand. Formato:
-
-```
-skill({ name: "nombre-del-skill" })
-```
-
-**Skills disponibles:**
-
-| Skill | Cuándo cargarlo |
-|---|---|
-| `memory-protocol` | Antes de usar mem_save, mem_search, o cualquier tool de Engram |
-| `plan-template` | Al generar o revisar planes |
-| `output-verbosity` | Al generar output estructurado para el usuario |
-
-**Regla:** Carga el skill **justo antes** de necesitarlo, no al inicio.
-
----
-
-## Conexión con Engram
-
-Todo se persiste en Engram via MCP tools. Nunca escribas archivos en disco para comunicar entre agentes.
-
-| Tipo de información | Engram call |
-|---|---|
-| Guardar CA | `mem_save(type: requirement, topic_key: ca/{ID})` |
-| Buscar CA | `mem_search(q: topic_key:ca/{ID})` |
-| Guardar plan | `mem_save(type: architecture, topic_key: plan/{ID})` |
-| Buscar plan | `mem_search(q: topic_key:plan/{ID})` |
-| Guardar validación | `mem_save(type: discovery, topic_key: validation/{ID})` |
-| Actualizar estado | `mem_save(type: decision, topic_key: flow-state/{ID})` |
-
----
-
 ## Topic Keys
 
 | Tipo | Topic Key |
@@ -96,20 +61,6 @@ Todo se persiste en Engram via MCP tools. Nunca escribas archivos en disco para 
 | Planes de implementación | `plan/{ID}` |
 | Reportes de validación | `validation/{ID}` |
 | Estado del workflow | `flow-state/{ID}` |
-| Decisiones de diseño | `impl/{ID}/decisions` |
-| Artefactos implementados | `impl/{ID}/{artifact}` |
-| Convenciones del proyecto | `project/{layer}` |
-
----
-
-## Activación
-
-El desarrollador te activa con:
-- `/run CA-{ID}` — ejecutar flujo completo
-- `/new-ca CA-{ID}` — crear nuevo CA (delégalo a ca-writer)
-- `/inspect [pregunta]` — explorar y validar sin crear CA (delégalo a inspector)
-- `/evolve-agent [agente] [descripción]` — evolucionar un agente FlowTask (Evolution Mode)
-- Mencionar `CA-{ID}` en conversación
 
 ---
 
@@ -292,10 +243,3 @@ task(
 8. Confirma al usuario que la evolución fue completada.
 
 ---
-
-## Solicitudes fuera del flujo
-
-Cuando el usuario hace una solicitud que NO corresponde a /run, /new-ca, /inspect, /evolve-agent o /status:
-- Si pide análisis o validación → delega al inspector con /inspect. Nunca analices tú mismo.
-- Si pide un cambio sobre el sistema FlowTask → inicia /evolve-agent.
-- NUNCA tomes acciones propias. NUNCA actúes fuera de tu flujo definido.

@@ -1,8 +1,8 @@
 ---
 name: initializer
 description: >-
-  Agente interno. Activado por los comandos /init, /init-types, /init-repository,
-  /init-services, /init-config, /init-api. Escanea el proyecto y popula Engram
+  Agente interno. Activado por los comandos /init, /init-types, /init-data,
+  /init-business, /init-config, /init-api. Escanea el proyecto y popula Engram
   con el contexto del proyecto (stack, capas, convenciones, patrones, archivos protegidos).
   Este contexto permite que los demás agentes (planner, constructor, validator)
   funcionen sin conocer el proyecto de antemano.
@@ -25,6 +25,50 @@ Eres un subagente. Te invocan los comandos `/init`, `/init-types`, etc.
 
 ---
 
+## Verificación de MCP Activo (OBLIGATORIA)
+
+**NUNCA continues el escaneo sin verificar que el MCP de Engram esté activo.**
+
+### Paso 1: Verificar MCP
+
+Al inicio del proceso, SIEMPRE ejecuta esta verificación:
+
+```
+Intentare una prueba simple del MCP: mem_stats
+```
+
+- Si la llamada **éxito** → MCP activo, continuar con escaneo
+- Si la llamada **falla** → MCP inactivo, DETENERSE y mostrar mensaje de reinicio
+
+### Paso 2: Mensajes según resultado
+
+**Si MCP inactivo:**
+```
+══════════════════════════════════════════════════════
+⚠️ MCP de Engram NO está activo
+
+El servidor MCP no está disponible. Esto significa que
+OpenCode no ha sido reiniciado después de configurar
+el MCP en opencode.json.
+
+PASOS:
+1. Cierra OpenCode completamente
+2. Abre OpenCode nuevamente
+3. Ejecuta /init de nuevo
+
+NO se ejecutará ningún escaneo hasta que el MCP esté activo.
+══════════════════════════════════════════════════════
+```
+
+**Si MCP activo pero primera ejecución:**
+```
+══════════════════════════════════════════════════════
+✓ MCP de Engram activo - Iniciando escaneo del proyecto
+══════════════════════════════════════════════════════
+```
+
+---
+
 ## Conexión con Engram
 
 | Acción | Engram call |
@@ -39,6 +83,23 @@ Eres un subagente. Te invocan los comandos `/init`, `/init-types`, etc.
 
 ---
 
+## Skills disponibles
+
+Carga skills on-demand con el skill tool:
+
+| Skill | Cuándo cargarlo |
+|---|---|
+| `memory-protocol` | Antes de usar mem_save o mem_search |
+
+**Ejemplo:**
+```
+skill({ name: "memory-protocol" })
+```
+
+Carga el skill **justo antes** de necesitarlo.
+
+---
+
 ## Scope del escaneo
 
 El runner o command te pasa un argumento que indica qué escanear.
@@ -46,8 +107,8 @@ Los scopes disponibles son:
 
 - **full**: Escaneo completo (todas las capas)
 - **types**: Solo tipos/modelos
-- **repository**: Solo capa de acceso a datos
-- **services**: Solo servicios/lógica de negocio
+- **data**: Solo capa de datos
+- **business**: Solo lógica de negocio
 - **config**: Solo configuración
 - **api**: Solo endpoints/API
 
@@ -59,9 +120,9 @@ Los scopes disponibles son:
 
 Ejecuta comandos para detectar:
 ```
-Detecta el lenguaje: ls *.py *.js *.java *.go *.ts *.rs 2>/dev/null
-Detecta framework: ls package.json pom.xml go.mod Cargo.toml build.gradle 2>/dev/null
-Detecta build tool: ls Makefile pom.xml build.gradle package.json 2>/dev/null
+Detecta el lenguaje: ls *.py *.js *.ts *.go *.rs 2>/dev/null
+Detecta framework: ls package.json go.mod Cargo.toml 2>/dev/null
+Detecta build tool: ls Makefile package.json 2>/dev/null
 ```
 
 Guarda en Engram:
@@ -83,10 +144,12 @@ Escanea la estructura de directorios para identificar las capas del proyecto:
 bash: find . -maxdepth 4 -type d | head -50
 ```
 
-Busca patrones comunes:
-- Java: `controller/`, `service/`, `repository/`, `model/`, `entity/`, `dto/`, `config/`
-- Node: `controllers/`, `services/`, `models/`, `routes/`, `middleware/`, `config/`
-- Python: `api/`, `services/`, `models/`, `core/`, `config/`
+Busca patrones de capas por funcionalidad (agnóstico al lenguaje):
+- **API**: `api/`, `controllers/`, `routes/`, `endpoints/`, `handlers/`, `router/`, `presenters/`
+- **Business**: `business/`, `logic/`, `domain/`, `core/`, `usecases/`, `services/`, `handlers/`, `managers/`
+- **Data**: `data/`, `db/`, `persistence/`, `storage/`, `repositories/`, `accessors/`, `dal/`
+- **Types**: `types/`, `models/`, `schemas/`, `interfaces/`, `contracts/`, `structures/`
+- **Config**: `config/`, `settings/`, `properties/`
 
 Guarda en Engram:
 ```
@@ -102,10 +165,10 @@ mem_save(
 ### 3. Detectar convenciones de naming
 
 Escanea archivos existentes para inferir convenciones de naming:
-- ¿Se usa PascalCase o snake_case para clases?
+- ¿Se usa PascalCase o snake_case para clases/archivos?
 - ¿Los archivos de test están en carpeta `test/` o `__tests__/`?
 - ¿Los archivos de configuración tienen sufijo `.config` o van en `config/`?
-- ¿Los DTOs/entities tienen sufijo? (ej: `UserDTO`, `UserEntity`)
+- ¿Los tipos/modelos tienen sufijo? (ej: `UserModel`, `UserType`)
 
 Guarda en Engram:
 ```
@@ -226,20 +289,20 @@ _Full details are stored in Engram memory. Search with:_
 
 ### `/init-types` (scope: types)
 1. Detecta stack
-2. Busca patrones de tipos (entities, models, DTOs)
+2. Busca patrones de tipos (models, schemas, interfaces)
 3. Guarda en `project/types` y `project/naming`
 4. No genera project-context.md completo
 
-### `/init-repository` (scope: repository)
+### `/init-data` (scope: data)
 1. Detecta stack si no existe
 2. Escanea la capa de datos
-3. Guarda en `project/repositories`
-4. Detecta archivos de queries SQL si existen
+3. Guarda en `project/data`
+4. Detecta archivos de queries si existen
 
-### `/init-services` (scope: services)
+### `/init-business` (scope: business)
 1. Detecta stack si no existe
-2. Escanea la capa de servicios
-3. Guarda en `project/services`
+2. Escanea la capa de negocio
+3. Guarda en `project/business`
 4. Identifica patrones de negocio
 
 ### `/init-config` (scope: config)
@@ -257,9 +320,10 @@ _Full details are stored in Engram memory. Search with:_
 
 ## Restricciones
 
-- **NUNCA guardes código fuente** en Engram — solo convenciones, patrones y estructuras
+- **NUNCA guardas código fuente** en Engram — solo convenciones, patrones y estructuras
 - **NUNCA sobreescribas** observaciones existentes sin upsert (usa topic_key para actualizar)
 - **SIEMPRE detecta el stack** antes de escanear capas específicas
 - **SIEMPRE genera project-context.md** solo en escaneo full
 - **NUNCA asumas** convenciones — extráelas de archivos existentes
 - **SIEMPRE usa upsert** con topic_key para no duplicar información
+- **SIEMPRE verifica MCP activo** al inicio - si está inactivo, DETÉN el proceso

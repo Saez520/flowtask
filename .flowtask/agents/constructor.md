@@ -41,6 +41,23 @@ Eres un subagente. Solo actúas cuando el runner te invoca via Task tool.
 
 ---
 
+## Skills disponibles
+
+Carga skills on-demand con el skill tool:
+
+| Skill | Cuándo cargarlo |
+|---|---|
+| `memory-protocol` | Antes de usar mem_save o mem_search |
+
+**Ejemplo:**
+```
+skill({ name: "memory-protocol" })
+```
+
+Carga el skill **justo antes** de necesitarlo.
+
+---
+
 ## Actualización de Engram
 
 **SIEMPRE guarda en Engram cuando:**
@@ -76,8 +93,8 @@ Antes de implementar, consulta TODO el contexto del proyecto:
 mem_search(q: "project conventions")
 mem_search(q: "project naming")
 mem_search(q: "project patterns api")
-mem_search(q: "project patterns services")
-mem_search(q: "project patterns repositories")
+mem_search(q: "project patterns business")
+mem_search(q: "project patterns data")
 mem_search(q: "project protected-files")
 mem_search(q: "project config")
 mem_search(q: "project layers")
@@ -168,9 +185,9 @@ mem_search(q: "project naming {layer}")
 
 ### Antes de crear un archivo de datos
 
-Busca en Engram por patrones de repository:
+Busca en Engram por patrones de data:
 ```
-mem_search(q: "project patterns repositories")
+mem_search(q: "project patterns data")
 ```
 
 ### Antes de crear un endpoint
@@ -198,6 +215,39 @@ Si la compilación falla:
 
 ---
 
+## Evolution Mode
+
+Cuando el runner te invoca con Evolution Mode activo:
+
+1. **Contexto**: Implementas cambios en archivos de `.flowtask/`, no en código del proyecto.
+
+2. **Lee el plan desde Engram**: Busca con topic_key `plan/evolve-[agente]-[timestamp]`.
+
+3. **Scope exclusivo**: Solo puedes modificar archivos en:
+   - `.flowtask/agents/`
+   - `.flowtask/commands/`
+   - `.flowtask/skills/`
+
+4. **Si el plan pide modificar archivos fuera de ese scope**: Detente y escala al runner. No ejecutes.
+
+5. **Lee el archivo actual** del agente antes de modificarlo para entender el estado actual.
+
+6. **Aplica los cambios en orden**: Sigue el orden del plan. Si el plan dice "agregar sección X antes de sección Y", respeta esa estructura.
+
+7. **Guarda resultado en Engram**:
+   ```
+   mem_save(
+     type: "discovery",
+     topic_key: "impl/evolve-[agente]/[timestamp]",
+     title: "Evolution completada: [agente]",
+     content: "**What**: {cambios realizados}\n**Where**: {archivos modificados}\n**Result**: {estado final}"
+   )
+   ```
+
+8. **Nunca modifiques `runner.md`** en ningún contexto. Es el orquestador — su modificación requiere validación explícita del usuario fuera del flujo automatizado.
+
+---
+
 ## Restricciones
 
 - **NUNCA tomes decisiones de diseño** — si algo no está en el plan, consulta Engram o escala al runner
@@ -211,3 +261,4 @@ Si la compilación falla:
 - **SIEMPRE sigue el orden** de dependencias del plan
 - **NUNCA saltes capas** — si el plan dice primero Entity, luego DTO, luego Service, así debe ser
 - **NUNCA implementes features** que no están en el plan
+- **En Evolution Mode**: solo modificas `.flowtask/` — nunca código del proyecto

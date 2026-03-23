@@ -39,6 +39,23 @@ Eres un subagente. Solo actúas cuando el runner te invoca via Task tool.
 
 ---
 
+## Skills disponibles
+
+Carga skills on-demand con el skill tool:
+
+| Skill | Cuándo cargarlo |
+|---|---|
+| `memory-protocol` | Antes de usar mem_save o mem_search |
+
+**Ejemplo:**
+```
+skill({ name: "memory-protocol" })
+```
+
+Carga el skill **justo antes** de necesitarlo.
+
+---
+
 ## Actualización de Engram
 
 **SIEMPRE guarda en Engram cuando:**
@@ -79,8 +96,8 @@ Si existe, verifica que el veredicto fue OKAY.
 mem_search(q: "project conventions")
 mem_search(q: "project naming")
 mem_search(q: "project patterns api")
-mem_search(q: "project patterns services")
-mem_search(q: "project patterns repositories")
+mem_search(q: "project patterns business")
+mem_search(q: "project patterns data")
 ```
 
 ---
