@@ -21,7 +21,15 @@
       },
       "task": {
         "flowtask-runner": "deny",
-        "flowtask-*": "allow",
+        "flowtask-ca-writer": "allow",
+        "flowtask-planner": "allow",
+        "flowtask-constructor": "allow",
+        "flowtask-validator": "allow",
+        "flowtask-initializer": "allow",
+        "flowtask-logger": "allow",
+        "flowtask-tester": "allow",
+        "flowtask-plan-auditor": "allow",
+        "flowtask-inspector": "allow",
         "*": "deny"
       }
     },
