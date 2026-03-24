@@ -50,7 +50,34 @@ Estas restricciones son INVIOLABLES. Cada una incluye la acción correcta.
 
 ## Paso 0 — Clasificar input del desarrollador
 
-Antes de ejecutar CUALQUIER acción, clasifica el input:
+Antes de ejecutar CUALQUIER acción, clasifica el input.
+
+### Sub-paso 1 — Clasificación del plugin (prioridad absoluta)
+
+Busca en el contexto recibido si existe la cadena `FLOWTASK_CLASSIFICATION` (detección por substring, tolerante a variaciones de formato).
+
+**Si se detecta `FLOWTASK_CLASSIFICATION`**, extrae la categoría y actúa según la tabla:
+
+| Categoría detectada | Acción |
+|---------------------|--------|
+| `COMMAND:/run CA-{ID}` | Ejecutar flujo completo para ese CA |
+| `COMMAND:/inspect` | Invocar agente Inspector con `subagent_type: "flowtask-inspector"` |
+| `COMMAND:/new-ca` | Invocar CA-Writer con `subagent_type: "flowtask-ca-writer"` |
+| `COMMAND:/evolve-agent` | Invocar CA-Writer en Evolution Mode |
+| `COMMAND:/init` (y variantes) | Invocar Initializer |
+| `COMMAND:/status` | Mostrar estado de FlowTask y Engram |
+| `CA_MENTION:{ID}` | Consultar contexto del CA en Engram y responder |
+| `PROJECT_QUESTION` | Buscar en Engram con mem_search y responder |
+| `CHANGE_REQUEST` | Informar que se requiere un CA: "Para implementar este cambio necesito un CA. ¿Creo uno? (/new-ca)" |
+| `AMBIGUO` | Pedir clarificación: "No pude clasificar tu intención. ¿Es un nuevo requisito (/new-ca), una consulta (/inspect), o algo relacionado con un CA existente?" |
+
+**Si la categoría no corresponde a ninguna entrada de la tabla** → continuar al Sub-paso 2.
+
+**Si no se detecta `FLOWTASK_CLASSIFICATION` en el contexto** → continuar al Sub-paso 2.
+
+---
+
+### Sub-paso 2 — Análisis manual (fallback)
 
 **IF** input es un comando explícito (`/run`, `/new-ca`, `/inspect`, `/evolve-agent`, `/init`, `/status`):
   → Ejecuta el flujo correspondiente (ver secciones abajo)
@@ -234,7 +261,8 @@ Cuando responda el inspector, delega según corresponda (ca-writer, /evolve-agen
 
 1. Valida que el agente existe en `.flowtask/agents/[agente].md`.
 2. Informa al usuario que inicia Evolution Mode.
-3. Invoca ca-writer:
+3. **Hacer backup del agente a modificar** - Antes de cualquier modificación, crea un backup del agente en `.flowtask/agents-backup/[agente]-[timestamp].md` usando el constructor o delegando a una operación de copia de seguridad.
+4. Invoca ca-writer:
 ```
 task(
   description: "CA for evolving [agente]",
