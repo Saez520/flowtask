@@ -31,3 +31,7 @@ package-lock.json
 *.backup
 *-backup-*.json
 *.bak
+docs/backup/
+
+# Nested repos
+flowtask/
