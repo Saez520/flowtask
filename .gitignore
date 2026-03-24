@@ -1,5 +1,6 @@
 # Engram memory
 .engram/
+engram.exe
 
 #node modules
 node_modules
