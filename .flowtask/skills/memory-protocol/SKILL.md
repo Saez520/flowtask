@@ -57,17 +57,53 @@ Call `mem_save` IMMEDIATELY after any of these:
 
 ---
 
-## WHEN TO SEARCH
+## HOW TO SEARCH
 
-When the user asks to "remember", "recall", "what did we do", or references past work:
+`mem_search` es full-text search (FTS5). Busca en título y contenido de las observaciones.
+NO soporta filtro por metadata (topic_key, type, scope). Usa keywords naturales.
 
-1. Call `mem_context` first — checks recent session history (fast, cheap)
-2. If not found, call `mem_search` with relevant keywords
-3. If you find a match, call `mem_get_observation` for full content
+### Reglas
 
-Also search proactively when:
-- Starting work that might have been done before
-- The user mentions a topic you have no context on
+1. **NUNCA uses `topic_key:` como prefix** — FTS5 no lo interpreta como filtro
+2. **NUNCA uses `type:` como prefix** — FTS5 no filtra por metadata
+3. **Busca por keywords del título/contenido** de la observación que querés encontrar
+4. **Primero `mem_context`** (barato), luego `mem_search` si no encontrás
+5. **Si encontrás un ID**, usá `mem_get_observation(id: N)` para contenido completo
+
+### Queries correctas por categoría
+
+| Qué buscar | Query correcta | Ejemplo |
+|-----------|---------------|---------|
+| CA específico | `"CA-{ID}"` | `mem_search(q: "CA-018")` |
+| Plan específico | `"Plan CA-{ID}"` | `mem_search(q: "Plan CA-018")` |
+| Flow-state | `"Flow State: CA-{ID}"` | `mem_search(q: "Flow State: CA-018")` |
+| Validación | `"Validation Report: CA-{ID}"` | `mem_search(q: "Validation Report: CA-018")` |
+| Plan-Audit | `"Plan-Auditor Review: CA-{ID}"` | `mem_search(q: "Plan-Auditor Review: CA-018")` |
+| Convenciones | `"project conventions"` | `mem_search(q: "project conventions")` |
+| Naming | `"project naming"` | `mem_search(q: "project naming")` |
+| Layers | `"project layers"` | `mem_search(q: "project layers")` |
+| Patrones por capa | `"project patterns {layer}"` | `mem_search(q: "project patterns api")` |
+| Protected files | `"project protected-files"` | `mem_search(q: "project protected-files")` |
+| Config | `"project config"` | `mem_search(q: "project config")` |
+| Decisiones impl | `"Decisiones"` + `"CA-{ID}"` | `mem_search(q: "Decisiones CA-018")` |
+| Patrones impl | `"Patrón descubierto"` | `mem_search(q: "Patrón descubierto")` |
+| Stack | `"project stack"` | `mem_search(q: "project stack")` |
+| CAs anteriores | `"CA-"` + dominio | `mem_search(q: "CA- dominio proyecto")` |
+
+### Protocolo de búsqueda
+
+```
+1. mem_context(limit: 20)          ← reciente, barato
+2. mem_search(q: "keywords")       ← FTS5
+3. mem_get_observation(id: N)       ← contenido completo si encontrás ID
+```
+
+### Búsqueda proactiva
+
+Buscar en Engram cuando:
+- El usuario pide "recordar", "recall", "qué hicimos", o referencia trabajo pasado
+- Empezás un trabajo que podría haberse hecho antes
+- El usuario menciona un tema del que no tenés contexto
 
 ---
 

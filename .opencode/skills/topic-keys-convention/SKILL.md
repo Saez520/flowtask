@@ -117,10 +117,12 @@ Dos namespaces distintos con propósitos diferentes:
 Antes de escribir a cualquier topic_key, sigue estos 3 pasos:
 
 ### 1. Buscar
+
+Usa keywords del título o contenido esperado de la observación:
 ```
-mem_search(q: "topic_key:{key_que_quieres_usar}")
+mem_search(q: "{título o contenido esperado}")
 ```
-Verifica si ya existe contenido en ese topic_key.
+Verifica si ya existe contenido similar. NO uses `topic_key:` como prefix de búsqueda.
 
 ### 2. Verificar ownership
 Consulta la **Tabla de Ownership** arriba. ¿Eres el owner de ese topic_key? Si no lo eres, NO escribas ahí.
