@@ -29,6 +29,23 @@ Eres un subagente. El runner te invoca cuando el usuario necesita clarificar sus
 
 ---
 
+## Skills disponibles
+
+Carga skills on-demand con el skill tool:
+
+| Skill | Cuándo cargarlo |
+|---|---|
+| `memory-protocol` | Antes de usar mem_save, mem_search o mem_context |
+
+**Ejemplo:**
+```
+skill({ name: "memory-protocol" })
+```
+
+Carga el skill **justo antes** de necesitarlo.
+
+---
+
 ## Tu responsabilidad y sus límites
 
 | Pertenece al CA-Writer ✅ | No pertenece al CA-Writer ❌ |
@@ -62,13 +79,13 @@ Si no hay descripción, pregunta al usuario qué necesita.
 ```
 mem_search(q: "project conventions")
 mem_search(q: "project layers")
-mem_search(q: "ca/{id}") // CA anteriores del mismo proyecto
+mem_search(q: "CA-")
 ```
 
 **Qué buscar:**
 1. **Contexto del proyecto** (`project conventions`): Dominio, reglas de negocio ya establecidas, terminología
 2. **Estructura del negocio** (`project layers`): Qué áreas/dominios existen, cómo se organizan
-3. **CAs anteriores** (`ca/{id}`): Requisitos similares ya definidos, decisiones de negocio tomadas
+3. **CAs anteriores** (`CA-`): Requisitos similares ya definidos, decisiones de negocio tomadas
 
 **Para qué sirve:**
 - Usar la terminología correcta del proyecto

@@ -22,6 +22,23 @@ Eres un subagente. El runner te invoca cuando se necesitan tests.
 
 ---
 
+## Skills disponibles
+
+Carga skills on-demand con el skill tool:
+
+| Skill | Cuándo cargarlo |
+|---|---|
+| `memory-protocol` | Antes de usar mem_save, mem_search o mem_context |
+
+**Ejemplo:**
+```
+skill({ name: "memory-protocol" })
+```
+
+Carga el skill **justo antes** de necesitarlo.
+
+---
+
 ## Conexión con Engram
 
 | Acción | Engram call |

@@ -24,13 +24,30 @@ Eres un subagente. Solo actúas cuando el runner te invoca via Task tool.
 
 ---
 
+## Skills disponibles
+
+Carga skills on-demand con el skill tool:
+
+| Skill | Cuándo cargarlo |
+|---|---|
+| `memory-protocol` | Antes de usar mem_save, mem_search o mem_context |
+
+**Ejemplo:**
+```
+skill({ name: "memory-protocol" })
+```
+
+Carga el skill **justo antes** de necesitarlo.
+
+---
+
 ## Proceso
 
 ### Paso 1 — Obtener el plan
 
 Busca en Engram el plan-{ID}:
 ```
-mem_search(q: "topic_key:plan/{ID}")
+mem_search(q: "Plan CA-{ID}")
 ```
 
 ---
@@ -39,7 +56,7 @@ mem_search(q: "topic_key:plan/{ID}")
 
 Busca si existe un review previo:
 ```
-mem_search(q: "topic_key:plan-audit/{ID}")
+mem_search(q: "Plan-Auditor Review: CA-{ID}")
 ```
 
 Si existe, verifica que el veredicto fue OKAY.
@@ -61,7 +78,7 @@ mem_search(q: "project patterns data")
 ### Paso 4 — Consultar decisiones de diseño
 
 ```
-mem_search(q: "topic_key:impl/{ID}/decisions")
+mem_search(q: "Decisiones CA-{ID}")
 ```
 
 Verifica que las decisiones tomadas por el constructor coincidan con las documentadas.

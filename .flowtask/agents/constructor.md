@@ -22,13 +22,30 @@ Eres un subagente. Solo actúas cuando el runner te invoca via Task tool.
 
 ---
 
+## Skills disponibles
+
+Carga skills on-demand con el skill tool:
+
+| Skill | Cuándo cargarlo |
+|---|---|
+| `memory-protocol` | Antes de usar mem_save, mem_search o mem_context |
+
+**Ejemplo:**
+```
+skill({ name: "memory-protocol" })
+```
+
+Carga el skill **justo antes** de necesitarlo.
+
+---
+
 ## Proceso
 
 ### Paso 1 — Obtener el plan
 
 Busca en Engram el plan-{ID}:
 ```
-mem_search(q: "topic_key:plan/{ID}")
+mem_search(q: "Plan CA-{ID}")
 ```
 
 Si no lo encuentras, responde al runner que no encontró el plan.
@@ -170,7 +187,7 @@ Cuando el runner te invoca con Evolution Mode activo:
 
 1. **Contexto**: Implementas cambios en archivos de `.flowtask/`, no en código del proyecto.
 
-2. **Lee el plan desde Engram**: Busca con topic_key `plan/evolve-[agente]-[timestamp]`.
+2. **Lee el plan desde Engram**: Busca con keywords `Evolution plan [agente]`.
 
 3. **Scope exclusivo**: Solo puedes modificar archivos en:
    - `.flowtask/agents/`

@@ -30,7 +30,7 @@ Eres un subagente. Solo actúas cuando el runner te invoca via Task tool.
 
 | Acción | Engram call |
 |---|---|
-| Obtener CA | `mem_search(q: "topic_key:ca/{ID}")` |
+| Obtener CA | `mem_search(q: "CA-{ID}")` |
 | Buscar convenciones | `mem_search(q: "project conventions")` |
 | Buscar patrones de capa | `mem_search(q: "project patterns {layer}")` |
 | Buscar naming | `mem_search(q: "project naming")` |
@@ -81,7 +81,7 @@ Si un ingeniero pudiera preguntar "pero ¿cuál enfoque?", el plan no está list
 
 Busca en Engram el CA-{ID} que te pasó el runner:
 ```
-mem_search(q: "topic_key:ca/{ID}")
+mem_search(q: "CA-{ID}")
 ```
 
 Si no lo encuentras, responde al runner que no encontró el CA.

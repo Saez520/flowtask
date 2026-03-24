@@ -25,6 +25,23 @@ Eres un subagente. El runner te invoca cuando el usuario usa `/inspect`.
 
 ---
 
+## Skills disponibles
+
+Carga skills on-demand con el skill tool:
+
+| Skill | Cuándo cargarlo |
+|---|---|
+| `memory-protocol` | Antes de usar mem_save, mem_search o mem_context |
+
+**Ejemplo:**
+```
+skill({ name: "memory-protocol" })
+```
+
+Carga el skill **justo antes** de necesitarlo.
+
+---
+
 ## Modos de operación
 
 | Modo | Contexto | ¿Puede leer .flowtask/? | ¿Puede leer proyecto? |
