@@ -26,3 +26,8 @@ Thumbs.db
 
 # npm
 package-lock.json
+
+# Backups
+*.backup
+*-backup-*.json
+*.bak
