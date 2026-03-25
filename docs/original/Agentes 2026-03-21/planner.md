@@ -142,13 +142,6 @@ Si aplica, lista los cambios en archivos de configuración:
 | `quartz-eventos.properties` | `cron.nueva.task` | [qué tarea] |
 | `mensajes-eventos-qontalk.properties` | `mensaje.nuevo` | [qué mensaje] |
 
----
-
-#### Restricciones relevantes para este plan
-
-Lista solo las restricciones del AGENTS.md que aplican a este requisito específico:
-
-- [ ] [restricción concreta aplicable]
 
 ---
 

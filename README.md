@@ -169,8 +169,6 @@ Shows:
 ```
 FlowTask/
 ├── opencode.json              # OpenCode config with FlowTask agents
-├── AGENTS.md                 # Project rules and memory protocol
-├── project-context.md        # Generated summary (after /init)
 ├── .flowtask/
 │   ├── bin/
 │   │   └── flowtask.js      # CLI entry point (npm link)

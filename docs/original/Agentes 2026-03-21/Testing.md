@@ -295,7 +295,6 @@ Para alcanzar el 70%, cubre al menos:
 - **NUNCA escribas tests que dependan de orden de ejecución**. Cada test debe ser independiente.
 - **NUNCA uses `Thread.sleep()` para sincronización** salvo en tests de concurrencia donde se mide paralelismo real (y con `CountDownLatch` como complemento).
 - **NUNCA accedas a archivos de configuración reales** (`conf.properties`, `conf-eventos.properties`). Mockea `PropertiesManager` con `MockedStatic`.
-- **NUNCA modifiques `AGENTS.md`**. Este agente no es responsable de la documentación de arquitectura.
 
 ---
 
@@ -325,12 +324,3 @@ Para alcanzar el 70%, cubre al menos:
 | `TESTS_CAPA_3.md` | Tests de integración HTTP (OkHttpClientImpl + Bulk Updates) |
 
 ---
-
-## 9. REFERENCIA — ARQUITECTURA DEL PROYECTO
-
-Para entender la arquitectura de capas, convenciones, y restricciones del código de producción, consulta `AGENTS.md` en la raíz del proyecto. Las secciones relevantes para testing son:
-
-- **Sección 1**: Stack y módulos — para saber qué clases existen en cada capa.
-- **Sección 2**: Convenciones — para entender anotaciones, inyección, y nombrado.
-- **Sección 3**: Obtención de propiedades — para saber qué mockear (`PropertiesManager`, `CronManager`).
-
