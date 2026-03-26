@@ -37,8 +37,18 @@ function logInfo(message) {
 
 function isBinaryInstalled(name) {
   try {
-    execSync(`which ${name}`, { stdio: "pipe" });
-    return true;
+    const cmd = process.platform === "win32" ? "where" : "which";
+    try {
+      execSync(`${cmd} ${name}`, { stdio: "pipe" });
+      return true;
+    } catch (e) {
+      if (process.platform === "win32" && name === "engram") {
+        const userProfile = process.env.USERPROFILE || "";
+        const manualPath = path.join(userProfile, "go", "bin", "engram.exe");
+        return fs.existsSync(manualPath);
+      }
+      throw e;
+    }
   } catch {
     return false;
   }

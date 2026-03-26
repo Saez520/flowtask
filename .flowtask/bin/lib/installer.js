@@ -20,207 +20,194 @@ import {
 // ─── Dependency installers ───────────────────────────────────────────────────
 
 function installOpenCode() {
-  log("\n  Attempting to install OpenCode...", COLORS.cyan);
+  log("\n  Checking OpenCode installation...", COLORS.cyan);
 
-  // Try npm global install
-  if (isBinaryInstalled("npm")) {
-    logInfo("Installing via npm: npm install -g opencode-ai ...");
-    const result = run("npm install -g opencode-ai");
-    if (result.status === 0 && isBinaryInstalled("opencode")) {
-      logSuccess(`OpenCode installed: ${getVersion("opencode")}`);
-      return true;
-    }
+  if (isBinaryInstalled("opencode")) {
+    logSuccess(`OpenCode is already installed: ${getVersion("opencode")}`);
+    return true;
   }
 
-  logError("Could not install OpenCode automatically.");
+  logWarn("OpenCode is not installed.");
   log(`
-  Please install it manually:
-    → https://opencode.ai/docs/
+  Please download and install it manually from:
+    → https://opencode.ai/download
   `);
   return false;
 }
 
-function installEngram() {
-  log("\n  Attempting to install Engram...", COLORS.cyan);
-
-  const platform = process.platform;
-
-  // ── Windows ─────────────────────────────────────────────────────────────
-  if (platform === "win32") {
-    logInfo("Detected Windows platform.");
-
-    // Try WinGet first (modern Windows package manager)
-    if (isBinaryInstalled("winget")) {
-      logInfo("Installing via WinGet: winget install Engram ...");
-      const result = run("winget install GentlemanProgramming.Engram");
-      if (result.status === 0 && isBinaryInstalled("engram")) {
-        logSuccess(`Engram installed: ${getVersion("engram")}`);
-        return true;
-      }
-      logWarn("WinGet install failed. Trying npm...");
-    }
-
-    // Try npm global install
-    if (isBinaryInstalled("npm")) {
-      logInfo("Installing via npm: npm install -g engram-cli ...");
-      const result = run("npm install -g engram-cli");
-      if (result.status === 0 && isBinaryInstalled("engram")) {
-        logSuccess(`Engram installed: ${getVersion("engram")}`);
-        return true;
-      }
-      logWarn("npm install failed. Trying GitHub releases...");
-    }
-
-    // Fallback: download from GitHub releases via PowerShell
-    return installEngramFromGitHub("win32", process.arch);
-  }
-
-  // ── macOS / Linux ───────────────────────────────────────────────────────
-
-  // Try Homebrew first
-  if (isBinaryInstalled("brew")) {
-    logInfo("Installing via Homebrew: brew install gentleman-programming/tap/engram ...");
-    const result = run("brew install gentleman-programming/tap/engram");
-    if (result.status === 0 && isBinaryInstalled("engram")) {
-      logSuccess(`Engram installed: ${getVersion("engram")}`);
-      return true;
-    }
-    logWarn("Homebrew install failed. Trying GitHub releases...");
-  }
-
-  // Fallback: download from GitHub releases
-  return installEngramFromGitHub(platform, process.arch);
-}
-
-function installEngramFromGitHub(platform, arch) {
-  let assetName;
-  if (platform === "darwin") {
-    assetName = arch === "arm64" ? "engram_darwin_arm64" : "engram_darwin_amd64";
-  } else if (platform === "linux") {
-    assetName = arch === "arm64" ? "engram_linux_arm64" : "engram_linux_amd64";
-  } else if (platform === "win32") {
-    assetName = arch === "arm64" ? "engram_windows_arm64.exe" : "engram_windows_amd64.exe";
-  } else {
-    logError(`Automatic install not supported on platform: ${platform}`);
-    log(`
-  Please install Engram manually:
-    → https://github.com/Gentleman-Programming/engram/releases
-    `);
-    return false;
-  }
-
-  const apiUrl = "https://api.github.com/repos/Gentleman-Programming/engram/releases/latest";
-  const isWindows = platform === "win32";
-  const installDir = isWindows ? process.env.LOCALAPPDATA || "C:\\Users\\Default\\AppData\\Local" : "/usr/local/bin";
-  const tmpDir = isWindows ? (process.env.TEMP || "C:\\Temp") : "/tmp";
-  const tmpPath = path.join(tmpDir, assetName);
-  const binaryName = isWindows ? "engram.exe" : "engram";
-
-  logInfo(`Fetching latest release info from GitHub...`);
-
-  let downloadUrl;
-  try {
-    const curlCmd = isWindows ? `curl -s "${apiUrl}"` : `curl -s "${apiUrl}"`;
-    const releaseJson = execSync(curlCmd, { stdio: "pipe" }).toString();
-    const release = JSON.parse(releaseJson);
-    const asset = release.assets?.find(
-      (a) => a.name === assetName || a.name === `${assetName}.tar.gz`
-    );
-    if (!asset) {
-      throw new Error(`Asset "${assetName}" not found in latest release`);
-    }
-    downloadUrl = asset.browser_download_url;
-  } catch (err) {
-    logError(`Could not fetch release info: ${err.message}`);
-    log(`
-  Please install Engram manually:
-    → https://github.com/Gentleman-Programming/engram/releases
-    `);
-    return false;
-  }
-
-  logInfo(`Downloading: ${downloadUrl}`);
-
-  if (isWindows) {
-    // Download via PowerShell or curl
-    const dlCmd = `curl -L -o "${tmpPath}" "${downloadUrl}"`;
-    const dlResult = run(dlCmd);
-    if (dlResult.status !== 0) {
-      logError("Download failed.");
-      return false;
-    }
-
-    // Add to PATH or move to known location
-    const destDir = path.join(installDir, "FlowTask", "engram");
-    try {
-      if (!fs.existsSync(destDir)) {
-        fs.mkdirSync(destDir, { recursive: true });
-      }
-      fs.copyFileSync(tmpPath, path.join(destDir, binaryName));
-      logSuccess(`Engram installed to: ${destDir}`);
-
-      // Configure PATH automatically via PowerShell
-      logInfo("Configuring PATH variable...");
-      try {
-        const pathCmd = `powershell -Command "[Environment]::SetEnvironmentVariable('PATH', [Environment]::GetEnvironmentVariable('PATH', 'User') + ';${destDir}', 'User')"`;
-        const pathResult = run(pathCmd);
-        if (pathResult.status === 0) {
-          logSuccess("PATH configured successfully.");
-          logInfo("Restart your terminal for changes to take effect.");
-        } else {
-          logWarn("Could not configure PATH automatically.");
-          logInfo(`Add "${destDir}" to your PATH manually.`);
-          logInfo(`Or run: setx PATH "%PATH%;${destDir}"`);
-        }
-      } catch (pathErr) {
-        logWarn("Could not configure PATH automatically.");
-        logInfo(`Add "${destDir}" to your PATH manually.`);
-        logInfo(`Or run: setx PATH "%PATH%;${destDir}"`);
-      }
-
-      return true;
-    } catch (err) {
-      logError(`Failed to copy binary: ${err.message}`);
-      return false;
-    }
-  } else {
-    // macOS / Linux
-    const dlResult = run(`curl -L -o "${tmpPath}" "${downloadUrl}"`);
-    if (dlResult.status !== 0) {
-      logError("Download failed.");
-      return false;
-    }
-
-    // Handle .tar.gz
-    if (downloadUrl.endsWith(".tar.gz")) {
-      run(`tar -xzf "${tmpPath}" -C /tmp`);
-    }
-
-    const binaryTmp = downloadUrl.endsWith(".tar.gz") ? `/tmp/engram` : tmpPath;
-    run(`chmod +x "${binaryTmp}"`);
-
-    logInfo(`Moving binary to ${installDir}/engram (may require sudo)...`);
-    const mvResult = run(`mv "${binaryTmp}" "${installDir}/engram"`);
-    if (mvResult.status !== 0) {
-      logWarn("Could not move without sudo, retrying with sudo...");
-      const sudoResult = run(`sudo mv "${binaryTmp}" "${installDir}/engram"`);
-      if (sudoResult.status !== 0) {
-        logError("Failed to install Engram binary.");
-        return false;
-      }
-    }
-
-    if (isBinaryInstalled("engram")) {
-      logSuccess(`Engram installed: ${getVersion("engram")}`);
-      return true;
-    }
-
-    logError("Engram binary not found after install attempt.");
-    return false;
-  }
-}
-
 // ─── Main install ────────────────────────────────────────────────────────────
+
+/**
+ * Deep merge of two objects.
+ * @param {Object} target
+ * @param {Object} source
+ * @returns {Object}
+ */
+function deepMerge(target, source) {
+  for (const key of Object.keys(source)) {
+    if (source[key] instanceof Object && key in target) {
+      Object.assign(source[key], deepMerge(target[key], source[key]));
+    }
+  }
+  Object.assign(target || {}, source);
+  return target;
+}
+
+/**
+ * Merges FlowTask config into IDE opencode.json
+ */
+function mergeOpencodeConfig(ideConfigPath, flowtaskOpencodePath, ideDir) {
+  if (!fs.existsSync(flowtaskOpencodePath)) return;
+
+  logInfo(`Merging FlowTask configuration into ${ideConfigPath}...`);
+
+  try {
+    const ftConfig = JSON.parse(fs.readFileSync(flowtaskOpencodePath, "utf8"));
+    let ideConfig = { commands: [], plugins: [] };
+
+    if (fs.existsSync(ideConfigPath)) {
+      ideConfig = JSON.parse(fs.readFileSync(ideConfigPath, "utf8"));
+    }
+
+    // Adjust paths in ftConfig to be relative to ideDir
+    // ftConfig paths are currently relative to the root where flowtask install was run
+    // We need them relative to ideDir (e.g., .opencode/)
+    const adjustPath = (p) => {
+      if (p.startsWith("./")) {
+        // If it's already relative, we assume it's relative to project root.
+        // We need it relative to ideDir.
+        // Example: p = "./flowtask/bin/flowtask.js", ideDir = ".opencode/"
+        // Result should be "./flowtask/bin/flowtask.js" if flowtask/ is inside .opencode/
+        return p;
+      }
+      return p;
+    };
+
+    if (ftConfig.commands) {
+      ftConfig.commands = ftConfig.commands.map(cmd => {
+        if (cmd.bin) cmd.bin = adjustPath(cmd.bin);
+        return cmd;
+      });
+
+      if (!ideConfig.commands) ideConfig.commands = [];
+      
+      ftConfig.commands.forEach(ftCmd => {
+        const existingIdx = ideConfig.commands.findIndex(c => c.name === ftCmd.name);
+        if (existingIdx !== -1) {
+          const alias = `ft-${ftCmd.name}`;
+          logWarn(`Command conflict: '${ftCmd.name}' already exists. Using alias '${alias}'.`);
+          ftCmd.name = alias;
+        }
+        ideConfig.commands.push(ftCmd);
+      });
+    }
+
+    if (ftConfig.plugins) {
+      if (!ideConfig.plugins) ideConfig.plugins = [];
+      ftConfig.plugins.forEach(ftPlug => {
+        const existingIdx = ideConfig.plugins.findIndex(p => p.name === ftPlug.name);
+        if (existingIdx === -1) {
+          ideConfig.plugins.push(ftPlug);
+        }
+      });
+    }
+
+    fs.writeFileSync(ideConfigPath, JSON.stringify(ideConfig, null, 2), "utf8");
+    logSuccess(`Configuration merged successfully.`);
+  } catch (err) {
+    logError(`Failed to merge config: ${err.message}`);
+  }
+}
+
+async function showInteractiveSelector(readline) {
+  const options = [
+    { name: "OpenCode (.opencode/flowtask/)", value: "opencode", selected: false },
+    { name: "VS Code (.vscode/flowtask/)", value: "vscode", selected: false },
+  ];
+  let cursor = 0;
+  let lastRenderLines = 0;
+
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  readline.emitKeypressEvents(process.stdin);
+
+  const render = () => {
+    if (lastRenderLines > 0) {
+      readline.moveCursor(process.stdout, 0, -lastRenderLines);
+      readline.clearScreenDown(process.stdout);
+    }
+
+    const lines = [];
+    lines.push(COLORS.cyan + "  Select target IDEs (Space to mark, Enter to confirm):" + COLORS.reset);
+    options.forEach((opt, i) => {
+      const cursorStr = i === cursor ? COLORS.cyan + "> " + COLORS.reset : "  ";
+      const checkStr = opt.selected ? COLORS.green + "[*]" + COLORS.reset : "[ ]";
+      lines.push(`${cursorStr}${checkStr} ${opt.name}`);
+    });
+    lines.push(`\n${COLORS.dim}↑/↓: navegar, Espacio: marcar, Enter: confirmar, Ctrl+C: cancelar${COLORS.reset}`);
+    
+    const output = lines.join("\n");
+    process.stdout.write(output + "\n");
+    lastRenderLines = output.split("\n").length;
+  };
+
+  const onResize = () => render();
+  process.stdout.on("resize", onResize);
+
+  render();
+
+  return new Promise((resolve, reject) => {
+    const onKeypress = (str, key) => {
+      if (key.ctrl && key.name === "c") {
+        process.stdout.removeListener("resize", onResize);
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        process.stdin.removeListener("keypress", onKeypress);
+        log("\nInstallation cancelled.", COLORS.yellow);
+        process.exit(0);
+      }
+
+      if (key.name === "up") {
+        cursor = (cursor - 1 + options.length) % options.length;
+        render();
+      } else if (key.name === "down") {
+        cursor = (cursor + 1) % options.length;
+        render();
+      } else if (key.name === "space") {
+        options[cursor].selected = !options[cursor].selected;
+        render();
+      } else if (key.name === "return") {
+        process.stdout.removeListener("resize", onResize);
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        process.stdin.removeListener("keypress", onKeypress);
+        
+        // Clean up selector before returning
+        if (lastRenderLines > 0) {
+          readline.moveCursor(process.stdout, 0, -lastRenderLines);
+          readline.clearScreenDown(process.stdout);
+        }
+        
+        resolve(options.filter(o => o.selected).map(o => o.value));
+      }
+    };
+
+    process.stdin.on("keypress", onKeypress);
+  });
+}
+
+function renderProgressBar(readline, current, total, label) {
+  const width = 20;
+  const progress = Math.min(Math.max(current / total, 0), 1);
+  const filled = Math.round(width * progress);
+  const empty = width - filled;
+  
+  const bar = COLORS.green + "█".repeat(filled) + COLORS.reset + COLORS.dim + "░".repeat(empty) + COLORS.reset;
+  const percentage = Math.round(progress * 100);
+  
+  readline.cursorTo(process.stdout, 0);
+  process.stdout.write(`  [${bar}] ${percentage}% ${label}`);
+}
 
 async function install(flowtaskDir) {
   console.log(`
@@ -229,236 +216,173 @@ ${COLORS.blue}╔═════════════════════
 ╚═══════════════════════════════════════════╝${COLORS.reset}
   `);
 
-  // ── Step 1: OpenCode ─────────────────────────────────────────────────────
-  logStep(1, "Checking OpenCode...");
-
-  if (isBinaryInstalled("opencode")) {
-    logSuccess(`OpenCode is installed (${getVersion("opencode")})`);
+  const readline = await import("readline");
+  
+  // ── Step 0: IDE Selection ────────────────────────────────────────────────
+  logStep(0, "Select Target Environment");
+  
+  const selectedOptions = await showInteractiveSelector(readline);
+  
+  const targets = [];
+  if (selectedOptions.length === 0) {
+    targets.push({ id: "standalone", ideDir: "", targetSubDir: ".flowtask" });
   } else {
-    logWarn("OpenCode is not installed. Trying to install automatically...");
-    const installed = installOpenCode();
-    if (!installed) {
-      logError("OpenCode is required. Aborting installation.");
-      process.exit(1);
+    if (selectedOptions.includes("opencode")) {
+      targets.push({ id: "opencode", ideDir: ".opencode", targetSubDir: path.join(".opencode", "flowtask") });
+    }
+    if (selectedOptions.includes("vscode")) {
+      targets.push({ id: "vscode", ideDir: ".vscode", targetSubDir: path.join(".vscode", "flowtask") });
     }
   }
-
-  // ── Step 2: Engram ───────────────────────────────────────────────────────
-  logStep(2, "Checking Engram...");
-
-  if (isBinaryInstalled("engram")) {
-    logSuccess(`Engram is installed (${getVersion("engram")})`);
-  } else {
-    logWarn("Engram is not installed. Trying to install automatically...");
-    const installed = installEngram();
-    if (!installed) {
-      logWarn("Engram could not be installed automatically.");
-      logWarn("FlowTask will be installed anyway, but Engram must be installed before use.");
-    }
-  }
-
-  // ── Step 3: Detect project directory ────────────────────────────────────
-  logStep(3, "Detecting project directory...");
 
   const projectDir = process.cwd();
-  logSuccess(`Project directory: ${projectDir}`);
+  const results = [];
 
-  // ── Step 4: Check existing installation ─────────────────────────────────
-  logStep(4, "Checking existing installation...");
-
-  const existingOpencode = path.join(projectDir, "opencode.json");
-  const existingFlowtask = path.join(projectDir, ".flowtask");
-
-  if (fileExists(existingOpencode) || fileExists(existingFlowtask)) {
-    logWarn("FlowTask appears to be already installed in this project.");
-    log(`
-    Files found:
-    - opencode.json: ${fileExists(existingOpencode) ? "Yes" : "No"}
-    - .flowtask/:    ${fileExists(existingFlowtask) ? "Yes" : "No"}
-    `);
-
-    const readline = await import("readline");
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-
-    const answer = await new Promise((resolve) => {
-      rl.question(
-        `    ${COLORS.yellow}Do you want to overwrite existing files? (y/N): ${COLORS.reset}`,
-        resolve
-      );
-    });
-    rl.close();
-
-    if (answer.toLowerCase() !== "y") {
-      log("\nInstallation cancelled.", COLORS.yellow);
-      process.exit(0);
-    }
-  }
-
-  // ── Step 5: Copy files ───────────────────────────────────────────────────
-  logStep(5, "Installing FlowTask files...");
-
-  // Copy opencode.json
-  const srcOpencode = path.join(flowtaskDir, "..", "opencode.json");
-  const destOpencode = path.join(projectDir, "opencode.json");
-  if (fileExists(srcOpencode)) {
-    copyFileSync(srcOpencode, destOpencode);
-  }
-
-  // Copy .flowtask directory
-  const srcFlowtask = flowtaskDir;
-  const destFlowtask = path.join(projectDir, ".flowtask");
-  copyDirectorySync(srcFlowtask, destFlowtask);
-
-  // Copy skills to .opencode/skills/ (OpenCode discovery path)
-  const srcSkills = path.join(flowtaskDir, "skills");
-  const destSkills = path.join(projectDir, ".opencode", "skills");
-  if (fileExists(srcSkills)) {
-    logInfo("Copying skills to .opencode/skills/...");
-    copyDirectorySync(srcSkills, destSkills);
-  }
-
-  // ── Step 5.5: Handle OpenCode adapter plugin (optional) ────────────────
-  logStep(5.5, "Checking for OpenCode adapter plugin...");
-  const pluginSrcDir = path.join(flowtaskDir, "plugins", "flowtask-classifier");
-  const pluginDestDir = path.join(destFlowtask, "plugins", "flowtask-classifier");
-  if (fileExists(pluginSrcDir)) {
-    const pluginPackagePath = path.join(pluginSrcDir, "package.json");
-    if (fileExists(pluginPackagePath)) {
-      try {
-        const pluginPackage = JSON.parse(fs.readFileSync(pluginPackagePath, "utf8"));
-        const pluginName = pluginPackage.name || "flowtask-classifier";
-        
-        logInfo("Linking OpenCode adapter plugin: " + pluginName);
-        
-        // El plugin ya fue copiado a destFlowtask en Step 5
-        // Ahora linkeamos desde el proyecto destino (no desde el código fuente)
-        try {
-          execSync("npm list " + pluginName, { stdio: "ignore", cwd: projectDir });
-          logInfo("Plugin " + pluginName + " already linked in project");
-        } catch (e) {
-          // Linkear desde el plugin ya copiado en el proyecto destino
-          logInfo("Linking " + pluginName + " from copied plugin...");
-          const projectLinkResult = run("npm link " + pluginName, { cwd: pluginDestDir });
-          if (projectLinkResult.status !== 0) {
-            logWarn("Failed to link " + pluginName + " in project");
-          } else {
-            logSuccess("Linked " + pluginName + " in project");
-          }
-        }
-        
-        logSuccess("OpenCode adapter plugin " + pluginName + " linked successfully");
-      } catch (err) {
-        logWarn("Could not process OpenCode adapter plugin: " + err.message);
-        logInfo("Core FlowTask installation continues without OpenCode adapter.");
-      }
-    } else {
-      logWarn("OpenCode adapter plugin package.json not found");
-    }
-  } else {
-    logInfo("OpenCode adapter plugin not found - continuing with core only");
-  }
-
-  // ── Step 6: Update documentation and persist method ─────────────────────
-  logStep(6, "Updating documentation and persisting installation method...");
-
-  // Update README.md
-  const readmePath = path.join(projectDir, "README.md");
-  if (fileExists(readmePath)) {
-    try {
-      let readmeContent = fs.readFileSync(readmePath, "utf8");
-      
-      // Check if we already have the unified installation section
-      const unifiedSectionStart = readmeContent.indexOf("## Unified Installation with FlowTask");
-      if (unifiedSectionStart === -1) {
-        const installSectionMatch = readmeContent.match(/^## Installation\s*$/m);
-        let insertPos = readmeContent.length;
-        
-        if (installSectionMatch) {
-          const nextHeaderMatch = readmeContent.slice(installSectionMatch.index).match(/^##\s+/m);
-          if (nextHeaderMatch) {
-            insertPos = installSectionMatch.index + nextHeaderMatch.index + nextHeaderMatch[0].length;
-          } else {
-            insertPos = installSectionMatch.index + installSectionMatch[0].length;
-          }
-        }
-        
-        const unifiedSection = `
-
-## Unified Installation with FlowTask
-
-This installation method provides a unified FlowTask experience:
-
-### What gets installed:
-- FlowTask Core: Agents, skills, commands, and Engram system copied as source code (IDE-agnostic)
-- OpenCode Adapter: The flowtask-classifier plugin optionally linked via npm link for OpenCode users
-
-### How it works:
-1. FlowTask core components are copied directly to your project (.flowtask/ directory)
-2. Skills are made available to OpenCode via .opencode/skills/
-3. The OpenCode adapter plugin (flowtask-classifier) is linked via npm link (if present)
-4. This approach keeps the FlowTask business logic decoupled from any specific IDE
-
-### Benefits:
-- Core logic remains IDE-agnostic and reusable with any frontend
-- OpenCode users get seamless plugin integration
-- Single command installation: flowtask install
-- Idempotent - safe to run multiple times
-- Easy to unlink OpenCode adapter if needed: npm unlink flowtask-classifier
-
----
-`;
-        readmeContent = readmeContent.slice(0, insertPos) + unifiedSection + readmeContent.slice(insertPos);
-        
-        fs.writeFileSync(readmePath, readmeContent, "utf8");
-        logSuccess("README.md updated with unified installation instructions");
-      } else {
-        logInfo("Unified installation section already exists in README.md");
-      }
-    } catch (err) {
-      logWarn("Could not update README.md: " + err.message);
-    }
-  } else {
-    logWarn("README.md not found - skipping documentation update");
-  }
-
-  // Persist method in Engram
-  try {
-    const engramMarkerPath = path.join(projectDir, ".flowtask", ".installation-method");
-    const markerContent = JSON.stringify({
-      method: "unified-installation-v1",
-      timestamp: new Date().toISOString(),
-      description: "FlowTask installed as unified application: core as source + OpenCode adapter via npm link (optional)",
-      components: {
-        core: ["agents", "skills", "commands"],
-        openCodeAdapter: "flowtask-classifier (optional via npm link)"
-      }
-    }, null, 2);
+  for (const target of targets) {
+    const { id, ideDir, targetSubDir } = target;
+    const TARGET_DIR = path.join(projectDir, targetSubDir);
+    const isStandalone = id === "standalone";
     
-    fs.writeFileSync(engramMarkerPath, markerContent, "utf8");
-    logSuccess("Installation method persisted");
-  } catch (err) {
-    logWarn("Could not persist installation method: " + err.message);
+    logInfo(`\nProcessing target: ${id.toUpperCase()} (${targetSubDir})...`);
+
+    try {
+      // ── Step 1: OpenCode (Only if OpenCode target) ───────────────────────
+      if (id === "opencode") {
+        logStep(1, "Checking OpenCode...");
+        if (!isBinaryInstalled("opencode")) {
+          logWarn("OpenCode is not installed. Trying to install automatically...");
+          const installed = installOpenCode();
+          if (!installed) {
+            throw new Error("OpenCode is required for this target.");
+          }
+        } else {
+          logSuccess(`OpenCode is installed (${getVersion("opencode")})`);
+        }
+      }
+
+      // ── Step 2: Engram ───────────────────────────────────────────────────
+      logStep(2, "Checking Engram...");
+      if (isBinaryInstalled("engram")) {
+        logSuccess(`Engram is installed (${getVersion("engram")})`);
+      } else {
+        logWarn("Engram is not installed.");
+        logInfo("Please install it manually: https://github.com/Gentleman-Programming/engram/blob/main/docs/INSTALLATION.md");
+      }
+
+      // ── Step 3: Check existing installation & Migrate ─────────────────────
+      logStep(3, "Checking existing installation...");
+      const rootFlowtask = path.join(projectDir, ".flowtask");
+
+      if (fileExists(rootFlowtask) && !isStandalone) {
+        logWarn(`Found existing root .flowtask/ directory. Moving to ${targetSubDir}...`);
+        if (!fs.existsSync(TARGET_DIR)) {
+          fs.mkdirSync(TARGET_DIR, { recursive: true });
+        }
+        fs.readdirSync(rootFlowtask).forEach(file => {
+          const oldPath = path.join(rootFlowtask, file);
+          const newPath = path.join(TARGET_DIR, file);
+          if (fs.existsSync(newPath)) fs.rmSync(newPath, { recursive: true, force: true });
+          fs.renameSync(oldPath, newPath);
+        });
+        // We don't delete rootFlowtask yet in case other targets need it or if it's multiple targets
+        // but for simplicity in this TTY version, we just move.
+      }
+
+      // ── Step 4: Copy files ─────────────────────────────────────────────────
+      logStep(4, `Installing FlowTask files into ${targetSubDir}...`);
+      if (!fs.existsSync(TARGET_DIR)) {
+        fs.mkdirSync(TARGET_DIR, { recursive: true });
+      }
+
+      // Helper to copy with progress bar
+      const copyWithProgress = (src, dest, label) => {
+        const files = [];
+        const scan = (dir) => {
+          fs.readdirSync(dir, { withFileTypes: true }).forEach(entry => {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) scan(fullPath);
+            else files.push(fullPath);
+          });
+        };
+        scan(src);
+
+        files.forEach((file, index) => {
+          const relative = path.relative(src, file);
+          const destPath = path.join(dest, relative);
+          const destDir = path.dirname(destPath);
+          if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+          
+          fs.copyFileSync(file, destPath);
+          renderProgressBar(readline, index + 1, files.length, `${label}: ${path.basename(file)}`);
+        });
+        
+        // Clean up progress bar line
+        readline.cursorTo(process.stdout, 0);
+        readline.clearLine(process.stdout, 0);
+        logSuccess(`Successfully installed ${label}.`);
+      };
+
+      copyWithProgress(flowtaskDir, TARGET_DIR, "FlowTask files");
+
+      if (id === "opencode") {
+        const srcSkills = path.join(flowtaskDir, "skills");
+        const destSkills = path.join(projectDir, ".opencode", "skills");
+        if (fileExists(srcSkills)) {
+          copyWithProgress(srcSkills, destSkills, "Skills");
+        }
+        const srcOpencodeJson = path.join(flowtaskDir, "..", "opencode.json");
+        const ideConfigPath = path.join(projectDir, ideDir, "opencode.json");
+        mergeOpencodeConfig(ideConfigPath, srcOpencodeJson, ideDir);
+      }
+
+      // ── Step 5: Adapter Plugin ─────────────────────────────────────────────
+      logStep(5, "Linking OpenCode adapter plugin...");
+      const pluginDestDir = path.join(TARGET_DIR, "plugins", "flowtask-classifier");
+      if (fileExists(pluginDestDir)) {
+        const pluginPackagePath = path.join(pluginDestDir, "package.json");
+        if (fileExists(pluginPackagePath)) {
+          const pluginPackage = JSON.parse(fs.readFileSync(pluginPackagePath, "utf8"));
+          const pluginName = pluginPackage.name;
+          run(`npm link ${pluginName}`, { cwd: pluginDestDir });
+          logSuccess(`Plugin ${pluginName} linked.`);
+        }
+      }
+
+      // ── Step 6: Persist method ─────────────────────────────────────────────
+      const engramMarkerPath = path.join(TARGET_DIR, ".installation-method");
+      fs.writeFileSync(engramMarkerPath, JSON.stringify({
+        method: "unified-installation-v2",
+        target: id,
+        timestamp: new Date().toISOString()
+      }, null, 2));
+
+      results.push({ target: id, status: "Success" });
+    } catch (err) {
+      logError(`Failed to install in ${id}: ${err.message}`);
+      results.push({ target: id, status: "Error", message: err.message });
+    }
   }
 
-  // ── Step 7: Summary ──────────────────────────────────────────────────────
-  console.log(`
-${COLORS.green}╔═══════════════════════════════════════════╗
-║        Installation Complete!             ║
-╚═══════════════════════════════════════════╝${COLORS.reset}
+  // Cleanup old .flowtask if it was migrated and is now empty
+  const rootFT = path.join(projectDir, ".flowtask");
+  if (fileExists(rootFT) && targets.some(t => t.id !== "standalone")) {
+     try { if (fs.readdirSync(rootFT).length === 0) fs.rmdirSync(rootFT); } catch(e) {}
+  }
 
-FlowTask has been installed in: ${projectDir}
+  // ── Final Report ──────────────────────────────────────────────────────────
+  console.log(`\n${COLORS.blue}╔═══════════════════════════════════════════╗
+║           Installation Summary            ║
+╚═══════════════════════════════════════════╝${COLORS.reset}`);
+  results.forEach(res => {
+    const color = res.status === "Success" ? COLORS.green : COLORS.red;
+    console.log(`  - ${res.target.toUpperCase()}: ${color}${res.status}${COLORS.reset}${res.message ? ` (${res.message})` : ""}`);
+  });
 
-Next steps:
-  1. Run: opencode
-  2. Initialize: /init
-  3. Create CA: /new-ca CA-001
-  4. Run workflow: /run CA-001
-
-For more information, check the README.md in your project.
-`);
+  if (results.some(r => r.status === "Success")) {
+    logSuccess("\nFlowTask installation completed successfully!");
+  } else {
+    logError("\nFlowTask installation failed.");
+  }
 }
 
 export { install };
