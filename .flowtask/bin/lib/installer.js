@@ -54,62 +54,163 @@ function deepMerge(target, source) {
 }
 
 /**
+ * Finds the FlowTask opencode.json config file in multiple possible locations
+ * @param {string} flowtaskDir - The FlowTask installation directory
+ * @returns {string|null} - Path to the config file or null if not found
+ */
+function findOpencodeConfig(flowtaskDir) {
+  // Possible locations for the FlowTask opencode.json config
+  const possiblePaths = [
+    // 1. Inside FlowTask directory (flowtaskDir/opencode.json)
+    path.join(flowtaskDir, "opencode.json"),
+    // 2. Inside FlowTask config subdirectory (flowtaskDir/config/opencode.json)
+    path.join(flowtaskDir, "config", "opencode.json"),
+    // 3. One level up from FlowTask directory (original location for dev)
+    path.join(flowtaskDir, "..", "opencode.json"),
+    // 4. In .opencode/ at the same level as flowtask (flowtaskDir/../.opencode/opencode.json)
+    path.join(flowtaskDir, "..", ".opencode", "opencode.json"),
+  ];
+
+  for (const configPath of possiblePaths) {
+    if (fs.existsSync(configPath)) {
+      logInfo(`Found FlowTask config at: ${configPath}`);
+      return configPath;
+    }
+  }
+
+  logWarn("Could not find FlowTask opencode.json configuration file");
+  return null;
+}
+
+/**
+ * Deep merge two objects, with source values taking precedence
+ * @param {Object} target - Target object
+ * @param {Object} source - Source object to merge in
+ * @returns {Object} - Merged result
+ */
+function deepMergeObjects(target, source) {
+  const result = { ...target };
+  
+  for (const key of Object.keys(source)) {
+    const sourceValue = source[key];
+    const targetValue = result[key];
+    
+    if (sourceValue === undefined) continue;
+    
+    if (
+      typeof sourceValue === "object" && 
+      sourceValue !== null && 
+      !Array.isArray(sourceValue) &&
+      typeof targetValue === "object" && 
+      targetValue !== null && 
+      !Array.isArray(targetValue)
+    ) {
+      // Both are objects, recursively merge
+      result[key] = deepMergeObjects(targetValue, sourceValue);
+    } else {
+      // Otherwise use source value (overwrites)
+      result[key] = sourceValue;
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Adjusts file paths in config to point to the correct location after installation
+ * @param {any} config - The config object to adjust
+ * @param {string} flowtaskDir - Source flowtask directory
+ * @param {string} targetSubDir - Target subdirectory (e.g., .opencode/flowtask)
+ */
+function adjustConfigPaths(config, flowtaskDir, targetSubDir) {
+  if (!config || typeof config !== "object") return config;
+
+  // Normalize targetSubDir to use forward slashes for consistency
+  const normalizedTarget = targetSubDir.replace(/\\/g, "/");
+
+  const adjustString = (str) => {
+    if (typeof str !== "string") return str;
+    // Skip if already contains targetSubDir (avoid double nesting)
+    if (str.includes(normalizedTarget)) return str;
+    // Adjust {file:.flowtask/...} paths to {file:flowtask/...} (relative to .opencode/)
+    // Example: {file:.flowtask/agents/runner.md} -> {file:flowtask/agents/runner.md}
+    return str.replace(/\{file:\.flowtask\//g, "{file:flowtask/");
+  };
+
+  const adjustValue = (value) => {
+    if (typeof value === "string") {
+      return adjustString(value);
+    } else if (Array.isArray(value)) {
+      return value.map(adjustValue);
+    } else if (typeof value === "object" && value !== null) {
+      const result = {};
+      for (const [k, v] of Object.entries(value)) {
+        result[k] = adjustValue(v);
+      }
+      return result;
+    }
+    return value;
+  };
+
+  return adjustValue(config);
+}
+
+/**
  * Merges FlowTask config into IDE opencode.json
  */
-function mergeOpencodeConfig(ideConfigPath, flowtaskOpencodePath, ideDir) {
-  if (!fs.existsSync(flowtaskOpencodePath)) return;
+function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
+  const flowtaskOpencodePath = findOpencodeConfig(flowtaskDir);
+  if (!flowtaskOpencodePath) return;
 
   logInfo(`Merging FlowTask configuration into ${ideConfigPath}...`);
 
   try {
     const ftConfig = JSON.parse(fs.readFileSync(flowtaskOpencodePath, "utf8"));
-    let ideConfig = { commands: [], plugins: [] };
+    let ideConfig = {};
 
     if (fs.existsSync(ideConfigPath)) {
-      ideConfig = JSON.parse(fs.readFileSync(ideConfigPath, "utf8"));
-    }
-
-    // Adjust paths in ftConfig to be relative to ideDir
-    // ftConfig paths are currently relative to the root where flowtask install was run
-    // We need them relative to ideDir (e.g., .opencode/)
-    const adjustPath = (p) => {
-      if (p.startsWith("./")) {
-        // If it's already relative, we assume it's relative to project root.
-        // We need it relative to ideDir.
-        // Example: p = "./flowtask/bin/flowtask.js", ideDir = ".opencode/"
-        // Result should be "./flowtask/bin/flowtask.js" if flowtask/ is inside .opencode/
-        return p;
+      const existingContent = fs.readFileSync(ideConfigPath, "utf8").trim();
+      if (existingContent) {
+        try {
+          ideConfig = JSON.parse(existingContent);
+        } catch (e) {
+          logWarn(`Existing opencode.json is invalid, starting fresh.`);
+          ideConfig = {};
+        }
       }
-      return p;
-    };
-
-    if (ftConfig.commands) {
-      ftConfig.commands = ftConfig.commands.map(cmd => {
-        if (cmd.bin) cmd.bin = adjustPath(cmd.bin);
-        return cmd;
-      });
-
-      if (!ideConfig.commands) ideConfig.commands = [];
-      
-      ftConfig.commands.forEach(ftCmd => {
-        const existingIdx = ideConfig.commands.findIndex(c => c.name === ftCmd.name);
-        if (existingIdx !== -1) {
-          const alias = `ft-${ftCmd.name}`;
-          logWarn(`Command conflict: '${ftCmd.name}' already exists. Using alias '${alias}'.`);
-          ftCmd.name = alias;
-        }
-        ideConfig.commands.push(ftCmd);
-      });
     }
 
-    if (ftConfig.plugins) {
-      if (!ideConfig.plugins) ideConfig.plugins = [];
-      ftConfig.plugins.forEach(ftPlug => {
-        const existingIdx = ideConfig.plugins.findIndex(p => p.name === ftPlug.name);
-        if (existingIdx === -1) {
-          ideConfig.plugins.push(ftPlug);
+    // Determine target subdirectory for path adjustments
+    // e.g., flowtaskDir = ".opencode/flowtask", ideDir = ".opencode"
+    // targetSubDir = ".opencode/flowtask"
+    const targetSubDir = path.join(ideDir, "flowtask");
+
+    // Deep merge: mcp, agent, command, plugin from FlowTask config
+    // These are the main sections we want to merge
+    const sectionsToMerge = ["mcp", "agent", "command", "plugin"];
+    
+    for (const section of sectionsToMerge) {
+      if (ftConfig[section]) {
+        // Adjust paths in the section before merging
+        const adjustedSection = adjustConfigPaths(ftConfig[section], flowtaskDir, targetSubDir);
+        
+        if (!ideConfig[section]) {
+          ideConfig[section] = adjustedSection;
+        } else if (section === "plugin") {
+          // For plugins, merge arrays and avoid duplicates
+          const existingPlugins = Array.isArray(ideConfig[section]) ? ideConfig[section] : [];
+          const newPlugins = Array.isArray(adjustedSection) ? adjustedSection : [];
+          ideConfig[section] = [...existingPlugins, ...newPlugins];
+        } else {
+          // For other sections (mcp, agent, command), deep merge objects
+          ideConfig[section] = deepMergeObjects(ideConfig[section], adjustedSection);
         }
-      });
+      }
+    }
+
+    // Add $schema if missing
+    if (!ideConfig.$schema) {
+      ideConfig.$schema = "https://opencode.ai/config.json";
     }
 
     fs.writeFileSync(ideConfigPath, JSON.stringify(ideConfig, null, 2), "utf8");
@@ -330,9 +431,8 @@ ${COLORS.blue}╔═════════════════════
         if (fileExists(srcSkills)) {
           copyWithProgress(srcSkills, destSkills, "Skills");
         }
-        const srcOpencodeJson = path.join(flowtaskDir, "..", "opencode.json");
         const ideConfigPath = path.join(projectDir, ideDir, "opencode.json");
-        mergeOpencodeConfig(ideConfigPath, srcOpencodeJson, ideDir);
+        mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir);
       }
 
       // ── Step 5: Adapter Plugin ─────────────────────────────────────────────
