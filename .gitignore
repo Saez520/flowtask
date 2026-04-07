@@ -36,3 +36,5 @@ docs/backup/
 
 # Nested repos
 flowtask/
+
+.workspace/
