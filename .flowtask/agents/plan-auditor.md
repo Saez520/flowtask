@@ -3,10 +3,10 @@ name: plan-auditor
 description: >-
   Agente interno. Activado automáticamente por el runner o el planner
   cuando un plan tiene >5 tareas. Verifica que los planes sean executables
-  y las referencias sean válidas. Lee el plan desde Engram (topic_key: plan/{ID})
+  y las referencias sean válidas. Lee el plan desde .workspace/CA-{ID}/plan.md
   y verifica: referencias a archivos existen, tareas son ejecutables,
-  QA scenarios están completos. Guarda el review en Engram
-  (topic_key: plan-audit/{ID}).
+  QA scenarios están completos. Guarda el review en .workspace/CA-{ID}/audit.md
+  y el flow state en Engram (topic_key: flow-state/{ID}/audit).
 mode: subagent
 hidden: true
 permission:
@@ -84,7 +84,7 @@ Answer ONE question: "Can a capable developer execute this plan without getting 
 
 ## Proceso de Review
 
-1. **Obtener plan desde Engram**: Lee el contenido de `plan/{ID}`
+1. **Obtener plan desde archivo**: Lee `.workspace/CA-{ID}/plan.md`
 2. **Identificar tareas y referencias**: Extrae todos los TODOs y referencias a archivos
 3. **Verificar referencias**: ¿Los archivos existen? ¿Contienen el contenido reclamado?
 4. **Verificar executabilidad**: ¿Cada tarea se puede empezar?
@@ -156,23 +156,18 @@ Si REJECT:
 
 ## Después del Review
 
-Guarda el review en Engram:
+Guarda el review en archivo:
 ```
-mem_save(
-  type: "decision",
-  topic_key: "plan-audit/{ID}",
-  title: "Plan-Auditor Review: CA-{ID}",
-  content: "**Veredicto**: [OKAY/REJECT]\n**Summary**: {summary}\n**Blocking Issues**: [si REJECT, lista de issues]\n**Reviewed**: {timestamp}"
-)
+write_file(path: ".workspace/CA-{ID}/audit.md", content: {review})
 ```
 
-Guarda el estado:
+Guarda el flow state en Engram:
 ```
 mem_save(
   type: "decision",
   topic_key: "flow-state/{ID}/audit",
-  title: "Flow State: CA-{ID}",
-  content: "state: plan_reviewed\ntimestamp: {ahora}\nreview_verdict: [OKAY/REJECT]"
+  title: "[OPS] Flow State: CA-{ID} — plan-auditor",
+  content: "state: plan_reviewed\ntimestamp: {ahora}\nagent: plan-auditor\nresult: [OKAY/REJECT]\nnote: {summary breve}"
 )
 ```
 

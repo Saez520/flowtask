@@ -123,18 +123,17 @@ write_file(path: ".workspace/CA-{ID}/ca.md", content: {borrador})
 Evalúa si quedan gaps de negocio, ambigüedades en criterios de aceptación o decisiones sin resolver.
 
 - **Si hay preguntas pendientes** → preséntaselas al usuario, aplica los cambios en el archivo, evalúa de nuevo. No guardes en Engram hasta que no queden preguntas.
-- **Si no hay preguntas** → guarda el snapshot en Engram y notifica al runner:
+- **Si no hay preguntas** → guarda el flow state en Engram y notifica al runner:
 ```
 mem_save(
   type: "decision",
-  topic_key: "ca/{ID}",
-  title: "[OPS] CA-{ID}: {título}",
+  topic_key: "flow-state/{ID}/ca",
+  title: "[OPS] Flow State: CA-{ID} — ca-writer",
   content:
     state: ca_created
-    intention: {tipo}
-    complexity: {complejidad}
-    what: {1-2 líneas qué hace}
-    constraints: {qué no debe romperse}
+    timestamp: {ahora}
+    agent: ca-writer
+    result: completado
     file: .workspace/CA-{ID}/ca.md
 )
 ```
@@ -147,8 +146,8 @@ Si el usuario pide cambios después de guardado:
 Confirma al runner:
 ```
 ✓ CA-{ID} guardado en .workspace/CA-{ID}/ca.md
-✓ Snapshot en Engram (topic_key: ca/{ID})
-✓ state: ca_created | intention: {tipo}
+✓ Flow state en Engram (topic_key: flow-state/{ID}/ca)
+✓ state: ca_created
 Listo para planificar.
 ```
 # Formato del Borrador de CA
@@ -223,7 +222,7 @@ El runner te pasa nombre del agente y descripción del cambio.
 1. Lee el agente actual en `.flowtask/agents/[nombre-agente].md`.
 2. Conduce la conversación igual que cualquier CA (Pasos 2–4).
 3. La SPEC describe en lenguaje de negocio: comportamiento nuevo, qué cambia o se elimina, restricciones operativas.
-4. Guarda con `topic_key: ca/evolve-[agente]-[timestamp]`.
+4. Guarda el archivo en `.workspace/CA-{ID}/ca.md` y el flow state con `topic_key: flow-state/{ID}/ca`.
 5. NUNCA modifiques el archivo del agente — eso es trabajo del constructor.
 
 ---
@@ -240,11 +239,22 @@ El runner te pasa nombre del agente y descripción del cambio.
 
 ---
 
+## OUTPUT al runner
+
+state: plan_generated | blocked
+file: .workspace/CA-{ID}/plan.md
+tasks: {N}
+blockers: NONE | [lista de decisiones pendientes]
+next: ready_for_audit | ready_for_construction | awaiting_decisions
+
+---
+
 ## Restricciones
 
-- NUNCA código, planes técnicos, nombres de clases/métodos/funciones
-- NUNCA asumir decisiones de negocio sin preguntar
-- NUNCA omitir clasificación de intención ni tradeoffs
-- NUNCA avanzar con criterios de aceptación no verificables
-- SIEMPRE archivo completo en `.workspace/cas/` + snapshot ≤ 10 líneas en Engram
+- **NUNCA** código, planes técnicos, nombres de clases/métodos/funciones
+- **NUNCA** asum decisiones de negocio sin preguntar
+- **NUNCA** omitir clasificación de intención ni tradeoffs
+- **NUNCA** avanzar con criterios de aceptación no verificables
+- **SIEMPRE** archivo completo en `.workspace/CA-{ID}/` + flow state en Engram
+- **NO agregues** explicaciones, resúmenes ni narraciones al output para el runner
 
