@@ -2,7 +2,7 @@
 
 AI-driven development workflow system with persistent memory via Engram.
 
-FlowTask provides specialized AI agents that work together to automate software development tasks, from planning to implementation and validation.
+FlowTask provides specialized AI agents that work together to automate software development tasks — from requirements capture to implementation and validation. Artifacts (CAs and plans) are stored as workspace files; Engram persists only operational state and snapshots.
 
 ---
 
@@ -33,17 +33,13 @@ engram --version
 ### Step 1: Clone FlowTask
 
 ```bash
-# Clone the repository
 git clone git@your-gitlab-server/flowtask.git ~/dev/flowtask
 ```
 
 ### Step 2: Install globally with npm link
 
 ```bash
-# Navigate to the .flowtask directory
 cd ~/dev/flowtask/.flowtask
-
-# Install dependencies and link globally
 npm link
 
 # Verify installation
@@ -53,39 +49,16 @@ flowtask --version
 ### Step 3: Install FlowTask in your project
 
 ```bash
-# Go to your project directory
 cd ~/proyectos/mi-proyecto
-
-# Install FlowTask for this project
 flowtask install
-```
-
-### Step 4: Start using
-
-```bash
-# Start OpenCode
-opencode
-
-# Initialize FlowTask (scans your project)
-/init
-
-# Create a new acceptance criteria
-/new-ca CA-001
-
-# Run a development workflow
-/run CA-001
 ```
 
 ### Updating FlowTask
 
-To update to the latest version:
-
 ```bash
-# Pull latest changes
 cd ~/dev/flowtask
 git pull
 
-# Re-install in your projects
 cd ~/proyectos/mi-proyecto
 flowtask install
 ```
@@ -109,20 +82,16 @@ opencode
 > /init
 ```
 
-This will:
-- Scan your project structure
-- Detect the technology stack
-- Populate Engram with project context
-- Generate a `project-context.md` summary
+This will scan your project structure, detect the technology stack, and populate Engram with project context.
 
 Or initialize specific layers:
 
 ```
 /init-types      # Scan types/models
-/init-data      # Scan data layer
-/init-business  # Scan business logic
-/init-config    # Scan configuration
-/init-api       # Scan API endpoints
+/init-data       # Scan data layer
+/init-business   # Scan business logic
+/init-config     # Scan configuration
+/init-api        # Scan API endpoints
 ```
 
 ### Create a new acceptance criteria
@@ -132,35 +101,137 @@ Or initialize specific layers:
 ```
 
 The CA-Writer agent will guide you through:
-- Clarifying requirements
-- Classifying intention type (Refactor/Build/Mid-sized/Collaborative/Architecture/Research)
-- Detecting AI-slop patterns
+- Clarifying requirements and business rules
+- Classifying intention type (Nueva funcionalidad / Optimización / Corrección / Integración / Cambio de alcance)
+- Detecting AI-slop patterns (scope inflation, over-engineering, premature details)
+- Confirming tradeoffs and known GAPs
 
-Then save the CA to Engram.
+The CA is saved to `.workspace/CA-001/ca.md`.
 
 ### Run a development workflow
 
 ```bash
-opencode
-/run CA-001
+> /run CA-001
 ```
 
-FlowTask will guide you through:
-1. **Plan**: Planner generates decision-complete plan in Engram
-2. **Review**: Plan-Auditor verifies executability (auto for >5 tasks)
-3. **Execute**: Constructor implements following project conventions
-4. **Validate**: Validator reviews implementation against plan
+FlowTask will:
+1. **CA-Writer** — clarifies requirements if the CA doesn't exist yet
+2. **Planner** — generates a decision-complete plan in `.workspace/CA-001/plan.md`
+3. **Plan-Auditor** — reviews the plan (auto for >5 tasks; always in Evolution Mode)
+4. **Checkpoint** — waits for your confirmation (`"ejecutar"`)
+5. **Constructor** — implements following project conventions
+6. **Validator** — reviews implementation against the plan (max 2 retries)
+
+### Explore the project
+
+```bash
+> /inspect ¿cómo funciona el módulo de autenticación?
+```
+
+The Inspector searches Engram first, then reads relevant files. It always presents tradeoffs and GAPs without creating or modifying anything.
+
+### Evolve a FlowTask agent
+
+```bash
+> /evolve-agent planner necesito que valide referencias antes de guardar el plan
+```
+
+Runs the full CA → Plan → Audit → Implement cycle, but scoped exclusively to `.flowtask/` files.
 
 ### Check status
 
 ```bash
-/status
+> /status
 ```
 
-Shows:
-- Engram memory statistics
-- Active workflows
-- Project initialization status
+Shows Engram memory statistics, active workflows, and project initialization status.
+
+---
+
+## How It Works
+
+### Conversational interface
+
+The runner is always active as the primary agent. You can speak directly to it without slash commands — it classifies your intent automatically. Commands still work but are optional.
+
+The `flowtask-classifier` plugin intercepts your input and injects a `FLOWTASK_CLASSIFICATION` tag into context before the runner sees it:
+
+| Classification | Detected when |
+|----------------|---------------|
+| `COMMAND:/run CA-{ID}` | You type `/run CA-001` |
+| `COMMAND:/inspect` | You type `/inspect` |
+| `COMMAND:/new-ca` | You type `/new-ca` |
+| `COMMAND:/evolve-agent` | You type `/evolve-agent` |
+| `COMMAND:/init` | You type `/init` |
+| `COMMAND:/status` | You type `/status` |
+| `CA_MENTION:{ID}` | You reference "CA-018", etc. |
+| `PROJECT_QUESTION` | You ask a question about the project |
+| `CHANGE_REQUEST` | You request a change without a CA |
+| Fallback | Ambiguous — runner asks for clarification |
+
+If the classifier is inactive, the runner falls back to the `manual-classification` skill.
+
+### Artifact storage
+
+Artifacts are stored as files in `.workspace/`, not in Engram:
+
+| Artifact | File path |
+|----------|-----------|
+| Acceptance Criteria | `.workspace/CA-{ID}/ca.md` |
+| Implementation Plan | `.workspace/CA-{ID}/plan.md` |
+| Plan Audit | `.workspace/CA-{ID}/audit.md` |
+| Validation Report | `.workspace/CA-{ID}/validacion.md` |
+
+Engram stores only operational metadata (flow states, snapshots, project conventions). This lets agents survive context compaction and share state across sessions without duplicating the full content.
+
+### Engram topic keys
+
+| Topic Key | Owner | What it stores |
+|-----------|-------|----------------|
+| `ca/{ID}` | Runner (via CA-Writer) | CA snapshot |
+| `plan/{ID}` | Runner (via Planner) | Plan snapshot |
+| `plan-audit/{ID}` | Plan-Auditor | Audit results |
+| `validation/{ID}` | Validator | Validation report |
+| `flow-state/{ID}/create` | CA-Writer | CA creation state |
+| `flow-state/{ID}/plan` | Planner | Plan generation state |
+| `flow-state/{ID}/audit` | Plan-Auditor | Audit state |
+| `flow-state/{ID}/construct` | Constructor | Implementation state |
+| `flow-state/{ID}/validate` | Validator | Validation state |
+| `project/stack` | Initializer | Tech stack |
+| `project/conventions` | Initializer | Project conventions |
+| `project/{layer}` | Initializer | Layer patterns (api, data, business…) |
+| `impl/{ID}/patterns` | Constructor/Tester/Logger | Discovered technical patterns |
+| `impl/{ID}/decisions` | Constructor/Planner | Design decisions |
+
+---
+
+## Workflow Diagram
+
+```
+1. /new-ca CA-001
+   └── CA-Writer clarifies requirements
+       └── Saves CA to .workspace/CA-001/ca.md
+       └── Saves flow state to Engram (flow-state/001/create)
+       └── Runner saves snapshot (ca/001)
+
+2. /run CA-001
+   └── Runner reads CA snapshot from Engram
+       └── Planner generates plan (decision-complete)
+           └── Saves plan to .workspace/CA-001/plan.md
+           └── Saves flow state (flow-state/001/plan)
+       └── Plan-Auditor reviews (auto if >5 tasks or Evolution Mode)
+           └── Saves audit to .workspace/CA-001/audit.md
+           └── Saves flow state (flow-state/001/audit)
+
+3. "ejecutar"
+   └── Constructor implements following project conventions
+       └── Saves flow state (flow-state/001/construct)
+
+4. Validator reviews
+   └── Saves validation to .workspace/CA-001/validacion.md
+   └── APPROVED → flow complete
+   └── REJECTED → retry Constructor (max 2 times)
+```
 
 ---
 
@@ -168,55 +239,50 @@ Shows:
 
 ```
 FlowTask/
-├── opencode.json              # OpenCode config with FlowTask agents
 ├── .flowtask/
 │   ├── bin/
-│   │   └── flowtask.js      # CLI entry point (npm link)
-│   ├── package.json          # Plugin dependencies and bin config
+│   │   └── flowtask.js           # CLI entry point (npm link)
+│   ├── package.json              # Plugin dependencies and bin config
+│   ├── agents/                   # FlowTask agent definitions
+│   │   ├── runner.md             # Primary orchestrator (always active)
+│   │   ├── ca-writer.md          # Requirements clarification and CA generation
+│   │   ├── planner.md            # Decision-complete plan generation
+│   │   ├── plan-auditor.md       # Plan verification
+│   │   ├── constructor.md        # Implementation
+│   │   ├── validator.md          # Validation
+│   │   ├── inspector.md          # Project exploration and analysis
+│   │   ├── initializer.md        # Project scanning and Engram population
+│   │   ├── logger.md             # Logging instrumentation
+│   │   └── tester.md             # Test generation
 │   ├── plugins/
-│   │   └── flowtask.js      # OpenCode plugin
-│   ├── agents/               # FlowTask agent definitions
-│   │   ├── runner.md         # Orchestrator
-│   │   ├── ca-writer.md      # Requirement clarification
-│   │   ├── planner.md        # Plan generation
-│   │   ├── plan-auditor.md   # Plan verification
-│   │   ├── constructor.md    # Implementation
-│   │   ├── validator.md      # Validation
-│   │   ├── initializer.md    # Project scanning
-│   │   ├── logger.md         # Logging instrumentation
-│   │   └── tester.md         # Test generation
-│   ├── skills/               # OpenCode skills (copied to .opencode/skills/)
+│   │   └── flowtask-classifier/  # Input classification plugin (TypeScript)
+│   │       ├── src/
+│   │       │   ├── index.ts
+│   │       │   └── classifier.ts
+│   │       └── dist/             # Compiled output
+│   ├── skills/                   # OpenCode skills
 │   │   ├── memory-protocol/
-│   │   │   └── SKILL.md      # Engram memory usage protocol
+│   │   │   └── SKILL.md          # Engram mem_* usage protocol
 │   │   ├── plan-template/
-│   │   │   └── SKILL.md      # Plan structure template
-│   │   └── output-verbosity/
-│   │       └── SKILL.md      # Output verbosity guidelines
-│   └── commands/             # FlowTask slash commands
-│       ├── init.md
-│       ├── init-*.md
-│       ├── run.md
-│       └── status.md
-├── examples/
-│   └── workflow-example.md   # Example workflow
-└── docs/
-    └── original/             # Original agent files (reference)
-```
-
----
-
-## Updating FlowTask
-
-When a new version is available:
-
-```bash
-# Pull latest changes
-cd ~/dev/flowtask
-git pull
-
-# Re-install in your projects
-cd ~/proyectos/mi-proyecto
-flowtask install
+│   │   │   └── SKILL.md          # Plan structure template
+│   │   ├── manual-classification/
+│   │   │   └── SKILL.md          # Fallback input classifier
+│   │   └── topic-keys-convention/
+│   │       └── SKILL.md          # Engram topic_key ownership rules
+│   └── commands/                 # FlowTask slash commands
+│       ├── init.md               # /init
+│       ├── init-*.md             # /init-types, /init-data, etc.
+│       ├── new-ca.md             # /new-ca
+│       ├── run.md                # /run
+│       ├── inspect.md            # /inspect
+│       ├── evolve-agent.md       # /evolve-agent
+│       └── status.md             # /status
+└── .workspace/                   # Generated per project (git-ignored)
+    └── CA-{ID}/
+        ├── ca.md
+        ├── plan.md
+        ├── audit.md
+        └── validacion.md
 ```
 
 ---
@@ -225,61 +291,26 @@ flowtask install
 
 | Agent | Role |
 |-------|------|
-| `flowtask-runner` | Orchestrator - coordinates the workflow |
-| `flowtask-ca-writer` | Clarifies requirements, classifies intention, detects AI-slop |
-| `flowtask-planner` | Generates decision-complete implementation plans |
-| `flowtask-plan-auditor` | Verifies plan executability and references |
-| `flowtask-constructor` | Implements plans following Engram conventions |
+| `flowtask-runner` | Primary orchestrator — always active, classifies intent, coordinates subagents |
+| `flowtask-ca-writer` | Clarifies requirements, classifies intention, detects AI-slop, writes CA to file |
+| `flowtask-planner` | Generates decision-complete plans, saves to `.workspace/` |
+| `flowtask-plan-auditor` | Verifies plan executability, file references, and QA scenarios |
+| `flowtask-constructor` | Implements plans following project conventions |
 | `flowtask-validator` | Validates implementation against plan |
-| `flowtask-initializer` | Scans project and populates memory |
+| `flowtask-inspector` | Answers questions about the project with tradeoffs and GAPs — read-only |
+| `flowtask-initializer` | Scans project and populates Engram with project context |
 | `flowtask-logger` | Adds logging instrumentation |
 | `flowtask-tester` | Generates tests |
 
----
+### Evolution Mode
 
-## Workflow
+Evolution Mode lets you improve FlowTask agents using the same workflow used for your project. Use `/evolve-agent [agent-name] [description]` to:
 
-```
-1. /new-ca CA-001
-   └── CA-Writer clarifies requirements
-       └── Saves CA to Engram (ca/001)
-       └── Updates flow-state: ca_created
-
-2. /run CA-001
-   └── Runner orchestrates
-       └── Planner generates plan (decision-complete)
-       └── Saves plan to Engram (plan/001)
-       └── Updates flow-state: plan_generated
-       └── Plan-Auditor reviews (auto for >5 tasks)
-       └── Updates flow-state: plan_reviewed
-
-3. "ejecutar"
-   └── Constructor implements
-       └── Saves implementation to Engram
-       └── Updates flow-state: implemented
-
-4. Validator reviews
-   └── Updates flow-state: completed/failed
-```
-
----
-
-## How It Works
-
-FlowTask uses **Engram** for persistent memory across sessions. Instead of writing files to disk for agent communication, everything is stored in Engram:
-
-- Requirements (CAs) → `mem_save(type: requirement, topic_key: ca/{ID})`
-- Implementation plans → `mem_save(type: architecture, topic_key: plan/{ID})`
-- Validation reports → `mem_save(type: discovery, topic_key: validation/{ID})`
-- Project conventions → `mem_save(type: pattern, topic_key: project/{layer})`
-- Design decisions → `mem_save(type: decision, topic_key: impl/{ID}/decisions)`
-- Implementation → `mem_save(type: discovery, topic_key: impl/{ID}/{artifact})`
-
-This allows FlowTask agents to:
-- Remember decisions across sessions
-- Share context without file I/O
-- Survive context compaction
-- Search past decisions and patterns
+1. Clarify the change with CA-Writer
+2. Plan the change with Planner (scoped to `.flowtask/` files only)
+3. Audit the plan with Plan-Auditor (always invoked, no task threshold)
+4. Confirm and execute with Constructor
+5. The user must confirm before Constructor runs — no `--auto` bypass
 
 ---
 
@@ -288,30 +319,31 @@ This allows FlowTask agents to:
 ### Engram not found
 
 ```bash
-# Check if engram is installed
 engram --version
-
-# If not installed, install it
 brew install gentleman-programming/tap/engram
 ```
 
 ### MCP server not connecting
 
 ```bash
-# Start engram server in background
 engram serve &
-
-# Or check if MCP is configured in opencode.json
 cat opencode.json | grep -A5 '"mcp"'
 ```
 
 ### Plugin not loading
 
 ```bash
-# Check if plugin is in the right location
 ls ~/.config/opencode/plugins/
 ls ~/.config/opencode/agents/
 ls ~/.config/opencode/commands/
+```
+
+### Classifier plugin not compiling
+
+```bash
+cd .flowtask/plugins/flowtask-classifier
+npm install
+npm run build
 ```
 
 ---
