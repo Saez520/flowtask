@@ -122,7 +122,7 @@ task(
 )
 ```
 
-Tras ca-writer, guarda snapshot en Engram:
+Tras ca-writer, guarda flow state en Engram:
 ```
 
 mem_save(
@@ -144,21 +144,22 @@ mem_save(
 
 ```
 task(
-  prompt: "{snapshot del CA}",
+  prompt: "{flow state del CA}",
   subagent_type: "flowtask-planner"
 )
 ```
 
-Tras planner, guarda snapshot en Engram:
+Tras planner, guarda flow state en Engram:
 ```
 mem_save(
   type: "decision",
-  topic_key: "plan/{ID}",
-  title: "[OPS] Plan CA-{ID}: {título}",
+  topic_key: "flow-state/{ID}/plan",
+  title: "[OPS] Flow State: CA-{ID} — planner",
   content:
     state: plan_generated
-    what: {1-2 líneas del plan}
-    constraints: {qué no romper}
+    timestamp: {ahora}
+    agent: planner
+    result: completado
     file: .workspace/CA-{ID}/plan.md
 )
 ```
@@ -180,8 +181,22 @@ Espera respuesta explícita del desarrollador:
 
 ```
 task(
-  prompt: "{snapshot del plan}",
+  prompt: "{flow state del plan}",
   subagent_type: "flowtask-constructor"
+)
+
+Tras constructor, guarda flow state en Engram:
+```
+mem_save(
+  type: "decision",
+  topic_key: "flow-state/{ID}/constructor",
+  title: "[OPS] Flow State: CA-{ID} — constructor",
+  content:
+    state: constructor_completed
+    timestamp: {ahora}
+    agent: constructor
+    result: completado
+    file: .workspace/CA-{ID}/constructor.md
 )
 ```
 
@@ -191,8 +206,22 @@ task(
 
 ```
 task(
-  prompt: "{snapshot del plan}",
+  prompt: "{flow state del plan}",
   subagent_type: "flowtask-validator"
+)
+
+Tras validator, guarda flow state en Engram:
+```
+mem_save(
+  type: "decision",
+  topic_key: "flow-state/{ID}/validator",
+  title: "[OPS] Flow State: CA-{ID} — validator",
+  content:
+    state: validator_completed
+    timestamp: {ahora}
+    agent: validator
+    result: completado
+    file: .workspace/CA-{ID}/validator.md
 )
 ```
 

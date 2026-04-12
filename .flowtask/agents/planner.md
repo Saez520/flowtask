@@ -44,7 +44,7 @@ Carga el skill **justo antes** de necesitarlo.
 
 ## Actualización de Engram
 
-**Solo guarda flow state en Engram.** El plan completo va a archivo.
+**Solo guarda snapshot en Engram.** El plan completo va a archivo.
 
 | Cuándo | topic_key | type |
 |--------|-----------|------|
@@ -123,19 +123,20 @@ Si hay gaps:
 
 ## Después de guardar
 
-Guarda flow state en Engram:
+Guarda snapshot en Engram:
 ```
+
 mem_save(
   type: "decision",
-  topic_key: "flow-state/{ID}/plan",
-  title: "[OPS] Flow State: CA-{ID} — planner",
+  topic_key: "plan/{ID}",
+  title: "[OPS] Plan CA-{ID}: {título}",
   content:
     state: plan_generated
-    timestamp: {ahora}
-    agent: planner
-    result: completado
+    what: {1-2 líneas del plan}
+    constraints: {qué no romper}
     file: .workspace/CA-{ID}/plan.md
 )
+
 ```
 
 Confirma al runner:
