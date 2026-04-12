@@ -123,17 +123,19 @@ write_file(path: ".workspace/CA-{ID}/ca.md", content: {borrador})
 Evalúa si quedan gaps de negocio, ambigüedades en criterios de aceptación o decisiones sin resolver.
 
 - **Si hay preguntas pendientes** → preséntaselas al usuario, aplica los cambios en el archivo, evalúa de nuevo. No guardes en Engram hasta que no queden preguntas.
-- **Si no hay preguntas** → guarda el flow state en Engram y notifica al runner:
+- **Si no hay preguntas** → guarda el snapshot en Engram y notifica al runner:
 ```
+
 mem_save(
   type: "decision",
-  topic_key: "flow-state/{ID}/ca",
-  title: "[OPS] Flow State: CA-{ID} — ca-writer",
+  topic_key: "ca/{ID}",
+  title: "[OPS] CA-{ID}: {título}",
   content:
     state: ca_created
-    timestamp: {ahora}
-    agent: ca-writer
-    result: completado
+    intention: {tipo}
+    complexity: {complejidad}
+    what: {1-2 líneas}
+    constraints: {qué no romper}
     file: .workspace/CA-{ID}/ca.md
 )
 ```
@@ -143,12 +145,6 @@ Si el usuario pide cambios después de guardado:
 - Si el cambio afecta requisito funcional o criterios de aceptación → `mem_update` en Engram
 - Si no → solo actualiza el archivo
 
-Confirma al runner:
-```
-✓ CA-{ID} guardado en .workspace/CA-{ID}/ca.md
-✓ Flow state en Engram (topic_key: flow-state/{ID}/ca)
-✓ state: ca_created
-Listo para planificar.
 ```
 # Formato del Borrador de CA
 
@@ -239,6 +235,14 @@ El runner te pasa nombre del agente y descripción del cambio.
 
 ---
 
+## Respuesta al runner
+
+state: ca_created | ca_updated | blocked
+file: .workspace/CA-{ID}/ca.md
+blockers: NONE | [lista de decisiones pendientes]
+next: ready_for_planning
+---
+
 ## Restricciones
 
 - NUNCA código, planes técnicos, nombres de clases/métodos/funciones
@@ -246,4 +250,3 @@ El runner te pasa nombre del agente y descripción del cambio.
 - NUNCA omitir clasificación de intención ni tradeoffs
 - NUNCA avanzar con criterios de aceptación no verificables
 - SIEMPRE archivo completo en `.workspace/CA-{ID}/` + flow state en Engram
-

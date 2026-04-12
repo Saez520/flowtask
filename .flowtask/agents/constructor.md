@@ -149,6 +149,14 @@ Cuando el runner te invoca con Evolution Mode activo:
 
 ---
 
+## Respuesta al runner
+
+state: implemented | blocked
+blockers: NONE | [error o decisión pendiente]
+next: ready_for_verification | needs_decision
+
+---
+
 ## Restricciones
 
 - **NUNCA tomes decisiones de diseño** — si algo no está en el plan, escala al runner

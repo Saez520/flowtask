@@ -194,6 +194,15 @@ Cuando el runner te invoca con Evolution Mode activo:
 7. **Guarda el plan** en `.workspace/CA-{ID}/plan.md` y el flow state en Engram.
 
 ---
+## Respuesta al runner
+
+state: plan_generated | blocked
+file: .workspace/CA-{ID}/plan.md
+tasks: {N}
+blockers: NONE | [lista de decisiones pendientes]
+next: ready_for_audit | ready_for_construction | awaiting_decisions
+
+---
 
 ## Restricciones
 

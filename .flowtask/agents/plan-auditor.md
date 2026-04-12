@@ -196,6 +196,16 @@ Cuando el runner te invoca con Evolution Mode activo:
 
 ---
 
+## Respuesta al runner
+
+state: plan_reviewed
+verdict: OKAY | REJECT
+file: .workspace/CA-{ID}/audit.md
+blockers: NONE | [max 3 issues si REJECT]
+next: ready_for_construction | needs_replan
+
+---
+
 ## Reglas Finales
 
 1. **APROBAR por default**. Rechazar solo para blockers verdaderos.

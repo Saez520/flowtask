@@ -72,7 +72,7 @@ Flujo de delegación — sin excepciones:
 
 ```
 task(
-  prompt: "[prompt completo del usuario o contexto necesario]",
+  prompt: "[prompt completo del usuario o contexto necesario sin parafrasear]",
   subagent_type: "[tipo]"
 )
 ```
@@ -124,16 +124,16 @@ task(
 
 Tras ca-writer, guarda snapshot en Engram:
 ```
+
 mem_save(
   type: "decision",
-  topic_key: "ca/{ID}",
-  title: "[OPS] CA-{ID}: {título}",
+  topic_key: "flow-state/{ID}/ca",
+  title: "[OPS] Flow State: CA-{ID} — ca-writer",
   content:
     state: ca_created
-    intention: {tipo}
-    complexity: {complejidad}
-    what: {1-2 líneas}
-    constraints: {qué no romper}
+    timestamp: {ahora}
+    agent: ca-writer
+    result: completado
     file: .workspace/CA-{ID}/ca.md
 )
 ```
