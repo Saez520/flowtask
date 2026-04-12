@@ -38,3 +38,5 @@ docs/backup/
 flowtask/
 
 .workspace/
+
+.claude/

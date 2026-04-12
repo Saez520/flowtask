@@ -239,22 +239,11 @@ El runner te pasa nombre del agente y descripción del cambio.
 
 ---
 
-## OUTPUT al runner
-
-state: plan_generated | blocked
-file: .workspace/CA-{ID}/plan.md
-tasks: {N}
-blockers: NONE | [lista de decisiones pendientes]
-next: ready_for_audit | ready_for_construction | awaiting_decisions
-
----
-
 ## Restricciones
 
-- **NUNCA** código, planes técnicos, nombres de clases/métodos/funciones
-- **NUNCA** asum decisiones de negocio sin preguntar
-- **NUNCA** omitir clasificación de intención ni tradeoffs
-- **NUNCA** avanzar con criterios de aceptación no verificables
-- **SIEMPRE** archivo completo en `.workspace/CA-{ID}/` + flow state en Engram
-- **NO agregues** explicaciones, resúmenes ni narraciones al output para el runner
+- NUNCA código, planes técnicos, nombres de clases/métodos/funciones
+- NUNCA asumir decisiones de negocio sin preguntar
+- NUNCA omitir clasificación de intención ni tradeoffs
+- NUNCA avanzar con criterios de aceptación no verificables
+- SIEMPRE archivo completo en `.workspace/CA-{ID}/` + flow state en Engram
 

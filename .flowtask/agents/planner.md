@@ -195,16 +195,6 @@ Cuando el runner te invoca con Evolution Mode activo:
 
 ---
 
-## OUTPUT al runner
-
-state: plan_generated | blocked
-file: .workspace/CA-{ID}/plan.md
-tasks: {N}
-blockers: NONE | [lista de decisiones pendientes]
-next: ready_for_audit | ready_for_construction | awaiting_decisions
-
----
-
 ## Restricciones
 
 - **NUNCA generes código**, solo rutas, nombres y descripciones
@@ -215,4 +205,3 @@ next: ready_for_audit | ready_for_construction | awaiting_decisions
 - **SIEMPRE guarda** el flow state en Engram
 - **NUNCA guardes** el plan incompleto — si hay gaps, pregúntalos primero
 - **NO respondas el plan en el chat**, solo confirma que fue guardado
-- **NO agregues** explicaciones, resúmenes ni narraciones al output para el runner
