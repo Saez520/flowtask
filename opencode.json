@@ -17,8 +17,6 @@
       "prompt": "{file:.flowtask/agents/runner.md}",
       "permission": {
         "bash": "allow",
-        "task": "allow"
-      },
       "task": {
         "flowtask-runner": "deny",
         "flowtask-ca-writer": "allow",
@@ -31,6 +29,7 @@
         "flowtask-plan-auditor": "allow",
         "flowtask-inspector": "allow",
         "*": "deny"
+      }
       }
     },
     "flowtask-ca-writer": {
