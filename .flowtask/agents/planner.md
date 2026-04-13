@@ -128,13 +128,14 @@ Guarda snapshot en Engram:
 
 mem_save(
   type: "decision",
+  scope: "project",
   topic_key: "plan/{ID}",
-  title: "[OPS] Plan CA-{ID}: {título}",
+  title: "Plan CA-{ID}: {título}",
   content:
-    state: plan_generated
-    what: {1-2 líneas del plan}
-    constraints: {qué no romper}
-    file: .workspace/CA-{ID}/plan.md
+    What: Plan generado para CA-{ID} con {N} tareas
+    Why: {motivación del plan}
+    Where: .workspace/CA-{ID}/plan.md
+    Learned: {gotcha si aplica — omitir si no}
 )
 
 ```

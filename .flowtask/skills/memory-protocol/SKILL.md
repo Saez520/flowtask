@@ -48,7 +48,7 @@ Engram v1.12.0 soporta filtros por metadata — úsalos en vez de prefijos en el
 Ejemplo:
 ```
 mem_search(query: "CA-42", type: "decision", scope: "project")   ← correcto
-mem_search(q: "[OPS] CA-42")                                     ← obsoleto
+mem_search(query: "CA-42")                                       ← incompleto (sin filtros)
 ```
 
 ### Tipos oficiales

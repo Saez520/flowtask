@@ -8,6 +8,9 @@ description: >-
   /inspect, /evolve-agent, /init, /status) siguen funcionando pero no son
   requeridos.
 mode: primary
+permission:
+  tool:
+    task: allow
 ---
 
 # FlowTask Runner — Orchestrator
@@ -109,7 +112,7 @@ Si la categoría no está en la tabla o no se detecta `FLOWTASK_CLASSIFICATION` 
 ### Paso 1 — Verificar o crear CA
 
 ```
-mem_search(q: "[OPS] CA-{ID}")
+mem_search(query: "CA-{ID}", type: "decision", scope: "project")
 ```
 
 **Si existe snapshot:** Continúa al Paso 2.
@@ -122,22 +125,6 @@ task(
 )
 ```
 
-Tras ca-writer, guarda flow state en Engram:
-```
-
-mem_save(
-  type: "decision",
-  topic_key: "flow-state/{ID}/ca",
-  title: "[OPS] Flow State: CA-{ID} — ca-writer",
-  content:
-    state: ca_created
-    timestamp: {ahora}
-    agent: ca-writer
-    result: completado
-    file: .workspace/CA-{ID}/ca.md
-)
-```
-
 ---
 
 ### Paso 2 — Planificación
@@ -146,21 +133,6 @@ mem_save(
 task(
   prompt: "{flow state del CA}",
   subagent_type: "flowtask-planner"
-)
-```
-
-Tras planner, guarda flow state en Engram:
-```
-mem_save(
-  type: "decision",
-  topic_key: "flow-state/{ID}/plan",
-  title: "[OPS] Flow State: CA-{ID} — planner",
-  content:
-    state: plan_generated
-    timestamp: {ahora}
-    agent: planner
-    result: completado
-    file: .workspace/CA-{ID}/plan.md
 )
 ```
 
@@ -184,20 +156,6 @@ task(
   prompt: "{flow state del plan}",
   subagent_type: "flowtask-constructor"
 )
-
-Tras constructor, guarda flow state en Engram:
-```
-mem_save(
-  type: "decision",
-  topic_key: "flow-state/{ID}/constructor",
-  title: "[OPS] Flow State: CA-{ID} — constructor",
-  content:
-    state: constructor_completed
-    timestamp: {ahora}
-    agent: constructor
-    result: completado
-    file: .workspace/CA-{ID}/constructor.md
-)
 ```
 
 ---
@@ -208,20 +166,6 @@ mem_save(
 task(
   prompt: "{flow state del plan}",
   subagent_type: "flowtask-validator"
-)
-
-Tras validator, guarda flow state en Engram:
-```
-mem_save(
-  type: "decision",
-  topic_key: "flow-state/{ID}/validator",
-  title: "[OPS] Flow State: CA-{ID} — validator",
-  content:
-    state: validator_completed
-    timestamp: {ahora}
-    agent: validator
-    result: completado
-    file: .workspace/CA-{ID}/validator.md
 )
 ```
 
@@ -278,3 +222,16 @@ El inspector responde al desarrollador. Si el desarrollador solicita una acción
 7. Espera confirmación del usuario ("ejecutar").
 8. Invoca constructor.
 9. Confirma al usuario que la evolución fue completada.
+
+---
+
+## Session Summary — OBLIGATORIO
+
+Después de cada flujo completado, guarda el contexto de sesión:
+
+```
+mem_session_summary(
+  content: "Goal: {objetivo del flujo}\nAccomplished: {qué se completó}\nDiscoveries: {hallazgos relevantes}\nNext Steps: {próximos pasos si aplica}\nRelevant Files: {archivos clave}",
+  project: "{project-name}"
+)
+```

@@ -39,8 +39,8 @@ Run: `mem_stats`
    - Transaction handling
 
 ## 5. Save to Engram:
-   - mem_save(type: pattern, topic_key: project/data, title: "Data layer patterns")
-   - mem_save(type: config, topic_key: project/stack) if database technology detected
+   - mem_save(type: pattern, scope: "project", topic_key: project/data, title: "Data layer patterns")
+   - mem_save(type: config, scope: "project", topic_key: project/stack) if database technology detected
    - Use mem_suggest_topic_key before saving
 
 ## 6. Report what was detected and saved.

@@ -65,7 +65,7 @@ Clasifica antes de preguntar al usuario. Si es ambiguo, pregunta primero.
 
 Carga el skill de memoria y busca CAs relacionados:
 ```
-mem_search(q: "[OPS] CA-")
+mem_search(query: "CA-", type: "decision", scope: "project")
 ```
 
 Usa lo encontrado para detectar requisitos similares y evitar contradicciones con decisiones de negocio anteriores. Si no encuentras nada relevante, procede normalmente.
@@ -128,15 +128,14 @@ Evalúa si quedan gaps de negocio, ambigüedades en criterios de aceptación o d
 
 mem_save(
   type: "decision",
+  scope: "project",
   topic_key: "ca/{ID}",
-  title: "[OPS] CA-{ID}: {título}",
+  title: "CA-{ID}: {título del requisito}",
   content:
-    state: ca_created
-    intention: {tipo}
-    complexity: {complejidad}
-    what: {1-2 líneas}
-    constraints: {qué no romper}
-    file: .workspace/CA-{ID}/ca.md
+    What: CA creado para {título}
+    Why: {motivación del requisito}
+    Where: .workspace/CA-{ID}/ca.md
+    Learned: {gotcha si aplica — omitir si no}
 )
 ```
 

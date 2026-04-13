@@ -43,11 +43,11 @@ Carga el skill **justo antes** de necesitarlo.
 
 | Acción | Engram call |
 |---|---|
-| Obtener convenciones | `mem_search(q: "project conventions")` |
-| Buscar patrón de logging | `mem_search(q: "project logging")` |
-| Buscar patrón de capa | `mem_search(q: "project patterns {layer}")` |
-| Guardar configuración | `mem_save(type: config, topic_key: impl/{ID}/patterns, title: "Logging pattern discovered")` |
-| Guardar aprendizaje | `mem_save(type: discovery, topic_key: impl/{ID}/logging, title: "Logging added")` |
+| Obtener convenciones | `mem_search(query: "project conventions", scope: "project")` |
+| Buscar patrón de logging | `mem_search(query: "project logging", scope: "project")` |
+| Buscar patrón de capa | `mem_search(query: "project patterns {layer}", scope: "project")` |
+| Guardar configuración | `mem_save(type: config, scope: "project", topic_key: impl/{ID}/patterns, title: "Logging pattern discovered")` |
+| Guardar aprendizaje | `mem_save(type: discovery, scope: "project", topic_key: impl/{ID}/logging, title: "Logging added")` |
 
 ---
 
@@ -57,8 +57,8 @@ Carga el skill **justo antes** de necesitarlo.
 
 Antes de cualquier modificación, consulta Engram:
 ```
-mem_search(q: "project conventions")
-mem_search(q: "project logging")
+mem_search(query: "project conventions", scope: "project")
+mem_search(query: "project logging", scope: "project")
 ```
 
 ---

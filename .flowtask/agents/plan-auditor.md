@@ -165,9 +165,14 @@ Guarda el flow state en Engram:
 ```
 mem_save(
   type: "decision",
+  scope: "project",
   topic_key: "flow-state/{ID}/audit",
-  title: "[OPS] Flow State: CA-{ID} — plan-auditor",
-  content: "state: plan_reviewed\ntimestamp: {ahora}\nagent: plan-auditor\nresult: [OKAY/REJECT]\nnote: {summary breve}"
+  title: "Plan-Auditor Review: CA-{ID}",
+  content:
+    What: Auditoría del plan CA-{ID}: {OKAY/REJECT}
+    Why: {razón del veredicto}
+    Where: .workspace/CA-{ID}/audit.md
+    Learned: {riesgos identificados si aplica — omitir si no}
 )
 ```
 

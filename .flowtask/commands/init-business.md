@@ -40,8 +40,8 @@ Run: `mem_stats`
    - How business layer exposes functionality to API layer
 
 ## 5. Save to Engram:
-   - mem_save(type: pattern, topic_key: project/business, title: "Business logic patterns")
-   - mem_save(type: pattern, topic_key: project/conventions, title: "Project conventions") if new patterns found
+   - mem_save(type: pattern, scope: "project", topic_key: project/business, title: "Business logic patterns")
+   - mem_save(type: pattern, scope: "project", topic_key: project/conventions, title: "Project conventions") if new patterns found
    - Use mem_suggest_topic_key before saving
 
 ## 6. Report what was detected and saved.

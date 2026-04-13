@@ -60,7 +60,7 @@ Lee el input del usuario y determina:
 
 Antes de leer archivos, carga el skill de memoria y sigue el protocolo de búsqueda definido en él:
 1. `mem_context` — contexto reciente
-2. `mem_search` con keywords relevantes a la pregunta — si no encontraste en contexto
+2. `mem_search` con keywords relevantes a la pregunta usando filtros nativos (`type`, `scope`) según corresponda — si no encontraste en contexto
 3. `mem_get_observation` — si encontraste un ID y necesitas contenido completo
 
 **Si encuentras respuesta completa en Engram** → pasa directamente al Paso 4.

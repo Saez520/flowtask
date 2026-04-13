@@ -47,7 +47,7 @@ Carga el skill **justo antes** de necesitarlo.
 
 Busca en Engram el plan-{ID}:
 ```
-mem_search(q: "Plan CA-{ID}")
+mem_search(query: "CA-{ID} plan", type: "decision", scope: "project")
 ```
 
 ---
@@ -56,7 +56,7 @@ mem_search(q: "Plan CA-{ID}")
 
 Busca si existe un review previo:
 ```
-mem_search(q: "Plan-Auditor Review: CA-{ID}")
+mem_search(query: "Plan-Auditor Review CA-{ID}", type: "decision", scope: "project")
 ```
 
 Si existe, verifica que el veredicto fue OKAY.
@@ -66,11 +66,11 @@ Si existe, verifica que el veredicto fue OKAY.
 ### Paso 3 — Consultar convenciones
 
 ```
-mem_search(q: "project conventions")
-mem_search(q: "project naming")
-mem_search(q: "project patterns api")
-mem_search(q: "project patterns business")
-mem_search(q: "project patterns data")
+mem_search(query: "project conventions", scope: "project")
+mem_search(query: "project naming", scope: "project")
+mem_search(query: "project patterns api", scope: "project")
+mem_search(query: "project patterns business", scope: "project")
+mem_search(query: "project patterns data", scope: "project")
 ```
 
 ---
@@ -78,7 +78,7 @@ mem_search(q: "project patterns data")
 ### Paso 4 — Consultar decisiones de diseño
 
 ```
-mem_search(q: "Decisiones CA-{ID}")
+mem_search(query: "CA-{ID}", type: "decision", scope: "project")
 ```
 
 Verifica que las decisiones tomadas por el constructor coincidan con las documentadas.
@@ -195,8 +195,9 @@ Guarda en Engram:
 ```
 mem_save(
   type: "discovery",
+  scope: "project",
   topic_key: "validation/{ID}",
-  title: "Validation Report: CA-{ID}",
+  title: "Validation Report CA-{ID}: {APPROVED/REJECTED}",
   content: [REPORTE COMPLETO]
 )
 ```
@@ -205,9 +206,14 @@ Guarda el estado:
 ```
 mem_save(
   type: "decision",
+  scope: "project",
   topic_key: "flow-state/{ID}/validate",
-  title: "Flow State: CA-{ID}",
-  content: "state: {completed/failed}\ntimestamp: {ahora}\nvalidation_result: {APPROVED/REJECTED}"
+  title: "Validator CA-{ID}: {APPROVED/REJECTED}",
+  content:
+    What: Validación {APPROVED/REJECTED} para CA-{ID}
+    Why: {razón del resultado}
+    Where: .workspace/CA-{ID}/validacion.md
+    Learned: {bloqueantes encontrados si aplica — omitir si no}
 )
 ```
 

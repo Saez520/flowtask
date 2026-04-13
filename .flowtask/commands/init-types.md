@@ -38,8 +38,8 @@ Run: `mem_stats`
    - Identify if there's a base/parent type pattern
 
 ## 5. Save to Engram:
-   - mem_save(type: pattern, topic_key: project/types, title: "Types/models conventions")
-   - mem_save(type: pattern, topic_key: project/naming, title: "Naming conventions") if new patterns found
+   - mem_save(type: pattern, scope: "project", topic_key: project/types, title: "Types/models conventions")
+   - mem_save(type: pattern, scope: "project", topic_key: project/naming, title: "Naming conventions") if new patterns found
    - Use mem_suggest_topic_key before saving
 
 ## 6. Report what was detected and saved.

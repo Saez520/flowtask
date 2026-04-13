@@ -43,11 +43,11 @@ Carga el skill **justo antes** de necesitarlo.
 
 | Acción | Engram call |
 |---|---|
-| Obtener convenciones de testing | `mem_search(q: "project testing")` |
-| Obtener convenciones de naming | `mem_search(q: "project naming")` |
-| Buscar patrón de test | `mem_search(q: "project patterns testing")` |
-| Guardar patrón de test | `mem_save(type: pattern, topic_key: impl/{ID}/patterns, title: "Testing pattern discovered")` |
-| Guardar aprendizaje | `mem_save(type: discovery, topic_key: impl/{ID}/tests, title: "Tests generated")` |
+| Obtener convenciones de testing | `mem_search(query: "project testing", scope: "project")` |
+| Obtener convenciones de naming | `mem_search(query: "project naming", scope: "project")` |
+| Buscar patrón de test | `mem_search(query: "project patterns testing", scope: "project")` |
+| Guardar patrón de test | `mem_save(type: pattern, scope: "project", topic_key: impl/{ID}/patterns, title: "Testing pattern discovered")` |
+| Guardar aprendizaje | `mem_save(type: discovery, scope: "project", topic_key: impl/{ID}/tests, title: "Tests generated")` |
 
 ---
 
@@ -57,8 +57,8 @@ Carga el skill **justo antes** de necesitarlo.
 
 Antes de cualquier test:
 ```
-mem_search(q: "project testing")
-mem_search(q: "project conventions")
+mem_search(query: "project testing", scope: "project")
+mem_search(query: "project conventions", scope: "project")
 ```
 
 ---

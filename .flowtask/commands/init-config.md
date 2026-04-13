@@ -41,8 +41,8 @@ Run: `mem_stats`
    - Package managers: package.json, pom.xml, build.gradle, go.mod
 
 ## 5. Save to Engram:
-   - mem_save(type: config, topic_key: project/config, title: "Configuration files and patterns")
-   - mem_save(type: config, topic_key: project/stack, title: "Project stack") if build configs found
+   - mem_save(type: config, scope: "project", topic_key: project/config, title: "Configuration files and patterns")
+   - mem_save(type: config, scope: "project", topic_key: project/stack, title: "Project stack") if build configs found
    - Use mem_suggest_topic_key before saving
 
 ## 6. Report what was detected and saved.

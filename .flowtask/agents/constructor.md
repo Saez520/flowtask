@@ -91,11 +91,16 @@ Al finalizar:
 4. Guarda el estado final:
    ```
    mem_save(
-     type: "decision",
-     topic_key: "flow-state/{ID}/construct",
-     title: "[OPS] Flow State: CA-{ID}",
-     content: "state: implemented\ntimestamp: {ahora}\nagent: constructor\nresult: completado\nnote: {N} artefactos implementados"
-   )
+      type: "decision",
+      scope: "project",
+      topic_key: "flow-state/{ID}/construct",
+      title: "Constructor CA-{ID}: implementación completada",
+      content:
+        What: {N} artefactos implementados para CA-{ID}
+        Why: Según plan en .workspace/CA-{ID}/plan.md
+        Where: {lista de archivos creados/modificados}
+        Learned: {gotcha técnico si aplica — omitir si no}
+    )
    ```
 
 ---
@@ -138,11 +143,16 @@ Cuando el runner te invoca con Evolution Mode activo:
 7. **Guarda flow state en Engram**:
    ```
    mem_save(
-     type: "decision",
-     topic_key: "flow-state/evolve-[agente]/construct",
-     title: "[OPS] Flow State: evolve-[agente]",
-     content: "state: implemented\ntimestamp: {ahora}\nagent: constructor\nresult: completado\nnote: {archivos modificados}"
-   )
+      type: "decision",
+      scope: "project",
+      topic_key: "flow-state/evolve-[agente]/construct",
+      title: "Constructor evolve-[agente]: implementación completada",
+      content:
+        What: Evolución de [agente] aplicada
+        Why: Según plan de evolución
+        Where: {archivos .flowtask/ modificados}
+        Learned: {gotcha si aplica — omitir si no}
+    )
    ```
 
 8. **Nunca modifiques `runner.md`** en ningún contexto. Es el orquestador — su modificación requiere validación explícita del usuario fuera del flujo automatizado.

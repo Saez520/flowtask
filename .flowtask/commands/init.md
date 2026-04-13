@@ -85,6 +85,7 @@ For each layer detected, save to Engram:
 ```
 mem_save(
   type: "config",
+  scope: "project",
   topic_key: "project/stack",
   title: "Project stack: {detected_name}",
   content: "Language: {lang}\nFramework: {framework}\nBuild: {build}"
@@ -95,6 +96,7 @@ mem_save(
 ```
 mem_save(
   type: "discovery",
+  scope: "project",
   topic_key: "project/layers",
   title: "Project layers",
   content: "Layers detected:\n- types: {path}\n- data: {path}\n- business: {path}\n- api: {path}\n- config: {path}"
@@ -105,6 +107,7 @@ mem_save(
 ```
 mem_save(
   type: "pattern",
+  scope: "project",
   topic_key: "project/{layer}",
   title: "{Layer} conventions",
   content: "**Path**: {path}\n**Naming**: {patterns}\n**Patterns**: {examples}"

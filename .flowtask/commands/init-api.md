@@ -43,8 +43,8 @@ Run: `mem_stats`
    - Middleware usage
 
 ## 5. Save to Engram:
-   - mem_save(type: pattern, topic_key: project/api, title: "API/endpoint patterns")
-   - mem_save(type: pattern, topic_key: project/naming, title: "Naming conventions") if URL patterns found
+   - mem_save(type: pattern, scope: "project", topic_key: project/api, title: "API/endpoint patterns")
+   - mem_save(type: pattern, scope: "project", topic_key: project/naming, title: "Naming conventions") if URL patterns found
    - Use mem_suggest_topic_key before saving
 
 ## 6. Report what was detected and saved.
