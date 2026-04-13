@@ -398,11 +398,26 @@ ${COLORS.blue}╔═════════════════════
       // Helper to copy with progress bar
       const copyWithProgress = (src, dest, label) => {
         const files = [];
+        const visited = new Set();
         const scan = (dir) => {
+          const realDir = fs.realpathSync(dir);
+          if (visited.has(realDir)) return;
+          visited.add(realDir);
           fs.readdirSync(dir, { withFileTypes: true }).forEach(entry => {
             const fullPath = path.join(dir, entry.name);
-            if (entry.isDirectory()) scan(fullPath);
-            else files.push(fullPath);
+            if (entry.isSymbolicLink()) {
+              try {
+                const stat = fs.statSync(fullPath);
+                if (stat.isDirectory()) scan(fullPath);
+                else files.push(fullPath);
+              } catch (e) {
+                // broken symlink, skip
+              }
+            } else if (entry.isDirectory()) {
+              scan(fullPath);
+            } else {
+              files.push(fullPath);
+            }
           });
         };
         scan(src);
