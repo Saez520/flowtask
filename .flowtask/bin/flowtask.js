@@ -3,7 +3,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { install } from "./lib/installer.js";
+import { install, update } from "./lib/installer.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +19,10 @@ switch (command) {
     install(FLOWTASK_DIR);
     break;
 
+  case "update":
+    update(FLOWTASK_DIR);
+    break;
+
   case "--help":
   case "-h":
     console.log(`
@@ -26,11 +30,13 @@ FlowTask CLI
 
 Usage:
   flowtask install    Install FlowTask in the current project
+  flowtask update     Update FlowTask files (delta-only sync)
   flowtask --help     Show this help message
   flowtask --version  Show version
 
 Examples:
   flowtask install    Install FlowTask in current directory
+  flowtask update     Update existing FlowTask installation
     `);
     break;
 

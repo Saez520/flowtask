@@ -75,10 +75,20 @@ function copyFileSync(src, dest) {
   logSuccess(`Copied: ${path.basename(src)}`);
 }
 
-function copyDirectorySync(src, dest) {
+function copyDirectorySync(src, dest, visited = new Set(), rootSrc = null) {
   if (!fs.existsSync(dest)) {
     fs.mkdirSync(dest, { recursive: true });
   }
+
+  // Track root source directory for tree boundary checking
+  if (!rootSrc) rootSrc = src;
+
+  // Track visited directories to prevent infinite recursion from circular symlinks
+  const realSrc = fs.realpathSync(src);
+  if (visited.has(realSrc)) {
+    return; // Skip already-visited directories (circular symlink)
+  }
+  visited.add(realSrc);
 
   const entries = fs.readdirSync(src, { withFileTypes: true });
 
@@ -86,8 +96,27 @@ function copyDirectorySync(src, dest) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
 
-    if (entry.isDirectory()) {
-      copyDirectorySync(srcPath, destPath);
+    // Check if path escapes the source tree (security boundary)
+    const realSrcPath = fs.realpathSync(srcPath);
+    const realRootSrc = fs.realpathSync(rootSrc);
+    if (!realSrcPath.startsWith(realRootSrc)) {
+      // Symlink points outside the tree - skip for safety
+      continue;
+    }
+
+    if (entry.isSymbolicLink()) {
+      // Check if symlink points to a directory or file
+      const stats = fs.statSync(srcPath);
+      if (stats.isDirectory()) {
+        // For directory symlinks, copy contents (if within tree)
+        copyDirectorySync(srcPath, destPath, visited, rootSrc);
+      } else {
+        // For file symlinks, copy the file content
+        fs.copyFileSync(srcPath, destPath);
+        logSuccess(`Copied: ${entry.name}`);
+      }
+    } else if (entry.isDirectory()) {
+      copyDirectorySync(srcPath, destPath, visited, rootSrc);
     } else {
       fs.copyFileSync(srcPath, destPath);
       logSuccess(`Copied: ${entry.name}`);

@@ -485,4 +485,211 @@ ${COLORS.blue}╔═════════════════════
   }
 }
 
-export { install };
+/**
+ * Check if a file has changed compared to destination
+ * @param {string} srcPath - Source file path
+ * @param {string} destPath - Destination file path
+ * @returns {boolean} - True if file has changed or doesn't exist at destination
+ */
+function isFileChanged(srcPath, destPath) {
+  if (!fs.existsSync(destPath)) {
+    return true; // Destination doesn't exist, needs copy
+  }
+
+  const srcStat = fs.statSync(srcPath);
+  const destStat = fs.statSync(destPath);
+
+  // Compare size and modification time
+  if (srcStat.size !== destStat.size) {
+    return true;
+  }
+
+  // Allow 1-second difference for filesystem precision
+  if (Math.abs(srcStat.mtimeMs - destStat.mtimeMs) > 1000) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Copy directory with delta detection (only changed files)
+ * @param {string} src - Source directory
+ * @param {string} dest - Destination directory
+ * @param {Array<string>} preservePaths - Paths to preserve (not overwrite)
+ * @param {Set<string>} visited - Track visited paths to avoid circular symlinks
+ * @param {string} rootSrc - Root source directory for tree boundary checking
+ * @returns {Object} - Stats { copied, skipped }
+ */
+function copyDirectoryDelta(src, dest, preservePaths = [], visited = new Set(), rootSrc = null) {
+  if (!fs.existsSync(dest)) {
+    fs.mkdirSync(dest, { recursive: true });
+  }
+
+  // Track root source directory for tree boundary checking
+  if (!rootSrc) rootSrc = src;
+
+  // Track visited directories to prevent infinite recursion from circular symlinks
+  const realSrc = fs.realpathSync(src);
+  if (visited.has(realSrc)) {
+    return { copied: 0, skipped: 0 }; // Skip already-visited directories
+  }
+  visited.add(realSrc);
+
+  let copied = 0;
+  let skipped = 0;
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+
+    // Check if this path should be preserved
+    if (preservePaths.some(p => destPath.includes(p))) {
+      skipped++;
+      continue;
+    }
+
+    // Check if path escapes the source tree (security boundary)
+    const realSrcPath = fs.realpathSync(srcPath);
+    const realRootSrc = fs.realpathSync(rootSrc);
+    if (!realSrcPath.startsWith(realRootSrc)) {
+      // Symlink points outside the tree - skip for safety
+      skipped++;
+      continue;
+    }
+
+    if (entry.isSymbolicLink()) {
+      // Handle symlinks: copy the target content
+      const stats = fs.statSync(srcPath);
+      if (stats.isDirectory()) {
+        const result = copyDirectoryDelta(srcPath, destPath, preservePaths, visited, rootSrc);
+        copied += result.copied;
+        skipped += result.skipped;
+      } else {
+        if (isFileChanged(srcPath, destPath)) {
+          fs.copyFileSync(srcPath, destPath);
+          copied++;
+        } else {
+          skipped++;
+        }
+      }
+    } else if (entry.isDirectory()) {
+      const result = copyDirectoryDelta(srcPath, destPath, preservePaths, visited, rootSrc);
+      copied += result.copied;
+      skipped += result.skipped;
+    } else {
+      if (isFileChanged(srcPath, destPath)) {
+        fs.copyFileSync(srcPath, destPath);
+        copied++;
+      } else {
+        skipped++;
+      }
+    }
+  }
+
+  return { copied, skipped };
+}
+
+/**
+ * Update FlowTask installation (delta-only sync)
+ * @param {string} flowtaskDir - The FlowTask source directory
+ */
+async function update(flowtaskDir) {
+  console.log(`
+${COLORS.blue}╔═══════════════════════════════════════════╗
+║        FlowTask Update Wizard (Delta)     ║
+╚═══════════════════════════════════════════╝${COLORS.reset}
+  `);
+
+  const projectDir = process.cwd();
+  
+  // ── Step 1: Detect installed targets ────────────────────────────────────
+  logStep(1, "Detecting installed targets...");
+  
+  const targets = [];
+  const possibleTargets = [
+    { id: "standalone", marker: ".flowtask/.installation-method", subDir: ".flowtask" },
+    { id: "opencode", marker: ".opencode/flowtask/.installation-method", subDir: ".opencode/flowtask" },
+    { id: "vscode", marker: ".vscode/flowtask/.installation-method", subDir: ".vscode/flowtask" },
+  ];
+
+  for (const target of possibleTargets) {
+    const markerPath = path.join(projectDir, target.marker);
+    if (fs.existsSync(markerPath)) {
+      try {
+        const method = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+        targets.push({ 
+          id: target.id, 
+          subDir: target.subDir,
+          previousMethod: method 
+        });
+        logSuccess(`Found ${target.id} installation`);
+      } catch (err) {
+        logWarn(`Could not read installation marker for ${target.id}`);
+      }
+    }
+  }
+
+  if (targets.length === 0) {
+    logError("No FlowTask installation found. Run 'flowtask install' first.");
+    return;
+  }
+
+  // ── Step 2: Update each target (delta sync) ─────────────────────────────
+  const results = [];
+  const preservePaths = ["CA-", "workspace", ".workspace", ".installation-method"];
+
+  for (const target of targets) {
+    const { id, subDir } = target;
+    const TARGET_DIR = path.join(projectDir, subDir);
+    
+    logStep(2, `Updating ${id}...`);
+    
+    try {
+      if (!fs.existsSync(TARGET_DIR)) {
+        throw new Error(`Target directory not found: ${subDir}`);
+      }
+
+      // Copy with delta detection
+      const stats = copyDirectoryDelta(flowtaskDir, TARGET_DIR, preservePaths);
+      
+      logSuccess(`Updated ${stats.copied} files, ${stats.skipped} unchanged`);
+
+      // Update installation method marker
+      const markerPath = path.join(TARGET_DIR, ".installation-method");
+      fs.writeFileSync(markerPath, JSON.stringify({
+        method: "unified-installation-v2",
+        target: id,
+        updatedAt: new Date().toISOString(),
+        previousUpdate: target.previousMethod?.updatedAt || target.previousMethod?.timestamp || null,
+        filesUpdated: stats.copied,
+        filesSkipped: stats.skipped
+      }, null, 2));
+
+      results.push({ target: id, status: "Success", stats });
+    } catch (err) {
+      logError(`Failed to update ${id}: ${err.message}`);
+      results.push({ target: id, status: "Error", message: err.message });
+    }
+  }
+
+  // ── Final Report ─────────────────────────────────────────────────────────
+  console.log(`
+${COLORS.blue}╔═══════════════════════════════════════════╗
+║            Update Summary                 ║
+╚═══════════════════════════════════════════╝${COLORS.reset}`);
+  results.forEach(res => {
+    const color = res.status === "Success" ? COLORS.green : COLORS.red;
+    const stats = res.stats ? `(${res.stats.copied} updated, ${res.stats.skipped} preserved)` : "";
+    console.log(`  - ${res.target.toUpperCase()}: ${color}${res.status}${COLORS.reset}${stats}${res.message ? ` (${res.message})` : ""}`);
+  });
+
+  if (results.some(r => r.status === "Success")) {
+    logSuccess("\nFlowTask update completed successfully!");
+  } else {
+    logError("\nFlowTask update failed.");
+  }
+}
+
+export { install, update };
