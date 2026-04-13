@@ -29,117 +29,130 @@ scope: flowtask
 | `mem_session_start`     | Register session start                                               |
 | `mem_session_end`       | Mark session as completed                                            |
 | `mem_session_summary`   | Save end-of-session summary                                          |
+| `mem_capture_passive`   | Captura automática de observaciones desde contexto de conversación   |
 
 ***
 
-## PREFIJOS OBLIGATORIOS EN TÍTULO
+## FILTROS NATIVOS
 
-Engram usa FTS5 — no soporta filtro por metadata. Los prefijos simulan categorías buscables:
+Engram v1.12.0 soporta filtros por metadata — úsalos en vez de prefijos en el título:
 
-| Prefijo | Uso                                                                         | Buscable por agentes         |
-| ------- | --------------------------------------------------------------------------- | ---------------------------- |
-| `[OPS]` | Memoria operativa: snapshots, flow states, decisiones críticas cross-agente | ✅ Sí                         |
-| `[ARC]` | Archivo histórico: sessions, análisis, discoveries intermedios              | ❌ No — solo auditoría humana |
+| Parámetro | Valores posibles                                                                                |
+| --------- | ----------------------------------------------------------------------------------------------- |
+| `type`    | `decision`, `architecture`, `bugfix`, `pattern`, `config`, `discovery`, `learning`, `manual`   |
+| `scope`   | `"project"` (default FlowTask) \| `"personal"`                                                 |
+| `project` | nombre del proyecto Engram                                                                      |
 
-**Regla**: todo `mem_save` debe comenzar el título con `[OPS]` o `[ARC]`.
+**Títulos**: cortos y buscables, como un commit message. Sin prefijos.
 
-Los agentes SIEMPRE buscan con prefijo `[OPS]`:
-
+Ejemplo:
 ```
-mem_search(q: "[OPS] classifier")    ← correcto
-mem_search(q: "classifier")          ← incorrecto, trae ruido
+mem_search(query: "CA-42", type: "decision", scope: "project")   ← correcto
+mem_search(q: "[OPS] CA-42")                                     ← obsoleto
 ```
+
+### Tipos oficiales
+
+| Type           | Cuándo usarlo en FlowTask                              |
+| -------------- | ------------------------------------------------------ |
+| `decision`     | Snapshots de estado, flow state, resultados de agentes |
+| `architecture` | Decisiones estructurales cross-CA                      |
+| `bugfix`       | Fix crítico que afecta futuras implementaciones        |
+| `pattern`      | Convenciones de código descubiertas                    |
+| `config`       | Stack, herramientas, configuración del proyecto        |
+| `discovery`    | Hallazgos exploratorios, reportes de validación        |
+| `learning`     | Aprendizajes personales del desarrollador              |
+| `manual`       | Contenido creado manualmente fuera de un flujo         |
+
+### Scope
+
+`scope: "project"` — para toda memoria operativa de FlowTask
+`scope: "personal"` — solo para learnings del desarrollador
 
 ***
 
 ## MODELO HÍBRIDO DE ESCRITURA
 
-La responsabilidad de escritura en Engram está dividida. No se solapan.
+### a) Principio: Engram = índice, disco = contenido
 
-### Sub-agentes escriben: flow state únicamente
+- Engram guarda **qué pasó + dónde está el detalle**
+- `.workspace/CA-{ID}/` guarda los documentos completos
+- **NUNCA guardar contenido largo en Engram** — solo la ruta
 
-Cada sub-agente es responsable de registrar su propio cambio de estado al completar su tarea.
-
-```
-mem_save(
-  type: "decision",
-  topic_key: "flow-state/{ID}/[namespace]",
-  title: "[OPS] Flow State: CA-{ID} — {agente}",
-  content:          ← máximo 5 líneas
-    state: {estado}
-    timestamp: {ahora}
-    agent: {nombre-agente}
-    result: {completado / bloqueado / fallido}
-    note: {una línea si hay algo relevante, omitir si no}
-)
-```
-
-### Runner escribe: snapshots y decisiones críticas
-
-El Runner es quien tiene visión completa del pipeline. Escribe después de que un sub-agente completa su tarea, basándose en el resumen que el sub-agente devuelve.
+### b) Formato oficial de `mem_save`
 
 ```
 mem_save(
-  type: "decision",
-  topic_key: "{tipo}/{ID}",
-  title: "[OPS] {título searchable}",
-  content:          ← máximo 10 líneas
-    state: {estado actual}
-    what: {1-2 líneas qué hace o qué cambió}
-    constraints: {qué no debe romperse}
-    files: {archivos clave si aplica}
-    file: {ruta al documento completo si existe}
+  type: "{type}",
+  scope: "project",
+  topic_key: "{key}",
+  title: "{título corto y buscable}",
+  content:
+    What: {una línea — qué se hizo}
+    Why: {motivación}
+    Where: {rutas de archivos}
+    Learned: {gotchas — omitir si no hay}
 )
 ```
 
-### Nadie guarda en Engram:
+### c) Quién escribe qué
 
-- Discoveries intermedios del proceso
-- Decisiones de diseño internas de un solo agente
-- Contenido que solo sirve para auditoría humana → va a archivo en `.workspace/`
+| Actor       | Escribe                                        | No escribe                    |
+| ----------- | ---------------------------------------------- | ----------------------------- |
+| Sub-agentes | Su propio snapshot en `flow-state/{ID}/{step}` | Nada de `project/*`           |
+| Runner      | `mem_session_summary` al final del flujo       | Flow state de sub-agentes     |
+| Initializer | `project/*` (exclusivo)                        | Flow state                    |
+
+### d) Nadie guarda en Engram
+
+- Discoveries intermedios de proceso
 - Código fuente o fragmentos de código
+- Contenido que solo sirve para auditoría → archivo en `.workspace/`
 
-### Session summary
+### e) Session summary — OBLIGATORIO
 
-Solo el Runner escribe `mem_session_summary`, y solo si hubo decisiones críticas o cambios de estado relevantes para la próxima sesión. Usar título `[ARC] Session summary: {tema}`.
+Solo el Runner. Usar el tool dedicado `mem_session_summary` (NO `mem_save`):
 
-Los sub-agentes NO escriben session summaries — solo ven su fragmento del pipeline, no la sesión completa.
+```
+mem_session_summary(
+  content: "Goal: ...\nAccomplished: ...\nDiscoveries: ...\nNext Steps: ...\nRelevant Files: ...",
+  project: "{project-name}"
+)
+```
+
+Los sub-agentes NO escriben session summaries.
 
 ***
 
 ## HOW TO SEARCH
 
-`mem_search` es FTS5. Busca en título y contenido. NO filtra por metadata.
-
 **Protocolo:**
 
 ```
-1. mem_context(limit: 20)            ← reciente, barato — siempre primero
-2. mem_search(q: "[OPS] keywords")   ← FTS5 con prefijo
-3. mem_get_observation(id: N)        ← contenido completo si encontrás ID
+1. mem_context(limit: 20)                                              ← reciente, barato — siempre primero
+2. mem_search(query: "keywords", type: "...", scope: "project")       ← con filtros nativos
+3. mem_get_observation(id: N)                                          ← contenido completo si encontrás ID
 ```
 
 **Queries por categoría:**
 
-| Qué buscar        | Query                              |
-| ----------------- | ---------------------------------- |
-| CA específico     | `"[OPS] CA-{ID}"`                  |
-| Plan específico   | `"[OPS] Plan CA-{ID}"`             |
-| Flow state        | `"[OPS] Flow State CA-{ID}"`       |
-| Convenciones      | `"[OPS] project conventions"`      |
-| Layers            | `"[OPS] project layers"`           |
-| Stack             | `"[OPS] project stack"`            |
-| Patrones por capa | `"[OPS] project patterns {layer}"` |
-
-**Nunca uses** **`topic_key:`** **o** **`type:`** **como prefix** — FTS5 no los interpreta como filtros.
+| Qué buscar        | Query                                                                   |
+| ----------------- | ----------------------------------------------------------------------- |
+| CA específico     | `mem_search(query: "CA-{ID}", type: "decision", scope: "project")`     |
+| Plan específico   | `mem_search(query: "CA-{ID} plan", type: "decision", scope: "project")` |
+| Flow state        | `mem_search(query: "CA-{ID}", type: "decision", scope: "project")`     |
+| Convenciones      | `mem_search(query: "project conventions", scope: "project")`           |
+| Layers            | `mem_search(query: "project layers", scope: "project")`                |
+| Stack             | `mem_search(query: "project stack", type: "config", scope: "project")` |
+| Patrones por capa | `mem_search(query: "project patterns {layer}", scope: "project")`      |
 
 ***
 
 ## AFTER COMPACTION
 
 ```
-1. mem_context(limit: 20)
-2. mem_search(q: "[OPS] {tema actual}")
+1. mem_session_summary(content: "contexto actual resumido", project: "{project-name}")
+2. mem_context(limit: 20)
 3. Continuar
 ```
 
@@ -147,17 +160,20 @@ Los sub-agentes NO escriben session summaries — solo ven su fragmento del pipe
 
 ## TOPIC KEYS Y OWNERSHIP
 
-| Tipo                | Patrón                        | Owner                       |
-| ------------------- | ----------------------------- | --------------------------- |
-| CA snapshot         | `ca/{id}`                     | ca-writer (vía Runner) |
-| Plan snapshot       | `plan/{id}`                   | planner (vía Runner)   |
-| Flow state          | `flow-state/{id}/[namespace]` | sub-agente que ejecutó      |
-| Project conventions | `project/conventions`         | **initializer only**        |
-| Project layer       | `project/{layer}`             | **initializer only**        |
-| Project stack       | `project/stack`               | **initializer only**        |
-| Implementation      | `impl/{id}/{artifact}`        | constructor (flow state)    |
+| Tipo                | Patrón                       | Owner                             |
+| ------------------- | ---------------------------- | --------------------------------- |
+| CA snapshot         | `ca/{id}`                    | ca-writer                         |
+| Plan snapshot       | `plan/{id}`                  | planner                           |
+| Flow state          | `flow-state/{id}/{step}`     | cada sub-agente escribe el suyo   |
+| Audit review        | `flow-state/{id}/audit`      | plan-auditor                      |
+| Validation report   | `validation/{id}`            | validator                         |
+| Plan audit          | `plan-audit/{id}`            | plan-auditor                      |
+| Project conventions | `project/conventions`        | **initializer only**              |
+| Project layer       | `project/{layer}`            | **initializer only**              |
+| Project stack       | `project/stack`              | **initializer only**              |
+| Implementation      | `impl/{id}/{artifact}`       | constructor, logger, tester       |
 
-**Critical**: `project/{layer}`, `project/conventions`, `project/stack` son exclusivos del Initializer. Otros agentes NO escriben en estas keys directamente. Patrón nuevo descubierto por constructor → `impl/{ID}/patterns`. Convención descubierta por planner → `impl/{ID}/decisions`.
+**Critical**: `project/*` es exclusivo del Initializer. Para ownership completo → skill `topic-keys-convention`.
 
 ***
 
@@ -167,4 +183,3 @@ Los sub-agentes NO escriben session summaries — solo ven su fragmento del pipe
 - Siempre topic\_key para información de proyecto (habilita upsert)
 - Documentos completos van a `.workspace/CA-{ID}/` con nombres canónicos: `ca.md` | `plan.md` | `validacion.md` — en Engram solo va la ruta, no el contenido.
 - Search antes de actuar: `mem_search` es barato, las suposiciones son caras
-
