@@ -116,6 +116,27 @@ Estructura tu respuesta así:
 
 ---
 
+### Paso 5 — Guardar flow state (si hay CA ID)
+
+Si el runner proveyó un CA ID, guarda el flow state al finalizar:
+```
+mem_save(
+  type: "discovery",
+  scope: "project",
+  topic_key: "flow-state/{ID}/inspect",
+  title: "Inspector CA-{ID}: análisis completado",
+  content:
+    What: Análisis de {tema} para CA-{ID}
+    Why: {motivación de la pregunta}
+    Where: (análisis presentado en chat — sin archivo)
+    Learned: {hallazgos relevantes si aplica — omitir si no}
+)
+```
+
+Si no hay CA ID (consulta general), omite el save.
+
+---
+
 ## Restricciones
 
 - NUNCA modifiques ningún archivo, ni del proyecto ni de `.flowtask/`

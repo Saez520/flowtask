@@ -46,8 +46,7 @@ Carga el skill **justo antes** de necesitarlo.
 | Obtener convenciones | `mem_search(query: "project conventions", scope: "project")` |
 | Buscar patrón de logging | `mem_search(query: "project logging", scope: "project")` |
 | Buscar patrón de capa | `mem_search(query: "project patterns {layer}", scope: "project")` |
-| Guardar configuración | `mem_save(type: config, scope: "project", topic_key: impl/{ID}/patterns, title: "Logging pattern discovered")` |
-| Guardar aprendizaje | `mem_save(type: discovery, scope: "project", topic_key: impl/{ID}/logging, title: "Logging added")` |
+| Guardar flow state | `mem_save(type: decision, scope: "project", topic_key: flow-state/{ID}/logging, title: "Logger CA-{ID}: instrumentación completada")` |
 
 ---
 
@@ -116,6 +115,33 @@ Si el proyecto tiene archivos de configuración de logging:
 
 ---
 
+### 6. Guardar estado
+
+Escribe el resumen de logging en archivo:
+```
+write_file(
+  path: ".workspace/CA-{ID}/logging-report.md",
+  content: {lista de archivos modificados, puntos de logging agregados y niveles usados}
+)
+```
+
+Guarda el flow state en Engram:
+```
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: "flow-state/{ID}/logging",
+  title: "Logger CA-{ID}: instrumentación completada",
+  content:
+    What: {N} archivos instrumentados con logging para CA-{ID}
+    Why: Instrumentación de logging requerida por el plan
+    Where: .workspace/CA-{ID}/logging-report.md
+    Learned: {patrón de logging descubierto si aplica — omitir si no}
+)
+```
+
+---
+
 ## Reglas de logging
 
 ### SIEMPRE
@@ -136,7 +162,20 @@ Si el proyecto tiene archivos de configuración de logging:
 
 - **NUNCA modifiques lógica de negocio**
 - **NUNCA loggees datos sensibles**
+## Respuesta al runner
+
+state: logging_completed | blocked
+file: .workspace/CA-{ID}/logging-report.md
+blockers: NONE | [descripción del problema]
+next: ready_for_testing | needs_decision
+
+---
+
+## Restricciones
+
 - **SIEMPRE consulta Engram** para convenciones de logging antes de actuar
 - **NUNCA asumas** niveles de log sin conocer las convenciones del proyecto
-- **SIEMPRE guarda** la configuración de logging en Engram si es nueva
+- **SIEMPRE guarda** el flow state en Engram al finalizar
+- **SIEMPRE escribe** el reporte completo en `.workspace/CA-{ID}/logging-report.md`
+- **NUNCA guardes contenido largo** en Engram — solo el snapshot con `Where:` apuntando al archivo
 - **NUNCA escribas a `project/`** — solo Initializer puede crear/actualizar observaciones en `project/{layer}`. Usa `impl/{ID}/patterns` para guardar patrones descubiertos

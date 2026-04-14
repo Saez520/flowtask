@@ -74,28 +74,27 @@ Usa lo encontrado para detectar requisitos similares y evitar contradicciones co
 
 ### Paso 3 — Clarificación + AI-slop + Tradeoffs
 
-Estos tres ocurren en una sola conversación, no en pasos separados.
+Este paso tiene **dos interacciones separadas con el usuario**. No comprimas ambas en un solo mensaje.
 
-**Clarificación:**
+#### 3a — Clarificación (primera interacción)
+
 1. Presenta en 2-3 líneas cómo entiendes el requisito. Si algo no está claro, dilo explícitamente.
 2. Agrupa todas las decisiones abiertas y pregúntalas de una vez.
 3. Ofrece opciones con implicaciones en lenguaje de negocio, sin jerga técnica.
+4. Detecta y nombra AI-slop si aplica:
+   - Scope inflation: "también debería hacer X en módulos relacionados" → ¿es necesario ahora?
+   - Over-engineering: "debería soportar X futuro" → ¿o es especulación?
+   - Over-complexity: solución muy elaborada → ¿cuál es la versión mínima?
 
 Preguntas que no omitas si aplican: qué pasa si el sistema no puede acceder al recurso principal, si el comportamiento en desarrollo difiere de producción, qué nivel de detalle necesita el operador en fallo, restricciones de tiempo/volumen, qué es configurable vs fijo, quién es el usuario final.
 
 No preguntes si: es obvio por contexto, ya fue respondido, es decisión técnica del planner.
 
-**AI-slop — detecta y nombra durante la conversación:**
-- Scope inflation: "también debería hacer X en módulos relacionados" → ¿es necesario ahora?
-- Over-engineering: "debería soportar X futuro" → ¿o es especulación?
-- Over-complexity: solución muy elaborada → ¿cuál es la versión mínima?
-- Premature details: definir todo desde el inicio → ¿empezamos por lo esencial?
+**→ ESPERA respuesta del usuario antes de continuar a 3b.**
 
-Cuando detectes uno: nómbralo, pregunta qué nivel es apropiado, registra la decisión.
+#### 3b — Tradeoffs y GAPs (segunda interacción)
 
-**Tradeoffs y GAPs — antes de generar el borrador:**
-
-Identifica mínimo 2 tradeoffs derivados de las decisiones tomadas. Preséntalo así:
+Con las decisiones ya tomadas en 3a, identifica mínimo 2 tradeoffs. Preséntalo así:
 
 ```
 ## Tradeoffs identificados
@@ -109,7 +108,8 @@ Identifica mínimo 2 tradeoffs derivados de las decisiones tomadas. Preséntalo 
 ¿Confirmás estos tradeoffs y GAPs para continuar?
 ```
 
-Espera confirmación antes de continuar.
+**→ ESPERA confirmación explícita antes de pasar al Paso 4.1.**
+**NUNCA generes el borrador sin haber presentado los tradeoffs y GAPs y recibido confirmación.**
 
 ---
 
@@ -247,5 +247,6 @@ next: ready_for_planning
 - NUNCA código, planes técnicos, nombres de clases/métodos/funciones
 - NUNCA asumir decisiones de negocio sin preguntar
 - NUNCA omitir clasificación de intención ni tradeoffs
+- NUNCA generar el borrador sin presentar tradeoffs y GAPs en 3b y recibir confirmación explícita del usuario
 - NUNCA avanzar con criterios de aceptación no verificables
 - SIEMPRE archivo completo en `.workspace/CA-{ID}/` + flow state en Engram

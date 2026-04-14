@@ -46,8 +46,7 @@ Carga el skill **justo antes** de necesitarlo.
 | Obtener convenciones de testing | `mem_search(query: "project testing", scope: "project")` |
 | Obtener convenciones de naming | `mem_search(query: "project naming", scope: "project")` |
 | Buscar patrón de test | `mem_search(query: "project patterns testing", scope: "project")` |
-| Guardar patrón de test | `mem_save(type: pattern, scope: "project", topic_key: impl/{ID}/patterns, title: "Testing pattern discovered")` |
-| Guardar aprendizaje | `mem_save(type: discovery, scope: "project", topic_key: impl/{ID}/tests, title: "Tests generated")` |
+| Guardar flow state | `mem_save(type: decision, scope: "project", topic_key: flow-state/{ID}/tests, title: "Tester CA-{ID}: tests generados")` |
 
 ---
 
@@ -113,6 +112,33 @@ Intenta cubrir:
 
 ---
 
+### 6. Guardar estado
+
+Escribe el resumen de tests en archivo:
+```
+write_file(
+  path: ".workspace/CA-{ID}/tests-report.md",
+  content: {lista de archivos de test generados, cobertura y casos incluidos}
+)
+```
+
+Guarda el flow state en Engram:
+```
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: "flow-state/{ID}/tests",
+  title: "Tester CA-{ID}: tests generados",
+  content:
+    What: {N} tests generados para CA-{ID}
+    Why: Tests requeridos por el plan
+    Where: .workspace/CA-{ID}/tests-report.md
+    Learned: {patrón de testing descubierto si aplica — omitir si no}
+)
+```
+
+---
+
 ## Reglas de testing
 
 ### SIEMPRE
@@ -133,7 +159,21 @@ Intenta cubrir:
 
 - **NUNCA modifiques código de producción**
 - **NUNCA crees tests** que no correspondan a código implementado
+## Respuesta al runner
+
+state: tests_generated | blocked
+file: .workspace/CA-{ID}/tests-report.md
+blockers: NONE | [descripción del problema]
+next: ready_for_validation | needs_decision
+
+---
+
+## Restricciones
+
 - **SIEMPRE consulta Engram** para convenciones de testing
 - **SIEMPRE sigue** la estructura de archivos de test del proyecto
 - **SIEMPRE usa** las librerías de testing del proyecto (no instalar nuevas)
+- **SIEMPRE guarda** el flow state en Engram al finalizar
+- **SIEMPRE escribe** el reporte completo en `.workspace/CA-{ID}/tests-report.md`
+- **NUNCA guardes contenido largo** en Engram — solo el snapshot con `Where:` apuntando al archivo
 - **NUNCA escribas a `project/`** — solo Initializer puede crear/actualizar observaciones en `project/{layer}`. Usa `impl/{ID}/patterns` para guardar patrones descubiertos

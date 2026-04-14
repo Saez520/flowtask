@@ -48,7 +48,7 @@ Carga el skill **justo antes** de necesitarlo.
 
 | Cuándo | topic_key | type |
 |--------|-----------|------|
-| Plan generado | `flow-state/{ID}/plan` | decision |
+| Plan generado | `plan/{ID}` | decision |
 
 ---
 
