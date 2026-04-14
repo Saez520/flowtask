@@ -220,10 +220,277 @@ function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
   }
 }
 
+// ─── Claude Code helpers ─────────────────────────────────────────────────────
+
+/**
+ * Parses YAML frontmatter from a markdown file.
+ * Returns { name, description, body } where body is the content after the frontmatter.
+ * @param {string} content - Full file content
+ * @returns {{ name: string|null, description: string|null, body: string }}
+ */
+function parseFrontmatter(content) {
+  const match = content.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (!match) return { name: null, description: null, body: content };
+
+  const yaml = match[1];
+  const body = content.slice(match[0].length).trimStart();
+
+  const nameMatch = yaml.match(/^name:\s*(.+)$/m);
+  const name = nameMatch ? nameMatch[1].trim() : null;
+
+  // Handle multiline folded scalar (>-) and simple single-line descriptions
+  let description = null;
+  const descFolded = yaml.match(/^description:\s*>-\s*\n((?:[ \t]+.+\n?)*)/m);
+  if (descFolded) {
+    description = descFolded[1]
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l)
+      .join(" ");
+  } else {
+    const descSimple = yaml.match(/^description:\s*(.+)$/m);
+    if (descSimple) description = descSimple[1].trim();
+  }
+
+  return { name, description, body };
+}
+
+/**
+ * Generates a Claude Code agent file from a FlowTask OpenCode agent markdown file.
+ * Transforms OpenCode frontmatter → Claude Code frontmatter, keeps the body intact.
+ * @param {string} srcPath - Source .flowtask/agents/[name].md
+ * @param {string} destPath - Destination .claude/agents/flowtask-[name].md
+ */
+function generateClaudeAgent(srcPath, destPath) {
+  const content = fs.readFileSync(srcPath, "utf8");
+  const { name, description, body } = parseFrontmatter(content);
+
+  const rawName = name || path.basename(srcPath, ".md");
+  const displayName =
+    "FlowTask " +
+    rawName
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+
+  const claudeContent = [
+    "---",
+    `name: ${displayName}`,
+    `description: ${description || "FlowTask subagent. Activated only through the runner."}`,
+    "tools: Bash, Read, Write, Edit, Grep, Glob",
+    "---",
+    "",
+    body,
+  ].join("\n");
+
+  const dir = path.dirname(destPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(destPath, claudeContent, "utf8");
+}
+
+/**
+ * Text replacements applied to command bodies when generating Claude Code versions.
+ * Replaces IDE-specific references without touching URLs or unrelated mentions.
+ */
+const CLAUDE_COMMAND_REPLACEMENTS = [
+  ["opencode.json", ".claude/settings.json"],
+  ["OpenCode no ha sido reiniciado", "Claude Code no ha sido reiniciado"],
+  ["Cierra OpenCode completamente", "Cierra Claude Code completamente"],
+  ["Abre OpenCode nuevamente", "Abre Claude Code nuevamente"],
+];
+
+/**
+ * Generates a Claude Code command file from a FlowTask OpenCode command markdown file.
+ * Strips OpenCode-specific frontmatter fields (agent, subtask) and applies body replacements.
+ * @param {string} srcPath - Source .flowtask/commands/[name].md
+ * @param {string} destPath - Destination .claude/commands/[name].md
+ */
+function generateClaudeCommand(srcPath, destPath) {
+  const content = fs.readFileSync(srcPath, "utf8");
+
+  // Parse frontmatter: keep only `description`
+  const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n?/);
+  let description = "";
+  let body = content;
+
+  if (fmMatch) {
+    const yaml = fmMatch[1];
+    body = content.slice(fmMatch[0].length);
+    const descMatch = yaml.match(/^description:\s*(.+)$/m);
+    if (descMatch) description = descMatch[1].trim();
+  }
+
+  // Apply IDE-specific text replacements to the body
+  let adaptedBody = body;
+  for (const [from, to] of CLAUDE_COMMAND_REPLACEMENTS) {
+    adaptedBody = adaptedBody.split(from).join(to);
+  }
+
+  const claudeContent = `---\ndescription: ${description}\n---\n${adaptedBody}`;
+
+  const dir = path.dirname(destPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(destPath, claudeContent, "utf8");
+}
+
+/**
+ * Generates all Claude Code command files from .flowtask/commands/.
+ * @param {string} flowtaskDir - FlowTask source directory
+ * @param {string} projectDir - Target project directory
+ * @returns {{ generated: number }}
+ */
+function generateClaudeCommands(flowtaskDir, projectDir) {
+  const commandsDir = path.join(flowtaskDir, "commands");
+  if (!fs.existsSync(commandsDir)) return { generated: 0 };
+
+  const destDir = path.join(projectDir, ".claude", "commands");
+  let generated = 0;
+
+  fs.readdirSync(commandsDir)
+    .filter((f) => f.endsWith(".md"))
+    .forEach((file) => {
+      const srcPath = path.join(commandsDir, file);
+      const destPath = path.join(destDir, file);
+      generateClaudeCommand(srcPath, destPath);
+      generated++;
+    });
+
+  return { generated };
+}
+
+/**
+ * Generates all Claude Code agent files from .flowtask/agents/ (except runner.md).
+ * @param {string} flowtaskDir - FlowTask source directory
+ * @param {string} projectDir - Target project directory
+ * @returns {{ generated: number }}
+ */
+function generateClaudeAgents(flowtaskDir, projectDir) {
+  const agentsDir = path.join(flowtaskDir, "agents");
+  if (!fs.existsSync(agentsDir)) return { generated: 0 };
+
+  const destDir = path.join(projectDir, ".claude", "agents");
+  let generated = 0;
+
+  fs.readdirSync(agentsDir)
+    .filter((f) => f.endsWith(".md") && f !== "runner.md")
+    .forEach((file) => {
+      const agentName = path.basename(file, ".md");
+      const srcPath = path.join(agentsDir, file);
+      const destPath = path.join(destDir, `flowtask-${agentName}.md`);
+      generateClaudeAgent(srcPath, destPath);
+      generated++;
+    });
+
+  return { generated };
+}
+
+/**
+ * Generates CLAUDE.md content from runner.md and merges it into the project's CLAUDE.md.
+ * Uses <!-- FLOWTASK:START / END --> markers for safe re-runs.
+ * @param {string} flowtaskDir - FlowTask source directory
+ * @param {string} projectDir - Target project directory
+ */
+function generateClaudeMd(flowtaskDir, projectDir) {
+  const runnerPath = path.join(flowtaskDir, "agents", "runner.md");
+  if (!fileExists(runnerPath)) {
+    logError("runner.md not found — cannot generate CLAUDE.md");
+    return;
+  }
+
+  const { body: runnerBody } = parseFrontmatter(fs.readFileSync(runnerPath, "utf8"));
+
+  const adaptationHeader = `# FlowTask Runner
+
+Eres el runner de FlowTask. Tu definición operativa está a continuación.
+
+## Adaptaciones para Claude Code
+
+**Herramienta de subagentes**: En lugar de \`task(prompt: "...", subagent_type: "...")\`, usa la herramienta **Agent**:
+- \`subagent_type\`: nombre del agente (ej: \`flowtask-ca-writer\`)
+- \`prompt\`: texto del usuario u contexto requerido, copiado literalmente
+
+Los subagentes están en \`.claude/agents/flowtask-*.md\`.
+
+**Cargar skills**: En lugar de \`skill({ name: "..." })\`, usa **Read** sobre el archivo:
+- \`skill({ name: "memory-protocol" })\` → \`.claude/flowtask/skills/memory-protocol/SKILL.md\`
+- \`skill({ name: "manual-classification" })\` → \`.claude/flowtask/skills/manual-classification/SKILL.md\`
+- \`skill({ name: "plan-template" })\` → \`.claude/flowtask/skills/plan-template/SKILL.md\`
+- \`skill({ name: "topic-keys-convention" })\` → \`.claude/flowtask/skills/topic-keys-convention/SKILL.md\`
+
+**Clasificación**: FLOWTASK_CLASSIFICATION no disponible en Claude Code — usa siempre \`manual-classification\` como fallback.
+
+---
+
+${runnerBody}`;
+
+  const section = `<!-- FLOWTASK:START -->\n${adaptationHeader.trimEnd()}\n<!-- FLOWTASK:END -->`;
+  const claudeMdPath = path.join(projectDir, "CLAUDE.md");
+
+  logInfo(`Merging FlowTask runner into ${claudeMdPath}...`);
+
+  try {
+    let existing = "";
+    if (fs.existsSync(claudeMdPath)) {
+      existing = fs.readFileSync(claudeMdPath, "utf8");
+    }
+
+    let updated;
+    if (existing.includes("<!-- FLOWTASK:START -->")) {
+      updated = existing.replace(/<!-- FLOWTASK:START -->[\s\S]*?<!-- FLOWTASK:END -->/, section);
+      logSuccess("FlowTask section updated in CLAUDE.md.");
+    } else {
+      const separator = existing.trim().length > 0 ? "\n\n---\n\n" : "";
+      updated = existing + separator + section + "\n";
+      logSuccess("FlowTask section added to CLAUDE.md.");
+    }
+
+    fs.writeFileSync(claudeMdPath, updated, "utf8");
+  } catch (err) {
+    logError(`Failed to generate CLAUDE.md: ${err.message}`);
+  }
+}
+
+/**
+ * Merges Engram MCP config into .claude/settings.json
+ * @param {string} settingsPath - Target .claude/settings.json path
+ * @param {string} flowtaskDir - FlowTask source directory
+ */
+function mergeClaudeSettings(settingsPath, flowtaskDir) {
+  const templatePath = path.join(flowtaskDir, "claude", "settings.json");
+  if (!fileExists(templatePath)) return;
+
+  logInfo(`Merging Engram MCP into ${settingsPath}...`);
+
+  try {
+    const template = JSON.parse(fs.readFileSync(templatePath, "utf8"));
+    let existing = {};
+
+    if (fs.existsSync(settingsPath)) {
+      const content = fs.readFileSync(settingsPath, "utf8").trim();
+      if (content) {
+        try { existing = JSON.parse(content); } catch (e) { existing = {}; }
+      }
+    }
+
+    const merged = deepMergeObjects(existing, template);
+
+    const dir = path.dirname(settingsPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    fs.writeFileSync(settingsPath, JSON.stringify(merged, null, 2), "utf8");
+    logSuccess("Claude Code settings.json updated with Engram MCP.");
+  } catch (err) {
+    logError(`Failed to merge Claude settings: ${err.message}`);
+  }
+}
+
+// ─── Interactive selector ─────────────────────────────────────────────────────
+
 async function showInteractiveSelector(readline) {
   const options = [
     { name: "OpenCode (.opencode/flowtask/)", value: "opencode", selected: false },
     { name: "VS Code (.vscode/flowtask/)", value: "vscode", selected: false },
+    { name: "Claude Code (.claude/flowtask/)", value: "claude", selected: false },
   ];
   let cursor = 0;
   let lastRenderLines = 0;
@@ -334,6 +601,9 @@ ${COLORS.blue}╔═════════════════════
     if (selectedOptions.includes("vscode")) {
       targets.push({ id: "vscode", ideDir: ".vscode", targetSubDir: path.join(".vscode", "flowtask") });
     }
+    if (selectedOptions.includes("claude")) {
+      targets.push({ id: "claude", ideDir: ".claude", targetSubDir: path.join(".claude", "flowtask") });
+    }
   }
 
   const projectDir = process.cwd();
@@ -347,7 +617,7 @@ ${COLORS.blue}╔═════════════════════
     logInfo(`\nProcessing target: ${id.toUpperCase()} (${targetSubDir})...`);
 
     try {
-      // ── Step 1: OpenCode (Only if OpenCode target) ───────────────────────
+      // ── Step 1: IDE check (only for IDE targets) ──────────────────────────
       if (id === "opencode") {
         logStep(1, "Checking OpenCode...");
         if (!isBinaryInstalled("opencode")) {
@@ -358,6 +628,17 @@ ${COLORS.blue}╔═════════════════════
           }
         } else {
           logSuccess(`OpenCode is installed (${getVersion("opencode")})`);
+        }
+      } else if (id === "claude") {
+        logStep(1, "Checking Claude Code...");
+        if (!isBinaryInstalled("claude")) {
+          logWarn("Claude Code CLI is not installed.");
+          log(`
+  Please install it from:
+    → https://claude.ai/code
+          `);
+        } else {
+          logSuccess(`Claude Code is installed (${getVersion("claude")})`);
         }
       }
 
@@ -448,6 +729,19 @@ ${COLORS.blue}╔═════════════════════
         }
         const ideConfigPath = path.join(projectDir, ideDir, "opencode.json");
         mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir);
+      } else if (id === "claude") {
+        // Generate agent files from source (.flowtask/agents/) — no duplication
+        logStep(5, "Generating Claude Code agent definitions...");
+        const agentResult = generateClaudeAgents(flowtaskDir, projectDir);
+        logSuccess(`Generated ${agentResult.generated} agent files in .claude/agents/`);
+
+        // Generate commands from source (.flowtask/commands/) — no duplication
+        const cmdResult = generateClaudeCommands(flowtaskDir, projectDir);
+        logSuccess(`Generated ${cmdResult.generated} command files in .claude/commands/`);
+        // Merge Engram MCP into .claude/settings.json
+        mergeClaudeSettings(path.join(projectDir, ".claude", "settings.json"), flowtaskDir);
+        // Generate CLAUDE.md from runner.md
+        generateClaudeMd(flowtaskDir, projectDir);
       }
 
       // ── Step 5: Adapter Plugin ─────────────────────────────────────────────
@@ -627,6 +921,7 @@ ${COLORS.blue}╔═════════════════════
     { id: "standalone", marker: ".flowtask/.installation-method", subDir: ".flowtask" },
     { id: "opencode", marker: ".opencode/flowtask/.installation-method", subDir: ".opencode/flowtask" },
     { id: "vscode", marker: ".vscode/flowtask/.installation-method", subDir: ".vscode/flowtask" },
+    { id: "claude", marker: ".claude/flowtask/.installation-method", subDir: ".claude/flowtask" },
   ];
 
   for (const target of possibleTargets) {
@@ -668,8 +963,19 @@ ${COLORS.blue}╔═════════════════════
 
       // Copy with delta detection
       const stats = copyDirectoryDelta(flowtaskDir, TARGET_DIR, preservePaths);
-      
+
       logSuccess(`Updated ${stats.copied} files, ${stats.skipped} unchanged`);
+
+      // Claude Code: re-generate agents from source, update commands/settings/CLAUDE.md
+      if (id === "claude") {
+        const agentResult = generateClaudeAgents(flowtaskDir, projectDir);
+        logSuccess(`Claude agents: ${agentResult.generated} regenerated from source`);
+
+        const cmdResult = generateClaudeCommands(flowtaskDir, projectDir);
+        logSuccess(`Claude commands: ${cmdResult.generated} regenerated from source`);
+        mergeClaudeSettings(path.join(projectDir, ".claude", "settings.json"), flowtaskDir);
+        generateClaudeMd(flowtaskDir, projectDir);
+      }
 
       // Update installation method marker
       const markerPath = path.join(TARGET_DIR, ".installation-method");
