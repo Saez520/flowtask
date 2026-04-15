@@ -115,9 +115,36 @@ Con las decisiones ya tomadas en 3a, identifica mínimo 2 tradeoffs. Preséntalo
 
 ### Paso 4.1 — Borrador, iteración y guardado
 
-Genera el borrador del CA con el formato definido y escribe directamente:
+**Lógica de escritura diferida:**
+
+El CA-writer gestiona dos estados:
+- **draft**: El archivo se escribe incompleto (sin sección completa de Tradeoffs y GAPs) — cuando hay gaps sin resolver
+- **complete**: El archivo se escribe completo — cuando el usuario dice "ejecutar" para avanzar
+
+**Durante la conversación (draft):**
+
+Cuando generes el borrador del CA, evalúa si quedan gaps sin resolver, preguntas pendientes o decisiones sin confirmar:
+
+- **Si hay preguntas/gaps** → Escribe el archivo **SIN la sección "Tradeoffs y GAPs" completa** (incluye solo "Tradeoffs asumidos:" y "GAPs conocidos:" como marcador con pendientes)
+- **Responde al runner con:**
+  - `ca_status: draft`
+  - Lista de tradeoffs identificados
+  - Lista de gaps conocidos
+  - `next: waiting_for_user`
+
+**Cuando el usuario dice "ejecutar" (complete):**
+
+Cuando el usuario confirma explícitamente que quiere avanzar al planner:
+
+1. ** Reescribe el archivo completo** incluyendo la sección de Tradeoffs y GAPs con la información confirmable
+2. **Responde al runner con:**
+  - `ca_status: complete`
+  - Lista de tradeoffs (ya confirmados)
+  - Lista de gaps (ya conocidos)
+  - `next: ready_for_planning`
+
 ```
-write_file(path: ".workspace/CA-{ID}/ca.md", content: {borrador})
+write_file(path: ".workspace/CA-{ID}/ca.md", content: {borrador completo})
 ```
 
 Evalúa si quedan gaps de negocio, ambigüedades en criterios de aceptación o decisiones sin resolver.
@@ -237,9 +264,16 @@ El runner te pasa nombre del agente y descripción del cambio.
 ## Respuesta al runner
 
 state: ca_created | ca_updated | blocked
+ca_status: draft | complete
 file: .workspace/CA-{ID}/ca.md
 blockers: NONE | [lista de decisiones pendientes]
-next: ready_for_planning
+tradeoffs:
+  - [tradeoff 1]: [descripción]
+  - [tradeoff 2]: [descripción]
+gaps:
+  - [gap 1]: [descripción]
+  - [gap 2]: [descripción]
+next: ready_for_planning | waiting_for_user
 ---
 
 ## Restricciones
