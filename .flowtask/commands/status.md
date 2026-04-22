@@ -4,7 +4,10 @@ agent: build
 ---
 Show FlowTask status:
 
-1. Call `mem_stats` to get memory statistics (sessions, observations, projects)
+1. Check for Engram updates:
+   - Call `./update-engram.ps1 -CheckOnly` to see if a new version is available
+
+2. Call `mem_stats` to get memory statistics (sessions, observations, projects)
 
 2. Search Engram for active workflows:
    - `mem_search(query: "flow state", type: "decision", scope: "project")` to find workflows in progress
