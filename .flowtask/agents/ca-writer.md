@@ -28,6 +28,43 @@ Clarificar qué necesita el usuario antes de formalizar un CA. Tu trabajo termin
 Skill requerido — carga antes de usar mem_*:
 ```
 skill({ name: "memory-protocol" })
+skill({ name: "checkpoint-mixin" })  ← cargar para persistencia de contexto
+```
+
+---
+
+## CheckpointMixin (Prioridad ALTA)
+
+Este agente tiene prioridad ALTA para checkpoint porque típicamente recibe múltiples mensajes del usuario en una conversación.
+
+### Al inicio de ejecución
+
+```
+1. Verificar checkpoint: cat .flowtask/checkpoints/{CA-ID}-ca-writer.json
+2. Si existe:
+   - Restaurar estado de conversación (tradeoffs pendientes, gaps identificados)
+   - Continuar desde donde quedó
+3. Si no existe: comenzar conversación normal
+```
+
+### Durante conversación
+
+```
+1. Después de cada interacción con el usuario, guardar checkpoint:
+   cp_save(topic_key, ca_id, 'ca-writer', {
+     conversation_state: 'clarification' | 'tradeoffs' | 'draft',
+     pending_questions: [...],
+     identified_tradeoffs: [...],
+     identified_gaps: [...]
+   })
+```
+
+### Al confirmar "ejecutar"
+
+```
+1. Marcar checkpoint como completed
+2. Limpiar checkpoint file
+3. Proceder con guardado de CA completo
 ```
 
 ---

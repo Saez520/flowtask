@@ -52,6 +52,83 @@ Toda instrucción dirigida a “ti” se traduce automáticamente a:
 
 ---
 
+## TopicManager — Tabla de temas activos
+
+El runner mantiene una tabla de topics activos en memoria para rastrear el estado de cada flujo entre sub-agentes.
+
+### Estructura de datos (en memoria del runner)
+
+```javascript
+topicManager = {
+  topics: Map<topic_key, {
+    ca_id: string,
+    agente: string,
+    estado: 'active' | 'paused' | 'completed',
+    last_update: timestamp,
+    checkpoint_file: string
+  }>
+}
+```
+
+### Tabla de temas activos (ejemplo visual)
+
+| Topic Key | CA-ID | Agente | Estado |Última actualización |
+|----------|-------|--------|--------|--------------------|
+| `flow-state/CA-001/construct` | CA-001 | constructor | active | 1703894400000 |
+| `flow-state/CA-001/validate` | CA-001 | validator | paused | 1703894400000 |
+| `flow-state/CA-002/planning` | CA-002 | planner | completed | 1703894400000 |
+
+### Operaciones
+
+### getOrCreateInstance(subagenteTipo, caId, prompt)
+
+Crea una nueva instancia de subagente o restaura una existente desde checkpoint.
+
+```
+1. Verificar si existe checkpoint: .flowtask/checkpoints/{caId}-{subagenteTipo}.json
+2. Si existe y está en estado 'paused':
+   a. Leer flow_state del checkpoint
+   b. Restaurar contexto para el agente
+   c. Marcar topic como 'active'
+3. Si no existe:
+   a. Crear checkpoint inicial vacío
+   b. Registrar topic en TopicManager
+4. Retornar instancia del subagente con prompt restaurado
+```
+
+### pauseTopic(temaId)
+
+Pausa un topic cuando el agente termina pero hay trabajo pendiente.
+
+```
+1. Buscar topic en TopicManager por topic_key
+2. Actualizar estado → 'paused'
+3. Mantener checkpoint para posible continuación
+```
+
+### resumeTopic(temaId)
+
+Restaura un topic pausado cuando se reanuda el trabajo.
+
+```
+1. Buscar topic en TopicManager por topic_key
+2. Actualizar estado → 'active'
+3. Restaurar flow_state desde checkpoint
+```
+
+### extractAndCleanupCheckpoint(subagenteId)
+
+Limpia el checkpoint cuando el flujo termina exitosamente.
+
+```
+1. Buscar checkpoint para el subagente
+2. Extraer flow_state final (si necesita guardarse)
+3. Eliminar archivo de checkpoint
+4. Marcar topic como 'completed' en TopicManager
+```
+
+---
+
 ## Skill disponible
 
 ```
@@ -83,7 +160,140 @@ Formato para invocar:
 Flujo de delegación — sin excepciones:
 1. Identificas el subagente por la tabla
 2. Copias el texto exacto del usuario como prompt
-3. Invocas — sin ningún paso entre 2 y 3
+3. **Antes de invocar**: verificar si existe checkpoint para este CA+agente
+4. Invocas — sin ningún paso entre 3 y 4
+
+**Checkpoint Protocol:**
+```
+// Antes de invocar cualquier sub-agente:
+1. Verificar si existe checkpoint en .flowtask/checkpoints/{CA-ID}-{agente}.json
+2. Si existe:
+   a. Leer checkpoint y restaurar flow_state
+   b. Agregar al prompt: "Continúa desde donde quedaste. [contexto resumido]"
+   c. Marcar topic como 'active'
+3. Si no existe:
+   a. Crear checkpoint vacío
+   b. Invocar con prompt original
+   c. Marcar topic como 'active'
+```
+
+---
+
+## Checkpoint Protocol
+
+### Antes de invocar sub-agente (re-invocación)
+
+```
+1. Verificar checkpoint: cat .flowtask/checkpoints/{CA-ID}-{agente}.json
+2. Si existe y CA está en estado 'paused':
+   a. Leer flow_state del checkpoint
+   b. Reanudar topic en TopicManager (estado → 'active')
+   c. Continuar con prompt restaurado
+3. Si no existe checkpoint:
+   a. Invocar con prompt original
+```
+
+### Después de que sub-agente responde
+
+```
+1. Si el flujo NO terminó:
+   a. Guardar checkpoint con flow_state actual
+   b. Pausar topic (estado → 'paused')
+2. Si el flujo SÍ terminó:
+   a. Limpiar checkpoint: rm .flowtask/checkpoints/{CA-ID}-{agente}.json
+   b. Marcar topic como 'completed'
+   c. Ejecutar mem_session_summary
+```
+
+### getOrCreateInstance(subagenteTipo, caId, prompt)
+
+Crea una nueva instancia de subagente o restaura una existente desde checkpoint.
+
+```
+1. Verificar si existe checkpoint: .flowtask/checkpoints/{caId}-{subagenteTipo}.json
+2. Si existe y está en estado 'paused':
+   a. Leer flow_state del checkpoint
+   b. Restaurar contexto para el agente
+   c. Marcar topic como 'active'
+3. Si no existe:
+   a. Crear checkpoint inicial vacío
+   b. Registrar topic en TopicManager
+4. Retornar instancia del subagente con prompt restaurado
+```
+
+### pauseTopic(topicKey)
+
+Pausa un topic cuando el agente termina pero hay trabajo pendiente.
+
+```
+1. Buscar topic en TopicManager por topicKey
+2. Actualizar estado → 'paused'
+3. Mantener checkpoint para posible continuación
+```
+
+### resumeTopic(topicKey)
+
+Restaura un topic pausado cuando se reanuda el trabajo.
+
+```
+1. Buscar topic en TopicManager por topicKey
+2. Actualizar estado → 'active'
+3. Restaurar flow_state desde checkpoint
+```
+
+### extractAndCleanupCheckpoint(subagenteId)
+
+Limpia el checkpoint cuando el flujo termina exitosamente.
+
+```
+1. Buscar checkpoint para el subagente
+2. Extraer flow_state final (si necesita guardarse)
+3. Eliminar archivo de checkpoint
+4. Marcar topic como 'completed' en TopicManager
+```
+
+---
+
+### TopicManager + Checkpoint sincronizado
+
+```
+topicManager = {
+  topics: Map<topic_key, {
+    ca_id: string,
+    agente: string,
+    estado: 'active' | 'paused' | 'completed',
+    checkpoint_file: string
+  }>
+}
+
+// Al registrar topic
+registerTopic(topic_key, ca_id, agente) {
+  topics.set(topic_key, {
+    ca_id, agente, estado: 'active',
+    checkpoint_file: `.flowtask/checkpoints/${ca_id}-${agente}.json`
+  })
+  // Crear checkpoint inicial
+  cp_save(topic_key, ca_id, agente, { flow_state: null })
+}
+
+// Al pausar
+pauseTopic(topic_key) {
+  topics.get(topic_key).estado = 'paused'
+}
+
+// Al retomar
+resumeTopic(topic_key) {
+  topics.get(topic_key).estado = 'active'
+}
+
+// Al completar
+completeTopic(topic_key) {
+  const entry = topics.get(topic_key)
+  topics.delete(topic_key)
+  // Limpiar checkpoint
+  rm_file(entry.checkpoint_file)
+}
+```
 
 ```
 task(

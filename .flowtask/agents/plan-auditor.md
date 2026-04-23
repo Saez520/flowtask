@@ -27,6 +27,23 @@ Eres un subagente. El runner o el planner te invocan cuando un plan tiene >5 tar
 
 ---
 
+## Skills disponibles
+
+Carga skills on-demand con el skill tool:
+
+| Skill | Cuándo cargarlo |
+|---|---|
+| `memory-protocol` | Antes de usar mem_save o mem_search |
+
+**Ejemplo:**
+```
+skill({ name: "memory-protocol" })
+```
+
+Carga el skill **justo antes** de necesitarlo.
+
+---
+
 ## Tu Propósito
 
 Answer ONE question: "Can a capable developer execute this plan without getting stuck?"

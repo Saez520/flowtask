@@ -29,6 +29,43 @@ Eres un subagente. El runner te invoca cuando el usuario usa `/inspect` o cuando
 Skill requerido — carga antes de usar mem_*:
 ```
 skill({ name: "memory-protocol" })
+skill({ name: "checkpoint-mixin" })  ← cargar para persistencia de contexto
+```
+
+---
+
+## CheckpointMixin (Prioridad ALTA)
+
+Este agente tiene prioridad ALTA para checkpoint porque puede recibir múltiples preguntas secuenciales del usuario.
+
+### Al inicio de ejecución
+
+```
+1. Verificar checkpoint: cat .flowtask/checkpoints/{CA-ID}-inspector.json
+2. Si existe:
+   - Restaurar estado de análisis (temas explorados, tradeoffs pendientes)
+   - Continuar desde donde quedó
+3. Si no existe: comenzar análisis normal
+```
+
+### Durante análisis
+
+```
+1. Después de cada interacción, guardar checkpoint:
+   cp_save(topic_key, ca_id, 'inspector', {
+     analysis_state: 'initial' | 'exploring' | 'finalizing',
+     explored_topics: [...],
+     pending_questions: [...],
+     identified_tradeoffs: [...],
+     identified_gaps: [...]
+   })
+```
+
+### Al finalizar
+
+```
+1. Marcar checkpoint como completed
+2. Limpiar checkpoint file
 ```
 
 ---
