@@ -4,7 +4,7 @@ AI-driven development workflow system with persistent memory via Engram.
 
 FlowTask provides specialized AI agents that work together to automate software development tasks — from requirements capture to implementation and validation. Artifacts (CAs and plans) are stored as workspace files; Engram persists only operational state and snapshots.
 
----
+***
 
 ## Requirements
 
@@ -22,11 +22,12 @@ brew install gentleman-programming/tap/engram
 ```
 
 Verify installation:
+
 ```bash
 engram --version
 ```
 
----
+***
 
 ## Installation
 
@@ -60,18 +61,18 @@ cd ~/dev/flowtask
 git pull
 
 cd ~/proyectos/mi-proyecto
-flowtask install
+flowtask uptade
 ```
 
 ### Command Reference
 
-| Command | Description |
-|---------|-------------|
-| `flowtask install` | Install FlowTask in the current project |
-| `flowtask --help` | Show help message |
-| `flowtask --version` | Show version |
+| Command              | Description                             |
+| -------------------- | --------------------------------------- |
+| `flowtask install`   | Install FlowTask in the current project |
+| `flowtask --help`    | Show help message                       |
+| `flowtask --version` | Show version                            |
 
----
+***
 
 ## Quick Start
 
@@ -101,6 +102,7 @@ Or initialize specific layers:
 ```
 
 The CA-Writer agent will guide you through:
+
 - Clarifying requirements and business rules
 - Classifying intention type (Nueva funcionalidad / Optimización / Corrección / Integración / Cambio de alcance)
 - Detecting AI-slop patterns (scope inflation, over-engineering, premature details)
@@ -115,6 +117,7 @@ The CA is saved to `.workspace/CA-001/ca.md`.
 ```
 
 FlowTask will:
+
 1. **CA-Writer** — clarifies requirements if the CA doesn't exist yet
 2. **Planner** — generates a decision-complete plan in `.workspace/CA-001/plan.md`
 3. **Plan-Auditor** — reviews the plan (auto for >5 tasks; always in Evolution Mode)
@@ -146,7 +149,7 @@ Runs the full CA → Plan → Audit → Implement cycle, but scoped exclusively 
 
 Shows Engram memory statistics, active workflows, and project initialization status.
 
----
+***
 
 ## How It Works
 
@@ -156,18 +159,18 @@ The runner is always active as the primary agent. You can speak directly to it w
 
 The `flowtask-classifier` plugin intercepts your input and injects a `FLOWTASK_CLASSIFICATION` tag into context before the runner sees it:
 
-| Classification | Detected when |
-|----------------|---------------|
-| `COMMAND:/run CA-{ID}` | You type `/run CA-001` |
-| `COMMAND:/inspect` | You type `/inspect` |
-| `COMMAND:/new-ca` | You type `/new-ca` |
-| `COMMAND:/evolve-agent` | You type `/evolve-agent` |
-| `COMMAND:/init` | You type `/init` |
-| `COMMAND:/status` | You type `/status` |
-| `CA_MENTION:{ID}` | You reference "CA-018", etc. |
-| `PROJECT_QUESTION` | You ask a question about the project |
-| `CHANGE_REQUEST` | You request a change without a CA |
-| Fallback | Ambiguous — runner asks for clarification |
+| Classification          | Detected when                             |
+| ----------------------- | ----------------------------------------- |
+| `COMMAND:/run CA-{ID}`  | You type `/run CA-001`                    |
+| `COMMAND:/inspect`      | You type `/inspect`                       |
+| `COMMAND:/new-ca`       | You type `/new-ca`                        |
+| `COMMAND:/evolve-agent` | You type `/evolve-agent`                  |
+| `COMMAND:/init`         | You type `/init`                          |
+| `COMMAND:/status`       | You type `/status`                        |
+| `CA_MENTION:{ID}`       | You reference "CA-018", etc.              |
+| `PROJECT_QUESTION`      | You ask a question about the project      |
+| `CHANGE_REQUEST`        | You request a change without a CA         |
+| Fallback                | Ambiguous — runner asks for clarification |
 
 If the classifier is inactive, the runner falls back to the `manual-classification` skill.
 
@@ -175,35 +178,35 @@ If the classifier is inactive, the runner falls back to the `manual-classificati
 
 Artifacts are stored as files in `.workspace/`, not in Engram:
 
-| Artifact | File path |
-|----------|-----------|
-| Acceptance Criteria | `.workspace/CA-{ID}/ca.md` |
-| Implementation Plan | `.workspace/CA-{ID}/plan.md` |
-| Plan Audit | `.workspace/CA-{ID}/audit.md` |
-| Validation Report | `.workspace/CA-{ID}/validacion.md` |
+| Artifact            | File path                          |
+| ------------------- | ---------------------------------- |
+| Acceptance Criteria | `.workspace/CA-{ID}/ca.md`         |
+| Implementation Plan | `.workspace/CA-{ID}/plan.md`       |
+| Plan Audit          | `.workspace/CA-{ID}/audit.md`      |
+| Validation Report   | `.workspace/CA-{ID}/validacion.md` |
 
 Engram stores only operational metadata (flow states, snapshots, project conventions). This lets agents survive context compaction and share state across sessions without duplicating the full content.
 
 ### Engram topic keys
 
-| Topic Key | Owner | What it stores |
-|-----------|-------|----------------|
-| `ca/{ID}` | Runner (via CA-Writer) | CA snapshot |
-| `plan/{ID}` | Runner (via Planner) | Plan snapshot |
-| `plan-audit/{ID}` | Plan-Auditor | Audit results |
-| `validation/{ID}` | Validator | Validation report |
-| `flow-state/{ID}/create` | CA-Writer | CA creation state |
-| `flow-state/{ID}/plan` | Planner | Plan generation state |
-| `flow-state/{ID}/audit` | Plan-Auditor | Audit state |
-| `flow-state/{ID}/construct` | Constructor | Implementation state |
-| `flow-state/{ID}/validate` | Validator | Validation state |
-| `project/stack` | Initializer | Tech stack |
-| `project/conventions` | Initializer | Project conventions |
-| `project/{layer}` | Initializer | Layer patterns (api, data, business…) |
-| `impl/{ID}/patterns` | Constructor/Tester/Logger | Discovered technical patterns |
-| `impl/{ID}/decisions` | Constructor/Planner | Design decisions |
+| Topic Key                   | Owner                     | What it stores                        |
+| --------------------------- | ------------------------- | ------------------------------------- |
+| `ca/{ID}`                   | Runner (via CA-Writer)    | CA snapshot                           |
+| `plan/{ID}`                 | Runner (via Planner)      | Plan snapshot                         |
+| `plan-audit/{ID}`           | Plan-Auditor              | Audit results                         |
+| `validation/{ID}`           | Validator                 | Validation report                     |
+| `flow-state/{ID}/create`    | CA-Writer                 | CA creation state                     |
+| `flow-state/{ID}/plan`      | Planner                   | Plan generation state                 |
+| `flow-state/{ID}/audit`     | Plan-Auditor              | Audit state                           |
+| `flow-state/{ID}/construct` | Constructor               | Implementation state                  |
+| `flow-state/{ID}/validate`  | Validator                 | Validation state                      |
+| `project/stack`             | Initializer               | Tech stack                            |
+| `project/conventions`       | Initializer               | Project conventions                   |
+| `project/{layer}`           | Initializer               | Layer patterns (api, data, business…) |
+| `impl/{ID}/patterns`        | Constructor/Tester/Logger | Discovered technical patterns         |
+| `impl/{ID}/decisions`       | Constructor/Planner       | Design decisions                      |
 
----
+***
 
 ## Workflow Diagram
 
@@ -233,7 +236,7 @@ Engram stores only operational metadata (flow states, snapshots, project convent
    └── REJECTED → retry Constructor (max 2 times)
 ```
 
----
+***
 
 ## Project Structure
 
@@ -285,22 +288,22 @@ FlowTask/
         └── validacion.md
 ```
 
----
+***
 
 ## FlowTask Agents
 
-| Agent | Role |
-|-------|------|
-| `flowtask-runner` | Primary orchestrator — always active, classifies intent, coordinates subagents |
-| `flowtask-ca-writer` | Clarifies requirements, classifies intention, detects AI-slop, writes CA to file |
-| `flowtask-planner` | Generates decision-complete plans, saves to `.workspace/` |
-| `flowtask-plan-auditor` | Verifies plan executability, file references, and QA scenarios |
-| `flowtask-constructor` | Implements plans following project conventions |
-| `flowtask-validator` | Validates implementation against plan |
-| `flowtask-inspector` | Answers questions about the project with tradeoffs and GAPs — read-only |
-| `flowtask-initializer` | Scans project and populates Engram with project context |
-| `flowtask-logger` | Adds logging instrumentation |
-| `flowtask-tester` | Generates tests |
+| Agent                   | Role                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| `flowtask-runner`       | Primary orchestrator — always active, classifies intent, coordinates subagents   |
+| `flowtask-ca-writer`    | Clarifies requirements, classifies intention, detects AI-slop, writes CA to file |
+| `flowtask-planner`      | Generates decision-complete plans, saves to `.workspace/`                        |
+| `flowtask-plan-auditor` | Verifies plan executability, file references, and QA scenarios                   |
+| `flowtask-constructor`  | Implements plans following project conventions                                   |
+| `flowtask-validator`    | Validates implementation against plan                                            |
+| `flowtask-inspector`    | Answers questions about the project with tradeoffs and GAPs — read-only          |
+| `flowtask-initializer`  | Scans project and populates Engram with project context                          |
+| `flowtask-logger`       | Adds logging instrumentation                                                     |
+| `flowtask-tester`       | Generates tests                                                                  |
 
 ### Evolution Mode
 
@@ -312,7 +315,7 @@ Evolution Mode lets you improve FlowTask agents using the same workflow used for
 4. Confirm and execute with Constructor
 5. The user must confirm before Constructor runs — no `--auto` bypass
 
----
+***
 
 ## Troubleshooting
 
@@ -346,7 +349,7 @@ npm install
 npm run build
 ```
 
----
+***
 
 ## License
 

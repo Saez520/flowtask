@@ -33,51 +33,45 @@ skill({ name: "checkpoint-mixin" })  ← cargar para persistencia de contexto
 
 ---
 
-## CheckpointMixin (Prioridad ALTA)
+## CheckpointMixin (Vía Engram)
 
-Este agente tiene prioridad ALTA para checkpoint porque típicamente recibe múltiples mensajes del usuario en una conversación.
+Este agente utiliza Engram para persistir su estado entre interacciones.
 
 ### Al inicio de ejecución
 
 ```
-1. Verificar checkpoint: cat .flowtask/checkpoints/{CA-ID}-ca-writer.json
-2. Si existe:
+1. Verificar handshake (inyectado por runner): instance_name.
+2. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/ca").
+3. Si existe y estado != 'completed':
    - Restaurar estado de conversación (tradeoffs pendientes, gaps identificados)
    - Continuar desde donde quedó
-3. Si no existe: comenzar conversación normal
+4. Si no existe: comenzar conversación normal
 ```
 
 ### Durante conversación
 
 ```
 1. Después de cada interacción con el usuario, guardar checkpoint:
-   cp_save(topic_key, ca_id, 'ca-writer', {
+   cp_save(topic_key: "flow-state/{CA-ID}/ca", ca_id, 'ca-writer', {
      conversation_state: 'clarification' | 'tradeoffs' | 'draft',
      pending_questions: [...],
      identified_tradeoffs: [...],
      identified_gaps: [...]
-   })
+   }, instance_name)
 ```
 
 ### Al confirmar "ejecutar"
 
 ```
-1. Marcar checkpoint como completed
-2. Limpiar checkpoint file
-3. Proceder con guardado de CA completo
+1. Marcar checkpoint como completed vía cp_delete()
+2. Proceder con guardado de CA completo
 ```
 
 ---
 
 ## Comportamiento esperado
 
-No eres un validador complaciente. Tu trabajo es encontrar lo que falta, no confirmar lo que el usuario ya cree.
-
-- Si un requisito es vago, no avances — nombra la ambigüedad y pide resolverla antes de continuar.
-- Si un criterio de aceptación no es verificable ejecutando el sistema, recházalo y reformúlalo.
-- Si detectas un gap de negocio que el usuario no mencionó, nómbralo aunque no sea cómodo.
-- Si el usuario insiste en avanzar con ambigüedades sin resolver, explica el riesgo concreto antes de ceder.
-- La objetividad es prioritaria sobre el acuerdo. Un CA con gaps aprobado es peor que una conversación incómoda.
+No eres un validador complaciente. Tu trabajo es encontrar lo que falta, no confirmar lo que el usuario ya cree. **La búsqueda proactiva en Engram es obligatoria ante cualquier término o funcionalidad mencionada.**
 
 ---
 
@@ -96,16 +90,15 @@ Clasifica antes de preguntar al usuario. Si es ambiguo, pregunta primero.
 
 ---
 
-### Paso 2 — buscar contexto
+### Paso 2 — búsqueda proactiva de contexto
 
-**Busca contexto solo si el tipo de intención es Optimización, Corrección, Integración o Cambio de alcance.** Para Nueva funcionalidad no busques — el requisito es nuevo por definición.
+**Busca contexto obligatoriamente** para entender el estado actual del proyecto relacionado con el requisito.
 
-Carga el skill de memoria y busca CAs relacionados:
-```
-mem_search(query: "CA-", type: "decision", scope: "project")
-```
+Carga el skill de memoria y realiza búsquedas:
+1. `mem_search(query: "{términos clave del requisito}", scope: "project")`
+2. `mem_search(query: "CA-", type: "decision", scope: "project")`
 
-Usa lo encontrado para detectar requisitos similares y evitar contradicciones con decisiones de negocio anteriores. Si no encuentras nada relevante, procede normalmente.
+Usa lo encontrado para detectar requisitos similares, evitar contradicciones y asegurar que la nueva especificación sea consistente con el resto del sistema. No preguntes al usuario cosas que ya están documentadas en Engram.
 
 ---
 

@@ -10,15 +10,11 @@ description: >-
 
 ## Propósito
 
-Permite que un subagente persista su estado entre ejecuciones separadas.
+Permite que un subagente persista su estado entre ejecuciones separadas usando Engram.
 Un usuario puede interrumpir una conversación y continuarla después, o un
 agente puede recibir múltiples mensajes que deben mantener contexto.
 
-## Estructura de Checkpoint
-
-```
-Checkpoint File: .flowtask/checkpoints/{CA-ID}-{agente}.json
-```
+## Estructura de Checkpoint (en Engram)
 
 ```json
 {
@@ -26,7 +22,7 @@ Checkpoint File: .flowtask/checkpoints/{CA-ID}-{agente}.json
   "ca_id": "CA-{ID}",
   "agente": "{agente}",
   "estado": "active|paused|completed",
-  "created_at": "timestamp",
+  "instance_name": "{Name}",
   "updated_at": "timestamp",
   "flow_state": {
     // Estado específico del agente
@@ -36,39 +32,48 @@ Checkpoint File: .flowtask/checkpoints/{CA-ID}-{agente}.json
 
 ## Funciones de Checkpoint
 
-### cp_save(topic_key, ca_id, agente, flow_state)
+### cp_save(topic_key, ca_id, agente, flow_state, instance_name)
 
-Guarda el estado actual del agente.
-
-```
-checkpoint_file = `.flowtask/checkpoints/${ca_id}-${agente}.json`
-write_file(path: checkpoint_file, content: {
-  topic_key, ca_id, agente,
-  estado: 'active',
-  updated_at: now(),
-  flow_state
-})
-```
-
-### cp_get(ca_id, agente)
-
-Recupera el estado guardado.
+Guarda el estado actual del agente en Engram.
 
 ```
-checkpoint_file = `.flowtask/checkpoints/${ca_id}-${agente}.json`
-if exists(checkpoint_file):
-  return read_file(checkpoint_file)
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: topic_key,
+  title: `Checkpoint ${agente}: ${instance_name}`,
+  content: {
+    ca_id, agente, instance_name,
+    estado: 'active',
+    updated_at: now(),
+    flow_state
+  }
+)
+```
+
+### cp_get(topic_key)
+
+Recupera el estado guardado desde Engram.
+
+```
+observation = mem_search(query: topic_key, limit: 1)
+if observation:
+  return observation.content
 return null
 ```
 
-### cp_delete(ca_id, agente)
+### cp_delete(topic_key)
 
-Limpia el checkpoint cuando el flujo termina.
+Marca el checkpoint como completado o lo elimina lógicamente.
 
 ```
-checkpoint_file = `.flowtask/checkpoints/${ca_id}-${agente}.json`
-if exists(checkpoint_file):
-  rm_file(checkpoint_file)
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: topic_key,
+  title: `Checkpoint ${agente}: Completed`,
+  content: { estado: 'completed', updated_at: now() }
+)
 ```
 
 ## Protocolo de Uso
@@ -76,11 +81,11 @@ if exists(checkpoint_file):
 ### Al inicio de ejecución
 
 ```
-1. Verificar checkpoint: cat .flowtask/checkpoints/{CA-ID}-{agente}.json
-2. Si existe:
-   - Leer flow_state del checkpoint
+1. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/{agente}")
+2. Si existe y estado != 'completed':
+   - Leer flow_state del contenido de la observación
    - Continuar desde donde quedó
-3. Si no existe: comenzar desde cero
+3. Si no existe o está 'completed': comenzar desde cero
 ```
 
 ### Durante ejecución
@@ -89,14 +94,13 @@ if exists(checkpoint_file):
 1. Después de cada interacción significativa, guardar checkpoint:
    cp_save(topic_key, ca_id, agente, {
      // estado actual del agente
-   })
+   }, instance_name)
 ```
 
 ### Al completar
 
 ```
-1. Marcar checkpoint como completed (opcional)
-2. Limpiar checkpoint: cp_delete(ca_id, agente)
+1. Marcar checkpoint como completed: cp_delete(topic_key)
 ```
 
 ## topic_key

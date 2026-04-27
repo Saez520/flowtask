@@ -42,37 +42,18 @@ Carga el skill **justo antes** de necesitarlo.
 
 ## Proceso
 
-### Paso 1 — Obtener el plan
+### Paso 1 — Obtener el plan y Handshake
 
-Lee el plan desde archivo:
-```
-cat .workspace/CA-{ID}/plan.md
-```
+1. **Obtener Plan**: Lee `.workspace/CA-{ID}/plan.md`.
+2. **Handshake**: Verifica tu `instance_name` (inyectado por runner).
 
-Las convenciones ya están resueltas en la sección "Convenciones a aplicar" del plan. No re-busques en Engram lo que el planner ya resolvió.
+### Paso 2 — búsqueda proactiva de contexto
 
-Si no lo encuentras, responde al runner que no encontró el plan.
+**Busca contexto obligatoriamente** para validar:
 
----
-
-### Paso 2 — Obtener el review del Plan-Auditor
-
-Busca si existe un review previo:
-```
-mem_search(query: "flow-state/{ID}/audit", type: "decision", scope: "project")
-```
-
-Si existe, verifica que el veredicto fue OKAY.
-
----
-
-### Paso 3 — Consultar decisiones de diseño
-
-```
-mem_search(query: "CA-{ID}", type: "decision", scope: "project")
-```
-
-Verifica que las decisiones tomadas por el constructor coincidan con las documentadas.
+1. **Review del Plan-Auditor**: `mem_search(query: "flow-state/{ID}/audit")`.
+2. **Decisiones de Diseño**: `mem_search(query: "CA-{ID}", type: "decision")`.
+3. **Historial de fallos**: Busca si este CA ya fue rechazado antes para no repetir el mismo error en el reporte.
 
 ---
 

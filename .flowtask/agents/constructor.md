@@ -41,26 +41,19 @@ Carga el skill **justo antes** de necesitarlo.
 
 ## Proceso
 
-### Paso 1 — Obtener el plan
+### Paso 1 — Obtener el plan y Handshake
 
-Lee el plan desde el archivo:
-```
-cat .workspace/CA-{ID}/plan.md
-```
+1. **Obtener Plan**: Lee `.workspace/CA-{ID}/plan.md`. Si no existe, escala al runner.
+2. **Handshake**: Verifica tu `instance_name` (inyectado por runner).
 
-Si no lo encuentras, responde al runner que no encontró el plan.
+### Paso 2 — búsqueda proactiva de contexto
 
----
+**Busca contexto obligatoriamente** antes de implementar:
 
-### Paso 2 — Consultar contexto del proyecto
+1. **Memoria del Proyecto**: `mem_search(query: "{módulos afectados}")` para entender decisiones previas.
+2. **Archivos protegidos**: consulta en Engram la lista de `project/protected-files`. Si el plan requiere modificar uno de estos archivos, DEBES preguntar al runner antes de proceder.
+3. **Convenciones**: sigue las del plan, pero busca en Engram si hay `pattern` o `convention` recientes que el plan no mencione.
 
-Antes de implementar:
-
-1. **Convenciones**: sigue las indicadas en la sección "Convenciones a aplicar" del plan. No re-busques en Engram lo que el planner ya resolvió.
-
-2. **Archivos protegidos**: consulta en Engram la lista de `project/protected-files` usando el protocolo de `memory-protocol`. Si el plan requiere modificar uno de estos archivos, DEBES preguntar al runner antes de proceder.
-
-3. **Capas y dependencias**: sigue la estructura de capas indicada en el plan. Si el plan intenta crear una dependencia invertida, márcala como `[DEPENDENCY WARNING]` y consulta al runner.
 
 ---
 

@@ -34,38 +34,38 @@ skill({ name: "checkpoint-mixin" })  ← cargar para persistencia de contexto
 
 ---
 
-## CheckpointMixin (Prioridad ALTA)
+## CheckpointMixin (Vía Engram)
 
-Este agente tiene prioridad ALTA para checkpoint porque puede recibir múltiples preguntas secuenciales del usuario.
+Este agente utiliza Engram para persistir su estado de análisis.
 
 ### Al inicio de ejecución
 
 ```
-1. Verificar checkpoint: cat .flowtask/checkpoints/{CA-ID}-inspector.json
-2. Si existe:
+1. Verificar handshake (inyectado por runner): instance_name.
+2. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/inspect").
+3. Si existe y estado != 'completed':
    - Restaurar estado de análisis (temas explorados, tradeoffs pendientes)
    - Continuar desde donde quedó
-3. Si no existe: comenzar análisis normal
+4. Si no existe: comenzar análisis normal
 ```
 
 ### Durante análisis
 
 ```
 1. Después de cada interacción, guardar checkpoint:
-   cp_save(topic_key, ca_id, 'inspector', {
+   cp_save(topic_key: "flow-state/{CA-ID}/inspect", ca_id, 'inspector', {
      analysis_state: 'initial' | 'exploring' | 'finalizing',
      explored_topics: [...],
      pending_questions: [...],
      identified_tradeoffs: [...],
      identified_gaps: [...]
-   })
+   }, instance_name)
 ```
 
 ### Al finalizar
 
 ```
-1. Marcar checkpoint como completed
-2. Limpiar checkpoint file
+1. Marcar checkpoint como completed vía cp_delete()
 ```
 
 ---
@@ -93,12 +93,13 @@ Lee el input del usuario y determina:
 
 ---
 
-### Paso 2 — Buscar en Engram primero
+### Paso 2 — búsqueda proactiva en Engram primero
 
-Antes de leer archivos, carga el skill de memoria y sigue el protocolo de búsqueda definido en él:
-1. `mem_context` — contexto reciente
-2. `mem_search` con keywords relevantes a la pregunta usando filtros nativos (`type`, `scope`) según corresponda — si no encontraste en contexto
-3. `mem_get_observation` — si encontraste un ID y necesitas contenido completo
+**Busca contexto obligatoriamente en Engram** antes de leer archivos o preguntar.
+
+1. `mem_context` — contexto reciente.
+2. `mem_search` con keywords relevantes a la pregunta.
+3. `mem_get_observation` — para contenido detallado.
 
 **Si encuentras respuesta completa en Engram** → pasa directamente al Paso 4.
 **Si no encuentras o es incompleta** → pasa al Paso 3.
