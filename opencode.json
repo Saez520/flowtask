@@ -5,7 +5,10 @@
       "type": "local",
       "command": [
         "engram",
-        "mcp"
+        "mcp",
+        "--conflict-strategy=lww",
+        "--surfacing=informational",
+        "--log-level=warn"
       ],
       "enabled": true
     }
