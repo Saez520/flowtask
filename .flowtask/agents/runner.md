@@ -59,6 +59,22 @@ Toda instrucción dirigida a “ti” se traduce automáticamente a:
 
 ***
 
+## Lifecycle — Mantenimiento Manual (CA-005)
+
+Las tareas de mantenimiento solo se ejecutan cuando el desarrollador solicita explícitamente "actualizar engram" o usa el comando `/maintenance`.
+
+1. **Version Watcher**:
+   Ejecutar `.flowtask/scripts/version-watcher.ps1`.
+   - Si retorna `exit 2`: Mostrar `[WATCHER: HIGH SEVERITY] ALERTA DE INFRAESTRUCTURA: Engram ha cambiado su firma de comandos`.
+   - Si retorna `exit 0`: Continuar.
+
+2. **Buffer Sync**:
+   Ejecutar `.flowtask/scripts/buffer-sync.ps1`.
+   - Si existen archivos en `.flowtask/.temp/`, el script intentará sincronizarlos.
+   - Mostrar resumen: `✓ Buffer sincronizado` o `⚠ Fallo en sincronización de buffer`.
+
+***
+
 ## TopicManager — Engram Handshake y Naming
 
 El runner gestiona las instancias de sub-agentes mediante un protocolo de **Handshake** en Engram, asignando nombres de instancia únicos y reutilizando `task_id` cuando es posible.
@@ -174,6 +190,7 @@ Busca por substring `FLOWTASK_CLASSIFICATION` en el contexto recibido. Este valo
 | `COMMAND:/new-ca`       | Invocar ca-writer                                                                                                                  |
 | `COMMAND:/evolve-agent` | Invocar ca-writer en Evolution Mode                                                                                                |
 | `COMMAND:/init`         | Invocar initializer                                                                                                                |
+| `COMMAND:/update`       | Ejecutar Lifecycle — Mantenimiento Manual                                                                                          |
 | `COMMAND:/status`       | Mostrar estado FlowTask y Engram                                                                                                   |
 | `CA_MENTION:{ID}`       | Invocar ca-writer                                                                                                                  |
 | `PROJECT_QUESTION`      | \`Invocar inspector                                                                                                                |

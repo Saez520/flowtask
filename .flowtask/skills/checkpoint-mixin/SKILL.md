@@ -34,21 +34,33 @@ agente puede recibir múltiples mensajes que deben mantener contexto.
 
 ### cp_save(topic_key, ca_id, agente, flow_state, instance_name)
 
-Guarda el estado actual del agente en Engram.
+Guarda el estado actual del agente en Engram con fallback local.
 
 ```
-mem_save(
-  type: "decision",
-  scope: "project",
-  topic_key: topic_key,
-  title: `Checkpoint ${agente}: ${instance_name}`,
-  content: {
-    ca_id, agente, instance_name,
-    estado: 'active',
-    updated_at: now(),
-    flow_state
-  }
-)
+try {
+  mem_save(
+    type: "decision",
+    scope: "project",
+    topic_key: topic_key,
+    title: `Checkpoint ${agente}: ${instance_name}`,
+    content: {
+      ca_id, agente, instance_name,
+      estado: 'active',
+      updated_at: now(),
+      flow_state
+    }
+  )
+} catch (error) {
+  // Fallback local CA-005
+  const timestamp = Date.now();
+  const filePath = `.flowtask/.temp/operation-checkpoint-${timestamp}.json`;
+  write(filePath, JSON.stringify({
+    type: "decision",
+    topic_key,
+    title: `Checkpoint ${agente}: ${instance_name} (BUFFERED)`,
+    content: { ca_id, agente, flow_state, buffered: true }
+  }));
+}
 ```
 
 ### cp_get(topic_key)
