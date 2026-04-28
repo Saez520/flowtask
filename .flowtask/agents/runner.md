@@ -77,21 +77,33 @@ Las tareas de mantenimiento solo se ejecutan cuando el desarrollador solicita ex
 
 ## TopicManager — Engram Handshake y Naming
 
-El runner gestiona las instancias de sub-agentes mediante un protocolo de **Handshake** en Engram, asignando nombres de instancia únicos y reutilizando `task_id` cuando es posible.
+El runner gestiona las instancias de sub-agentes mediante un protocolo de **Handshake** en Engram, asignando un **único nombre base (BaseName)** por CA y derivando los nombres de instancia.
 
 ### Naming Prioritario
-Lista de nombres para instancias (en orden): `['Aitana', 'Kael', 'Lyra', 'Zev', 'Thalía', 'Iago', 'Elowen', 'Mael']`.
+Lista de nombres base disponibles: `['Aitana', 'Kael', 'Lyra', 'Zev', 'Thalía', 'Iago', 'Elowen', 'Mael']`.
 
 ### Handshake Protocol (getOrCreateInstance)
 Antes de invocar un sub-agente, el Runner debe:
 
 1. **Check Engram Handshake**: 
    `mem_search(query: "flow-state/{CA_ID}/instances")`
-2. **Determinar Instancia**:
-   - Si existe el topic y el agente ya tiene un nombre/task_id asignado: **REUSAR**.
-   - Si no existe: Asignar el **siguiente nombre disponible** de la lista y generar un nuevo flujo.
-3. **Persistir Handshake**:
-   `mem_save(topic_key: "flow-state/{CA_ID}/instances", ...)` con el mapa actualizado de `{agente: {task_id, instance_name}}`.
+2. **Determinar BaseName**:
+   - **Caso A (Mapa existe con base_name)**: Usar el `base_name` persistido.
+   - **Caso B (Mapa existe sin base_name - Normalización)**: Extraer el prefijo (antes del primer `-`) del primer agente en el mapa y guardarlo como `base_name`.
+   - **Caso C (Nuevo CA)**: Asignar el **siguiente nombre base disponible** de la lista (verificando otros CAs en Engram si es posible, o por orden) y persistirlo.
+3. **Construir instance_name**:
+   - El nombre de instancia final será: `{BaseName}-{agent_type}` (ej: `Aitana-planner`, `Aitana-constructor`).
+4. **Persistir Handshake**:
+   `mem_save(topic_key: "flow-state/{CA_ID}/instances", ...)` con la estructura:
+   ```json
+   {
+     "base_name": "Aitana",
+     "agents": {
+       "ca-writer": { "task_id": "...", "instance_name": "Aitana-ca-writer" },
+       "planner": { "task_id": "...", "instance_name": "Aitana-planner" }
+     }
+   }
+   ```
 
 ### Context Injection
 Antes de ejecutar `task()`, el Runner debe:
@@ -146,13 +158,13 @@ Flujo de delegación — sin excepciones:
 ### Antes de invocar sub-agente (Handshake & Restore)
 
 ```
-1. Handshake: Recuperar o asignar instance_name y task_id desde "flow-state/{CA_ID}/instances".
+1. Handshake: Recuperar o asignar BaseName y derivar instance_name ({BaseName}-{agente}).
 2. Restore: mem_search(query: "flow-state/{CA-ID}/{agente}").
 3. Si existe y estado == 'active':
    a. Leer flow_state del contenido.
    b. Agregar al prompt: "Continúa como {instance_name}. Estado previo: [resumen]"
 4. Si no existe:
-   a. Invocar con prompt original + contexto inyectado.
+   a. Invocar con prompt original + contexto inyectado e indicación: "Tu nombre de instancia es {instance_name}."
 ```
 
 ### Después de que sub-agente responde (Persist & Cleanup)
