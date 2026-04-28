@@ -39,3 +39,6 @@ flowtask/
 .workspace/
 
 .claude/
+
+# FlowTask internals
+.flowtask/.temp/
