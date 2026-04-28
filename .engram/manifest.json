@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "chunks": [
+    {
+      "id": "43b7d1fe",
+      "created_by": "saez",
+      "created_at": "2026-04-28T00:23:33Z",
+      "sessions": 9,
+      "memories": 16,
+      "prompts": 14
+    },
+    {
+      "id": "a0ca0c91",
+      "created_by": "saez",
+      "created_at": "2026-04-28T00:26:29Z",
+      "sessions": 0,
+      "memories": 0,
+      "prompts": 2
+    },
+    {
+      "id": "0e5dc95a",
+      "created_by": "saez",
+      "created_at": "2026-04-28T00:28:07Z",
+      "sessions": 0,
+      "memories": 0,
+      "prompts": 2
+    }
+  ]
+}
