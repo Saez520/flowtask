@@ -94,16 +94,25 @@ Antes de invocar un sub-agente, el Runner debe:
 3. **Construir instance_name**:
    - El nombre de instancia final será: `{BaseName}-{agent_type}` (ej: `Aitana-planner`, `Aitana-constructor`).
 4. **Persistir Handshake**:
-   `mem_save(topic_key: "flow-state/{CA_ID}/instances", ...)` con la estructura:
-   ```json
-   {
-     "base_name": "Aitana",
-     "agents": {
-       "ca-writer": { "task_id": "...", "instance_name": "Aitana-ca-writer" },
-       "planner": { "task_id": "...", "instance_name": "Aitana-planner" }
-     }
-   }
-   ```
+    `mem_save(topic_key: "flow-state/{CA_ID}/instances", ...)` con la estructura:
+    ```json
+    {
+      "base_name": "Aitana",
+      "agents": {
+        "ca-writer": { 
+          "task_id": "...", 
+          "instance_name": "Aitana-ca-writer",
+          "last_resume": "2026-04-28T..." 
+        },
+        "planner": { 
+          "task_id": "...", 
+          "instance_name": "Aitana-planner",
+          "last_resume": "..." 
+        }
+      }
+    }
+    ```
+    **Importante**: Captura y guarda el `task_id` inmediatamente después de la primera respuesta exitosa del sub-agente.
 
 ### Context Injection
 Antes de ejecutar `task()`, el Runner debe:
@@ -155,28 +164,40 @@ Flujo de delegación — sin excepciones:
 
 ## Checkpoint Protocol (Vía Engram)
 
-### Antes de invocar sub-agente (Handshake & Restore)
+### Antes de invocar sub-agente (Handshake & Context)
 
-```
-1. Handshake: Recuperar o asignar BaseName y derivar instance_name ({BaseName}-{agente}).
-2. Restore: mem_search(query: "flow-state/{CA-ID}/{agente}").
-3. Si existe y estado == 'active':
-   a. Leer flow_state del contenido.
-   b. Agregar al prompt: "Continúa como {instance_name}. Estado previo: [resumen]"
-4. Si no existe:
-   a. Invocar con prompt original + contexto inyectado e indicación: "Tu nombre de instancia es {instance_name}."
-```
+1. **Handshake**: Recuperar o asignar BaseName y derivar `instance_name` ({BaseName}-{agente}).
+2. **Bifurcación de Escenario**:
+
+**Escenario A: Initial Prompt (Nuevo hilo)**
+Si NO existe un `task_id` válido para el agente en el mapa de instancias:
+- Invocar `task()` con el prompt original + contexto inyectado.
+- Instrucción: "Tu nombre de instancia es {instance_name}. Sigue las instrucciones de tu rol."
+
+**Escenario B: Resume Prompt (Hilo existente)**
+Si existe un `task_id` activo en el mapa de instancias:
+- Construir `Resume Prompt` incluyendo:
+  - Notificación de reanudación: "Reanudando sesión para {instance_name}."
+  - Mini-resumen: Recuperar último checkpoint `mem_search(query: "flow-state/{CA-ID}/{agente}")`.
+  - Input Usuario: Texto original del desarrollador.
+  - **Sincronización Obligatoria**: "Antes de actuar, sincroniza tu contexto local usando `git status/diff` y consulta las últimas decisiones en Engram (`mem_context`)."
+- Invocar `task()` usando el `task_id` persistido.
 
 ### Después de que sub-agente responde (Persist & Cleanup)
 
-```
 1. Si el flujo NO terminó:
    a. El sub-agente ya debe haber ejecutado cp_save (vía CheckpointMixin).
    b. Runner asegura que el topic esté en Engram para futuras sesiones.
 2. Si el flujo SÍ terminó:
    a. El sub-agente marca estado como 'completed' en su topic.
    b. Ejecutar mem_session_summary.
-```
+
+### Recuperación ante Fallos (Self-Healing)
+
+Si la herramienta `task` (o `Agent` en Claude) retorna un error indicando que el hilo no existe o ha expirado:
+1. **Limpieza**: Ejecutar `mem_save` para eliminar el `task_id` fallido del mapa de instancias en `flow-state/{CA_ID}/instances`.
+2. **Reintento**: Relanzar la tarea automáticamente usando el flujo del **Escenario A (Initial Prompt)**.
+3. No es necesario pedir confirmación al desarrollador para este reintento técnico.
 
 ```
 task(
