@@ -32,6 +32,14 @@
       "sessions": 10,
       "memories": 33,
       "prompts": 0
+    },
+    {
+      "id": "28f75fa3",
+      "created_by": "juan.saez",
+      "created_at": "2026-05-01T04:30:59Z",
+      "sessions": 0,
+      "memories": 1,
+      "prompts": 0
     }
   ]
 }
