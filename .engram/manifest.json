@@ -40,6 +40,22 @@
       "sessions": 0,
       "memories": 1,
       "prompts": 0
+    },
+    {
+      "id": "623e1db3",
+      "created_by": "juan.saez",
+      "created_at": "2026-05-02T20:04:17Z",
+      "sessions": 1,
+      "memories": 11,
+      "prompts": 0
+    },
+    {
+      "id": "ac489873",
+      "created_by": "juan.saez",
+      "created_at": "2026-05-02T20:09:16Z",
+      "sessions": 1,
+      "memories": 0,
+      "prompts": 2
     }
   ]
 }
