@@ -86,7 +86,7 @@ Al finalizar:
    mem_save(
       type: "decision",
       scope: "project",
-      topic_key: "flow-state/{ID}/construct",
+      topic_key: "flow-state/CA-{ID}/construct",
       title: "Constructor CA-{ID}: implementación completada",
       content:
         What: {N} artefactos implementados para CA-{ID}
