@@ -43,7 +43,7 @@ function Get-LatestRelease {
 
 try {
     $BinaryName = "engram.exe"
-    $TargetPath = Join-Path (Get-Location) $BinaryName
+    $TargetPath = (Get-Command $BinaryName).Source
     $BackupPath = "$TargetPath.old"
     $TempDir = Join-Path $env:TEMP "engram_update"
 
