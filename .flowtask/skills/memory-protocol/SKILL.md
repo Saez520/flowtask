@@ -65,6 +65,41 @@ interface SessionSummary {
 
 ---
 
+## Topic Key Convention
+
+Todo `topic_key` debe seguir el formato canónico:
+
+```
+{namespace}/CA-{ID}[/{sub-namespace}]
+```
+
+**Reglas**:
+- Prefijo `CA-` **obligatorio** en el ID (ej: `plan/CA-054`, no `plan/054`)
+- `flow-state/{ID}` **NUNCA** se usa sin sub-namespace
+- Cada agente escribe **SOLO** sus namespaces autorizados
+
+### Ownership (resumido)
+
+| Agente | Namespaces |
+|--------|-----------|
+| ca-writer | `ca/CA-{ID}`, `flow-state/CA-{ID}/create` |
+| planner | `plan/CA-{ID}`, `flow-state/CA-{ID}/plan` |
+| plan-auditor | `plan-audit/CA-{ID}`, `flow-state/CA-{ID}/audit` |
+| constructor | `impl/CA-{ID}/*`, `flow-state/CA-{ID}/construct` |
+| validator | `validation/CA-{ID}`, `flow-state/CA-{ID}/validate` |
+| initializer | `project/*` (solo lectura para los demás) |
+
+> Para la tabla completa de ownership (incluyendo tester, logger, sub-namespaces y resoluciones históricas), consulta `topic-keys-convention`.
+
+### Restricciones
+
+- **NUNCA** escribas a `project/{layer}` si no eres Initializer
+- **NUNCA** uses `flow-state/{ID}` sin sub-namespace
+- **SIEMPRE** usa prefijo `CA-` en el ID del topic_key
+- **SIEMPRE** busca (`mem_search`) antes de escribir
+
+---
+
 ## Protocolo de Resiliencia (CA-005)
 
 Si el proveedor de memoria (MCP) no está disponible:
@@ -84,6 +119,17 @@ Los agentes invocan estas funciones. La implementación subyacente (MCP tools) s
 - `mem_search(query, filters)`: Busca información histórica.
 - `mem_context(limit)`: Recupera los eventos más recientes.
 - `mem_session_summary(summary)`: Cierra la sesión con un reporte.
+- `mem_suggest_topic_key(title, type)`: Sugiere un topic_key estable para el contenido.
+
+---
+
+## Protocolo Pre-Write
+
+Antes de ejecutar `mem_save`, sigue estos pasos:
+
+1. **Buscar**: `mem_search(query: "{título o contenido esperado}", scope: "project")` — verifica si ya existe contenido similar.
+2. **Verificar ownership**: consulta la tabla de ownership arriba. ¿Eres el dueño del namespace? Si no lo eres, NO escribas ahí.
+3. **Resolver dudas**: si no estás seguro del topic_key, usa `mem_suggest_topic_key(title: "...", type: "...")`.
 
 ---
 
