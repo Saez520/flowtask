@@ -48,7 +48,7 @@ Carga el skill **justo antes** de necesitarlo.
 
 | Cuándo | topic_key | type |
 |--------|-----------|------|
-| Plan generado | `plan/{ID}` | decision |
+| Plan generado | `plan/CA-{ID}` | decision |
 
 ---
 
@@ -129,7 +129,7 @@ Guarda snapshot en Engram:
 mem_save(
   type: "decision",
   scope: "project",
-  topic_key: "plan/{ID}",
+  topic_key: "plan/CA-{ID}",
   title: "Plan CA-{ID}: {título}",
   content:
     What: Plan generado para CA-{ID} con {N} tareas
