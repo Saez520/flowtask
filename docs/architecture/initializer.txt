@@ -1,0 +1,30 @@
+
+  [ Comando: /init ]
+          ¦
+          v
+ +------------------------------+
+ ¦     flowtask-initializer     ¦
+ ¦  (Escanea el código base)    ¦
+ +------------------------------+
+          ¦                  ¦
+   1. Puebla                 2. Genera Skill
+          ¦                  ¦
+          v                  v
+ +-----------------+ +-----------------------------------+
+ ¦   ENGRAM        ¦ ¦ SKILL: 'flujo-orquestacion'       ¦
+ ¦                 ¦ ¦                                   ¦
+ ¦ - project/stack ¦ ¦ Contrato de Enrutamiento:         ¦
+ ¦ - convenciones  ¦ ¦ "Si stack == Stack TÃ©cnico:            ¦
+ ¦                 ¦ ¦  USA TECH-LEAD-ORCHESTRATOR            ¦
+ ¦                 ¦ ¦  OMITE flowtask-validator         ¦
+ ¦                 ¦ ¦  OMITE flowtask-tester"           ¦
+ +-----------------+ +-----------------------------------+
+ 
+ 
++-------------------------------------------------------------------------+
+¦ LEYENDA 1: El Inicializador y Engram (Configuración por Proyecto)       ¦
++-------------------------------------------------------------------------¦
+¦ Muestra cómo el 'initializer' escanea el código base una única vez,     ¦
+¦ puebla la memoria de Engram con el stack y genera la skill de           ¦
+¦ enrutamiento dinámico que dicta las reglas inmutables para esa sesión.  ¦
++-------------------------------------------------------------------------+

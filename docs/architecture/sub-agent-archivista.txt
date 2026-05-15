@@ -1,0 +1,39 @@
+ +------------------------------------------+
+ ¦           Sub-orquestador Termina        ¦
+ ¦     Devuelve lista: [UserDAO.java]       ¦
+ +------------------------------------------+
+                      ¦
+                      v
+ +------------------------------------------+
+ ¦            flowtask-archivist            ¦
+ ¦ (Agente especializado en documentar)     ¦
+ +------------------------------------------+
+        ¦                            ¦
+  1. Extrae Cambios            2. Entiende Estructura
+ +-----------------+          +--------------------+
+ ¦    git diff     ¦          ¦   ast-grep / LSP   ¦
+ ¦ (Ahorra tokens: ¦  +       ¦ (Analiza sintaxis: ¦
+ ¦ Solo lee las 15 ¦          ¦ "Es un Join FETCH  ¦
+ ¦ líneas nuevas)  ¦          ¦ en capa de datos") ¦
+ +-----------------+          +--------------------+
+        ¦                                ¦
+        +--------------------------------+
+                        v
+         [ CRUZA CON plan.md / ca.md ]  ---> ¿Cumplió el plan?
+                        ¦
+                        v
+               +-----------------+
+               ¦    ENGRAM DB    ¦
+               ¦ Guarda claves:  ¦
+               ¦ - impl/{ID}/decisions
+               ¦ - impl/{ID}/patterns
+               +-----------------+
+		   
+		  
++-------------------------------------------------------------------------+
+¦ LEYENDA 3: El Flujo del Archivist (Gestión de Memoria Eficiente)        ¦
++-------------------------------------------------------------------------¦
+¦ Detalla cómo el 'archivist' usa 'git diff' y 'ast-grep' cruzados con    ¦
+¦ el plan para documentar (sin juzgar) las decisiones técnicas y          ¦
+¦ patrones en Engram, ahorrando tokens al no leer todo el proyecto.       ¦
++-------------------------------------------------------------------------+

@@ -1,0 +1,22 @@
+2. El Sistema de Clasificación (Plugin Link)
+Cómo el plugin intercepta el mensaje antes de que el Runner lo procese, evitando que el Runner tenga que "adivinar".
+
+[ DEVELOPER ] 
+      ¦
+      ?
++---------------+      +-----------------------------------+
+¦ IDE / CONSOLE ¦-----?¦ PLUGIN: flowtask-classifier      ¦
++---------------+      ¦ (Intercepta 'chat.message')       ¦
+                       +-----------------------------------+
+                                         ¦
+                                         ?
+                       +-----------------------------------+
+                       ¦ Inyecta: FLOWTASK_CLASSIFICATION  ¦
+                       ¦ en el System Prompt del Runner    ¦
+                       +-----------------------------------+
+                                         ¦
+                                         ?
+                       +-----------------------------------+
+                       ¦ RUNNER: Lee tag y elige Agente    ¦
+                       ¦ (ca-writer, planner, etc.)        ¦
+                       +-----------------------------------+

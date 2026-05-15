@@ -1,0 +1,32 @@
+
+               +-----------------------+
+               ¦    flowtask-runner    ¦
+               ¦ (Lee skill y delega)  ¦
+               +-----------------------+
+                          ¦
+         [ SKILL 'flujo-orquestacion' APLICA REGLAS ]
+                          ¦
+      AGENTE SILENCIADO   ¦    AGENTE ESPECIALIZADO USADO
+     (Flowtask Genérico)  ¦     (Stack TÃ©cnico)
+    --------------------- ¦ ---------------------------------
+                          ¦
+    [X] flowtask-         +-----> [?] TECH-LEAD-ORCHESTRATOR
+        constructor ------+->         (Constructor Multi-capa)
+                          ¦
+    [X] flowtask-         +-----> [?] @AGENT-TEST-EXPERT
+        tester      ------+         (Pruebas JUnit/Mockito)
+                          ¦
+    [X] flowtask-         +-----> [?] @AGENT-CODE-REVIEWER
+        validator   ------+         (Vulnerabilidades/Arquitectura)
+
+	  
+	  
+	  
+	  
++-------------------------------------------------------------------------+
+¦ LEYENDA 2: La Skill de Enrutamiento (Comparativa de Silencio)           ¦
++-------------------------------------------------------------------------¦
+¦ Ilustra el contrato de exclusión. El 'runner' lee la skill y            ¦
+¦ "silencia" (omite) a los validadores genéricos de Flowtask, cediendo    ¦
+¦ el control a los expertos nativos del sub-orquestador (ej. QITS).       ¦
++-------------------------------------------------------------------------+

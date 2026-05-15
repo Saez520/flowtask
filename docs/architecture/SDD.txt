@@ -1,0 +1,66 @@
++-------------------------------------------------------------+
+¦                   ANALISTA DE REQUISITOS                    ¦
+¦ Metodologías: SDD (Spec-Driven) + BDD (Behavior-Driven)     ¦
+¦ Acción: Traduce requerimientos a reglas de negocio (BDD)    ¦
+¦ Entregable: "master-spec.md" (Especificación Épica)         ¦
++-------------------------------------------------------------+
+                              ¦
+          +----------------------------------------+
+          ¦          TRABAJO EN PARALELO           ¦
+          v                                        v
++-------------------------------+  +-------------------------------+
+¦         DESARROLLADOR         ¦  ¦              QA               ¦
+¦ Metodologías: DDD + TDD       ¦  ¦ Metodología: BDD              ¦
+¦ Herramienta: Flowtask         ¦  ¦ Herramienta: Automatización   ¦
++-------------------------------¦  +-------------------------------¦
+¦ 1. Adaptación Spec:           ¦  ¦ 1. Preparación (Día 1):       ¦
+¦    Usa agente modificado      ¦  ¦    Toma el "master-spec.md"   ¦
+¦    (ej. flowtask-subtasker)   ¦  ¦    creado por el analista.    ¦
+¦    para dividir la épica      ¦  ¦                               ¦
+¦    en múltiples carpetas CA.  ¦  ¦                               ¦
+¦                               ¦  ¦                               ¦
+¦ 2. Arquitectura (DDD):        ¦  ¦ 2. Desarrollo de Pruebas:     ¦
+¦    Define reglas, capas y     ¦  ¦    Programa pruebas de UI     ¦
+¦    convenciones en la memoria ¦  ¦    y de integración (E2E)     ¦
+¦    persistente de Engram.     ¦  ¦    basadas en los escenarios  ¦
+¦                               ¦  ¦    Dado/Cuando/Entonces.      ¦
+¦ 3. Planificación Técnica:     ¦  ¦                               ¦
+¦    Usa `flowtask-planner`.    ¦  ¦                               ¦
+¦                               ¦  ¦                               ¦
+¦ 4. CHECKPOINT HUMANO:         ¦  ¦                               ¦
+¦    Audita y aprueba el plan.  ¦  ¦                               ¦
+¦                               ¦  ¦                               ¦
+¦ 5. Implementación (TDD):      ¦  ¦                               ¦
+¦    Usa `flowtask-tester` para ¦  ¦                               ¦
+¦    pruebas unitarias previas. ¦  ¦                               ¦
+¦                               ¦  ¦                               ¦
+¦ 6. Construcción:              ¦  ¦                               ¦
+¦    `flowtask-constructor`     ¦  ¦                               ¦
+¦    escribe el código final.   ¦  ¦                               ¦
++-------------------------------+  +-------------------------------+
+                ¦                                  ¦
+                +----------------------------------+
+                                 v
+                 +---------------------------------+
+                 ¦        VALIDACIÓN FINAL         ¦
+                 ¦ QA ejecuta la suite E2E general ¦
+                 ¦ contra el sistema ensamblado.   ¦
+                 +---------------------------------+
+		     
+		     
+			
++-------------------------------------------------------------+
+¦                  GLOSARIO DE ABREVIACIONES                  ¦
++-------------------------------------------------------------¦
+¦ SDD : Spec-Driven Development (Desarrollo basado en la      ¦
+¦       especificación principal)                             ¦
+¦ BDD : Behavior-Driven Development (Desarrollo basado en el  ¦
+¦       comportamiento: Dado que / Cuando / Entonces)         ¦
+¦ DDD : Domain-Driven Design (Diseño guiado por el dominio:   ¦
+¦       Definición de arquitectura y convenciones)            ¦
+¦ TDD : Test-Driven Development (Desarrollo basado en pruebas:¦
+¦       Crear pruebas unitarias antes que el código)          ¦
+¦ CA  : Criterio de Aceptación (La sub-tarea a desarrollar)   ¦
+¦ E2E : End-to-End (Pruebas de extremo a extremo del sistema) ¦
+¦ QA  : Quality Assurance (Aseguramiento de la Calidad)       ¦
++-------------------------------------------------------------+
