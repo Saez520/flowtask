@@ -1,0 +1,33 @@
+
+ NIVEL 1: CAPA DE NEGOCIO Y METODOLOGÍA (Flowtask Core)
+ +--------------------------------------------------------+
+ ¦ flowtask-runner (Director de Flujo / Agnóstico)        ¦
+ ¦  +-> flowtask-ca-writer (Divide tareas SDD/BDD)        ¦
+ ¦  +-> flowtask-planner (Genera plan técnico)            ¦
+ ¦  +-> [ CHECKPOINT HUMANO ] (Aprueba el plan)           ¦
+ +--------------------------------------------------------+
+                            ¦ (Usa tool 'task' para delegar el código)
+                            v
+ NIVEL 2: CAPA DE SUB-ORQUESTACIÓN (Director Técnico)
+ +--------------------------------------------------------+
+ ¦ QITS-ORCHESTRATOR (Líder Java/Spring)                  ¦
+ ¦  +-> Recibe el plan y audita dependencias              ¦
+ ¦  +-> Aplica Checklist de Gating                        ¦
+ +--------------------------------------------------------+
+         ¦ (task)         ¦ (task)          ¦ (task)
+         v                v                 v
+ NIVEL 3: CAPA DE EXPERTOS (Línea de Ensamblaje Estricta)
+ +--------------+  +--------------+  +--------------------+
+ ¦ @AGENT-      ¦  ¦ @AGENT-      ¦  ¦ @AGENT-            ¦
+ ¦ DATA-EXPERT  ¦  ¦ LOGIC-EXPERT ¦  ¦ API-EXPERT         ¦
+ ¦ (DAO, SQL)   ¦  ¦ (Managers)   ¦  ¦ (REST, Seguridad)  ¦
+ +--------------+  +--------------+  +--------------------+
+ 
+ 
++-------------------------------------------------------------------------+
+¦ LEYENDA 4: Flujo Completo (Las 3 Capas de la Arquitectura)              ¦
++-------------------------------------------------------------------------¦
+¦ Visión macro de la separación de responsabilidades: El 'runner'         ¦
+¦ como Director de Metodología, el 'QITS-ORCHESTRATOR' como Tech Lead     ¦
+¦ y los subagentes hiper-especializados como Línea de Ensamblaje.         ¦
++-------------------------------------------------------------------------+

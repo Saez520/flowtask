@@ -1,0 +1,45 @@
+
+ +--------------------------------------------------------+
+ ¦                 RAMA PRINCIPAL (Local/Dev)             ¦
+ ¦ El 'flowtask-runner' reside aquí de forma segura.      ¦
+ +--------------------------------------------------------+
+                         ¦ 
+                         ¦ 1. Delega y aísla (Crea Worktree)
+                         v
+ +--------------------------------------------------------+
+ ¦            GIT WORKTREE AISLADO (Sandbox)              ¦
+ ¦ Entorno paralelo temporal (ej. /.worktrees/CA-001/)    ¦
+ ¦                                                        ¦
+ ¦ +----------------------------------------------------+ ¦
+ ¦ ¦ QITS-ORCHESTRATOR Y SUB-AGENTES EXPERTOS           ¦ ¦
+ ¦ ¦ - Escriben código y modifican archivos.            ¦ ¦
+ ¦ ¦ - Ejecutan pruebas unitarias (si rompen algo,      ¦ ¦
+ ¦ ¦   solo se rompe este entorno aislado).             ¦ ¦
+ ¦ +----------------------------------------------------+ ¦
+ +--------------------------------------------------------+
+                         ¦ 
+                         ¦ 2. Sub-orquestador reporta éxito
+                         v
+ +--------------------------------------------------------+
+ ¦          EVALUACIÓN Y MEMORIA (flowtask-archivist)     ¦
+ ¦ Usa 'git diff' entre el Worktree y la Rama Principal   ¦
+ ¦ para extraer los patrones y guardar en Engram.         ¦
+ +--------------------------------------------------------+
+                         ¦ 
+                         ¦ 3. Integración Segura (Merge/Apply)
+                         v
+ +--------------------------------------------------------+
+ ¦                 RAMA PRINCIPAL (Local/Dev)             ¦
+ ¦ ?? El código funcional y auditado se une a tu rama.    ¦
+ +--------------------------------------------------------+
+ 
+ 
++-------------------------------------------------------------------------+
+¦ LEYENDA 5: Ciclo de Vida y Aislamiento (Git Worktrees)                  ¦
++-------------------------------------------------------------------------¦
+¦ Demuestra la mitigación de riesgos. El 'runner' delega la tarea a un    ¦
+¦ 'Git Worktree' (una copia aislada del proyecto). Los sub-agentes        ¦
+¦ codifican y prueban allí sin afectar la rama principal. Solo cuando el  ¦
+¦ trabajo termina y el 'archivist' documenta el 'diff', el código se      ¦
+¦ integra a la rama del desarrollador humano.                             ¦
++-------------------------------------------------------------------------+

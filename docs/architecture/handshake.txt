@@ -1,0 +1,80 @@
+6. Handshake Protocol: Gestión de Identidad y Continuidad
+
+       [ INPUT: /run CA-018 ]
+                 ¦
+                 ?
++----------------------------------+      +--------------------------+
+¦        RUNNER (MANAGER)          ¦      ¦      ENGRAM STORAGE      ¦
+¦                                  ¦      ¦  (Topic: flow-state/...) ¦
+¦ 1. ¿Existe handshake para este?  ¦?----?¦                          ¦
++----------------------------------+      +--------------------------+
+         ¦                                             ¦
+         +- [ NO (Nuevo CA) ]                          ¦
+         ¦  1. Toma BaseName de lista:                 ¦
+         ¦     (Aitana, Kael, Lyra...)                 ¦
+         ¦  2. Crea Mapa de Instancias                 ¦
+         ¦  3. Guarda en Engram -----------------------¦
+         ¦                                             ¦
+         +- [ SÍ (Continuación) ]                      ¦
+            1. Recupera BaseName                       ¦
+            2. Recupera 'task_id' del sub-agente       ¦
+            3. Lee último Checkpoint ------------------+
+                 ¦
+                 ?
++----------------------------------+
+¦      CONSTRUCCIÓN DEL PROMPT     ¦
+¦                                  ¦
+¦ - Name: {BaseName}-{AgentType}   ¦ (Ej: "Aitana-Planner")
+¦ - Context: Snapshot de Engram    ¦
+¦ - TaskID: {task_id_existente}    ¦
++----------------------------------+
+                 ¦
+                 ?
++----------------------------------+      +--------------------------+
+¦      INVOCACIÓN DE AGENTE        ¦      ¦      SUB-AGENTE (P)      ¦
+¦     (Task Tool / Claude)         ¦-----?¦    (Ejecuta Tarea)       ¦
++----------------------------------+      +--------------------------+
+                 ¦                                     ¦
+                 ¦          [ RESPUESTA ]              ¦
+                 ¦?------------------------------------+
+                 ¦
+      +----------?----------+
+      ¦  ACTUALIZACIÓN MAPA ¦      +--------------------------+
+      ¦                     ¦      ¦      ENGRAM STORAGE      ¦
+      ¦ 1. Captura nuevo ID ¦-----?¦ (flow-state/CA-018/inst) ¦
+      ¦ 2. Timestamp        ¦      ¦                          ¦
+      +---------------------+      +--------------------------+
+	
+	
+Desglose de los Componentes del Handshake:
+
+1. El Mapa de Instancias (En Engram)
+Es el archivo de estado que el Runner consulta. Evita la duplicidad de hilos.
+{
+  "base_name": "Aitana",
+  "agents": {
+    "ca-writer": { 
+      "task_id": "T123...", 
+      "instance_name": "Aitana-ca-writer",
+      "last_resume": "2026-05-14T..." 
+    },
+    "planner": { 
+      "task_id": "T456...", 
+      "instance_name": "Aitana-planner"
+    }
+  }
+}
+
+2. Naming Pool (Identidad Visual)
+El Runner asigna nombres de una lista predefinida (Aitana, Kael, Lyra, Zev, Thalía, Iago, Elowen, Mael).
+*   ¿Por qué? Porque es más fácil para el desarrollador identificar que "Aitana-Planner" está hablando de lo mismo que "Aitana-Constructor", en lugar de manejar IDs de sistema aburridos.
+
+3. Context Injection (La Memoria de Trabajo)
+Antes de que el agente empiece a trabajar, el Runner inyecta:
+1.  Hallazgos de memoria: Lo que se aprendió en sesiones anteriores.
+2.  Snapshot de estado: El "en qué nos quedamos" recuperado de Engram.
+4. Self-Healing (Recuperación Automática)
+Si el task_id ha expirado (por tiempo de inactividad de la API del LLM):
+1.  El Runner detecta el fallo.
+2.  Limpia el ID fallido de Engram.
+3.  Relanza al agente en un hilo nuevo inyectando el último Checkpoint, por lo que el agente "no siente" que perdió la memoria, solo que es un nuevo día.

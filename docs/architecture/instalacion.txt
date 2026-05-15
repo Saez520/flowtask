@@ -1,0 +1,15 @@
+5. El Sistema de Instalación (Multi-Entorno)
+Cómo FlowTask se "clona" a sí mismo para funcionar en diferentes entornos (OpenCode, Claude Code, Standalone).
+
+[ FLOWTASK SOURCE ]
+        ¦
+        ?
++--------------------+
+¦    INSTALLER.JS    ¦
++--------------------+
+         ¦
+         +-? [ opencode ] ---? Mergea opencode.json + .opencode/skills/
+         ¦
+         +-? [ claude ] -----? Genera CLAUDE.md + .claude/agents/
+         ¦
+         +-? [ standalone ] -? Copia .flowtask/ (agents, skills, plugins)

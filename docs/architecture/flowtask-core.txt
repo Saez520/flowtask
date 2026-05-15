@@ -1,0 +1,19 @@
+1. Arquitectura Global: El "Handshake" Modular
+Este diagrama muestra cómo se conectan los módulos principales. El Runner no trabaja solo; orquestra la relación entre el Input, la Memoria (Engram) y los Sub-agentes.
+
++-------------------------------------------------------------+
+¦                   FLOWTASK CORE ECOSYSTEM                   ¦
++-------------------------------------------------------------+
+                               ¦
+       +-----------------------?-----------------------+
+       ¦             RUNNER (Orchestrator)             ¦?----+
+       ¦  (Identifica Intención -> Delega -> Reporta)  ¦     ¦
+       +-----------------------------------------------+     ¦
+             ¦           ¦              ¦           ¦        ¦
+    +--------?------+ +--?---------+ +--?--------+ +?---------+
+    ¦    PLUGINS    ¦ ¦   SKILLS   ¦ ¦ MEMORIA   ¦ ¦  AGENTES  ¦
+    ¦ (Classifier)  ¦ ¦ (Protocols)¦ ¦ (Engram)  ¦ ¦ (Workers) ¦
+    +---------------+ +------------+ +-----------+ +----------+
+           ?                 ¦              ?            ¦
+           ¦                 ¦              ¦            ¦
+    [USER INPUT]-------?[WORKSPACE]?--------+      [FS CHANGES]

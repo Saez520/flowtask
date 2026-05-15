@@ -1,0 +1,18 @@
+4. Integración de Skills (Modularidad)
+Las Skills son el pegamento. Cuando un agente se activa, "carga" la skill necesaria para saber cómo usar las herramientas (como Engram).
+
+      [ TASK TOOL ]
+           ¦
+           ?
++----------------------+      +----------------------------+
+¦   SUB-AGENTE (P)     ¦      ¦      SKILL-REGISTER        ¦
+¦ (ej: Constructor)    ¦?----?¦ (memory-protocol, etc.)    ¦
++----------------------+      +----------------------------+
+           ¦                                 ¦
+           ¦      1. Carga instrucciones ----+
+           ¦      2. Expone herramientas (mcp)
+           ¦
+           ?
++----------------------+
+¦  ACCIÓN EN CÓDIGO    ¦
++----------------------+
