@@ -88,6 +88,14 @@
       "sessions": 2,
       "memories": 5,
       "prompts": 13
+    },
+    {
+      "id": "6a551336",
+      "created_by": "juan.saez",
+      "created_at": "2026-05-15T05:30:34Z",
+      "sessions": 1,
+      "memories": 17,
+      "prompts": 0
     }
   ]
 }
