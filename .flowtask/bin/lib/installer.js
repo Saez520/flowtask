@@ -115,7 +115,8 @@ ${COLORS.blue}╔═════════════════════
       // ── Step 3: Migrate legacy root .flowtask/ if present ────────────────
       logStep(3, "Checking existing installation...");
       const rootFlowtask = path.join(projectDir, ".flowtask");
-      if (id !== "standalone" && fileExists(rootFlowtask)) {
+      const isSourceDir = path.resolve(rootFlowtask) === path.resolve(flowtaskDir);
+      if (id !== "standalone" && !isSourceDir && fileExists(rootFlowtask)) {
         logWarn(`Found root .flowtask/ — moving contents to ${targetSubDir}...`);
         if (!fs.existsSync(TARGET_DIR)) fs.mkdirSync(TARGET_DIR, { recursive: true });
         fs.readdirSync(rootFlowtask).forEach((file) => {
@@ -182,9 +183,10 @@ ${COLORS.blue}╔═════════════════════
     }
   }
 
-  // Cleanup empty root .flowtask if it was migrated
+  // Cleanup empty root .flowtask if it was migrated (skip if it's the source dir)
   const rootFT = path.join(projectDir, ".flowtask");
-  if (fileExists(rootFT) && targets.some((t) => t.id !== "standalone")) {
+  const isSrcDir = path.resolve(rootFT) === path.resolve(flowtaskDir);
+  if (!isSrcDir && fileExists(rootFT) && targets.some((t) => t.id !== "standalone")) {
     try { if (fs.readdirSync(rootFT).length === 0) fs.rmdirSync(rootFT); } catch (_) {}
   }
 
