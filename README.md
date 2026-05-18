@@ -242,6 +242,15 @@ Engram stores only operational metadata (flow states, snapshots, project convent
 
 ```
 FlowTask/
+├── .claude/                      # OpenCode CLI environment
+│   ├── agents/                   # OpenCode agent definitions
+│   │   └── flowtask-*.md         # FlowTask subagents
+│   └── skills/                   # OpenCode skills
+│       ├── excalidraw/
+│       │   └── SKILL.md          # Diagram/visualization skill
+│       ├── output-verbosity/
+│       │   └── SKILL.md          # Output formatting skill
+│       └── ...
 ├── .flowtask/
 │   ├── bin/
 │   │   └── flowtask.js           # CLI entry point (npm link)
@@ -251,19 +260,26 @@ FlowTask/
 │   │   ├── ca-writer.md          # Requirements clarification and CA generation
 │   │   ├── planner.md            # Decision-complete plan generation
 │   │   ├── plan-auditor.md       # Plan verification
-│   │   ├── constructor.md        # Implementation
+│   │   ├── constructor.md         # Implementation
 │   │   ├── validator.md          # Validation
 │   │   ├── inspector.md          # Project exploration and analysis
 │   │   ├── initializer.md        # Project scanning and Engram population
 │   │   ├── logger.md             # Logging instrumentation
 │   │   └── tester.md             # Test generation
+│   ├── checkpoints/             # Checkpoint state storage
+│   ├── claude/                   # FlowTask CLI environment (OpenCode)
 │   ├── plugins/
 │   │   └── flowtask-classifier/  # Input classification plugin (TypeScript)
 │   │       ├── src/
-│   │       │   ├── index.ts
-│   │       │   └── classifier.ts
+│   │       │   └── index.ts      # Plugin entry point
 │   │       └── dist/             # Compiled output
+│   ├── scripts/                  # Utility scripts
+│   │   ├── version-watcher.ps1   # Engram version monitoring
+│   │   ├── buffer-sync.ps1       # Buffer synchronization
+│   │   └── update-engram.ps1     # Engram update script
 │   ├── skills/                   # OpenCode skills
+│   │   ├── checkpoint-mixin/
+│   │   │   └── SKILL.md          # Checkpoint persistence protocol
 │   │   ├── memory-protocol/
 │   │   │   └── SKILL.md          # Engram mem_* usage protocol
 │   │   ├── plan-template/
@@ -278,8 +294,17 @@ FlowTask/
 │       ├── new-ca.md             # /new-ca
 │       ├── run.md                # /run
 │       ├── inspect.md            # /inspect
-│       ├── evolve-agent.md       # /evolve-agent
-│       └── status.md             # /status
+│       ├── evolve-agent.md        # /evolve-agent
+│       ├── status.md             # /status
+│       └── update.md              # /update
+├── .opencode/                    # Additional OpenCode skills
+│   └── skills/
+├── docs/                         # Additional documentation
+├── Flowtask-Architecture/       # Architecture documentation
+├── presentacion-flowtask.md      # Project presentation
+├── opencode.json                 # OpenCode configuration
+├── tui.json                      # TUI configuration
+├── update-engram.ps1             # Engram update script (root)
 └── .workspace/                   # Generated per project (git-ignored)
     └── CA-{ID}/
         ├── ca.md
