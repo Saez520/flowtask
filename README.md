@@ -9,7 +9,9 @@ FlowTask provides specialized AI agents that work together to automate software 
 ## Requirements
 
 - **OpenCode**: [Install OpenCode](https://opencode.ai/docs/)
-- **Engram**: Persistent memory system for AI agents
+- **Engram**: Persistent memory system for AI agents (MCP-based)
+- **LSP** (Language Server Protocol): Semantic code discovery — see [docs/architecture/LSP + AST-Grep.txt](docs/architecture/LSP%20+%20AST-Grep.txt)
+- **ast-grep**: Structural pattern matching via AST — see [docs/architecture/LSP + AST-Grep.txt](docs/architecture/LSP%20+%20AST-Grep.txt)
 
 ### Install Engram
 
@@ -321,7 +323,7 @@ FlowTask/
 | ----------------------- | -------------------------------------------------------------------------------- |
 | `flowtask-runner`       | Primary orchestrator — always active, classifies intent, coordinates subagents   |
 | `flowtask-ca-writer`    | Clarifies requirements, classifies intention, detects AI-slop, writes CA to file |
-| `flowtask-planner`      | Generates decision-complete plans, saves to `.workspace/`                        |
+| `flowtask-planner`      | Generates decision-complete plans using **LSP + ast-grep** for semantic code discovery and structural extraction — reduces context noise by ~91% vs Glob+Grep |
 | `flowtask-plan-auditor` | Verifies plan executability, file references, and QA scenarios                   |
 | `flowtask-constructor`  | Implements plans following project conventions                                   |
 | `flowtask-validator`    | Validates implementation against plan                                            |
