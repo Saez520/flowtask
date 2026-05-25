@@ -75,55 +75,34 @@ Las tareas de mantenimiento solo se ejecutan cuando el desarrollador solicita ex
 
 ***
 
-## TopicManager — Engram Handshake y Naming
+## Handshake Protocol
 
-El runner gestiona las instancias de sub-agentes mediante un protocolo de **Handshake** en Engram, asignando un **único nombre base (BaseName)** por CA y derivando los nombres de instancia.
+El runner utiliza la skill `handshake-protocol` para gestionar la asignación de nombres de instancia, `task_id` y determinación de escenario (nuevo hilo vs reanudación). La skill es agnóstica de orquestador — cualquier herramienta puede cargarla y obtener el contrato de handshake.
 
 ### Naming Prioritario
-Lista de nombres base disponibles: `['Aitana', 'Kael', 'Lyra', 'Zev', 'Thalía', 'Iago', 'Elowen', 'Mael']`.
 
-### Handshake Protocol (getOrCreateInstance)
-Antes de invocar un sub-agente, el Runner debe:
+Lista de nombres base disponibles que el runner provee a la skill: `['Aitana', 'Kael', 'Lyra', 'Zev', 'Thalía', 'Iago', 'Elowen', 'Mael']`.
 
-1. **Check Engram Handshake**: 
-   `mem_search(query: "flow-state/{CA_ID}/instances")`
-   - **Si `mem_search` falla (Engram no disponible)**: Todo se trata como **Caso C (Nuevo CA)** y **Escenario A (Initial Prompt)**. No se implementa mecanismo alternativo de discovery — esta limitación está aceptada.
-2. **Determinar BaseName**:
-   - **Caso A (Mapa existe con base_name)**: Usar el `base_name` persistido.
-   - **Caso B (Mapa existe sin base_name - Normalización)**: Extraer el prefijo (antes del primer `-`) del primer agente en el mapa y guardarlo como `base_name`.
-   - **Caso C (Nuevo CA)**: Asignar el **siguiente nombre base disponible** de la lista (verificando otros CAs en Engram si es posible, o por orden) y persistirlo.
-3. **Construir instance_name**:
-   - El nombre de instancia final será: `{BaseName}-{agent_type}` (ej: `Aitana-planner`, `Aitana-constructor`).
-4. **Persistir Handshake**:
-    `mem_save(topic_key: "flow-state/{CA_ID}/instances", ...)` con la estructura:
-    ```json
-    {
-      "base_name": "Aitana",
-      "agents": {
-        "ca-writer": { 
-          "task_id": "...", 
-          "instance_name": "Aitana-ca-writer",
-          "last_resume": "2026-04-28T..." 
-        },
-        "planner": { 
-          "task_id": "...", 
-          "instance_name": "Aitana-planner",
-          "last_resume": "..." 
-        }
-      }
-    }
-    ```
-    **Importante**: Captura y guarda el `task_id` inmediatamente después de la primera respuesta exitosa del sub-agente.
+### Uso
 
-### Context Injection
-Antes de ejecutar `task()`, el Runner debe:
-1. `mem_context(project: "...")` y `mem_search(query: "{contexto relevante}")`.
-2. Inyectar los hallazgos en el prompt del agente dentro de un bloque:
-   ```xml
-   <project_context>
-   [Hallazgos de memoria]
-   </project_context>
-   ```
+Antes de invocar cualquier subagente, el runner DEBE cargar la skill:
+```
+skill({ name: "handshake-protocol" })
+```
+
+La skill recibe como parámetros desde el runner:
+- `ca_id` — ID del CA actual (ej: `"CA-010"`)
+- `agent_type` — tipo de agente a invocar (ej: `"planner"`, `"constructor"`, `"ca-writer"`)
+- `base_names` — lista de nombres base disponibles (provista por el runner)
+
+La skill ejecuta el **Handshake Protocol (getOrCreateInstance)** y **Context Injection**, y devuelve un contrato de 3 campos:
+- `task_id` (string | null) — el `task_id` existente para reanudación, o `null` para nuevo hilo
+- `instance_name` (string) — nombre de instancia asignado (ej: `Lyra-planner`)
+- `scenario` (string) — `"A"` para nuevo hilo, `"B"` para reanudación
+
+El runner recibe este contrato y procede con el Checkpoint Protocol según el `scenario` y usando `task_id` e `instance_name`.
+
+> **Importante**: La skill NO dicta cómo invocar al subagente. El formato canónico de `task()` permanece en este archivo como fuente única de verdad para el runner.
 
 ***
 
@@ -132,6 +111,7 @@ Antes de ejecutar `task()`, el Runner debe:
 ```
 skill({ name: "memory-protocol" })        ← cargar antes de usar mem_*
 skill({ name: "manual-classification" })  ← cargar si no hay clasificación inyectada en contexto
+skill({ name: "handshake-protocol" })   ← cargar antes de invocar subagentes
 ```
 
 ***
@@ -156,8 +136,8 @@ Formato para invocar:
 Flujo de delegación — sin excepciones:
 
 1. Identificas el subagente por la tabla.
-2. Realizas el **Handshake Protocol** para obtener/asignar `instance_name`.
-3. Realizas **Context Injection** desde Engram.
+2. Cargas `handshake-protocol` y ejecutas el Handshake para obtener `{ task_id, instance_name, scenario }`.
+3. La skill ya ejecutó **Context Injection** (mem_context + mem_search). Incorporas los hallazgos al prompt.
 4. **Antes de invocar**: verificar si existe checkpoint en Engram (`flow-state/{CA_ID}/{agente}`).
 5. Invocas `task(...)`.
 
@@ -167,7 +147,7 @@ Flujo de delegación — sin excepciones:
 
 ### Antes de invocar sub-agente (Handshake & Context)
 
-1. **Handshake**: Recuperar o asignar BaseName y derivar `instance_name` ({BaseName}-{agente}).
+1. **Handshake**: Cargar `handshake-protocol` y obtener `{ task_id, instance_name, scenario }` desde la skill.
 2. **Bifurcación de Escenario**:
 
 **Escenario A: Initial Prompt (Nuevo hilo)**
