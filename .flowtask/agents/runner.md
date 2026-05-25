@@ -87,6 +87,7 @@ Antes de invocar un sub-agente, el Runner debe:
 
 1. **Check Engram Handshake**: 
    `mem_search(query: "flow-state/{CA_ID}/instances")`
+   - **Si `mem_search` falla (Engram no disponible)**: Todo se trata como **Caso C (Nuevo CA)** y **Escenario A (Initial Prompt)**. No se implementa mecanismo alternativo de discovery — esta limitación está aceptada.
 2. **Determinar BaseName**:
    - **Caso A (Mapa existe con base_name)**: Usar el `base_name` persistido.
    - **Caso B (Mapa existe sin base_name - Normalización)**: Extraer el prefijo (antes del primer `-`) del primer agente en el mapa y guardarlo como `base_name`.
@@ -170,7 +171,7 @@ Flujo de delegación — sin excepciones:
 2. **Bifurcación de Escenario**:
 
 **Escenario A: Initial Prompt (Nuevo hilo)**
-Si NO existe un `task_id` válido para el agente en el mapa de instancias:
+Si NO existe un `task_id` válido para el agente en el mapa de instancias, o si Engram no está disponible (`mem_search` falló):
 - Invocar `task()` con el prompt original + contexto inyectado.
 - Instrucción: "Tu nombre de instancia es {instance_name}. Sigue las instrucciones de tu rol."
 
@@ -199,12 +200,32 @@ Si la herramienta `task` (o `Agent` en Claude) retorna un error indicando que el
 2. **Reintento**: Relanzar la tarea automáticamente usando el flujo del **Escenario A (Initial Prompt)**.
 3. No es necesario pedir confirmación al desarrollador para este reintento técnico.
 
+### Formato canónico de `task()` (fuente única de verdad)
+
+Los templates de flujo referencian este formato en prosa. No duplican la sintaxis.
+
+**Escenario A — Initial Prompt (sin `task_id`):**
+
 ```
 task(
-  prompt: "[prompt completo del usuario o contexto necesario sin parafrasear]",
-  subagent_type: "[tipo]"
+  prompt: "[prompt completo del usuario + contexto inyectado]",
+  subagent_type: "[tipo]",
+  description: "[opcional, para trazabilidad]"
 )
 ```
+
+**Escenario B — Resume Prompt (con `task_id`):**
+
+```
+task(
+  prompt: "[prompt de reanudación + contexto inyectado]",
+  subagent_type: "[tipo]",
+  task_id: "ses_...",
+  description: "[opcional, para trazabilidad]"
+)
+```
+
+> **Regla**: Los templates de flujo referencian este formato. No duplican la sintaxis.
 
 ***
 
@@ -246,23 +267,13 @@ mem_search(query: "CA-{ID}", type: "decision", scope: "project")
 
 **Si no existe:** Invoca ca-writer con el prompt del usuario — el ca-writer conduce la conversación:
 
-```
-task(
-  prompt: "{prompt original del usuario}",
-  subagent_type: "flowtask-ca-writer"
-)
-```
+Invoca ca-writer usando el formato canónico (Escenario A/B según Handshake). Prompt: el texto original del usuario.
 
 ***
 
 ### Paso 2 — Planificación
 
-```
-task(
-  prompt: "{flow state del CA}",
-  subagent_type: "flowtask-planner"
-)
-```
+Invoca planner usando el formato canónico (Escenario A/B según Handshake). Prompt: flow state del CA desde Engram.
 
 ***
 
@@ -280,23 +291,13 @@ Espera respuesta explícita del desarrollador:
 
 ### Paso 4 — Constructor
 
-```
-task(
-  prompt: "{flow state del plan}",
-  subagent_type: "flowtask-constructor"
-)
-```
+Invoca constructor usando el formato canónico (Escenario A/B según Handshake). Prompt: flow state del plan desde Engram.
 
 ***
 
 ### Paso 5 — Validator
 
-```
-task(
-  prompt: "{flow state del plan}",
-  subagent_type: "flowtask-validator"
-)
-```
+Invoca validator usando el formato canónico (Escenario A/B según Handshake). Prompt: flow state del plan desde Engram.
 
 **APPROVED** → finaliza el flujo.
 **RECHAZADO** → vuelve al Paso 4 (máximo 2 intentos).
@@ -324,12 +325,7 @@ Revisa la validación en Engram y el código.
 
 ## Flujo: /inspect
 
-```
-task(
-  prompt: "{prompt original del usuario}",
-  subagent_type: "flowtask-inspector"
-)
-```
+Invoca inspector usando el formato canónico (Escenario A/B según Handshake). Prompt: el texto original del usuario.
 
 El inspector responde al desarrollador. Si el desarrollador solicita una acción posterior (crear CA, evolucionar agente), delega según corresponda. Si no, fin del flujo.
 
@@ -341,17 +337,33 @@ El inspector responde al desarrollador. Si el desarrollador solicita una acción
 2. Informa al usuario que inicia Evolution Mode.
 3. Backup antes de cualquier modificación: `.flowtask/agents-backup/[agente]-[timestamp].md`
 4. Invoca ca-writer:
-   ```
-   task(
-     prompt: "{prompt original del usuario}",
-     subagent_type: "flowtask-ca-writer"
-   )
-   ```
+   Invoca ca-writer usando el formato canónico (Escenario A/B según Handshake). Prompt: el texto original del usuario.
 5. Invoca planner con el snapshot del CA generado.
 6. **SIEMPRE** invoca plan-auditor.
 7. Espera confirmación del usuario ("ejecutar").
 8. Invoca constructor.
 9. Confirma al usuario que la evolución fue completada.
+
+***
+
+## Purga de `task_id` huérfanos
+
+Al finalizar un flujo (`/run` completado, sesión terminada), el runner debe ejecutar una verificación de `task_id` en el mapa de instancias antes del `mem_session_summary`.
+
+### Protocolo de purga
+
+1. **Recuperar mapa**: `mem_search(query: "flow-state/{CA_ID}/instances")`.
+2. **Verificar cada `task_id`**: Para cada agente en el mapa, invocar al subagente con el `task_id` persistido y un prompt mínimo de verificación.
+3. **Evaluar resultado**:
+   - **Si la invocación falla con error** (el `task_id` no existe): Eliminar la entrada del agente del mapa vía `mem_save` y registrar: `[PURGE] task_id huérfano eliminado: {instance_name} ({task_id})`.
+   - **Si la invocación tiene éxito**: El `task_id` es válido. Conservarlo en el mapa.
+4. **Ejecutar `mem_session_summary`** solo después de completar la purga.
+
+### Limitaciones conocidas
+
+- **GAP #4 — Sesiones zombie**: Si OpenCode recibe un `task_id` huérfano y crea una sesión nueva silenciosamente (en lugar de fallar), este mecanismo NO lo detecta. La entrada se conserva incorrectamente en el mapa. Aceptado como limitación — requiere herramienta externa (`task_status`) para resolverse.
+- **Si Engram no está disponible**: La purga se omite. Los `task_id` huérfanos persisten hasta la próxima sesión con Engram funcional.
+- **Self-Healing reactivo**: El manejo de errores en la invocación normal (línea 196-201) sigue activo y es el mecanismo primario de detección durante la operación.
 
 ***
 
