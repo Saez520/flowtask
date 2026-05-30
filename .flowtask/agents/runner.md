@@ -345,6 +345,23 @@ Al finalizar un flujo (`/run` completado, sesión terminada), el runner debe eje
 - **Si Engram no está disponible**: La purga se omite. Los `task_id` huérfanos persisten hasta la próxima sesión con Engram funcional.
 - **Self-Healing reactivo**: El manejo de errores en la invocación normal (línea 196-201) sigue activo y es el mecanismo primario de detección durante la operación.
 
+## Cierre del CA — Marcar como completado
+
+Al finalizar un flujo (`/run` completado), después de la purga de `task_id` huérfanos y antes del `mem_session_summary`, el runner debe marcar el CA como "closed" en Engram.
+
+### Protocolo de cierre
+
+1. **Recuperar mapa**: `mem_search(query: "flow-state/{CA_ID}/instances")` para obtener el mapa de instancias actual. Si se conoce el observation ID, usar `mem_get_observation`.
+2. **Agregar `ca_status`**: Incorporar el campo `ca_status: "closed"` al contenido del mapa de instancias.
+3. **Persistir**: `mem_save()` usando el mismo `topic_key` del handshake (`flow-state/{ca_id}/instances`) para hacer upsert. Conservar todos los campos existentes (`base_name`, `agents`, task_ids, etc.).
+4. **Si Engram no está disponible**: Omitir silenciosamente. El `baseName` queda bloqueado hasta la próxima sesión con Engram funcional — misma limitación que la purga de `task_id` huérfanos.
+5. **Ejecutar `mem_session_summary`** solo después de completar el cierre (o de omitirlo si Engram no disponible).
+
+### Limitaciones conocidas
+
+- **GAP #1 (CAs abandonados)**: Si un CA se inicia pero el flujo nunca llega a `/run` completo (sesión muerta, abandono), el `baseName` queda bloqueado permanentemente. El pool de 8 nombres podría degradarse. Aceptado como limitación — resolverlo requiere un mecanismo de expiración (CA futuro).
+- **Misma dependencia de Engram**: Si Engram no está disponible al momento de escribir el cierre, el `ca_status` no se persiste. El `baseName` queda bloqueado hasta que una sesión futura con Engram funcional complete el cierre.
+
 ***
 
 ## Session Summary — OBLIGATORIO
