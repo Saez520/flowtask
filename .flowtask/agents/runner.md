@@ -104,6 +104,8 @@ El runner recibe este contrato y procede con el Checkpoint Protocol según el `s
 
 > **Importante**: La skill NO dicta cómo invocar al subagente. El formato canónico de `task()` permanece en este archivo como fuente única de verdad para el runner.
 
+> **Heurísticas**: La skill `handshake-protocol` ahora incluye carga automática de heurísticas en Context Injection (ver skill `heuristics`). El runner no necesita acción adicional — las heurísticas del proyecto y personales se cargan y se inyectan en `<project_context>` automáticamente.
+
 ***
 
 ## Skill disponible
@@ -112,6 +114,7 @@ El runner recibe este contrato y procede con el Checkpoint Protocol según el `s
 skill({ name: "memory-protocol" })        ← cargar antes de usar mem_*
 skill({ name: "manual-classification" })  ← cargar si no hay clasificación inyectada en contexto
 skill({ name: "handshake-protocol" })   ← cargar antes de invocar subagentes
+skill({ name: "heuristics" })           ← cargar cuando el agente necesite guardar, cargar o proponer heurísticas
 ```
 
 ***
