@@ -55,7 +55,7 @@ mem_search(query: "flow-state/{ca_id}/instances")
 
 - **Caso A (Mapa existe con `base_name`)**: Usar el `base_name` persistido en el mapa de instancias.
 - **Caso B (Mapa existe sin `base_name` — Normalización)**: Extraer el prefijo (antes del primer `-`) del `instance_name` del primer agente en el mapa y persistirlo como `base_name`.
-- **Caso C (Nuevo CA)**: Asignar el **siguiente nombre base disponible** de la lista `base_names` provista por el orquestador, verificando otros CAs en Engram si es posible para evitar colisiones. Si Engram no está disponible, asignar por orden secuencial.
+- **Caso C (Nuevo CA)**: Asignar el **siguiente nombre base disponible** de la lista `base_names` provista por el orquestador. Verificar los mapas de instancias de otros CAs en Engram (`mem_search(query: "flow-state/*/instances")`) para detectar `baseNames` en uso. **Excluir** aquellos CAs cuyo contenido contenga `ca_status: "closed"` — solo los CAs sin ese campo (o con valor distinto de `"closed"`) se consideran "activos" y su `baseName` está ocupado. Si Engram no está disponible, asignar por orden secuencial sin verificación de colisiones (limitación preexistente).
 
 ### Paso 3 — Construir instance_name
 
