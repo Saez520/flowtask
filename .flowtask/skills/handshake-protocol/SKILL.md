@@ -118,14 +118,25 @@ Antes de entregar el prompt al subagente, la skill consulta la memoria del proye
 
 1. `mem_context(project: "{project-name}")` — contexto reciente de sesiones previas.
 2. `mem_search(query: "{términos relevantes al CA y al agente}")` — decisiones y patrones relevantes.
+3. **Cargar heurísticas** (ver skill `heuristics`):
+   a. `mem_search(query: "heuristic", scope: "project")` — heurísticas del proyecto actual.
+   b. `mem_search(query: "heuristic", scope: "personal")` — heurísticas personales cross-proyecto.
+   c. Merge: si la misma key normalizada existe en ambos scopes, prevalece la de `project`.
+   d. Si `mem_search` falla (Engram no disponible): omitir heurísticas (no bloquear).
 
 Los hallazgos se inyectan en un bloque `<project_context>` dentro del prompt:
 
 ```xml
 <project_context>
 [Hallazgos de mem_context y mem_search]
+
+### Heurísticas cargadas
+- `{original-key}` → `{value}` [{scope}]
+- ...
 </project_context>
 ```
+
+> **Nota**: Las heurísticas se cargan automáticamente — el orquestador no necesita hacer nada adicional. Si no hay heurísticas, la subsección se omite o muestra `(ninguna)`. Ver skill `heuristics` para el protocolo completo de carga, normalización y merge.
 
 El orquestador recibe este bloque y lo incorpora al prompt que entregará al subagente.
 
@@ -160,3 +171,4 @@ La skill entrega al orquestador un objeto con exactamente 3 campos:
 - **Sin cobertura operacional**: Esta skill NO implementa Checkpoint Protocol, Self-Healing ante `task_id` expirados, ni purga de `task_id` huérfanos. Esas responsabilidades son del orquestador.
 - **Colisión potencial de BaseNames entre orquestadores**: La skill recibe `base_names` como parámetro externo. Si dos orquestadores distintos usan la misma skill sobre el mismo Engram, podrían asignar el mismo `BaseName` a CAs diferentes. El caso de uso actual asume un solo orquestador por proyecto.
 - **Sin abstracción de storage**: La skill está acoplada a Engram. Si aparece un orquestador sin Engram, la skill debe versionarse con abstracción de storage.
+- **Carga de heurísticas**: Si Engram no está disponible, las heurísticas no se cargan (degradación graceful). No hay mecanismo de fallback local para heurísticas.
