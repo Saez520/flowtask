@@ -73,11 +73,14 @@ function checkEngram() {
 }
 
 async function promptFerrisSearch(flowtaskDir, readline) {
-  if (process.platform !== "darwin") {
-    logInfo("ferris-search MCP solo está disponible en macOS. Omitiendo.");
+  const SUPPORTED_PLATFORMS = ["darwin", "win32"];
+  if (!SUPPORTED_PLATFORMS.includes(process.platform)) {
+    logInfo(`ferris-search MCP no está disponible en ${process.platform}. Omitiendo.`);
     return;
   }
-  const binaryName = `ferris-search-darwin-${os.arch()}`;
+  const binaryName = process.platform === "win32"
+    ? `ferris-search-windows-${os.arch()}.exe`
+    : `ferris-search-darwin-${os.arch()}`;
   const srcBinary = path.join(flowtaskDir, "bin", binaryName);
   if (!fileExists(srcBinary)) {
     logWarn(`ferris-search binary not found at ${srcBinary}. Skipping.`);
@@ -92,7 +95,7 @@ async function promptFerrisSearch(flowtaskDir, readline) {
     return;
   }
   const destDir = path.join(os.homedir(), ".opencode", "bin");
-  const destBinary = path.join(destDir, "ferris-search");
+  const destBinary = path.join(destDir, process.platform === "win32" ? "ferris-search.exe" : "ferris-search");
   try {
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
     fs.copyFileSync(srcBinary, destBinary);
