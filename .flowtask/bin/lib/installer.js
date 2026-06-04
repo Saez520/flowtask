@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import os from "os";
 import {
   COLORS, log, logStep, logSuccess, logError, logWarn, logInfo,
   isBinaryInstalled, getVersion, run, fileExists,
@@ -71,6 +72,56 @@ function checkEngram() {
   }
 }
 
+async function promptFerrisSearch(flowtaskDir, readline) {
+  if (process.platform !== "darwin") {
+    logInfo("ferris-search MCP solo está disponible en macOS. Omitiendo.");
+    return;
+  }
+  const binaryName = `ferris-search-darwin-${os.arch()}`;
+  const srcBinary = path.join(flowtaskDir, "bin", binaryName);
+  if (!fileExists(srcBinary)) {
+    logWarn(`ferris-search binary not found at ${srcBinary}. Skipping.`);
+    return;
+  }
+  const answer = await new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(`${COLORS.cyan}?${COLORS.reset} ¿Instalar ferris-search MCP para web search? ${COLORS.dim}(Y/n):${COLORS.reset} `, (ans) => { rl.close(); resolve(ans.trim().toLowerCase()); });
+  });
+  if (answer === "n" || answer === "no") {
+    logInfo("ferris-search installation skipped.");
+    return;
+  }
+  const destDir = path.join(os.homedir(), ".opencode", "bin");
+  const destBinary = path.join(destDir, "ferris-search");
+  try {
+    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+    fs.copyFileSync(srcBinary, destBinary);
+    fs.chmodSync(destBinary, 0o755);
+    logSuccess("ferris-search installed to ~/.opencode/bin/ferris-search");
+  } catch (err) {
+    logError(`Failed to install ferris-search binary: ${err.message}`);
+    return;
+  }
+  const configDir = path.join(os.homedir(), ".config", "opencode");
+  const configPath = path.join(configDir, "opencode.json");
+  try {
+    if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
+    let config = {};
+    if (fs.existsSync(configPath)) {
+      try {
+        const content = fs.readFileSync(configPath, "utf8").trim();
+        if (content) config = JSON.parse(content);
+      } catch { logWarn("Existing global opencode.json is invalid, starting fresh."); }
+    }
+    const mcpBlock = { "ferris-search": { type: "local", command: ["ferris-search"], env: { DEFAULT_SEARCH_ENGINE: "bing" }, enabled: true } };
+    if (!config.mcp) { config.mcp = mcpBlock; }
+    else { config.mcp = { ...config.mcp, ...mcpBlock }; }
+    if (!config.$schema) config.$schema = "https://opencode.ai/config.json";
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+    logSuccess("ferris-search MCP configured in global opencode.json");
+  } catch (err) { logError(`Failed to configure MCP: ${err.message}`); }
+}
+
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir) {
@@ -111,6 +162,10 @@ ${COLORS.blue}╔═════════════════════
       // ── Step 2: Engram ───────────────────────────────────────────────────
       logStep(2, "Checking Engram...");
       checkEngram();
+
+      // ── Ferris Search MCP ──────────────────────────────────────────────
+      logStep("+", "ferris-search MCP…");
+      await promptFerrisSearch(flowtaskDir, readline);
 
       // ── Step 3: Migrate legacy root .flowtask/ if present ────────────────
       logStep(3, "Checking existing installation...");
