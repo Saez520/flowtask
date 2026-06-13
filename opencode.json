@@ -33,6 +33,7 @@
         "flowtask-tester": "allow",
         "flowtask-plan-auditor": "allow",
         "flowtask-inspector": "allow",
+        "flowtask-onboarder": "allow",
         "*": "deny"
       }
     },
@@ -125,6 +126,16 @@
         "edit": "allow",
         "bash": "allow"
       }
+    },
+    "flowtask-onboarder": {
+      "description": "Evaluates developer experience level through a technical quiz based on the project stack and assigns a runner personality.",
+      "mode": "subagent",
+      "hidden": true,
+      "prompt": "{file:.flowtask/agents/onboarder.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
     }
   },
   "command": {
@@ -190,6 +201,12 @@
     "evolve-agent": {
       "description": "Evolve a FlowTask agent using the full CA → Plan → Implement cycle",
       "template": "Activate Evolution Mode to evolve a FlowTask agent.\n$ARGUMENTS",
+      "agent": "flowtask-runner",
+      "subtask": true
+    },
+    "onboard": {
+      "description": "Evaluate developer level and assign a runner personality",
+      "template": "Activate the onboarder to evaluate developer level and assign a personality.\n\n1. Detect the command as COMMAND:/onboard.\n2. Activate @flowtask-onboarder with the user's prompt.\n3. After the onboarder completes, acknowledge the new personality if assigned.\n\n$ARGUMENTS",
       "agent": "flowtask-runner",
       "subtask": true
     }
