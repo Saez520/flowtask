@@ -19,7 +19,7 @@ Carga este skill cuando el Sub-paso 1 del Paso 0 no encontró `FLOWTASK_CLASSIFI
 **Comando explícito** (`/run`, `/new-ca`, `/inspect`, `/evolve-agent`, `/init`, `/status`)
 → Ejecuta el flujo correspondiente directamente.
 
-**Mención de CA existente** ("CA-018", "continúa con el CA", "el CA de X")
+**Mención de CA existente** ("CA-search-integration", "continúa con el CA", "el CA de X")
 → Flujo `/run CA-{ID}`.
 
 **Pregunta o solicitud analítica sobre el proyecto** — incluyendo cualquier instrucción dirigida al runner en segunda persona ("¿cómo funciona X?", "verifica Y", "analiza Z", "¿qué convenciones usamos?", "revisa el comportamiento de X")

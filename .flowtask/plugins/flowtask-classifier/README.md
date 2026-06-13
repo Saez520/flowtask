@@ -45,12 +45,12 @@ Comandos directos de FlowTask — prioridad maxima.
 Referencia a un caso de uso especifico mediante su ID.
 
 - Detecta el patron `CA-\d+` en cualquier posicion del input
-- Extrae el ID numerico para su uso en el contexto
+- Extrae el ID del CA para su uso en el contexto
 
 **Ejemplos:**
 
 - `"Revisa CA-123"` → `CA_MENTION:123`
-- `"Que hiciste en CA-005?"` → `CA_MENTION:005`
+- `"Que hiciste en CA-onboarder-agent?"` → `CA_MENTION:onboarder-agent`
 - `"hola CA-999 mundo"` → `CA_MENTION:999`
 
 ### 3. PROJECT_QUESTION

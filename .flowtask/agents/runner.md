@@ -91,7 +91,7 @@ skill({ name: "handshake-protocol" })
 ```
 
 La skill recibe como parámetros desde el runner:
-- `ca_id` — ID del CA actual (ej: `"CA-010"`)
+- `ca_id` — ID del CA actual (ej: `"CA-onboarder-agent"`)
 - `agent_type` — tipo de agente a invocar (ej: `"planner"`, `"constructor"`, `"ca-writer"`)
 - `base_names` — lista de nombres base disponibles (provista por el runner)
 

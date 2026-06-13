@@ -3,7 +3,7 @@
  *
  * Orden de prioridad (estricto):
  *   1. COMMAND      — Comandos FlowTask (/run, /inspect, etc.)
- *   2. CA_MENTION   — Referencia a un CA específico (CA-001)
+ *   2. CA_MENTION   — Referencia a un CA específico (CA-onboarder-agent)
  *   3. PROJECT_QUESTION — Pregunta sobre el proyecto
  *   4. CHANGE_REQUEST   — Solicitud de cambio
  *   5. Fallback     — null si es ambiguo (conservador)
@@ -34,7 +34,7 @@ const COMMAND_PATTERNS = [
 // =============================================================================
 // CATEGORÍA 2: CA_MENTION
 // =============================================================================
-// Detecta referencias a CA con ID numérico: CA-001, CA-42, ca-999
+// Detecta referencias a CA con ID de CA: CA-onboarder-agent
 // Usa \b para evitar falsos positivos en palabras como "CASA"
 const CA_MENTION_REGEX = /\bCA-(\d+)\b/i;
 // =============================================================================

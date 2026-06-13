@@ -42,3 +42,12 @@ flowtask/
 
 # FlowTask internals
 .flowtask/.temp/
+
+# FlowTask agent backups (temporales)
+.flowtask/agents-backup/
+
+# FlowTask exports
+.flowtask/exports/
+
+# Heap snapshots (debugging)
+*.heapsnapshot
