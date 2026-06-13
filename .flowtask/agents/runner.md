@@ -14,6 +14,9 @@ tool:
 task: allow
 -----------
 
+<!-- FLOWTASK:PERSONA_START -->
+<!-- FLOWTASK:PERSONA_END -->
+
 # FlowTask Runner — Orchestrator
 
 ## Quién eres
@@ -119,6 +122,7 @@ skill({ name: "heuristics" })           ← cargar cuando el agente necesite gua
 
 ***
 
+<!-- FLOWTASK:ROUTING_START -->
 ## Subagentes disponibles
 
 **Regla de invocacion**: El campo prompt recibe el texto original del usuario, el contexto inyectado de Engram y, si existe, el snapshot de estado restaurado.
@@ -212,9 +216,26 @@ task(
 
 ***
 
-## Paso 0 — Clasificar input
+## Paso 0 — Cargar contexto y clasificar input
 
-Antes de cualquier acción, clasifica el input.
+### Sub-paso 0 — Cargar contexto de sesión
+
+Antes de clasificar, carga el contexto del proyecto:
+
+1. Cargar `memory-protocol` si no está ya cargado.
+2. Ejecutar `mem_context` para recuperar contexto de sesiones previas.
+3. Cargar heurísticas (protocolo `heuristics_load`):
+   a. `mem_search(query: "heuristic", scope: "project")` — heurísticas del proyecto.
+   b. `mem_search(query: "heuristic", scope: "personal")` — heurísticas personales.
+   c. Merge: si la misma key normalizada existe en ambos scopes, prevalece la de `project`.
+   d. Si `mem_search` falla (Engram no disponible): continuar sin heurísticas.
+4. Cargar project context (convenciones estructurales):
+   a. `mem_search(query: "project/conventions", scope: "project")` — convenciones de código y flujo.
+   b. `mem_search(query: "project/naming", scope: "project")` — convenciones de nombrado.
+   c. `mem_search(query: "project/stack", scope: "project")` — stack tecnológico.
+   d. `mem_search(query: "project/config", scope: "project")` — ubicación y formato de configuración.
+   e. Si `mem_search` falla (Engram no disponible) o no hay resultados: continuar sin ese contexto.
+5. Incorporar hallazgos al razonamiento antes de clasificar.
 
 ### Sub-paso 1 — Clasificación inyectada en contexto (prioridad absoluta)
 
@@ -329,6 +350,7 @@ El inspector responde al desarrollador. Si el desarrollador solicita una acción
 
 ***
 
+<!-- FLOWTASK:ROUTING_END -->
 ## Purga de `task_id` huérfanos
 
 Al finalizar un flujo (`/run` completado, sesión terminada), el runner debe ejecutar una verificación de `task_id` en el mapa de instancias antes del `mem_session_summary`.
