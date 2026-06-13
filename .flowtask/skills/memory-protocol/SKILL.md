@@ -143,6 +143,8 @@ Los agentes invocan estas funciones. La implementación subyacente (MCP tools) s
 - `mem_context(limit)`: Recupera los eventos más recientes.
 - `mem_session_summary(summary)`: Cierra la sesión con un reporte.
 - `mem_suggest_topic_key(title, type)`: Sugiere un topic_key estable para el contenido.
+- `mem_capture_passive(content)`: Extrae aprendizajes estructurados del output. Busca secciones `## Key Learnings:` y guarda cada ítem como observación independiente. Seguro llamar múltiples veces — detecta duplicados automáticamente.
+- `mem_review(action, ...)`: Gestiona el ciclo de vida de memorias. `action: "list"` retorna memorias marcadas `needs_review` (stale). `action: "mark_reviewed"` confirma revisión. Solo usar `mark_reviewed` tras confirmación explícita del desarrollador.
 
 ---
 
