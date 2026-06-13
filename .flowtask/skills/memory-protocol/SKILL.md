@@ -74,7 +74,7 @@ Todo `topic_key` debe seguir el formato canónico:
 ```
 
 **Reglas**:
-- Prefijo `CA-` **obligatorio** en el ID (ej: `plan/CA-054`, no `plan/054`)
+- Prefijo `CA-` **obligatorio** en el ID (ej: `plan/CA-search-integration`, no `plan/054`)
 - `flow-state/{ID}` **NUNCA** se usa sin sub-namespace
 - Cada agente escribe **SOLO** sus namespaces autorizados
 
@@ -135,5 +135,5 @@ Antes de ejecutar `mem_save`, sigue estos pasos:
 
 ## Naming Convention
 Los títulos deben ser concisos y buscables. 
-- **Mal**: `Guardando el estado del constructor para el CA-001`
-- **Bien**: `Constructor CA-001: Implementación completada`
+- **Mal**: `Guardando el estado del constructor para el CA-onboarder-agent`
+- **Bien**: `Constructor CA-onboarder-agent: Implementación completada`

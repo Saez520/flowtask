@@ -30,7 +30,7 @@ El orquestador debe proveer a la skill los siguientes parámetros:
 
 | Parámetro | Tipo | Descripción | Ejemplo |
 |-----------|------|-------------|---------|
-| `ca_id` | string | ID del CA en curso | `"CA-010"` |
+| `ca_id` | string | ID del CA en curso | `"CA-onboarder-agent"` |
 | `agent_type` | string | Tipo de agente a invocar | `"planner"`, `"constructor"`, `"ca-writer"` |
 | `base_names` | string[] | Lista de nombres base disponibles | `["Aitana", "Kael", "Lyra", ...]` |
 

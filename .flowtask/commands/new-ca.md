@@ -22,6 +22,6 @@ Create a new Acceptance Criteria (CA) with guided clarification:
 5. Report to the user that the CA is ready in Engram.
 
 Example usage:
-> /new-ca CA-001
-> /new-ca CA-001: I need to add user authentication
+> /new-ca CA-onboarder-agent
+> /new-ca CA-onboarder-agent: I need to add user authentication
 > /new-ca

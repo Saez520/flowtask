@@ -3,7 +3,7 @@
  *
  * Orden de prioridad (estricto):
  *   1. COMMAND      — Comandos FlowTask (/run, /inspect, etc.)
- *   2. CA_MENTION   — Referencia a un CA específico (CA-001)
+ *   2. CA_MENTION   — Referencia a un CA específico (CA-onboarder-agent)
  *   3. PROJECT_QUESTION — Pregunta sobre el proyecto
  *   4. CHANGE_REQUEST   — Solicitud de cambio
  *   5. Fallback     — null si es ambiguo (conservador)

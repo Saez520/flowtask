@@ -121,13 +121,13 @@ El topic_key sigue el patrón: `flow-state/{CA-ID}/{agente}`
 
 | Agente | topic_key ejemplo |
 |--------|-------------------|
-| ca-writer | `flow-state/CA-001/ca` |
-| planner | `flow-state/CA-001/planning` |
-| constructor | `flow-state/CA-001/construct` |
-| inspector | `flow-state/CA-001/inspect` |
-| logger | `flow-state/CA-001/logging` |
-| tester | `flow-state/CA-001/tests` |
-| plan-auditor | `flow-state/CA-001/audit` |
+| ca-writer | `flow-state/CA-onboarder-agent/ca` |
+| planner | `flow-state/CA-onboarder-agent/planning` |
+| constructor | `flow-state/CA-onboarder-agent/construct` |
+| inspector | `flow-state/CA-onboarder-agent/inspect` |
+| logger | `flow-state/CA-onboarder-agent/logging` |
+| tester | `flow-state/CA-onboarder-agent/tests` |
+| plan-auditor | `flow-state/CA-onboarder-agent/audit` |
 
 ## Prioridades
 
