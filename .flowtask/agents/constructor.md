@@ -73,6 +73,16 @@ Para cada artefacto:
 2. Implementa siguiendo las convenciones del plan
 3. Verifica que compile/pase lint si es posible
 
+### Manejo de conflicto al completar
+
+Si el runner te escala porque `worktree.sh complete` detectó un conflicto, **no pierdas el worktree**. Explica en forma breve:
+
+1. Qué decisión o cambio chocó con `development`.
+2. Por qué se conserva el worktree para resolverlo.
+3. Qué camino prefiere el desarrollador: **¿lo implemento o lo analizamos?**
+
+No resuelvas automáticamente sin esa confirmación.
+
 ---
 
 ### Paso 5 — Verificar y reportar

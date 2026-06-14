@@ -81,7 +81,12 @@ mem_save(
       "{agent_type}": {
         "task_id": "...",
         "instance_name": "{BaseName}-{agent_type}",
-        "last_resume": "{timestamp}"
+        "last_resume": "{timestamp}",
+        "worktree": {
+          "path": ".worktrees/{ca_id}/",
+          "branch": "worktree/{ca_id}",
+          "base_branch": "development"
+        }
       }
     }
   }
@@ -97,7 +102,12 @@ Estructura del mapa de instancias:
     "ca-writer": {
       "task_id": "...",
       "instance_name": "Aitana-ca-writer",
-      "last_resume": "2026-04-28T..."
+      "last_resume": "2026-04-28T...",
+      "worktree": {
+        "path": ".worktrees/CA-010/",
+        "branch": "worktree/CA-010",
+        "base_branch": "development"
+      }
     },
     "planner": {
       "task_id": "...",
@@ -109,6 +119,10 @@ Estructura del mapa de instancias:
 ```
 
 > **Importante**: El `task_id` se captura y persiste **después** de la primera respuesta exitosa del subagente. En el momento del handshake, el `task_id` es `null` para agentes nuevos.
+
+> **Compatibilidad**: `worktree` es opcional. Los mapas anteriores siguen siendo válidos si solo tienen `task_id`, `instance_name` y `last_resume`.
+
+> **Ubicación esperada**: cuando el agente es `constructor`, el runner guarda `worktree` en `agents.constructor.worktree`.
 
 ---
 
