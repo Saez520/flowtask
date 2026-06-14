@@ -1,6 +1,6 @@
 ---
 name: memory-protocol
-description: Protocolo agnóstico de memoria para FlowTask. Define el contrato de datos para persistencia y búsqueda sin depender de la implementación CLI específica.
+description: "Guía práctica de uso de memoria Engram para agentes FlowTask. Cuándo guardar, cómo buscar y protocolos de sesión. Carga `memory-contract` transitivamente para contratos estructurales."
 license: MIT
 compatibility: opencode
 metadata:
@@ -8,244 +8,179 @@ metadata:
   scope: flowtask
 ---
 
-# Engram Memory Protocol (Agnostic Contract)
+skill({ name: "memory-contract" })
+
+# Engram Memory Protocol
 
 ## Propósito
-Este skill define el **Contrato de Intención** para la memoria de FlowTask. Los agentes deben seguir este esquema de datos independientemente de si la persistencia es local, remota (MCP) o mediante buffer temporal.
+
+Este skill es la guía práctica diaria para usar Engram. Para los contratos de datos, categorías, formato de `topic_key`, artifact protocol y resiliencia, consultá `memory-contract` (cargado transitivamente). Para ownership de `topic_key`, consultá `topic-keys-convention`.
 
 ---
 
-## Contratos de Datos (Payloads)
+## Herramientas Disponibles
 
-### 1. SAVE_DECISION / SAVE_OBSERVATION
-Utilizado para persistir estados, decisiones o hallazgos.
+| Tool | Propósito |
+|------|-----------|
+| `mem_save` | Persiste observaciones estructuradas (decisiones, bugfixes, patrones) |
+| `mem_search` | Búsqueda full-text en todas las memorias |
+| `mem_context` | Contexto reciente de sesiones anteriores |
+| `mem_get_observation` | Contenido completo sin truncar por ID |
+| `mem_update` | Actualiza una observación existente por ID |
+| `mem_timeline` | Contexto cronológico alrededor de una observación |
+| `mem_suggest_topic_key` | Sugiere un topic_key estable para temas evolutivos |
+| `mem_session_summary` | Guarda resumen completo de fin de sesión |
+| `mem_session_start` | Registra inicio de sesión |
+| `mem_session_end` | Marca sesión como completada |
+| `mem_capture_passive` | Extrae aprendizajes estructurados del output (busca `## Key Learnings:`) |
+| `mem_save_prompt` | Guarda el prompt del usuario para contexto futuro |
+| `mem_compare` | Persiste veredicto de comparación semántica entre dos memorias |
+| `mem_judge` | Registra veredicto sobre conflictos de memoria pendientes |
+| `mem_delete` | Elimina una observación por ID (soft-delete por defecto) |
+| `mem_doctor` | Diagnóstico operacional de solo lectura |
+| `mem_current_project` | Detecta el proyecto actual desde el working directory |
+| `mem_merge_projects` | Fusiona memorias de múltiples variantes de nombre de proyecto |
+| `mem_stats` | Estadísticas del sistema de memoria |
 
-**Esquema:**
-```typescript
-interface MemoryPayload {
-  title: string;       // Corto, descriptivo (ver Naming)
-  type: string;        // Categoría oficial
-  scope: "project";    // Siempre "project" para FlowTask
-  topic_key?: string;  // Identificador estable para updates/upserts
-  content: {
-    What: string;      // Qué se hizo/encontró
-    Why: string;       // Motivación o razón
-    Where: string;     // Archivos o módulos afectados
-    Learned?: string;  // Gotchas o lecciones aprendidas (opcional)
-  }
-}
+---
+
+## WHEN TO SAVE (obligatorio)
+
+Llamá a `mem_save` INMEDIATAMENTE después de cualquiera de estos eventos:
+
+- Decisión de arquitectura o diseño tomada
+- Bugfix completado
+- Descubrimiento no obvio sobre el código base
+- Cambio de configuración o setup de entorno
+- Patrón establecido (naming, estructura, convención)
+- Preferencia o restricción del usuario aprendida
+- Implementación de un artifacto de plan completada
+
+**Formato de `mem_save`:**
+- `title`: corto y buscable
+- `type`: categoría oficial (`ca-artifact | decision | architecture | bugfix | pattern | config | discovery`)
+- `scope`: `project` por defecto o `personal`
+- `topic_key`: clave estable opcional para upsert
+- `content`: estructurado con `**What**`, `**Why**`, `**Where**`, `**Learned**`
+
+Reglas de `topic_key`:
+- Distintos topics no deben sobreescribirse entre sí
+- Reutilizá el mismo `topic_key` para actualizar un tema evolutivo
+- Si no estás seguro de la key, usá `mem_suggest_topic_key` primero
+- Usá `mem_update` cuando tengas un observation ID exacto para corregir
+
+---
+
+## HOW TO SEARCH
+
+`mem_search` es búsqueda full-text (FTS5). Busca en título y contenido de las observaciones. No soporta filtro por metadata (`topic_key`, `type`, `scope`). Usá keywords naturales.
+
+### Reglas
+
+1. **NUNCA uses `topic_key:` como prefix** — FTS5 no lo interpreta como filtro
+2. **NUNCA uses `type:` como prefix** — FTS5 no filtra por metadata
+3. **Busca por keywords del título/contenido** de la observación que querés encontrar
+4. **Primero `mem_context`** (barato), luego `mem_search` si no encontrás
+5. **Si encontrás un ID**, usá `mem_get_observation(id: N)` para contenido completo
+
+### Queries correctas por categoría
+
+| Qué buscar | Query correcta | Ejemplo |
+|-----------|---------------|---------|
+| CA específico | `"CA-{ID}"` | `mem_search(query: "CA-018")` |
+| Plan específico | `"Plan CA-{ID}"` | `mem_search(query: "Plan CA-018")` |
+| Flow-state | `"Flow State: CA-{ID}"` | `mem_search(query: "Flow State: CA-018")` |
+| Validación | `"Validation Report: CA-{ID}"` | `mem_search(query: "Validation Report: CA-018")` |
+| Plan-Audit | `"Plan-Auditor Review: CA-{ID}"` | `mem_search(query: "Plan-Auditor Review: CA-018")` |
+| Convenciones | `"project conventions"` | `mem_search(query: "project conventions")` |
+| Naming | `"project naming"` | `mem_search(query: "project naming")` |
+| Layers | `"project layers"` | `mem_search(query: "project layers")` |
+| Patrones por capa | `"project patterns {layer}"` | `mem_search(query: "project patterns api")` |
+| Protected files | `"project protected-files"` | `mem_search(query: "project protected-files")` |
+| Config | `"project config"` | `mem_search(query: "project config")` |
+| Decisiones impl | `"Decisiones"` + `"CA-{ID}"` | `mem_search(query: "Decisiones CA-018")` |
+| Patrones impl | `"Patrón descubierto"` | `mem_search(query: "Patrón descubierto")` |
+| Stack | `"project stack"` | `mem_search(query: "project stack")` |
+| CAs anteriores | `"CA-"` + dominio | `mem_search(query: "CA- dominio proyecto")` |
+
+### Protocolo de búsqueda
+
+```
+1. `mem_context(limit: 20)`
+2. `mem_search(query: "keywords")`
+3. `mem_get_observation(id: N)`
 ```
 
-### 2. SESSION_SUMMARY
-Resumen obligatorio al finalizar un flujo de trabajo.
+### Búsqueda proactiva
 
-**Esquema:**
-```typescript
-interface SessionSummary {
-  goal: string;
-  accomplished: string[];
-  discoveries: string[];
-  next_steps: string[];
-  relevant_files: string[];
-}
-```
+Buscá en Engram cuando:
+- El usuario pide "recordar", "recall", "qué hicimos", "recordar", "acordate" o referencia trabajo pasado
+- Empezás un trabajo que podría haberse hecho antes
+- El usuario menciona un tema del que no tenés contexto
+- El PRIMER mensaje del usuario referencia el proyecto, una feature o un problema
 
 ---
 
-## Categorías Oficiales (types)
+## SESSION CLOSE PROTOCOL (obligatorio)
 
-| Type | Descripción |
-|---|---|
-| `ca-artifact` | Artefacto completo (archivo) generado por un agente como output de tarea. No es memoria operativa. |
-| `decision` | Snapshots de estado, flow state, resultados de agentes. |
-| `architecture` | Decisiones estructurales cross-CA. |
-| `bugfix` | Fix crítico que afecta futuras implementaciones. |
-| `pattern` | Convenciones de código o patrones de diseño detectados. |
-| `config` | Stack, herramientas, configuración del proyecto. |
-| `discovery` | Hallazgos exploratorios o reportes de validación. |
-
----
-
-## Topic Key Convention
-
-Todo `topic_key` debe seguir el formato canónico:
+Antes de terminar una sesión o decir "done" / "listo" / "that's it", DEBÉS llamar a `mem_session_summary` con esta estructura:
 
 ```
-{namespace}/CA-{ID}[/{sub-namespace}]
+## Goal
+[En qué estuvimos trabajando en esta sesión]
+
+## Instructions
+[Preferencias o restricciones del usuario descubiertas — omitir si no hay]
+
+## Discoveries
+- [Hallazgos técnicos, gotchas, aprendizajes no obvios]
+
+## Accomplished
+- [Tareas completadas con detalles clave]
+
+## Next Steps
+- [Lo que queda por hacer — para la próxima sesión]
+
+## Relevant Files
+- path/to/file — [qué hace o qué cambió]
 ```
 
-**Reglas**:
-- Prefijo `CA-` **obligatorio** en el ID (ej: `plan/CA-search-integration`, no `plan/054`)
-- `flow-state/{ID}` **NUNCA** se usa sin sub-namespace
-- Cada agente escribe **SOLO** sus namespaces autorizados
-
-### Ownership (resumido)
-
-| Agente | Namespaces |
-|--------|-----------|
-| ca-writer | `ca/CA-{ID}`, `flow-state/CA-{ID}/create` |
-| planner | `plan/CA-{ID}`, `flow-state/CA-{ID}/plan` |
-| plan-auditor | `plan-audit/CA-{ID}`, `flow-state/CA-{ID}/audit` |
-| constructor | `impl/CA-{ID}/*`, `flow-state/CA-{ID}/construct` |
-| validator | `validation/CA-{ID}`, `flow-state/CA-{ID}/validate` |
-| initializer | `project/*` (solo lectura para los demás) |
-| ca-writer, planner, plan-auditor, validator, logger, tester, initializer | `ca/CA-{ID}/artifact/{filename}` |
-
-> Para la tabla completa de ownership (incluyendo tester, logger, sub-namespaces y resoluciones históricas), consulta `topic-keys-convention`.
-
-### Artifact namespace (`ca/CA-{ID}/artifact/{filename}`)
-
-Los artifactos completos (output de agentes) se persisten como observaciones Engram con `type: "ca-artifact"`. No son archivos en `.workspace/`.
-
-**Filename mapping:**
-
-| Archivo | topic_key | Agente que escribe |
-|---------|-----------|-------------------|
-| `ca.md` | `ca/CA-{ID}/artifact/ca` | ca-writer |
-| `plan.md` | `ca/CA-{ID}/artifact/plan` | planner |
-| `validacion.md` | `ca/CA-{ID}/artifact/validacion` | validator |
-| `audit.md` | `ca/CA-{ID}/artifact/audit` | plan-auditor |
-| `logging-report.md` | `ca/CA-{ID}/artifact/logging-report` | logger |
-| `tests-report.md` | `ca/CA-{ID}/artifact/tests-report` | tester |
-| `project-context.md` | `ca/project/artifact/project-context` | initializer |
-
-> **Nota sobre `project-context.md`**: El artifacto `project-context.md` no tiene CA-{ID} asociado. Usa el ID especial `project` en el namespace: `ca/project/artifact/project-context`.
-
-### Restricciones
-
-- **NUNCA** escribas a `project/{layer}` si no eres Initializer
-- **NUNCA** uses `flow-state/{ID}` sin sub-namespace
-- **SIEMPRE** usa prefijo `CA-` en el ID del topic_key
-- **SIEMPRE** busca (`mem_search`) antes de escribir
+Esto NO es opcional. Si lo omitís, la siguiente sesión empieza a ciegas.
 
 ---
 
-## Protocolo de Resiliencia (CA-005)
+## AFTER COMPACTION
 
-Si el proveedor de memoria (MCP) no está disponible:
-1. El agente debe serializar el payload según el contrato anterior.
-2. Guardar en `.flowtask/.temp/operation-{timestamp}.json`.
-3. Notificar al Runner del estado "Buffered".
-4. Para artifactos (`type: "ca-artifact"`), el contenido completo del artifacto se incluye en el JSON de fallback. NO se escribe en `.workspace/CA-{ID}/` ni siquiera en modo fallback.
+Si ves un mensaje sobre compactación o reseteo de contexto, o si ves "FIRST ACTION REQUIRED" en tu contexto:
 
-El Runner sincronizará estos archivos automáticamente en la próxima ejecución exitosa.
+1. INMEDIATAMENTE llamá `mem_session_summary` con el resumen compactado — esto persiste lo que se hizo antes de la compactación
+2. Luego llamá `mem_context` para recuperar contexto adicional de sesiones previas
+3. Solo ENTONCES continuá trabajando
 
-> **Artifactos en fallback**: Cuando un agente no puede persistir un artifacto vía `mem_save`, el artifacto completo se guarda en `.flowtask/.temp/operation-{timestamp}.json` con `type: "ca-artifact"` y el `topic_key` correspondiente. El Runner sincronizará estos buffers con Engram cuando el MCP vuelva a estar disponible. En ningún caso se crean archivos en `.workspace/` como fallback.
-
----
-
-## Herramientas Abstraídas
-
-Los agentes invocan estas funciones. La implementación subyacente (MCP tools) se encarga de mapear estos parámetros.
-
-- `mem_save(payload)`: Persiste una observación.
-- `mem_search(query, filters)`: Busca información histórica.
-- `mem_context(limit)`: Recupera los eventos más recientes.
-- `mem_session_summary(summary)`: Cierra la sesión con un reporte.
-- `mem_suggest_topic_key(title, type)`: Sugiere un topic_key estable para el contenido.
-- `mem_capture_passive(content)`: Extrae aprendizajes estructurados del output. Busca secciones `## Key Learnings:` y guarda cada ítem como observación independiente. Seguro llamar múltiples veces — detecta duplicados automáticamente.
-- `mem_review(action, ...)`: Gestiona el ciclo de vida de memorias. `action: "list"` retorna memorias marcadas `needs_review` (stale). `action: "mark_reviewed"` confirma revisión. Solo usar `mark_reviewed` tras confirmación explícita del desarrollador.
+No saltees el paso 1. Sin él, todo lo hecho antes de la compactación se pierde de la memoria.
 
 ---
 
 ## Protocolo Pre-Write
 
-Antes de ejecutar `mem_save`, sigue estos pasos:
+Antes de ejecutar `mem_save`, seguí estos pasos:
 
-1. **Buscar**: `mem_search(query: "{título o contenido esperado}", scope: "project")` — verifica si ya existe contenido similar.
-2. **Verificar ownership**: consulta la tabla de ownership arriba. ¿Eres el dueño del namespace? Si no lo eres, NO escribas ahí.
-3. **Resolver dudas**: si no estás seguro del topic_key, usa `mem_suggest_topic_key(title: "...", type: "...")`.
-
----
-
-## Artifact Protocol (CA-ca-artifact-protocol)
-
-Los artifactos completos generados por agentes (ca.md, plan.md, validacion.md, audit.md, logging-report.md, tests-report.md, project-context.md) NO se escriben como archivos en `.workspace/CA-{ID}/`. Se persisten como observaciones Engram con `type: "ca-artifact"`.
-
-### Regla de escritura: `mem_save_artifact`
-
-Todo agente que necesite persistir un artifacto completo usa este patrón en lugar de `write_file` a `.workspace/`:
-
-```
-mem_save(
-  type: "ca-artifact",
-  topic_key: "ca/CA-{ID}/artifact/{filename}",
-  title: "CA-{ID}: {descripción del artifacto}",
-  scope: "project",
-  content: {contenido completo del artifacto}
-)
-```
-
-**Reglas**:
-- `type` es **SIEMPRE** `"ca-artifact"` — esto permite filtrar artifactos en búsquedas
-- `topic_key` sigue el namespace `ca/CA-{ID}/artifact/{filename}` — ver tabla de filename mapping arriba
-- `title` debe ser descriptivo y buscable: `"CA-{ID}: {Tipo de artifacto}"` (ej. `"CA-ca-artifact-protocol: Plan de implementación"`)
-- `content` contiene el texto completo del artifacto (markdown). No se trunca ni se resume
-- **NUNCA** se escribe archivo en `.workspace/CA-{ID}/` para CAs nuevos
-- La función `mem_save_artifact` NO existe como tool real — es un **patrón documentado** que encapsula los parámetros anteriores
-
-**Antes vs Ahora:**
-
-| Operación | Antes | Ahora |
-|-----------|-------|-------|
-| Guardar plan | `write_file(path: ".workspace/CA-{ID}/plan.md", ...)` | `mem_save(type: "ca-artifact", topic_key: "ca/CA-{ID}/artifact/plan", ...)` |
-| Guardar CA | `write_file(path: ".workspace/CA-{ID}/ca.md", ...)` | `mem_save(type: "ca-artifact", topic_key: "ca/CA-{ID}/artifact/ca", ...)` |
-| Guardar validación | `write_file(path: ".workspace/CA-{ID}/validacion.md", ...)` | `mem_save(type: "ca-artifact", topic_key: "ca/CA-{ID}/artifact/validacion", ...)` |
-
-### Regla de lectura bajo demanda
-
-Los artifactos con `type: "ca-artifact"` **NO se cargan en contexto operativo normal**. Solo se recuperan bajo demanda cuando la tarea del agente lo requiere explícitamente.
-
-**Cuándo SÍ buscar artifactos:**
-- La tarea explícita lo requiere (ej. "leé el plan del CA-X")
-- El agente está en modo investigación, auditoría o evolución
-- El runner o el usuario lo solicita explícitamente
-
-**Cuándo NO buscar artifactos:**
-- Durante la inicialización del agente
-- Durante búsquedas operativas de contexto (`mem_search` sin `type: "ca-artifact"`)
-- Durante `mem_context` (aunque pueden aparecer por sesión reciente — riesgo bajo aceptado, ver GAP 2)
-
-**Protocolo de recuperación:**
-```
-1. mem_search(query: "CA-{ID} {tipo}", type: "ca-artifact")
-2. Identificar el observation ID correcto por título
-3. mem_get_observation(id: N) → contenido completo del artifacto
-```
-
-**Ejemplo — leer el plan del CA-ca-artifact-protocol:**
-```
-mem_search(query: "CA-ca-artifact-protocol plan", type: "ca-artifact")
-→ encuentra observación con título "CA-ca-artifact-protocol: Plan de implementación"
-mem_get_observation(id: {id})
-→ contenido completo del plan
-```
-
-### Regla de precedencia
-
-Si las instrucciones de un agente dicen explícitamente `write_file(path: ".workspace/...")` o `read_file(path: ".workspace/...")`, este protocolo de artifactos tiene **precedencia**: el agente debe usar `mem_save(type: "ca-artifact", ...)` para escritura y `mem_search(type: "ca-artifact")` + `mem_get_observation` para lectura. La skill `memory-protocol` es el punto de verdad para la persistencia de artifactos.
+1. **Buscar**: `mem_search(query: "{título o contenido esperado}")` — verificá si ya existe contenido similar.
+2. **Verificar ownership**: consultá `topic-keys-convention`. ¿Sos el dueño del namespace? Si no lo sos, NO escribas ahí.
+3. **Resolver dudas**: si no estás seguro del `topic_key`, usá `mem_suggest_topic_key(title: "...", type: "...")`.
 
 ---
 
-## Dual-Source Period (transitorio)
+## IMPORTANT
 
-Durante el período de transición (antes de la migración de CAs históricos), coexisten dos fuentes de verdad para artifactos:
-
-| CAs | Dónde están los artifactos | Cómo leerlos |
-|-----|---------------------------|-------------|
-| **Nuevos** (post CA-ca-artifact-protocol) | Engram, `type: "ca-artifact"` | `mem_search(type: "ca-artifact")` + `mem_get_observation` |
-| **Viejos** (~19 CAs en `.workspace/`) | Archivos en `.workspace/CA-{ID}/` | `read_file(path: ".workspace/CA-{ID}/{filename}")` |
-
-**Regla para agentes que leen artifactos**:
-1. **Primero** buscar en Engram con `mem_search(query: "CA-{ID}", type: "ca-artifact")`
-2. **Si no se encuentra**, hacer fallback a archivo: `read_file(".workspace/CA-{ID}/{filename}")`
-3. **Si no existe en ninguna fuente**, reportar "artifacto no encontrado"
-
-Este período dual-source terminará cuando se ejecute el CA de migración de CAs históricos (fuera del scope de este CA).
+- Las tools `mem_*` NO cuentan contra el límite de tool calls
+- Usá siempre `topic_key` para información con scope de proyecto (habilita upsert)
+- Nunca guardes código fuente en memoria — solo convenciones, patrones, decisiones
+- Buscá antes de actuar: `mem_search` es barato, asumir es caro
 
 ---
 
-## Naming Convention
-Los títulos deben ser concisos y buscables. 
-- **Mal**: `Guardando el estado del constructor para el CA-onboarder-agent`
-- **Bien**: `Constructor CA-onboarder-agent: Implementación completada`
+## Referencias
+
+- Para contratos de datos, categorías oficiales, formato de `topic_key`, artifact protocol y resiliencia: consultá `memory-contract`.
+- Para la tabla completa de ownership de `topic_key`: consultá `topic-keys-convention`.

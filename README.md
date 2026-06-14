@@ -245,14 +245,8 @@ Engram stores only operational metadata (flow states, snapshots, project convent
 ```
 FlowTask/
 ├── .claude/                      # OpenCode CLI environment
-│   ├── agents/                   # OpenCode agent definitions
-│   │   └── flowtask-*.md         # FlowTask subagents
-│   └── skills/                   # OpenCode skills
-│       ├── excalidraw/
-│       │   └── SKILL.md          # Diagram/visualization skill
-│       ├── output-verbosity/
-│       │   └── SKILL.md          # Output formatting skill
-│       └── ...
+│   └── agents/                   # OpenCode agent definitions
+│       └── flowtask-*.md         # FlowTask subagents
 ├── .flowtask/
 │   ├── bin/
 │   │   └── flowtask.js           # CLI entry point (npm link)
@@ -279,28 +273,34 @@ FlowTask/
 │   │   ├── version-watcher.ps1   # Engram version monitoring
 │   │   ├── buffer-sync.ps1       # Buffer synchronization
 │   │   └── update-engram.ps1     # Engram update script
-│   ├── skills/                   # OpenCode skills
+│   ├── skills/                   # OpenCode skills (canonical source)
 │   │   ├── checkpoint-mixin/
 │   │   │   └── SKILL.md          # Checkpoint persistence protocol
+│   │   ├── handshake-protocol/
+│   │   │   └── SKILL.md          # Identity and task_id assignment
+│   │   ├── heuristics/
+│   │   │   └── SKILL.md          # Developer heuristic storage and detection
+│   │   ├── manual-classification/
+│   │   │   └── SKILL.md          # Fallback input classifier
+│   │   ├── memory-contract/
+│   │   │   └── SKILL.md          # Engram data contract enforcement
 │   │   ├── memory-protocol/
 │   │   │   └── SKILL.md          # Engram mem_* usage protocol
 │   │   ├── plan-template/
 │   │   │   └── SKILL.md          # Plan structure template
-│   │   ├── manual-classification/
-│   │   │   └── SKILL.md          # Fallback input classifier
 │   │   └── topic-keys-convention/
 │   │       └── SKILL.md          # Engram topic_key ownership rules
 │   └── commands/                 # FlowTask slash commands
 │       ├── init.md               # /init
 │       ├── init-*.md             # /init-types, /init-data, etc.
 │       ├── new-ca.md             # /new-ca
+│       ├── register-skills.md    # /register-skills
 │       ├── run.md                # /run
 │       ├── inspect.md            # /inspect
 │       ├── evolve-agent.md        # /evolve-agent
 │       ├── status.md             # /status
 │       └── update.md              # /update
-├── .opencode/                    # Additional OpenCode skills
-│   └── skills/
+├── .opencode/                    # OpenCode configuration
 ├── docs/                         # Additional documentation
 ├── Flowtask-Architecture/       # Architecture documentation
 ├── presentacion-flowtask.md      # Project presentation
