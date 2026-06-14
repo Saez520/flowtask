@@ -97,11 +97,17 @@ El runner recibe este contrato y procede con el Checkpoint Protocol según el `s
 
 ## Skill disponible
 
+Las skills se resuelven desde el registro en Engram (topic_key: `skill-registry/{name}`).
+El runner consulta `mem_search(query: "skill-registry {name}")` para obtener la ruta absoluta del SKILL.md y la pasa al subagente.
+Para listar/refrescar el registro: ejecutar `/register-skills`.
+
+Skills disponibles actualmente (cargables vía `skill({ name: "..." })` — OpenCode resuelve desde `.flowtask/skills/`):
+
 ```
-skill({ name: "memory-protocol" })        ← cargar antes de usar mem_*
-skill({ name: "manual-classification" })  ← cargar si no hay clasificación inyectada en contexto
-skill({ name: "handshake-protocol" })   ← cargar antes de invocar subagentes
-skill({ name: "heuristics" })           ← cargar cuando el agente necesite guardar, cargar o proponer heurísticas
+skill({ name: "memory-protocol" })        ← cargar antes de usar mem_*; ruta en skill-registry/memory-protocol
+skill({ name: "manual-classification" })  ← cargar si no hay clasificación inyectada en contexto; ruta en skill-registry/manual-classification
+skill({ name: "handshake-protocol" })   ← cargar antes de invocar subagentes; ruta en skill-registry/handshake-protocol
+skill({ name: "heuristics" })           ← cargar cuando el agente necesite guardar, cargar o proponer heurísticas; ruta en skill-registry/heuristics
 ```
 
 ***
@@ -219,7 +225,11 @@ Antes de clasificar, carga el contexto del proyecto:
    c. `mem_search(query: "project/stack", scope: "project")` — stack tecnológico.
    d. `mem_search(query: "project/config", scope: "project")` — ubicación y formato de configuración.
    e. Si `mem_search` falla (Engram no disponible) o no hay resultados: continuar sin ese contexto.
-5. Incorporar hallazgos al razonamiento antes de clasificar.
+5. Cargar skill registry:
+   a. `mem_search(query: "skill-registry", scope: "project")` — verificar si el registro existe.
+   b. Si el registro existe: integrar las skills disponibles (nombre + triggers) como contexto para resolución de skills.
+   c. Si el registro NO existe (0 resultados): registrar que el registry está vacío. Si el flujo lo requiere y `--auto` está activo, invocar `/register-skills` para poblarlo.
+6. Incorporar hallazgos al razonamiento antes de clasificar.
 
 ### Sub-paso 1 — Clasificación inyectada en contexto (prioridad absoluta)
 
@@ -280,6 +290,14 @@ Espera respuesta explícita del desarrollador:
 
 Invoca constructor usando el formato canónico (Escenario A/B según Handshake). Prompt: flow state del plan desde Engram.
 
+### Política de worktrees paralelos
+
+1. El primer CA activo continúa en la rama de trabajo normal del desarrollador.
+2. A partir del segundo CA paralelo activo, crea un worktree aislado con `./.flowtask/scripts/worktree.sh create <CA-ID> --base development`.
+3. Si ya existe un worktree o rama `worktree/<CA-ID>`, no dupliques nada: conserva la entrada actual y escala al desarrollador para resolver el duplicado.
+4. Persiste en `flow-state/CA-{ID}/instances` el campo opcional `constructor.worktree = { path, branch, base_branch }`.
+5. Al despachar el constructor, incluye en el prompt el contexto del worktree cuando exista.
+
 ***
 
 ### Paso 5 — Validator
@@ -288,6 +306,15 @@ Invoca validator usando el formato canónico (Escenario A/B según Handshake). P
 
 **APPROVED** → finaliza el flujo.
 **RECHAZADO** → vuelve al Paso 4 (máximo 2 intentos).
+
+### Cierre exitoso con worktree
+
+Cuando el validator apruebe y el CA tenga worktree asociado:
+
+1. Ejecuta `./.flowtask/scripts/worktree.sh complete <CA-ID>`.
+2. Si completa bien, el script hace squash-merge a `development` y limpia el worktree/branch.
+3. Si `complete` falla por conflicto, **no limpies** el worktree.
+4. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
 
 ***
 
@@ -307,6 +334,22 @@ Revisa la validación en Engram y el código.
 - `solo planificación` → Pasos 1 → 2 → checkpoint
 - `solo ejecución` → Pasos 4 → 5
 - `solo validación` → Paso 5
+
+## Reconciliación post-compaction
+
+Si el runner pierde contexto o se reinicia:
+
+1. Ejecuta `./.flowtask/scripts/worktree.sh list` como fuente de verdad del filesystem.
+2. Cruza esa salida con `flow-state/*/instances` para detectar `constructor.worktree`.
+3. Si hay worktrees en disco sin correspondencia en Engram, repórtalos como huérfanos.
+
+## Mantenimiento de huérfanos
+
+Durante mantenimiento explícito:
+
+1. Ejecuta `./.flowtask/scripts/worktree.sh prune`.
+2. Usa su salida para decidir si limpiar huérfanos.
+3. `prune` no borra worktrees huérfanos; solo limpia metadata stale de Git y reporta directorios no asociados.
 
 ***
 
@@ -347,6 +390,10 @@ Al finalizar un flujo (`/run` completado, sesión terminada), el runner debe eje
    - **Si la invocación tiene éxito**: El `task_id` es válido. Conservarlo en el mapa.
 4. **Ejecutar `mem_session_summary`** solo después de completar la purga.
 
+### Nota de consistencia
+
+La purga de `task_id` y la gestión de worktrees son independientes: un `task_id` huérfano no implica borrar el worktree, y un worktree huérfano no implica tocar el mapa de `task_id`.
+
 ### Limitaciones conocidas
 
 - **GAP #4 — Sesiones zombie**: Si OpenCode recibe un `task_id` huérfano y crea una sesión nueva silenciosamente (en lugar de fallar), este mecanismo NO lo detecta. La entrada se conserva incorrectamente en el mapa. Aceptado como limitación — requiere herramienta externa (`task_status`) para resolverse.
@@ -365,6 +412,10 @@ Al finalizar un flujo (`/run` completado), después de la purga de `task_id` hu�
 4. **Si Engram no está disponible**: Omitir silenciosamente. El `baseName` queda bloqueado hasta la próxima sesión con Engram funcional — misma limitación que la purga de `task_id` huérfanos.
 5. **Ejecutar `mem_session_summary`** solo después de completar el cierre (o de omitirlo si Engram no disponible).
 
+### Nota de cierre con worktree
+
+Si el CA tenía `constructor.worktree`, el cierre exitoso debe invocar primero `worktree.sh complete` y solo luego persistir el estado cerrado.
+
 ### Limitaciones conocidas
 
 - **GAP #1 (CAs abandonados)**: Si un CA se inicia pero el flujo nunca llega a `/run` completo (sesión muerta, abandono), el `baseName` queda bloqueado permanentemente. El pool de 8 nombres podría degradarse. Aceptado como limitación — resolverlo requiere un mecanismo de expiración (CA futuro).
@@ -382,4 +433,3 @@ mem_session_summary(
   project: "{project-name}"
 )
 ```
-

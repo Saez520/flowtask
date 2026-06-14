@@ -42,6 +42,7 @@ flowtask/
 
 # FlowTask internals
 .flowtask/.temp/
+.worktrees/
 
 # FlowTask agent backups (temporales)
 .flowtask/agents-backup/
