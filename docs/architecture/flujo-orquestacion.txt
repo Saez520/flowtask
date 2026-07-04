@@ -7,7 +7,7 @@
          [ SKILL 'flujo-orquestacion' APLICA REGLAS ]
                           ¦
       AGENTE SILENCIADO   ¦    AGENTE ESPECIALIZADO USADO
-     (Flowtask Genérico)  ¦     (Stack TÃ©cnico)
+     (Flowtask Genérico)  ¦     (Stack Técnico)
     --------------------- ¦ ---------------------------------
                           ¦
     [X] flowtask-         +-----> [?] TECH-LEAD-ORCHESTRATOR
@@ -28,5 +28,5 @@
 +-------------------------------------------------------------------------¦
 ¦ Ilustra el contrato de exclusión. El 'runner' lee la skill y            ¦
 ¦ "silencia" (omite) a los validadores genéricos de Flowtask, cediendo    ¦
-¦ el control a los expertos nativos del sub-orquestador (ej. QITS).       ¦
+¦ el control a los expertos nativos del sub-orquestador (ej. Stack Técnico).       ¦
 +-------------------------------------------------------------------------+

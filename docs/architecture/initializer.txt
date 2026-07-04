@@ -14,7 +14,7 @@
  ¦   ENGRAM        ¦ ¦ SKILL: 'flujo-orquestacion'       ¦
  ¦                 ¦ ¦                                   ¦
  ¦ - project/stack ¦ ¦ Contrato de Enrutamiento:         ¦
- ¦ - convenciones  ¦ ¦ "Si stack == Stack TÃ©cnico:            ¦
+ ¦ - convenciones  ¦ ¦ "Si stack == Stack Técnico:            ¦
  ¦                 ¦ ¦  USA TECH-LEAD-ORCHESTRATOR            ¦
  ¦                 ¦ ¦  OMITE flowtask-validator         ¦
  ¦                 ¦ ¦  OMITE flowtask-tester"           ¦
