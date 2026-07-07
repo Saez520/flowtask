@@ -133,28 +133,26 @@ async function promptPersonaSeleccion(readline, currentLevel = null) {
   logStep("P", "Personalidad del Agente");
   logInfo("Define cómo el asistente se comunicará contigo según tu nivel de experiencia.");
 
-  console.log(`  1. Estoy aprendiendo / Practicante  ${COLORS.dim}Si estás dando tus primeros pasos en el desarrollo de software${COLORS.reset}`);
-  console.log(`  2. Junior                             ${COLORS.dim}Si ya tenés algo de experiencia pero todavía estás consolidando bases${COLORS.reset}`);
-  console.log(`  3. Mid-level                          ${COLORS.dim}Si te manejás con soltura en tu stack y tomás decisiones técnicas${COLORS.reset}`);
-  console.log(`  4. Senior                             ${COLORS.dim}Si diseñás arquitecturas, mentoreás a otros y pensás en el largo plazo${COLORS.reset}`);
-  console.log(`  5. Personalizado ✦ (recomendado)       ${COLORS.dim}Dejá que el asistente aprenda tu estilo con una breve auditoría guiada${COLORS.reset}`);
+  console.log(`  1. Estoy aprendiendo / Entry-level    ${COLORS.dim}Si estás dando tus primeros pasos en el desarrollo de software${COLORS.reset}`);
+  console.log(`  2. Mid-level                          ${COLORS.dim}Si te manejás con soltura en tu stack y tomás decisiones técnicas${COLORS.reset}`);
+  console.log(`  3. Senior                             ${COLORS.dim}Si diseñás arquitecturas, mentoreás a otros y pensás en el largo plazo${COLORS.reset}`);
+  console.log(`  4. Personalizado ✦ (recomendado)       ${COLORS.dim}Dejá que el asistente aprenda tu estilo con una breve auditoría guiada${COLORS.reset}`);
 
-  const levelToChoice = { training: 1, junior: 2, mid: 3, senior: 4, custom: 5 };
+  const levelToChoice = { training: 1, junior: 1, mid: 2, senior: 3, custom: 4 };
   const defaultHint = currentLevel && levelToChoice[currentLevel]
     ? ` [${levelToChoice[currentLevel]}]`
     : "";
 
   const mapping = {
     1: { level: "training", persona: "tutor-training", file: "tutor-training.md", onboarded: true },
-    2: { level: "junior", persona: "tutor-training", file: "tutor-training.md", onboarded: true },
-    3: { level: "mid", persona: "tutor-mid", file: "tutor-mid.md", onboarded: true },
-    4: { level: "senior", persona: "tutor-senior", file: "tutor-senior.md", onboarded: true },
-    5: { level: "custom", persona: "custom", file: null, onboarded: false },
+    2: { level: "mid", persona: "tutor-mid", file: "tutor-mid.md", onboarded: true },
+    3: { level: "senior", persona: "tutor-senior", file: "tutor-senior.md", onboarded: true },
+    4: { level: "custom", persona: "custom", file: null, onboarded: false },
   };
 
   const answer = await new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(`${COLORS.cyan}?${COLORS.reset} Elegí una opción ${COLORS.dim}(1-5)${defaultHint}:${COLORS.reset} `, (ans) => {
+    rl.question(`${COLORS.cyan}?${COLORS.reset} Elegí una opción ${COLORS.dim}(1-4)${defaultHint}:${COLORS.reset} `, (ans) => {
       rl.close();
       resolve(ans.trim());
     });
@@ -165,7 +163,7 @@ async function promptPersonaSeleccion(readline, currentLevel = null) {
   }
 
   const num = parseInt(answer, 10);
-  if (num >= 1 && num <= 5) return mapping[num];
+  if (num >= 1 && num <= 4) return mapping[num];
 
   return promptPersonaSeleccion(readline, currentLevel);
 }
