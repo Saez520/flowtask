@@ -131,15 +131,24 @@ export function generateClaudeCommands(flowtaskDir, projectDir) {
 
 /**
  * Inject runner.md content into the project's CLAUDE.md using FLOWTASK markers.
+ * @param {string} flowtaskDir - Path to the FlowTask source directory
+ * @param {string} projectDir - Path to the target project directory
+ * @param {string|null} runnerBodyOverride - Optional pre-injected runner.md content (from target). If null, reads from source.
  */
-export function generateClaudeMd(flowtaskDir, projectDir) {
-  const runnerPath = path.join(flowtaskDir, "agents", "runner.md");
-  if (!fileExists(runnerPath)) {
-    logError("runner.md not found — cannot generate CLAUDE.md");
-    return;
+export function generateClaudeMd(flowtaskDir, projectDir, runnerBodyOverride = null) {
+  let runnerBody;
+  if (runnerBodyOverride !== null) {
+    const parsed = parseFrontmatter(runnerBodyOverride);
+    runnerBody = parsed.body;
+  } else {
+    const runnerPath = path.join(flowtaskDir, "agents", "runner.md");
+    if (!fileExists(runnerPath)) {
+      logError("runner.md not found — cannot generate CLAUDE.md");
+      return;
+    }
+    const parsed = parseFrontmatter(fs.readFileSync(runnerPath, "utf8"));
+    runnerBody = parsed.body;
   }
-
-  const { body: runnerBody } = parseFrontmatter(fs.readFileSync(runnerPath, "utf8"));
 
   const adaptationHeader = `# FlowTask Runner
 

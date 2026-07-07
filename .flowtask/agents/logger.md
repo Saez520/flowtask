@@ -117,10 +117,13 @@ Si el proyecto tiene archivos de configuración de logging:
 
 ### 6. Guardar estado
 
-Escribe el resumen de logging en archivo:
+Guarda el resumen de logging en Engram:
 ```
-write_file(
-  path: ".workspace/CA-{ID}/logging-report.md",
+mem_save(
+  type: "ca-artifact",
+  scope: "project",
+  topic_key: "ca/CA-{ID}/artifact/logging-report",
+  title: "CA-{ID}: logging-report — Reporte de Instrumentación de Logging",
   content: {lista de archivos modificados, puntos de logging agregados y niveles usados}
 )
 ```
@@ -135,7 +138,7 @@ mem_save(
   content:
     What: {N} archivos instrumentados con logging para CA-{ID}
     Why: Instrumentación de logging requerida por el plan
-    Where: .workspace/CA-{ID}/logging-report.md
+    Where: ca/CA-{ID}/artifact/logging-report
     Learned: {patrón de logging descubierto si aplica — omitir si no}
 )
 ```
@@ -165,7 +168,7 @@ mem_save(
 ## Respuesta al runner
 
 state: logging_completed | blocked
-file: .workspace/CA-{ID}/logging-report.md
+file: ca/CA-{ID}/artifact/logging-report
 blockers: NONE | [descripción del problema]
 next: ready_for_testing | needs_decision
 
@@ -176,6 +179,6 @@ next: ready_for_testing | needs_decision
 - **SIEMPRE consulta Engram** para convenciones de logging antes de actuar
 - **NUNCA asumas** niveles de log sin conocer las convenciones del proyecto
 - **SIEMPRE guarda** el flow state en Engram al finalizar
-- **SIEMPRE escribe** el reporte completo en `.workspace/CA-{ID}/logging-report.md`
+- **SIEMPRE escribe** el artifact completo en Engram (ca/CA-{ID}/artifact/logging-report)
 - **NUNCA guardes contenido largo** en Engram — solo el snapshot con `Where:` apuntando al archivo
 - **NUNCA escribas a `project/`** — solo Initializer puede crear/actualizar observaciones en `project/{layer}`. Usa `impl/{ID}/patterns` para guardar patrones descubiertos

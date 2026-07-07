@@ -25,13 +25,13 @@ USUARIO: "/run CA-018"
 └─────────────────────────────────────────────────┘
           │
           ├─ 1. CA-WRITER     → Formaliza requisitos en ca.md
-          ├─ 2. PLANNER       → Genera plan de implementación en plan.md
-          ├─ 3. PLAN-AUDITOR  → Revisa coherencia y referencias → audit.md
-          ├─ 4. CONSTRUCTOR   → Implementa el plan (lee plan.md, escribe código)
+          ├─ 2. PLANNER       → Genera plan de implementación en Engram (ca/CA-{ID}/artifact/plan)
+          ├─ 3. PLAN-AUDITOR  → Revisa coherencia y referencias → audit.md en Engram (ca/CA-{ID}/artifact/audit)
+          ├─ 4. CONSTRUCTOR   → Implementa el plan (lee plan.md desde Engram, escribe código)
           └─ 5. VALIDATOR     → Verifica criterios de aceptación
 ```
 
-Cada CA produce artefactos versionados en `.workspace/CA-{ID}/` y guarda su estado de flujo en **Engram** (memoria persistente). Si un agente falla o la sesión se interrumpe, el Handshake Protocol permite **reanudar exactamente donde quedó**.
+Cada CA produce artefactos versionados en Engram (ca/CA-{ID}/artifact/{filename}). Los CAs legacy (~19) mantienen sus artefactos en `.workspace/CA-{ID}/` como fuente de fallback (Dual-Source). El estado de flujo se guarda en **Engram** (memoria persistente). Si un agente falla o la sesión se interrumpe, el Handshake Protocol permite **reanudar exactamente donde quedó**.
 
 ---
 
@@ -57,6 +57,7 @@ FlowTask se sostiene sobre tres pilares que lo diferencian de herramientas de as
 **Estructura de memoria de Engram** (ver [`docs/architecture/engram-cloud.txt`](../docs/architecture/engram-cloud.txt)):
 - `project/*` — contexto global del proyecto (stack, convenciones, capas)
 - `ca/{ID}`, `plan/{ID}`, `validation/{ID}` — snapshots de artefactos
+- `ca/CA-{ID}/artifact/{filename}` — contenido completo de artefactos (ca-artifact)
 - `flow-state/{ID}/*` — control paso a paso por CA
 - `impl/{ID}/*` — descubrimientos de implementación (decisiones, patrones)
 
@@ -90,7 +91,7 @@ FlowTask se sostiene sobre tres pilares que lo diferencian de herramientas de as
 
 | # | Ítem | Impacto | Referencia | Notas |
 |---|------|---------|------------|-------|
-| P2.1 | Migración `.workspace/` → Engram: análisis de viabilidad y estrategia | **ALTO** | Pendiente de análisis | ⚠️ Requiere análisis previo antes de ejecutar. |
+| P2.1 | Migración `.workspace/` → Engram: análisis e implementación del mecanismo | **ALTO** | ✅ CA-ARTIFACTOS-ENGRAM | Mecanismo Dual-Source implementado. Los 8 agentes ahora persisten artifacts en Engram. CAs legacy (~19) con fallback a disco. |
 | P2.2 | #1081: Regresión en consultas a Engram post-update | **ALTO** | Engram #1081 | Agentes dejaron de consultar Engram proactivamente. |
 | P2.3 | #1082: Inyección Progresiva de Reglas (Context Degradation) | **ALTO** | Engram #1082 | Runner pierde coherencia a ~100k tokens. |
 | P2.4 | #1084: Protocolo Zero-Assumptions | **ALTO** | Engram #1084 | Agentes deben validar contra Engram antes de actuar. |
@@ -135,7 +136,7 @@ FlowTask se sostiene sobre tres pilares que lo diferencian de herramientas de as
 | #1086 | 1086 | pattern | Pendiente: Refuerzo del Sub-agente Validator (QA Riguroso) |
 | #1087 | 1087 | bugfix | Pendiente: Validator — Fallo en detección de errores de Runtime |
 
-Los 10 pendientes (9 con ID Engram + migración `.workspace`) están distribuidos en el roadmap por pilar e impacto.
+Los 9 pendientes (con ID Engram) están distribuidos en el roadmap por pilar e impacto.
 
 ---
 
@@ -149,11 +150,11 @@ FlowTask/
 │   ├── agents/
 │   ├── skills/
 │   └── plugins/
-├── .workspace/               ← Artefactos de CAs activos (dinámico)
+├── .workspace/               ← Artefactos legacy de CAs (pre-ARTIFACTOS-ENGRAM)
 │   └── CA-{ID}/
-│       ├── ca.md
-│       ├── plan.md
-│       └── audit.md
+│       ├── ca.md             ← Legacy: nuevos CAs usan Engram
+│       ├── plan.md           ← Legacy: nuevos CAs usan Engram
+│       └── audit.md          ← Legacy: nuevos CAs usan Engram
 ├── docs/architecture/        ← Documentación de arquitectura unificada
 │   ├── INDEX.md              ← Índice de todos los documentos
 │   ├── 01-agentes.md .. 09-workspace.md  ← Módulos del repomix-output.xml

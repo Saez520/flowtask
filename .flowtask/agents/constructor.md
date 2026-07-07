@@ -2,7 +2,7 @@
 name: constructor
 description: >-
   Implementa el plan generado por el planner siguiendo las convenciones
-  del proyecto. Lee el plan desde .workspace/CA-{ID}/plan.md y ejecuta
+  del proyecto. Lee el plan desde Engram (ca/CA-{ID}/artifact/plan) con fallback a .workspace/CA-{ID}/plan.md y ejecuta
   los artefactos en el orden especificado. No toma decisiones de diseño.
 mode: subagent
 hidden: true
@@ -43,7 +43,7 @@ Carga el skill **justo antes** de necesitarlo.
 
 ### Paso 1 — Obtener el plan y Handshake
 
-1. **Obtener Plan**: Lee `.workspace/CA-{ID}/plan.md`. Si no existe, escala al runner.
+1. **Obtener Plan (Dual-Source)**: 1. `mem_search(query: "CA-{ID} plan", type: "ca-artifact", scope: "project")` → `mem_get_observation(id)`. 2. Si no encuentra: `read_file('.workspace/CA-{ID}/plan.md')`. 3. Si no existe en ninguna fuente, escala al runner.
 2. **Handshake**: Verifica tu `instance_name` (inyectado por runner).
 
 ### Paso 2 — búsqueda proactiva de contexto
@@ -100,7 +100,7 @@ Al finalizar:
       title: "Constructor CA-{ID}: implementación completada",
       content:
         What: {N} artefactos implementados para CA-{ID}
-        Why: Según plan en .workspace/CA-{ID}/plan.md
+        Why: Según plan en Engram (ca/CA-{ID}/artifact/plan)
         Where: {lista de archivos creados/modificados}
         Learned: {gotcha técnico si aplica — omitir si no}
     )

@@ -2,7 +2,7 @@
 
 **v1.9.0** — AI-driven development workflow system with persistent memory via Engram.
 
-FlowTask provides specialized AI agents that work together to automate software development tasks — from requirements capture to implementation and validation. Artifacts (CAs and plans) are stored as workspace files; Engram persists only operational state and snapshots.
+FlowTask provides specialized AI agents that work together to automate software development tasks — from requirements capture to implementation and validation. Artifacts (CAs, plans, audits, reports) are stored in Engram as ca-artifact type; Engram persists both artifact content and operational state. Legacy CA artifacts remain in .workspace/ as fallback (Dual-Source).
 
 The system includes a **personality system** that adapts the runner's tone and depth based on your experience level, and **parallel worktree isolation** for running multiple development workflows simultaneously.
 
@@ -122,7 +122,7 @@ The CA-Writer agent will guide you through:
 - Detecting AI-slop patterns (scope inflation, over-engineering, premature details)
 - Confirming tradeoffs and known GAPs
 
-The CA is saved to `.workspace/CA-001/ca.md`.
+The CA is saved to Engram as a ca-artifact (topic_key: ca/CA-001/artifact/ca). Legacy CAs also remain in `.workspace/CA-001/ca.md` as fallback.
 
 ### Run a development workflow
 
@@ -133,7 +133,7 @@ The CA is saved to `.workspace/CA-001/ca.md`.
 FlowTask will:
 
 1. **CA-Writer** — clarifies requirements if the CA doesn't exist yet
-2. **Planner** — generates a decision-complete plan in `.workspace/CA-001/plan.md`
+2. **Planner** — generates a decision-complete plan in Engram (ca/CA-{ID}/artifact/plan) with fallback to `.workspace/` for legacy CAs
 3. **Plan-Auditor** — reviews the plan (auto for >5 tasks; always in Evolution Mode)
 4. **Checkpoint** — waits for your confirmation (`"ejecutar"`)
 5. **Constructor** — implements following project conventions
@@ -248,16 +248,18 @@ The worktree state is persisted in Engram under `flow-state/CA-{ID}/instances` a
 
 ### Artifact storage
 
-Artifacts are stored as files in `.workspace/`, not in Engram:
+Artifacts are stored in Engram as ca-artifact type, with Dual-Source fallback for legacy CAs:
 
-| Artifact            | File path                          |
-| ------------------- | ---------------------------------- |
-| Acceptance Criteria | `.workspace/CA-{ID}/ca.md`         |
-| Implementation Plan | `.workspace/CA-{ID}/plan.md`       |
-| Plan Audit          | `.workspace/CA-{ID}/audit.md`      |
-| Validation Report   | `.workspace/CA-{ID}/validacion.md` |
+| Artifact            | Engram topic_key                          | Legacy fallback                  |
+| ------------------- | ----------------------------------------- | -------------------------------- |
+| Acceptance Criteria | `ca/CA-{ID}/artifact/ca`                  | `.workspace/CA-{ID}/ca.md`       |
+| Implementation Plan | `ca/CA-{ID}/artifact/plan`                | `.workspace/CA-{ID}/plan.md`     |
+| Plan Audit          | `ca/CA-{ID}/artifact/audit`               | `.workspace/CA-{ID}/audit.md`    |
+| Validation Report   | `ca/CA-{ID}/artifact/validacion`          | `.workspace/CA-{ID}/validacion.md` |
+| Logging Report      | `ca/CA-{ID}/artifact/logging-report`      | `.workspace/CA-{ID}/logging-report.md` |
+| Tests Report        | `ca/CA-{ID}/artifact/tests-report`        | `.workspace/CA-{ID}/tests-report.md` |
 
-Engram stores only operational metadata (flow states, snapshots, project conventions). This lets agents survive context compaction and share state across sessions without duplicating the full content.
+Engram stores artifact content as `type: "ca-artifact"` observations. The legacy `.workspace/CA-{ID}/` filesystem path is preserved for ~19 legacy CAs. New CAs (post-ARTIFACTOS-ENGRAM) write only to Engram.
 
 ### Skills system
 
@@ -294,6 +296,7 @@ Skills are loaded via `skill({ name: "..." })` before invocation and are resolve
 | `project/stack`             | Initializer               | Tech stack                            |
 | `project/conventions`       | Initializer               | Project conventions                   |
 | `project/{layer}`           | Initializer               | Layer patterns (api, data, business…) |
+| `ca/CA-{ID}/artifact/{filename}` | All agents | Artifact content (ca-artifact type) |
 | `impl/{ID}/patterns`        | Constructor/Tester/Logger | Discovered technical patterns         |
 | `impl/{ID}/decisions`       | Constructor/Planner       | Design decisions                      |
 
@@ -314,7 +317,7 @@ If a session is abandoned or lost, orphan CAs retain their instance name until a
 ```
 1. /new-ca CA-001
    └── CA-Writer clarifies requirements
-       └── Saves CA to .workspace/CA-001/ca.md
+       └── Saves CA to Engram (ca/CA-001/artifact/ca)
        └── Saves flow state to Engram (flow-state/001/create)
        └── Runner saves snapshot (ca/001)
 
@@ -323,10 +326,10 @@ If a session is abandoned or lost, orphan CAs retain their instance name until a
        ├── [1st CA] → normal working directory
        └── [2nd+ CA] → creates Git worktree (.worktrees/CA-001/)
        └── Planner generates plan (decision-complete)
-           └── Saves plan to .workspace/CA-001/plan.md
+            └── Saves plan to Engram (ca/CA-001/artifact/plan)
            └── Saves flow state (flow-state/001/plan)
        └── Plan-Auditor reviews (auto if >5 tasks or Evolution Mode)
-           └── Saves audit to .workspace/CA-001/audit.md
+            └── Saves audit to Engram (ca/CA-001/artifact/audit)
            └── Saves flow state (flow-state/001/audit)
 
 3. "ejecutar"
@@ -334,7 +337,7 @@ If a session is abandoned or lost, orphan CAs retain their instance name until a
        └── Saves flow state (flow-state/001/construct)
 
 4. Validator reviews
-   └── Saves validation to .workspace/CA-001/validacion.md
+   └── Saves validation to Engram (ca/CA-001/artifact/validacion)
    └── APPROVED → flow complete
        ├── [worktree CA] → squash-merge to development, cleanup
        └── [normal CA]   → done
@@ -447,12 +450,12 @@ FlowTask/
 ├── update-engram.ps1             # Engram update script
 ├── presentacion-flowtask.md      # Project presentation
 ├── .gitignore                    # Git ignore rules
-└── .workspace/                   # Generated per project (git-ignored)
+└── .workspace/                   # Legacy artifact storage (pre-ARTIFACTOS-ENGRAM)
     └── CA-{ID}/
-        ├── ca.md
-        ├── plan.md
-        ├── audit.md
-        └── validacion.md
+        ├── ca.md               ← Legacy — new CAs use Engram
+        ├── plan.md             ← Legacy — new CAs use Engram
+        ├── audit.md            ← Legacy — new CAs use Engram
+        └── validacion.md       ← Legacy — new CAs use Engram
 ```
 
 ***

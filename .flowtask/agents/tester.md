@@ -114,10 +114,13 @@ Intenta cubrir:
 
 ### 6. Guardar estado
 
-Escribe el resumen de tests en archivo:
+Guarda el resumen de tests en Engram:
 ```
-write_file(
-  path: ".workspace/CA-{ID}/tests-report.md",
+mem_save(
+  type: "ca-artifact",
+  scope: "project",
+  topic_key: "ca/CA-{ID}/artifact/tests-report",
+  title: "CA-{ID}: tests-report — Reporte de Tests Generados",
   content: {lista de archivos de test generados, cobertura y casos incluidos}
 )
 ```
@@ -132,7 +135,7 @@ mem_save(
   content:
     What: {N} tests generados para CA-{ID}
     Why: Tests requeridos por el plan
-    Where: .workspace/CA-{ID}/tests-report.md
+    Where: ca/CA-{ID}/artifact/tests-report
     Learned: {patrón de testing descubierto si aplica — omitir si no}
 )
 ```
@@ -162,7 +165,7 @@ mem_save(
 ## Respuesta al runner
 
 state: tests_generated | blocked
-file: .workspace/CA-{ID}/tests-report.md
+file: ca/CA-{ID}/artifact/tests-report
 blockers: NONE | [descripción del problema]
 next: ready_for_validation | needs_decision
 
@@ -174,6 +177,6 @@ next: ready_for_validation | needs_decision
 - **SIEMPRE sigue** la estructura de archivos de test del proyecto
 - **SIEMPRE usa** las librerías de testing del proyecto (no instalar nuevas)
 - **SIEMPRE guarda** el flow state en Engram al finalizar
-- **SIEMPRE escribe** el reporte completo en `.workspace/CA-{ID}/tests-report.md`
+- **SIEMPRE escribe** el artifact completo en Engram (ca/CA-{ID}/artifact/tests-report)
 - **NUNCA guardes contenido largo** en Engram — solo el snapshot con `Where:` apuntando al archivo
 - **NUNCA escribas a `project/`** — solo Initializer puede crear/actualizar observaciones en `project/{layer}`. Usa `impl/{ID}/patterns` para guardar patrones descubiertos

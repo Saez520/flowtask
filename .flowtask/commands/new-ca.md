@@ -5,7 +5,7 @@ subtask: true
 ---
 Create a new Acceptance Criteria (CA) with guided clarification:
 
-1. Extract the CA-ID from the user's message (format: CA-{NUMBER}).
+1. Extract the CA-ID from the user's message (format: CA-{CA-name}).
    If no ID is provided, ask for one.
 
 2. If the user provided a brief description along with the ID, note it.

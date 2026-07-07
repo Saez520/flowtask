@@ -125,6 +125,103 @@ async function promptFerrisSearch(flowtaskDir, readline) {
   } catch (err) { logError(`Failed to configure MCP: ${err.message}`); }
 }
 
+// ─── Persona Selection ────────────────────────────────────────────────────────
+
+const CUSTOM_PERSONA_TEXT = `El desarrollador eligió la opción de personalidad personalizada. Antes de continuar, preguntale si quiere hacer el quiz de onboarding (\`/onboard\`) para que puedas adaptar tu estilo de comunicación a su nivel de experiencia y mejorar la experiencia de desarrollo.`;
+
+async function promptPersonaSeleccion(readline, currentLevel = null) {
+  logStep("P", "Personalidad del Agente");
+  logInfo("Define cómo el asistente se comunicará contigo según tu nivel de experiencia.");
+
+  console.log(`  1. Estoy aprendiendo / Practicante  ${COLORS.dim}Si estás dando tus primeros pasos en el desarrollo de software${COLORS.reset}`);
+  console.log(`  2. Junior                             ${COLORS.dim}Si ya tenés algo de experiencia pero todavía estás consolidando bases${COLORS.reset}`);
+  console.log(`  3. Mid-level                          ${COLORS.dim}Si te manejás con soltura en tu stack y tomás decisiones técnicas${COLORS.reset}`);
+  console.log(`  4. Senior                             ${COLORS.dim}Si diseñás arquitecturas, mentoreás a otros y pensás en el largo plazo${COLORS.reset}`);
+  console.log(`  5. Personalizado ✦ (recomendado)       ${COLORS.dim}Dejá que el asistente aprenda tu estilo con una breve auditoría guiada${COLORS.reset}`);
+
+  const levelToChoice = { training: 1, junior: 2, mid: 3, senior: 4, custom: 5 };
+  const defaultHint = currentLevel && levelToChoice[currentLevel]
+    ? ` [${levelToChoice[currentLevel]}]`
+    : "";
+
+  const mapping = {
+    1: { level: "training", persona: "tutor-training", file: "tutor-training.md", onboarded: true },
+    2: { level: "junior", persona: "tutor-training", file: "tutor-training.md", onboarded: true },
+    3: { level: "mid", persona: "tutor-mid", file: "tutor-mid.md", onboarded: true },
+    4: { level: "senior", persona: "tutor-senior", file: "tutor-senior.md", onboarded: true },
+    5: { level: "custom", persona: "custom", file: null, onboarded: false },
+  };
+
+  const answer = await new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(`${COLORS.cyan}?${COLORS.reset} Elegí una opción ${COLORS.dim}(1-5)${defaultHint}:${COLORS.reset} `, (ans) => {
+      rl.close();
+      resolve(ans.trim());
+    });
+  });
+
+  if (answer === "" && currentLevel && levelToChoice[currentLevel]) {
+    return mapping[levelToChoice[currentLevel]];
+  }
+
+  const num = parseInt(answer, 10);
+  if (num >= 1 && num <= 5) return mapping[num];
+
+  return promptPersonaSeleccion(readline, currentLevel);
+}
+
+function resolvePersonaContent(flowtaskDir, personaChoice) {
+  if (personaChoice.file === null) return CUSTOM_PERSONA_TEXT;
+
+  const personaPath = path.join(flowtaskDir, "personas", personaChoice.file);
+  if (!fileExists(personaPath)) {
+    logError(`Archivo de personalidad no encontrado: ${personaPath}. La instalación continuará sin personalidad.`);
+    return null;
+  }
+  return fs.readFileSync(personaPath, "utf8");
+}
+
+function injectPersonaIntoRunner(targetDir, personaContent) {
+  if (personaContent === null) return;
+
+  const runnerPath = path.join(targetDir, "agents", "runner.md");
+  if (!fileExists(runnerPath)) {
+    logWarn(`runner.md no encontrado en ${targetDir}. No se inyectó personalidad.`);
+    return;
+  }
+
+  const content = fs.readFileSync(runnerPath, "utf8");
+  const startMarker = "<!-- FLOWTASK:PERSONA_START -->";
+  const endMarker = "<!-- FLOWTASK:PERSONA_END -->";
+
+  const startIdx = content.indexOf(startMarker);
+  const endIdx = content.indexOf(endMarker);
+
+  if (startIdx === -1 || endIdx === -1) {
+    logWarn(`Marcadores PERSONA no encontrados en runner.md de ${targetDir}.`);
+    return;
+  }
+
+  const newContent =
+    content.slice(0, startIdx + startMarker.length) +
+    "\n" +
+    personaContent +
+    "\n" +
+    content.slice(endIdx);
+
+  fs.writeFileSync(runnerPath, newContent, "utf8");
+  logSuccess(`Personalidad inyectada en runner.md de ${targetDir}.`);
+}
+
+function writeProfile(projectDir, level, persona, onboarded) {
+  const ftDir = path.join(projectDir, ".flowtask");
+  if (!fs.existsSync(ftDir)) fs.mkdirSync(ftDir, { recursive: true });
+
+  const profile = { level, persona, onboarded };
+  fs.writeFileSync(path.join(ftDir, "profile.json"), JSON.stringify(profile, null, 2), "utf8");
+  logSuccess("Perfil guardado en .flowtask/profile.json");
+}
+
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir) {
@@ -148,6 +245,10 @@ ${COLORS.blue}╔═════════════════════
     if (selectedOptions.includes("vscode"))   targets.push({ id: "vscode",   ideDir: ".vscode",   targetSubDir: path.join(".vscode",   "flowtask") });
     if (selectedOptions.includes("claude"))   targets.push({ id: "claude",   ideDir: ".claude",   targetSubDir: path.join(".claude",   "flowtask") });
   }
+
+  // ── Step P: Personalidad del Agente ─────────────────────────────────
+  const personaChoice = await promptPersonaSeleccion(readline);
+  const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
 
   const projectDir = process.cwd();
   const results = [];
@@ -196,6 +297,11 @@ ${COLORS.blue}╔═════════════════════
         copyWithProgress(srcDir, destDir, src, readline);
       }
 
+      // ── Inject persona into runner.md ───────────────────────────────
+      if (personaContent) {
+        injectPersonaIntoRunner(TARGET_DIR, personaContent);
+      }
+
       // OpenCode: skills go to .opencode/skills/ (outside flowtask subdir)
       if (id === "opencode") {
         const srcSkills = path.join(flowtaskDir, "skills");
@@ -211,7 +317,13 @@ ${COLORS.blue}╔═════════════════════
         const cmdResult = generateClaudeCommands(flowtaskDir, projectDir);
         logSuccess(`${cmdResult.generated} commands → .claude/commands/`);
         mergeClaudeSettings(path.join(projectDir, ".claude", "settings.json"), flowtaskDir);
-        generateClaudeMd(flowtaskDir, projectDir);
+        if (personaContent) {
+          const targetRunnerPath = path.join(TARGET_DIR, "agents", "runner.md");
+          const runnerBody = fs.readFileSync(targetRunnerPath, "utf8");
+          generateClaudeMd(flowtaskDir, projectDir, runnerBody);
+        } else {
+          generateClaudeMd(flowtaskDir, projectDir);
+        }
       }
 
       // ── Step 5: Adapter Plugin (OpenCode only) ───────────────────────────
@@ -241,6 +353,9 @@ ${COLORS.blue}╔═════════════════════
     }
   }
 
+  // ── Write profile ──────────────────────────────────────────────────
+  writeProfile(projectDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
+
   // Cleanup empty root .flowtask if it was migrated (skip if it's the source dir)
   const rootFT = path.join(projectDir, ".flowtask");
   const isSrcDir = path.resolve(rootFT) === path.resolve(flowtaskDir);
@@ -260,6 +375,7 @@ ${COLORS.blue}╔═════════════════════
 ╚═══════════════════════════════════════════╝${COLORS.reset}
   `);
 
+  const readline = await import("readline");
   const projectDir = process.cwd();
 
   // ── Step 1: Detect installed targets ────────────────────────────────────
@@ -287,6 +403,18 @@ ${COLORS.blue}╔═════════════════════
     logError("No FlowTask installation found. Run 'flowtask install' first.");
     return;
   }
+
+  // ── Step 1.5: Personalidad del Agente ──────────────────────────────
+  let currentLevel = null;
+  const profilePath = path.join(projectDir, ".flowtask", "profile.json");
+  if (fileExists(profilePath)) {
+    try {
+      const profile = JSON.parse(fs.readFileSync(profilePath, "utf8"));
+      currentLevel = profile.level || null;
+    } catch { /* ignore invalid profile.json */ }
+  }
+  const personaChoice = await promptPersonaSeleccion(readline, currentLevel);
+  const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
 
   // ── Step 2: Delta sync each target ──────────────────────────────────────
   const preservePaths = ["CA-", "workspace", ".workspace", ".installation-method"];
@@ -324,6 +452,11 @@ ${COLORS.blue}╔═════════════════════
 
       logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
 
+      // ── Inject persona into runner.md ───────────────────────────────
+      if (personaContent) {
+        injectPersonaIntoRunner(TARGET_DIR, personaContent);
+      }
+
       // Claude: regenerate derived files
       if (id === "claude") {
         const agentResult = generateClaudeAgents(flowtaskDir, projectDir);
@@ -331,7 +464,13 @@ ${COLORS.blue}╔═════════════════════
         const cmdResult = generateClaudeCommands(flowtaskDir, projectDir);
         logSuccess(`Claude commands: ${cmdResult.generated} regenerated`);
         mergeClaudeSettings(path.join(projectDir, ".claude", "settings.json"), flowtaskDir);
-        generateClaudeMd(flowtaskDir, projectDir);
+        if (personaContent) {
+          const targetRunnerPath = path.join(TARGET_DIR, "agents", "runner.md");
+          const runnerBody = fs.readFileSync(targetRunnerPath, "utf8");
+          generateClaudeMd(flowtaskDir, projectDir, runnerBody);
+        } else {
+          generateClaudeMd(flowtaskDir, projectDir);
+        }
       }
 
       fs.writeFileSync(
@@ -352,6 +491,9 @@ ${COLORS.blue}╔═════════════════════
       results.push({ target: id, status: "Error", message: err.message });
     }
   }
+
+  // ── Write profile ──────────────────────────────────────────────────
+  writeProfile(projectDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
 
   printSummary("Update Summary", results, (res) =>
     res.stats ? ` (${res.stats.copied} updated, ${res.stats.skipped} preserved)` : ""

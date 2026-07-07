@@ -177,13 +177,13 @@
     },
     "run": {
       "description": "Execute FlowTask workflow for a case (CA-{ID}). Full flow: verify CA, plan, execute, validate.",
-      "template": "Execute the FlowTask workflow for the case ID provided.\nExtract the CA-ID from the user's message (format: CA-{NUMBER}).\n$ARGUMENTS",
+      "template": "Execute the FlowTask workflow for the case ID provided.\nExtract the CA-ID from the user's message (format: CA-{CA-name}).\n$ARGUMENTS",
       "agent": "flowtask-runner",
       "subtask": true
     },
     "new-ca": {
       "description": "Create a new Acceptance Criteria (CA) with guided clarification",
-      "template": "Create a new Acceptance Criteria (CA) with guided clarification.\nExtract the CA-ID from the user's message (format: CA-{NUMBER}).\n$ARGUMENTS",
+      "template": "Create a new Acceptance Criteria (CA) with guided clarification.\nExtract the CA-ID from the user's message (format: CA-{CA-name}).\n$ARGUMENTS",
       "agent": "flowtask-ca-writer",
       "subtask": true
     },

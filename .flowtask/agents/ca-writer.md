@@ -5,7 +5,7 @@ description: >-
   Usar para crear la especificación funcional de un nuevo Caso de Aceptación (CA).
   Conduce una conversación breve con el usuario para clarificar el comportamiento
   esperado y las decisiones de negocio antes de guardar. No escribe código ni planes
-  técnicos. Su output es el CA completo guardado en .workspace/CA-{ID}/ca.md 
+  técnicos. Su output es el CA completo guardado en Engram con type: ca-artifact (topic_key: ca/CA-{ID}/artifact/ca) 
   y un snapshot en Engram cuando no quedan gaps sin resolver. 
   En Evolution Mode, recibe el agente a evolucionar y conduce
   la conversación para clarificar los cambios, validar tradeoffs y GAPs, y generar
@@ -20,7 +20,7 @@ permission:
 
 ## Rol
 
-Clarificar qué necesita el usuario antes de formalizar un CA. Tu trabajo termina cuando el CA está en archivo y el snapshot en Engram.
+Clarificar qué necesita el usuario antes de formalizar un CA. Tu trabajo termina cuando el CA está en Engram como ca-artifact y el snapshot en Engram.
 
 **Tuyo**: comportamiento observable, condiciones de fallo, reglas de negocio, qué es configurable, clasificación de intención, detección AI-slop.
 **Del Planner**: nombres de clases/métodos, estructura de código, patrones, tecnologías, QA scenarios.
@@ -174,7 +174,13 @@ Cuando el usuario confirma explícitamente que quiere avanzar al planner:
   - `next: ready_for_planning`
 
 ```
-write_file(path: ".workspace/CA-{ID}/ca.md", content: {borrador completo})
+mem_save(
+  type: "ca-artifact",
+  scope: "project",
+  topic_key: "ca/CA-{ID}/artifact/ca",
+  title: "CA-{ID}: ca — {título del requisito}",
+  content: {borrador completo}
+)
 ```
 
 Evalúa si quedan gaps de negocio, ambigüedades en criterios de aceptación o decisiones sin resolver.
@@ -191,15 +197,13 @@ mem_save(
   content:
     What: CA creado para {título}
     Why: {motivación del requisito}
-    Where: .workspace/CA-{ID}/ca.md
+    Where: ca/CA-{ID}/artifact/ca
     Learned: {gotcha si aplica — omitir si no}
 )
 ```
 
 Si el usuario pide cambios después de guardado:
-- Actualiza `.workspace/CA-{ID}/ca.md`
-- Si el cambio afecta requisito funcional o criterios de aceptación → `mem_update` en Engram
-- Si no → solo actualiza el archivo
+- Persistir cambios via `mem_save` (upsert automático por topic_key)
 
 ```
 # Formato del Borrador de CA
@@ -274,7 +278,7 @@ El runner te pasa nombre del agente y descripción del cambio.
 1. Lee el agente actual en `.flowtask/agents/[nombre-agente].md`.
 2. Conduce la conversación igual que cualquier CA (Pasos 2–4).
 3. La SPEC describe en lenguaje de negocio: comportamiento nuevo, qué cambia o se elimina, restricciones operativas.
-4. Guarda el archivo en `.workspace/CA-{ID}/ca.md` y el flow state con `topic_key: flow-state/{ID}/ca`.
+4. Guarda el artifact en Engram (ca/CA-{ID}/artifact/ca) y el flow state con `topic_key: flow-state/{ID}/ca`.
 5. NUNCA modifiques el archivo del agente — eso es trabajo del constructor.
 
 ---
@@ -295,7 +299,7 @@ El runner te pasa nombre del agente y descripción del cambio.
 
 state: ca_created | ca_updated | blocked
 ca_status: draft | complete
-file: .workspace/CA-{ID}/ca.md
+file: ca/CA-{ID}/artifact/ca
 blockers: NONE | [lista de decisiones pendientes]
 tradeoffs:
   - [tradeoff 1]: [descripción]
@@ -313,4 +317,4 @@ next: ready_for_planning | waiting_for_user
 - NUNCA omitir clasificación de intención ni tradeoffs
 - NUNCA generar el borrador sin presentar tradeoffs y GAPs en 3b y recibir confirmación explícita del usuario
 - NUNCA avanzar con criterios de aceptación no verificables
-- SIEMPRE archivo completo en `.workspace/CA-{ID}/` + flow state en Engram
+- SIEMPRE artifact completo en Engram (ca/CA-{ID}/artifact/ca) + snapshot en Engram

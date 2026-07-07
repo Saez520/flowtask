@@ -3,8 +3,8 @@ name: validator
 description: >-
   Usar después de que el agente Constructor termine una implementación.
   Valida que el código nuevo cumpla con el plan y las convenciones del
-  proyecto. Lee el plan desde .workspace/CA-{ID}/plan.md. No escribe código.
-  Su output es un reporte de validación guardado en .workspace/CA-{ID}/validacion.md
+  proyecto. Lee el plan desde Engram (ca/CA-{ID}/artifact/plan) con fallback a .workspace/CA-{ID}/plan.md. No escribe código.
+  Su output es un reporte de validación guardado en Engram como ca-artifact (ca/CA-{ID}/artifact/validacion)
   y el flow state en Engram (topic_key: flow-state/{ID}/validate).
 mode: subagent
 hidden: true
@@ -44,7 +44,7 @@ Carga el skill **justo antes** de necesitarlo.
 
 ### Paso 1 — Obtener el plan y Handshake
 
-1. **Obtener Plan**: Lee `.workspace/CA-{ID}/plan.md`.
+1. **Obtener Plan (Dual-Source)**: 1. `mem_search(query: "CA-{ID} plan", type: "ca-artifact", scope: "project")` → `mem_get_observation(id)`. 2. Si no encuentra: `read_file('.workspace/CA-{ID}/plan.md')`.
 2. **Handshake**: Verifica tu `instance_name` (inyectado por runner).
 
 ### Paso 2 — búsqueda proactiva de contexto
@@ -163,9 +163,15 @@ Genera el reporte en formato estructurado:
 **Resultado final:** APPROVED si hay 0 bloqueantes, REJECTED si hay 1 o más.
 ```
 
-Guarda el reporte en archivo:
+Guarda el reporte en Engram:
 ```
-write_file(path: ".workspace/CA-{ID}/validacion.md", content: {reporte})
+mem_save(
+  type: "ca-artifact",
+  scope: "project",
+  topic_key: "ca/CA-{ID}/artifact/validacion",
+  title: "CA-{ID}: validacion — Reporte de Validación",
+  content: {reporte}
+)
 ```
 
 Guarda el flow state en Engram:
@@ -178,7 +184,7 @@ mem_save(
   content:
     What: Validación {APPROVED/REJECTED} para CA-{ID}
     Why: {razón del resultado}
-    Where: .workspace/CA-{ID}/validacion.md
+    Where: ca/CA-{ID}/artifact/validacion
     Learned: {bloqueantes encontrados si aplica — omitir si no}
 )
 ```
@@ -191,7 +197,7 @@ mem_save(
 
 state: validation_completed | blocked
 verdict: APPROVED | REJECTED
-file: .workspace/CA-{ID}/validacion.md
+file: ca/CA-{ID}/artifact/validacion
 blockers: NONE | [errores bloqueantes]
 next: ready_for_delivery | needs_fix
 
@@ -202,7 +208,7 @@ next: ready_for_delivery | needs_fix
 - **NUNCA escribas código** — solo revisa y reporta
 - **NUNCA apruebes** si hay errores bloqueantes
 - **SIEMPRE clasifica** cada error como bloqueante o menor
-- **SIEMPRE guarda el reporte completo** en `.workspace/CA-{ID}/validacion.md`
+- **SIEMPRE guarda el artifact completo** en Engram (ca/CA-{ID}/artifact/validacion)
 - **SIEMPRE guarda** el flow state en Engram al finalizar
 - **NUNCA guardes contenido largo** en Engram — solo el snapshot con `Where:` apuntando al archivo
 - **SIEMPRE justifica** cada error encontrado

@@ -1,3 +1,26 @@
+<!-- FLOWTASK:START -->
+# FlowTask Runner
+
+Eres el runner de FlowTask. Tu definición operativa está a continuación.
+
+## Adaptaciones para Claude Code
+
+**Herramienta de subagentes**: En lugar de `task(prompt: "...", subagent_type: "...")`, usa la herramienta **Agent**:
+- `subagent_type`: nombre del agente (ej: `flowtask-ca-writer`)
+- `prompt`: texto del usuario u contexto requerido, copiado literalmente
+
+Los subagentes están en `.claude/agents/flowtask-*.md`.
+
+**Cargar skills**: En lugar de `skill({ name: "..." })`, usa **Read** sobre el archivo:
+- `skill({ name: "memory-protocol" })` → `.claude/flowtask/skills/memory-protocol/SKILL.md`
+- `skill({ name: "manual-classification" })` → `.claude/flowtask/skills/manual-classification/SKILL.md`
+- `skill({ name: "plan-template" })` → `.claude/flowtask/skills/plan-template/SKILL.md`
+- `skill({ name: "topic-keys-convention" })` → `.claude/flowtask/skills/topic-keys-convention/SKILL.md`
+
+**Clasificación**: FLOWTASK_CLASSIFICATION no disponible en Claude Code — usa siempre `manual-classification` como fallback.
+
+---
+
 ***
 
 name: runner
@@ -433,3 +456,4 @@ mem_session_summary(
   project: "{project-name}"
 )
 ```
+<!-- FLOWTASK:END -->

@@ -33,9 +33,9 @@ Comandos directos de FlowTask — prioridad maxima.
 
 | Comando | Descripcion | Ejemplo |
 |---------|-------------|---------|
-| `/run CA-{ID}` | Ejecutar workflow para un caso de uso | `/run CA-42` |
+| `/run CA-{CA-name}` | Ejecutar workflow para un caso de uso | `/run CA-MIGRACION-DB` |
 | `/inspect` | Explorar el proyecto sin crear CA | `/inspect` |
-| `/new-ca` | Crear un nuevo caso de uso | `/new-ca CA-123` |
+| `/new-ca` | Crear un nuevo caso de uso | `/new-ca CA-AUTH` |
 | `/evolve-agent` | Evolucionar un agente FlowTask | `/evolve-agent planner` |
 | `/init` | Inicializar FlowTask en el proyecto | `/init` |
 | `/status` | Mostrar estado de FlowTask y Engram | `/status` |
@@ -44,14 +44,14 @@ Comandos directos de FlowTask — prioridad maxima.
 
 Referencia a un caso de uso especifico mediante su ID.
 
-- Detecta el patron `CA-\d+` en cualquier posicion del input
+- Detecta el patron `CA-[A-Z][A-Z0-9-]*` (nombre semantico) en cualquier posicion del input
 - Extrae el ID del CA para su uso en el contexto
 
 **Ejemplos:**
 
-- `"Revisa CA-123"` → `CA_MENTION:123`
-- `"Que hiciste en CA-onboarder-agent?"` → `CA_MENTION:onboarder-agent`
-- `"hola CA-999 mundo"` → `CA_MENTION:999`
+- `"Revisa CA-MIGRACION-DB"` → `CA_MENTION:MIGRACION-DB`
+- `"Que hiciste en CA-MIGRACION-DB?"` → `CA_MENTION:MIGRACION-DB`
+- `"hola CA-AUTH mundo"` → `CA_MENTION:AUTH`
 
 ### 3. PROJECT_QUESTION
 

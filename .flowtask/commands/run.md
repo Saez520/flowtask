@@ -5,7 +5,7 @@ subtask: true
 ---
 Execute the FlowTask workflow for the case ID provided.
 
-Extract the CA-ID from the user's message (format: CA-{NUMBER}).
+Extract the CA-ID from the user's message (format: CA-{CA-name}).
 If no CA-ID is provided, ask the user to specify which case they want to work on.
 
 Follow the FlowTask workflow:

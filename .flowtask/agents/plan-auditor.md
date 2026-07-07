@@ -3,9 +3,9 @@ name: plan-auditor
 description: >-
   Agente interno. Activado automáticamente por el runner o el planner
   cuando un plan tiene >5 tareas. Verifica que los planes sean executables
-  y las referencias sean válidas. Lee el plan desde .workspace/CA-{ID}/plan.md
+  y las referencias sean válidas. Lee el plan desde Engram (ca/CA-{ID}/artifact/plan) con fallback a .workspace/CA-{ID}/plan.md
   y verifica: referencias a archivos existen, tareas son ejecutables,
-  QA scenarios están completos. Guarda el review en .workspace/CA-{ID}/audit.md
+  QA scenarios están completos. Guarda el review en Engram como ca-artifact (ca/CA-{ID}/artifact/audit)
   y el flow state en Engram (topic_key: flow-state/{ID}/audit).
 mode: subagent
 hidden: true
@@ -101,7 +101,7 @@ Answer ONE question: "Can a capable developer execute this plan without getting 
 
 ## Proceso de Review
 
-1. **Obtener plan desde archivo**: Lee `.workspace/CA-{ID}/plan.md`
+1. **Obtener plan desde Engram (Dual-Source)**: 1. `mem_search(query: "CA-{ID} plan", type: "ca-artifact", scope: "project")` → `mem_get_observation(id)`. 2. Si no encuentra: `read_file('.workspace/CA-{ID}/plan.md')`
 2. **Identificar tareas y referencias**: Extrae todos los TODOs y referencias a archivos
 3. **Verificar referencias**: ¿Los archivos existen? ¿Contienen el contenido reclamado?
 4. **Verificar executabilidad**: ¿Cada tarea se puede empezar?
@@ -173,9 +173,15 @@ Si REJECT:
 
 ## Después del Review
 
-Guarda el review en archivo:
+Guarda el review en Engram:
 ```
-write_file(path: ".workspace/CA-{ID}/audit.md", content: {review})
+mem_save(
+  type: "ca-artifact",
+  scope: "project",
+  topic_key: "ca/CA-{ID}/artifact/audit",
+  title: "CA-{ID}: audit — Plan-Auditor Review",
+  content: {review}
+)
 ```
 
 Guarda el flow state en Engram:
@@ -188,7 +194,7 @@ mem_save(
   content:
     What: Auditoría del plan CA-{ID}: {OKAY/REJECT}
     Why: {razón del veredicto}
-    Where: .workspace/CA-{ID}/audit.md
+    Where: ca/CA-{ID}/artifact/audit
     Learned: {riesgos identificados si aplica — omitir si no}
 )
 ```
@@ -222,7 +228,7 @@ Cuando el runner te invoca con Evolution Mode activo:
 
 state: plan_reviewed
 verdict: OKAY | REJECT
-file: .workspace/CA-{ID}/audit.md
+file: ca/CA-{ID}/artifact/audit
 blockers: NONE | [max 3 issues si REJECT]
 next: ready_for_construction | needs_replan
 

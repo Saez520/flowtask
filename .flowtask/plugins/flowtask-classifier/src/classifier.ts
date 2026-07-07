@@ -17,10 +17,10 @@
 // =============================================================================
 // CATEGORÍA 1: COMANDOS (prioridad máxima)
 // =============================================================================
-// Cada patrón captura el ID cuando aplica (ej: /run CA-42)
+// Cada patrón captura el ID cuando aplica (ej: /run CA-MIGRACION-DB)
 const COMMAND_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
-  // /run CA-{ID} — ejecutar workflow para un caso de uso
-  { pattern: /\/run\s+CA-(\d+)/i, label: 'COMMAND:/run CA-{ID}' },
+  // /run CA-{CA-name} — ejecutar workflow para un caso de uso
+  { pattern: /\/run\s+CA-([A-Z][A-Z0-9-]*)/, label: 'COMMAND:/run CA-{CA-name}' },
   // /inspect — explorar el proyecto sin crear CA
   { pattern: /\/inspect/i, label: 'COMMAND:/inspect' },
   // /new-ca — crear un nuevo caso de uso
@@ -36,9 +36,9 @@ const COMMAND_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
 // =============================================================================
 // CATEGORÍA 2: CA_MENTION
 // =============================================================================
-// Detecta referencias a CA con ID de CA: CA-onboarder-agent
+// Detecta referencias a CA con ID semántico: CA-MIGRACION-DB
 // Usa \b para evitar falsos positivos en palabras como "CASA"
-const CA_MENTION_REGEX = /\bCA-(\d+)\b/i;
+const CA_MENTION_REGEX = /\bCA-([A-Z][A-Z0-9-]*)\b/;
 
 // =============================================================================
 // CATEGORÍA 3: PROJECT_QUESTION
@@ -107,8 +107,8 @@ const CHANGE_KEYWORDS = [
  * @returns Category string or null if ambiguous
  *
  * @example
- * classify('/run CA-42')       // → 'COMMAND:/run CA-42'
- * classify('Revisa CA-123')    // → 'CA_MENTION:123'
+ * classify('/run CA-MIGRACION-DB')       // → 'COMMAND:/run CA-MIGRACION-DB'
+ * classify('Revisa CA-MIGRACION-DB')    // → 'CA_MENTION:MIGRACION-DB'
  * classify('¿Qué hace esto?')  // → 'PROJECT_QUESTION'
  * classify('agrega un botón')  // → 'CHANGE_REQUEST'
  * classify('hola mundo')       // → null (ambiguo)
@@ -124,8 +124,8 @@ export default function classify(input: string): string | null {
     const match = trimmed.match(pattern);
     if (match) {
       // Para /run, inyectar el ID capturado en el label
-      if (label.includes('{ID}') && match[1]) {
-        return label.replace('{ID}', match[1]);
+      if (label.includes('{CA-name}') && match[1]) {
+        return label.replace('{CA-name}', match[1]);
       }
       return label;
     }
