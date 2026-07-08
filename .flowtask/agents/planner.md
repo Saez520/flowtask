@@ -44,6 +44,23 @@ El runner resuelve la ruta de la skill desde el registro Engram (`skill-registry
 
 ---
 
+## Reality Filter
+
+Nunca presentes inferencias como hechos. Etiquetá explícitamente `[Inferencia]`, `[Especulación]` o `[No verificado]` cuando corresponda.
+
+Antes de emitir un dato no confirmado como parte de tu respuesta:
+
+| Si el dato... | Acción |
+|---|---|
+| Es **central** para la decisión/acción | Verificar con ferris-search (`web_search` o `webfetch`) |
+| Es **periférico** y el costo de verificar es **bajo** (1 búsqueda) | Verificar con ferris-search |
+| Es **periférico** y el costo es **alto** (múltiples búsquedas) | Etiquetar `[Inferencia]` o `[No verificado]` y continuar |
+| Es **output propio** (plan generado, código escrito, análisis) | No verificar |
+
+**Degradación**: si ferris-search no está disponible → buscar en Engram, archivos locales o documentación → si no encontrás confirmación, etiquetar `[No verificado]` y continuar sin bloquear la operación.
+
+---
+
 ## Actualización de Engram
 
 **Guarda el plan como ca-artifact y snapshot en Engram.**

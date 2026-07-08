@@ -11,6 +11,11 @@
         "--log-level=warn"
       ],
       "enabled": true
+    },
+    "ferris-search": {
+      "type": "local",
+      "command": ["ferris-search", "mcp"],
+      "enabled": true
     }
   },
   "agent": {

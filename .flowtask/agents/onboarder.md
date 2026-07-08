@@ -117,7 +117,7 @@ Este es el núcleo interactivo del quiz. **NUNCA muestres más de una pregunta a
    - Si el usuario pide aclaración sobre la pregunta → explicar brevemente (1-2 frases) y repetir las opciones
 
 4. **Detectar abandono:** Si el usuario dice "salir", "cancelar", "stop", "abandonar", "no quiero seguir", o frases similares:
-   - Confirmar: "¿Seguro que querés salir? Si salís ahora, te asigno la personalidad por defecto."
+   - Confirmar: "¿Seguro que querés salir? Si salís ahora, el runner operará sin personalidad definida (modo custom)."
    - Si confirma → saltar al Paso 5 con las respuestas acumuladas (aplica fallback por abandono)
    - Si no confirma → continuar con la pregunta actual
 
@@ -142,8 +142,8 @@ Este es el núcleo interactivo del quiz. **NUNCA muestres más de una pregunta a
 Una vez respondidas las 4 preguntas (o las que se alcanzaron antes del abandono):
 
 1. **Si se respondieron menos de 4 preguntas (abandono):**
-   - Nivel = `default`
-   - Saltar al Paso 6 directamente
+    - Nivel = `custom`
+    - Saltar al Paso 6 directamente
 
 2. **Contar respuestas por nivel:**
    - `count_training`: cuántas respuestas fueron opción A (nivel entry-level)
@@ -177,11 +177,12 @@ Mapear el nivel determinado a un archivo de personalidad:
 | `training` | `tutor-training.md` |
 | `mid` | `tutor-mid.md` |
 | `senior` | `tutor-senior.md` |
-| `default` | `tutor-default.md` |
+| `custom` | _(sin archivo — el runner opera con su comportamiento base)_ |
 
 1. Leer el archivo correspondiente: `.flowtask/personas/{persona}.md`
-2. Almacenar el contenido completo para inyectarlo en el Paso 7
-3. Si el archivo no existe → error crítico. Responder al usuario: "Falta el archivo de personalidad `.flowtask/personas/{persona}.md`. ¿Ejecutaste la instalación completa de FlowTask?" y terminar.
+2. Si el nivel es `custom`, no se carga ningún archivo de persona — el runner operará con su comportamiento base.
+3. Almacenar el contenido completo para inyectarlo en el Paso 7 (vacío si es `custom`).
+4. Si el archivo no existe y el nivel NO es `custom` → error crítico. Responder al usuario: "Falta el archivo de personalidad `.flowtask/personas/{persona}.md`. ¿Ejecutaste la instalación completa de FlowTask?" y terminar.
 
 ---
 
@@ -195,18 +196,19 @@ Mapear el nivel determinado a un archivo de personalidad:
    - Error: "Los marcadores PERSONA_START/PERSONA_END no están en runner.md. CA-014 (infraestructura de personalidades) no se completó correctamente. Ejecutá la instalación completa de FlowTask."
    - Terminar sin modificar nada.
 4. **Si los marcadores SÍ existen:**
-   - **Reemplazar completamente** todo el contenido entre `<!-- FLOWTASK:PERSONA_START -->` y `<!-- FLOWTASK:PERSONA_END -->` con el contenido del archivo de personalidad.
+   - Si la persona es `custom`: inyectar un marcador vacío entre los tags (solo un salto de línea). El runner operará con su comportamiento base sin personalidad inyectada.
+   - Si la persona NO es `custom`: **reemplazar completamente** todo el contenido entre `<!-- FLOWTASK:PERSONA_START -->` y `<!-- FLOWTASK:PERSONA_END -->` con el contenido del archivo de personalidad.
    - Los marcadores mismos permanecen intactos. Solo se reemplaza lo que está ENTRE ellos.
    - Si ya había contenido entre los marcadores (por una ejecución anterior de `/onboard`), se sustituye completamente. Esto garantiza **idempotencia**: ejecutar `/onboard` dos veces produce el mismo resultado, sin duplicar ni anidar contenido.
 5. **Formato de la inyección:**
    ```
    <!-- FLOWTASK:PERSONA_START -->
-   [CONTENIDO DEL ARCHIVO DE PERSONALIDAD — copiado literalmente]
+   [CONTENIDO DEL ARCHIVO DE PERSONALIDAD — copiado literalmente, o vacío si es custom]
    <!-- FLOWTASK:PERSONA_END -->
    ```
    - El contenido de personalidad NO incluye los marcadores.
    - El contenido de personalidad se inserta tal cual está en el archivo, sin modificaciones.
-6. **Verificar**: después de escribir, leer `runner.md` y confirmar que los marcadores están presentes y el contenido entre ellos coincide con el archivo de personalidad.
+6. **Verificar**: después de escribir, leer `runner.md` y confirmar que los marcadores están presentes y el contenido entre ellos coincide con lo esperado.
 
 ---
 
@@ -221,7 +223,7 @@ Mapear el nivel determinado a un archivo de personalidad:
    - Archivo creado/actualizado: `.flowtask/profile.json`
     - Si el quiz se completó: "¡Listo! El runner ahora opera con la personalidad **{persona}**. Podés volver a ejecutar `/onboard` en cualquier momento para re-evaluar tu nivel."
 
-4. **Nota:** El onboarder solo escribe `'training'`, `'mid'`, `'senior'` o `'default'` en profile.json. Los valores `'junior'` y `'custom'` son escritos por el installer — el onboarder los lee e interpreta, pero no los genera.
+4. **Nota:** El onboarder solo escribe `'training'`, `'mid'`, `'senior'` o `'custom'` en profile.json. Los valores `'junior'` y `'custom'` son escritos por el installer — el onboarder los lee e interpreta, pero no los genera (excepto `'custom'` en caso de abandono).
 
 ---
 
@@ -266,7 +268,7 @@ Al finalizar las 4 preguntas, se cuenta la frecuencia de cada nivel:
 | `training` | `tutor-training` | `.flowtask/personas/tutor-training.md` |
 | `mid` | `tutor-mid` | `.flowtask/personas/tutor-mid.md` |
 | `senior` | `tutor-senior` | `.flowtask/personas/tutor-senior.md` |
-| `default` (fallback) | `tutor-default` | `.flowtask/personas/tutor-default.md` |
+| `custom` (fallback) | `custom` | _(sin archivo — comportamiento base del runner)_ |
 
 ---
 
@@ -319,8 +321,8 @@ El archivo `.flowtask/profile.json` se genera en el Paso 8. Sigue esta estructur
 
 | Campo | Tipo | Valores posibles | Descripción |
 |-------|------|-----------------|-------------|
-| `level` | `string` | `"training"`, `"junior"` (lectura), `"mid"`, `"senior"`, `"custom"` (lectura), `"default"` | Nivel determinado por la heurística de mayoría. `"junior"` y `"custom"` son valores de lectura (escritos por el installer). El onboarder nunca los escribe. `"default"` solo si el quiz fue abandonado antes de 4 preguntas. |
-| `persona` | `string` | `"tutor-training"`, `"tutor-mid"`, `"tutor-senior"`, `"tutor-default"` | Nombre del archivo de personalidad asignado, sin extensión `.md` ni path. |
+| `level` | `string` | `"training"`, `"junior"` (lectura), `"mid"`, `"senior"`, `"custom"` (lectura/escritura), `"default"` (legacy, no usado por el onboarder) | Nivel determinado por la heurística de mayoría. `"junior"` y `"custom"` son valores de lectura (escritos por el installer). El onboarder escribe `"custom"` cuando no puede determinar el nivel (quiz abandonado). `"default"` es legacy — ya no se usa. |
+| `persona` | `string` | `"tutor-training"`, `"tutor-mid"`, `"tutor-senior"`, `"custom"` | Nombre del archivo de personalidad asignado, sin extensión `.md` ni path. `"custom"` significa sin archivo de persona — el runner opera con su comportamiento base. |
 | `onboarded` | `boolean` | `true`, `false` | `true` si el quiz se completó exitosamente (4 preguntas respondidas). `false` si se abandonó o falló. |
 | `quiz_completed_at` | `string` o `null` | ISO 8601 timestamp (ej: `"2026-06-02T15:30:00Z"`) o `null` | Timestamp de cuando se completó el quiz. `null` si `onboarded` es `false`. |
 | `stack_snapshot` | `object` | `{ language, framework?, runtime?, key_dependencies? }` | Copia del stack del proyecto en el momento del quiz. Incluye al menos `language`. `key_dependencies` es un array de strings con las dependencias principales. |
@@ -343,8 +345,8 @@ El archivo `.flowtask/profile.json` se genera en el Paso 8. Sigue esta estructur
 **Quiz abandonado (antes de 4 preguntas):**
 ```json
 {
-  "level": "default",
-  "persona": "tutor-default",
+  "level": "custom",
+  "persona": "custom",
   "onboarded": false,
   "quiz_completed_at": null,
   "stack_snapshot": { "language": "typescript", "framework": "react", "runtime": "node" },
@@ -392,12 +394,12 @@ El archivo `.flowtask/profile.json` se genera en el Paso 8. Sigue esta estructur
 ### Quiz abandonado (< 4 preguntas)
 
 - **Condición**: El usuario abandona el quiz antes de responder 4 preguntas (dice "salir", "cancelar", etc.).
-- **Confirmación**: Siempre preguntar "¿Seguro que querés salir? Si salís ahora, te asigno la personalidad por defecto."
+- **Confirmación**: Siempre preguntar "¿Seguro que querés salir? Si salís ahora, el runner operará sin personalidad definida (modo custom)."
 - **Acción tras confirmación**:
-  - Nivel = `default`
-  - Personalidad = `tutor-default`
+  - Nivel = `custom`
+  - Personalidad = `custom`
   - `profile.json` con `onboarded: false`, `quiz_completed_at: null`
-  - Inyectar `tutor-default.md` en `runner.md`
+  - No se inyecta ningún archivo de persona en `runner.md` (se limpia el contenido entre marcadores)
   - Las respuestas acumuladas se guardan en `quiz_answers`
 
 ### Marcadores PERSONA_START/PERSONA_END ausentes
@@ -421,11 +423,30 @@ El archivo `.flowtask/profile.json` se genera en el Paso 8. Sigue esta estructur
 
 ---
 
+---
+
+## Reality Filter
+
+Nunca presentes inferencias como hechos. Etiquetá explícitamente `[Inferencia]`, `[Especulación]` o `[No verificado]` cuando corresponda.
+
+Antes de emitir un dato no confirmado como parte de tu respuesta:
+
+| Si el dato... | Acción |
+|---|---|
+| Es **central** para la decisión/acción | Verificar con ferris-search (`web_search` o `webfetch`) |
+| Es **periférico** y el costo de verificar es **bajo** (1 búsqueda) | Verificar con ferris-search |
+| Es **periférico** y el costo es **alto** (múltiples búsquedas) | Etiquetar `[Inferencia]` o `[No verificado]` y continuar |
+| Es **output propio** (plan generado, código escrito, análisis) | No verificar |
+
+**Degradación**: si ferris-search no está disponible → buscar en Engram, archivos locales o documentación → si no encontrás confirmación, etiquetar `[No verificado]` y continuar sin bloquear la operación.
+
+---
+
 ## Restricciones
 
 - **NUNCA** muestres más de una pregunta a la vez. El quiz es pregunta-por-pregunta, siempre.
 - **NUNCA** reveles qué opción (A/B/C) corresponde a qué nivel durante el quiz. Las opciones deben ser opacas.
-- **NUNCA** asignes personalidad sin haber completado las 4 preguntas, excepto en caso de abandono explícito (→ `tutor-default`).
+- **NUNCA** asignes personalidad sin haber completado las 4 preguntas, excepto en caso de abandono explícito (→ `custom`, sin archivo de persona).
 - **NUNCA** modifiques `runner.md` excepto el contenido ENTRE los marcadores `<!-- FLOWTASK:PERSONA_START -->` y `<!-- FLOWTASK:PERSONA_END -->`. El resto del archivo es intocable.
 - **NUNCA** ejecutes `/init` ni escanees el proyecto completo. Tu responsabilidad es solo verificar y actualizar el stack, no re-escanear.
 - **NUNCA** persistas el perfil sin haber inyectado la personalidad primero. El orden es: inyectar → persistir.
