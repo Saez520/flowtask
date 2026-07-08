@@ -73,15 +73,36 @@ Reglas de `topic_key`:
 
 ## HOW TO SEARCH
 
-`mem_search` es búsqueda full-text (FTS5). Busca en título y contenido de las observaciones. No soporta filtro por metadata (`topic_key`, `type`, `scope`). Usá keywords naturales.
+`mem_search` es búsqueda full-text (FTS5). Busca en título y contenido de las observaciones. Además, soporta filtros por metadata mediante parámetros dedicados:
+- `type`: filtra por categoría de observación (ej: `"decision"`, `"bugfix"`, `"architecture"`).
+- `scope`: filtra por ámbito de búsqueda — `"project"` (default), `"personal"`, `"global"`.
+- `all_projects`: booleano que habilita búsqueda cross-proyecto.
+- `topic_key` **no es un filtro directo** de `mem_search` — usá keywords en `query` para buscar por topic.
 
 ### Reglas
 
+### Heurística de extracción de keywords (4 pasos)
+
+1. **Identificar** — extraer del contexto los **sustantivos y nombres propios**: componentes, IDs de CA, conceptos del dominio, nombres técnicos.
+2. **Filtrar** — eliminar **palabras vacías** (artículos, preposiciones, conjunciones) y **verbos genéricos** ("hacer", "tener", "ser", "funcionar", "mejorar").
+3. **Priorizar** — ordenar por densidad semántica:
+   - IDs y nombres propios (ej: `"CA-1139"`, `"runner"`, `"Engram"`) — prioridad alta
+   - Conceptos del dominio (ej: `"identidad"`, `"checkpoint"`, `"handshake"`) — prioridad media
+   - Términos contextuales (ej: `"búsqueda"`, `"FTS5"`, `"keyword"`) — prioridad baja
+4. **Construir** — armar query de 2-4 términos separados por espacios, respetando la priorización.
+
 1. **NUNCA uses `topic_key:` como prefix** — FTS5 no lo interpreta como filtro
-2. **NUNCA uses `type:` como prefix** — FTS5 no filtra por metadata
-3. **Busca por keywords del título/contenido** de la observación que querés encontrar
-4. **Primero `mem_context`** (barato), luego `mem_search` si no encontrás
-5. **Si encontrás un ID**, usá `mem_get_observation(id: N)` para contenido completo
+2. **Usá `type` como parámetro de `mem_search`**, no como prefijo FTS5: `mem_search(query: "...", type: "decision")`
+3. **Usá `scope` como parámetro de `mem_search`**: `mem_search(query: "...", scope: "personal")`
+4. **Usá `all_projects` para búsqueda cross-proyecto**: `mem_search(query: "...", all_projects: true)`
+5. **Busca por keywords del título/contenido** de la observación que querés encontrar
+6. **Primero `mem_context`** (barato), luego `mem_search` si no encontrás
+7. **Si encontrás un ID**, usá `mem_get_observation(id: N)` para contenido completo
+
+**Nota sobre los valores de `scope`:**
+- `"project"` — (default) Busca solo en memorias del proyecto actual.
+- `"personal"` — Busca en memorias personales del desarrollador, cruzando proyectos.
+- `"global"` — Busca en todas las memorias disponibles del sistema.
 
 ### Queries correctas por categoría
 
@@ -102,13 +123,47 @@ Reglas de `topic_key`:
 | Patrones impl | `"Patrón descubierto"` | `mem_search(query: "Patrón descubierto")` |
 | Stack | `"project stack"` | `mem_search(query: "project stack")` |
 | CAs anteriores | `"CA-"` + dominio | `mem_search(query: "CA- dominio proyecto")` |
+| Búsqueda cross-proyecto (personal) | `mem_search(query: "keywords", scope: "personal")` | Buscar en memoria personal a través de proyectos |
+| Búsqueda global | `mem_search(query: "keywords", scope: "global")` | Buscar en todas las memorias disponibles del sistema |
+| Búsqueda todos los proyectos | `mem_search(query: "keywords", all_projects: true)` | Buscar en memorias de todos los proyectos registrados |
+| Búsqueda por tipo | `mem_search(query: "keywords", type: "decision")` | Filtrar resultados por tipo de observación |
+
+### Estrategia de búsqueda bajo demanda con fallback
+
+Si una búsqueda devuelve 0 resultados o los resultados no contienen lo esperado:
+
+1. **Simplificar la query**: remover términos de prioridad baja, luego media si es necesario.
+2. **Reintentar** con la query simplificada.
+3. Si sigue sin resultados, **probar una combinación alternativa** de keywords.
+4. Si tras 3 intentos no hay resultados, la información probablemente no está en Engram.
+
+### Uso de quoted strings en FTS5
+
+| Uso | Query | Cuándo usarlo |
+|-----|-------|---------------|
+| IDs exactos | `"CA-1139"` | Buscar un CA, plan, o ID específico |
+| Conceptos generales | `runner identidad` | Buscar observaciones que contengan ambos conceptos |
+| Frases literales | `"inestabilidad identidad runner"` | Solo si sabés que la frase aparece textualmente (raro) |
+
+> **Regla general**: usá comillas SOLO para IDs exactos. Para conceptos, buscá sin comillas — FTS5 matchea observaciones que contengan TODAS las palabras.
+
+### Ejemplos: contexto original → query correcta
+
+| Contexto original (❌ NO) | Query construida (✅ SÍ) |
+|---------------------------|--------------------------|
+| "inestabilidad de identidad del runner resuelto" | `runner identidad` |
+| "CA-1139 sobre búsqueda en Engram con keywords" | `"CA-1139" búsqueda keyword` |
+| "mejorar el comportamiento de búsqueda de los agentes" | `mem_search keyword query` |
+| "bugfix de sesión expirada en el módulo de autenticación" | `sesión expirada autenticación` |
 
 ### Protocolo de búsqueda
 
 ```
-1. `mem_context(limit: 20)`
-2. `mem_search(query: "keywords")`
-3. `mem_get_observation(id: N)`
+1. `mem_context(limit: 20)` — contexto de sesiones recientes
+2. `mem_search(query: "keywords")` — búsqueda full-text (proyecto actual)
+3. `mem_search(query: "keywords", scope: "personal")` — búsqueda en memoria personal cross-proyecto
+4. `mem_search(query: "keywords", all_projects: true, type: "decision")` — búsqueda cross-proyecto con filtro de tipo
+5. `mem_get_observation(id: N)` — contenido completo sin truncar
 ```
 
 ### Búsqueda proactiva
