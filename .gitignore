@@ -36,15 +36,11 @@ docs/backup/
 
 # Nested repos
 flowtask/
-
 .workspace/
-
-.claude/
-
-# FlowTask internals
-.flowtask/.temp/
+.claude/ 
+# FlowTask internals 
+.temp/ 
 .worktrees/
-
 # FlowTask agent backups (temporales)
 .flowtask/agents-backup/
 

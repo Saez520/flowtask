@@ -290,13 +290,12 @@ Espera respuesta explícita del desarrollador:
 
 Invoca constructor usando el formato canónico (Escenario A/B según Handshake). Prompt: flow state del plan desde Engram.
 
-### Política de worktrees paralelos
+### Política de worktrees — obligatorio por CA
 
-1. El primer CA activo continúa en la rama de trabajo normal del desarrollador.
-2. A partir del segundo CA paralelo activo, crea un worktree aislado con `./.flowtask/scripts/worktree.sh create <CA-ID> --base development`.
-3. Si ya existe un worktree o rama `worktree/<CA-ID>`, no dupliques nada: conserva la entrada actual y escala al desarrollador para resolver el duplicado.
-4. Persiste en `flow-state/CA-{ID}/instances` el campo opcional `constructor.worktree = { path, branch, base_branch }`.
-5. Al despachar el constructor, incluye en el prompt el contexto del worktree cuando exista.
+1. **Todo CA crea su worktree** en Paso 4, sin condiciones ni excepciones. Ejecuta `./.flowtask/scripts/worktree.sh create <CA-ID> --base development`.
+2. Si el worktree o la rama `worktree/<CA-ID>` ya existen (sesión interrumpida, reanudación), el script `create` fallará. En ese caso, NO invoques `create` de nuevo: reutiliza el worktree existente y continúa.
+3. Persiste en `flow-state/CA-{ID}/instances` el campo `constructor.worktree = { path, branch, base_branch }`.
+4. Al despachar el constructor, incluye en el prompt el contexto del worktree (path y branch).
 
 ***
 
@@ -332,7 +331,7 @@ Revisa la validación en Engram y el código.
 ## Flujos parciales
 
 - `solo planificación` → Pasos 1 → 2 → checkpoint
-- `solo ejecución` → Pasos 4 → 5
+- `solo ejecución` → Paso 4 (incluye creación del worktree si no existe) → Paso 5
 - `solo validación` → Paso 5
 
 ## Reconciliación post-compaction
