@@ -129,43 +129,83 @@ async function promptFerrisSearch(flowtaskDir, readline) {
 
 const CUSTOM_PERSONA_TEXT = `El desarrollador eligió la opción de personalidad personalizada. Antes de continuar, preguntale si quiere hacer el quiz de onboarding (\`/onboard\`) para que puedas adaptar tu estilo de comunicación a su nivel de experiencia y mejorar la experiencia de desarrollo.`;
 
+const levelToChoice = { training: 1, junior: 1, mid: 2, senior: 3, custom: 4 };
+const mapping = {
+  1: { level: "training", persona: "tutor-training", file: "tutor-training.md", onboarded: true },
+  2: { level: "mid", persona: "tutor-mid", file: "tutor-mid.md", onboarded: true },
+  3: { level: "senior", persona: "tutor-senior", file: "tutor-senior.md", onboarded: true },
+  4: { level: "custom", persona: "custom", file: null, onboarded: false },
+};
+
 async function promptPersonaSeleccion(readline, currentLevel = null) {
   logStep("P", "Personalidad del Agente");
   logInfo("Define cómo el asistente se comunicará contigo según tu nivel de experiencia.");
 
-  console.log(`  1. Estoy aprendiendo / Entry-level    ${COLORS.dim}Si estás dando tus primeros pasos en el desarrollo de software${COLORS.reset}`);
-  console.log(`  2. Mid-level                          ${COLORS.dim}Si te manejás con soltura en tu stack y tomás decisiones técnicas${COLORS.reset}`);
-  console.log(`  3. Senior                             ${COLORS.dim}Si diseñás arquitecturas, mentoreás a otros y pensás en el largo plazo${COLORS.reset}`);
-  console.log(`  4. Personalizado ✦ (recomendado)       ${COLORS.dim}Dejá que el asistente aprenda tu estilo con una breve auditoría guiada${COLORS.reset}`);
+  const options = [
+    { label: "1. Estoy aprendiendo / Entry-level",    desc: "Si estás dando tus primeros pasos en el desarrollo de software" },
+    { label: "2. Mid-level",                          desc: "Si te manejás con soltura en tu stack y tomás decisiones técnicas" },
+    { label: "3. Senior",                             desc: "Si diseñás arquitecturas, mentoreás a otros y pensás en el largo plazo" },
+    { label: "4. Personalizado ✦ (recomendado)",       desc: "Dejá que el asistente aprenda tu estilo con una breve auditoría guiada" },
+  ];
 
-  const levelToChoice = { training: 1, junior: 1, mid: 2, senior: 3, custom: 4 };
-  const defaultHint = currentLevel && levelToChoice[currentLevel]
-    ? ` [${levelToChoice[currentLevel]}]`
-    : "";
+  const initialChoice = currentLevel && levelToChoice[currentLevel] ? levelToChoice[currentLevel] : 1;
+  let cursor = initialChoice - 1;
+  let lastRenderLines = 0;
 
-  const mapping = {
-    1: { level: "training", persona: "tutor-training", file: "tutor-training.md", onboarded: true },
-    2: { level: "mid", persona: "tutor-mid", file: "tutor-mid.md", onboarded: true },
-    3: { level: "senior", persona: "tutor-senior", file: "tutor-senior.md", onboarded: true },
-    4: { level: "custom", persona: "custom", file: null, onboarded: false },
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  readline.emitKeypressEvents(process.stdin);
+
+  const render = () => {
+    if (lastRenderLines > 0) {
+      readline.moveCursor(process.stdout, 0, -lastRenderLines);
+      readline.clearScreenDown(process.stdout);
+    }
+    const lines = [
+      ...options.map((opt, i) => {
+        const cursorStr = i === cursor ? COLORS.cyan + "> " + COLORS.reset : "  ";
+        return `${cursorStr}${opt.label}    ${COLORS.dim}${opt.desc}${COLORS.reset}`;
+      }),
+      `\n${COLORS.dim}↑/↓: navegar, Enter: confirmar, Ctrl+C: cancelar${COLORS.reset}`,
+    ];
+    const output = lines.join("\n");
+    process.stdout.write(output + "\n");
+    lastRenderLines = output.split("\n").length;
   };
 
-  const answer = await new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(`${COLORS.cyan}?${COLORS.reset} Elegí una opción ${COLORS.dim}(1-4)${defaultHint}:${COLORS.reset} `, (ans) => {
-      rl.close();
-      resolve(ans.trim());
-    });
+  const onResize = () => render();
+  process.stdout.on("resize", onResize);
+  render();
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      process.stdout.removeListener("resize", onResize);
+      process.stdin.setRawMode(false);
+      process.stdin.pause();
+      process.stdin.removeListener("keypress", onKeypress);
+    };
+
+    const onKeypress = (str, key) => {
+      if (key.ctrl && key.name === "c") {
+        cleanup();
+        log("\nInstalación cancelada.", COLORS.yellow);
+        process.exit(0);
+      }
+      if (key.name === "up")    { cursor = (cursor - 1 + options.length) % options.length; render(); }
+      if (key.name === "down")  { cursor = (cursor + 1) % options.length; render(); }
+      if (key.name === "return") {
+        cleanup();
+        if (lastRenderLines > 0) {
+          readline.moveCursor(process.stdout, 0, -lastRenderLines);
+          readline.clearScreenDown(process.stdout);
+        }
+        const num = cursor + 1;
+        resolve(mapping[num]);
+      }
+    };
+
+    process.stdin.on("keypress", onKeypress);
   });
-
-  if (answer === "" && currentLevel && levelToChoice[currentLevel]) {
-    return mapping[levelToChoice[currentLevel]];
-  }
-
-  const num = parseInt(answer, 10);
-  if (num >= 1 && num <= 4) return mapping[num];
-
-  return promptPersonaSeleccion(readline, currentLevel);
 }
 
 function resolvePersonaContent(flowtaskDir, personaChoice) {
@@ -411,7 +451,14 @@ ${COLORS.blue}╔═════════════════════
       currentLevel = profile.level || null;
     } catch { /* ignore invalid profile.json */ }
   }
-  const personaChoice = await promptPersonaSeleccion(readline, currentLevel);
+
+  let personaChoice;
+  if (currentLevel && levelToChoice[currentLevel]) {
+    personaChoice = mapping[levelToChoice[currentLevel]];
+    logInfo(`Conservando personalidad existente: ${personaChoice.persona}`);
+  } else {
+    personaChoice = await promptPersonaSeleccion(readline, currentLevel);
+  }
   const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
 
   // ── Step 2: Delta sync each target ──────────────────────────────────────
@@ -491,7 +538,9 @@ ${COLORS.blue}╔═════════════════════
   }
 
   // ── Write profile ──────────────────────────────────────────────────
-  writeProfile(projectDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
+  if (!currentLevel || personaChoice.level !== currentLevel) {
+    writeProfile(projectDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
+  }
 
   printSummary("Update Summary", results, (res) =>
     res.stats ? ` (${res.stats.copied} updated, ${res.stats.skipped} preserved)` : ""

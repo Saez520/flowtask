@@ -1,6 +1,6 @@
 {
   "name": "flowtask-cli",
-  "version": "1.10.1",
+  "version": "1.11.0",
   "type": "module",
   "bin": {
     "flowtask": "./bin/flowtask.js"
