@@ -4,12 +4,5 @@
     "paths": ["./.flowtask/skills/"]
   },
   "plugin": ["./.flowtask/plugins/flowtask-classifier"],
-  "command": {
-    "register-skills": {
-      "description": "Register all FlowTask skills from .flowtask/skills/ into Engram registry.",
-      "template": "Register all FlowTask skills from .flowtask/skills/ into Engram registry. Scans SKILL.md frontmatter and saves metadata + path. Run after adding/modifying skills.",
-      "agent": "flowtask-runner",
-      "subtask": true
-    }
-  }
+  "command": {}
 }

@@ -40,8 +40,6 @@ skill({ name: "plan-template" })
 
 Carga el skill **justo antes** de necesitarlo.
 
-El runner resuelve la ruta de la skill desde el registro Engram (`skill-registry/{name}`) y la incluye en el prompt del subagente. Si no hay ruta explícita, el subagente usa `skill({ name: "..." })` que OpenCode resuelve desde `.flowtask/skills/`.
-
 ---
 
 ## Reality Filter

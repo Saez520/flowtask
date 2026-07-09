@@ -165,14 +165,6 @@ Runs the full CA → Plan → Audit → Implement cycle, but scoped exclusively 
 
 Shows Engram memory statistics, active workflows, and project initialization status.
 
-### Register skills
-
-```bash
-> /register-skills
-```
-
-Scans `.flowtask/skills/` and populates the Engram skill registry (`skill-registry/{name}`). Skills are resolved from the registry by the runner before subagent invocation.
-
 ***
 
 ## Slash Commands Reference
@@ -191,7 +183,6 @@ Scans `.flowtask/skills/` and populates the Engram skill registry (`skill-regist
 | `/evolve-agent`      | All (via Runner)    | Evolve a FlowTask agent (Evolution Mode)                 |
 | `/onboard`           | Onboarder           | Run technical quiz and assign runner personality         |
 | `/status`            | Runner              | Show FlowTask and Engram status                          |
-| `/register-skills`   | Runner              | Scan and register skills in Engram                       |
 | `/update`            | Runner              | Update FlowTask in current project                       |
 
 ***
@@ -271,12 +262,11 @@ FlowTask uses **OpenCode skills** for reusable protocol instructions. Skills are
 | `handshake-protocol`   | Identity, task_id assignment, and context injection |
 | `heuristics`           | Developer heuristic storage and detection          |
 | `manual-classification`| Fallback input classifier (when auto is inactive)  |
-| `memory-contract`      | Engram data contract enforcement                   |
 | `memory-protocol`      | Engram mem_* usage protocol                        |
 | `plan-template`        | Standard plan structure template                   |
 | `topic-keys-convention`| Engram topic_key ownership rules                   |
 
-Skills are loaded via `skill({ name: "..." })` before invocation and are resolved from the Engram registry.
+Skills are loaded via `skill({ name: "..." })` before invocation.
 
 ### Engram topic keys
 
@@ -292,7 +282,6 @@ Skills are loaded via `skill({ name: "..." })` before invocation and are resolve
 | `flow-state/{ID}/audit`     | Plan-Auditor              | Audit state                           |
 | `flow-state/{ID}/construct` | Constructor               | Implementation state                  |
 | `flow-state/{ID}/validate`  | Validator                 | Validation state                      |
-| `skill-registry/{name}`     | Runner                    | Skill location and metadata           |
 | `project/stack`             | Initializer               | Tech stack                            |
 | `project/conventions`       | Initializer               | Project conventions                   |
 | `project/{layer}`           | Initializer               | Layer patterns (api, data, business…) |
@@ -400,7 +389,6 @@ FlowTask/
 │   │   ├── inspect.md            # /inspect
 │   │   ├── evolve-agent.md       # /evolve-agent
 │   │   ├── onboard.md            # /onboard
-│   │   ├── register-skills.md    # /register-skills
 │   │   ├── status.md             # /status
 │   │   └── update.md             # /update
 │   ├── exports/                  # Exported data (e.g., commit-history.csv)
@@ -429,8 +417,6 @@ FlowTask/
 │   │   │   └── SKILL.md          # Developer heuristic storage and detection
 │   │   ├── manual-classification/
 │   │   │   └── SKILL.md          # Fallback input classifier
-│   │   ├── memory-contract/
-│   │   │   └── SKILL.md          # Engram data contract enforcement
 │   │   ├── memory-protocol/
 │   │   │   └── SKILL.md          # Engram mem_* usage protocol
 │   │   ├── plan-template/

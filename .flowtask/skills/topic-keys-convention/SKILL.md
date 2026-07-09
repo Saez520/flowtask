@@ -45,7 +45,6 @@ Cada topic_key tiene un **owner** que es el único agente (o grupo) autorizado a
 | `project/config` | Initializer | Configuración detectada del proyecto | Todos (read-only) |
 | `project/patterns` | Initializer | Patrones generales del proyecto | Todos (read-only) |
 | `project/heuristics/*` | **Todos los agentes** (escritura compartida) | Heurísticas idiomáticas del desarrollador para este proyecto | Todos los agentes |
-| `skill-registry/{name}` | Constructor | Metadatos de skill registrada (path, scope, triggers, description) | Runner, Planner, todos los agentes que cargan skills |
 | `personal/heuristics/*` | **Todos los agentes** (escritura compartida, scope: personal) | Heurísticas cross-proyecto del desarrollador | Todos los agentes |
 
 > **Nota — Modelo de escritura compartida para heurísticas**: A diferencia de otros topic_keys que tienen owner único, `project/heuristics/*` y `personal/heuristics/*` usan **escritura compartida**: cualquier agente puede escribir en estos namespaces. No hay owner único. La detección de colisiones se maneja por key normalizada (misma key normalizada = upsert, último escribe gana). Las heurísticas en `project/heuristics/*` NO son un `project/{layer}` — es un namespace nuevo con ownership compartido que convive sin conflicto con los `project/*` existentes del Initializer.
