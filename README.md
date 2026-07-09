@@ -254,7 +254,7 @@ Engram stores artifact content as `type: "ca-artifact"` observations. The legacy
 
 ### Skills system
 
-FlowTask uses **OpenCode skills** for reusable protocol instructions. Skills are stored in `.flowtask/skills/` and registered in Engram via `/register-skills`:
+FlowTask uses **OpenCode skills** for reusable protocol instructions. Skills are stored in `.flowtask/skills/`:
 
 | Skill                  | Purpose                                           |
 | ---------------------- | ------------------------------------------------- |

@@ -95,19 +95,15 @@ El runner recibe este contrato y procede con el Checkpoint Protocol según el `s
 
 ***
 
-## Skill disponible
+## Skills disponibles
 
-Las skills se resuelven desde el registro en Engram (topic_key: `skill-registry/{name}`).
-El runner consulta `mem_search(query: "skill-registry {name}")` para obtener la ruta absoluta del SKILL.md y la pasa al subagente.
-Para listar/refrescar el registro: ejecutar `/register-skills`.
-
-Skills disponibles actualmente (cargables vía `skill({ name: "..." })` — OpenCode resuelve desde `.flowtask/skills/`):
+Las skills están en `.flowtask/skills/` y se cargan directamente desde el filesystem vía `skill({ name: "..." })`:
 
 ```
-skill({ name: "memory-protocol" })        ← cargar antes de usar mem_*; ruta en skill-registry/memory-protocol
-skill({ name: "manual-classification" })  ← cargar si no hay clasificación inyectada en contexto; ruta en skill-registry/manual-classification
-skill({ name: "handshake-protocol" })   ← cargar antes de invocar subagentes; ruta en skill-registry/handshake-protocol
-skill({ name: "heuristics" })           ← cargar cuando el agente necesite guardar, cargar o proponer heurísticas; ruta en skill-registry/heuristics
+skill({ name: "memory-protocol" })        ← cargar antes de usar mem_*
+skill({ name: "manual-classification" })  ← cargar si no hay clasificación inyectada en contexto
+skill({ name: "handshake-protocol" })     ← cargar antes de invocar subagentes
+skill({ name: "heuristics" })             ← cargar cuando el agente necesite guardar, cargar o proponer heurísticas
 ```
 
 ***
@@ -225,10 +221,9 @@ Antes de clasificar, carga el contexto del proyecto:
    c. `mem_search(query: "project/stack", scope: "project")` — stack tecnológico.
    d. `mem_search(query: "project/config", scope: "project")` — ubicación y formato de configuración.
    e. Si `mem_search` falla (Engram no disponible) o no hay resultados: continuar sin ese contexto.
-5. Cargar skill registry:
-   a. `mem_search(query: "skill-registry", scope: "project")` — verificar si el registro existe.
-   b. Si el registro existe: integrar las skills disponibles (nombre + triggers) como contexto para resolución de skills.
-   c. Si el registro NO existe (0 resultados): registrar que el registry está vacío. Si el flujo lo requiere y `--auto` está activo, invocar `/register-skills` para poblarlo.
+5. Skills disponibles en `.flowtask/skills/{name}/SKILL.md`:
+   a. Las skills se cargan directamente desde el filesystem, sin registro intermedio.
+   b. OpenCode resuelve `skill({ name: "..." })` desde este directorio base.
 6. Incorporar hallazgos al razonamiento antes de clasificar.
 
 ### Sub-paso 1 — Clasificación inyectada en contexto (prioridad absoluta)
