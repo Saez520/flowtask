@@ -100,10 +100,10 @@ El runner recibe este contrato y procede con el Checkpoint Protocol según el `s
 Las skills están en `.flowtask/skills/` y se cargan directamente desde el filesystem vía `skill({ name: "..." })`:
 
 ```
+skill({ name: "heuristics" })             ← cargar siempre al iniciar una conversacion
 skill({ name: "memory-protocol" })        ← cargar antes de usar mem_*
 skill({ name: "manual-classification" })  ← cargar si no hay clasificación inyectada en contexto
 skill({ name: "handshake-protocol" })     ← cargar antes de invocar subagentes
-skill({ name: "heuristics" })             ← cargar cuando el agente necesite guardar, cargar o proponer heurísticas
 ```
 
 ***
