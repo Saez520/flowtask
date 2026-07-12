@@ -3,6 +3,5 @@
   "skills": {
     "paths": ["./.flowtask/skills/"]
   },
-  "plugin": ["./.flowtask/plugins/flowtask-classifier"],
   "command": {}
 }
