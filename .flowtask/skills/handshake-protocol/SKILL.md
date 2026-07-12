@@ -132,25 +132,14 @@ Antes de entregar el prompt al subagente, la skill consulta la memoria del proye
 
 1. `mem_context(project: "{project-name}")` — contexto reciente de sesiones previas.
 2. `mem_search(query: "{términos relevantes al CA y al agente}")` — decisiones y patrones relevantes.
-3. **Cargar heurísticas** (ver skill `heuristics`):
-   a. `mem_search(query: "heuristic", scope: "project")` — heurísticas del proyecto actual.
-   b. `mem_search(query: "heuristic", scope: "personal")` — heurísticas personales cross-proyecto.
-   c. Merge: si la misma key normalizada existe en ambos scopes, prevalece la de `project`.
-   d. Si `mem_search` falla (Engram no disponible): omitir heurísticas (no bloquear).
 
 Los hallazgos se inyectan en un bloque `<project_context>` dentro del prompt:
 
 ```xml
 <project_context>
 [Hallazgos de mem_context y mem_search]
-
-### Heurísticas cargadas
-- `{original-key}` → `{value}` [{scope}]
-- ...
 </project_context>
 ```
-
-> **Nota**: Las heurísticas se cargan automáticamente — el orquestador no necesita hacer nada adicional. Si no hay heurísticas, la subsección se omite o muestra `(ninguna)`. Ver skill `heuristics` para el protocolo completo de carga, normalización y merge.
 
 El orquestador recibe este bloque y lo incorpora al prompt que entregará al subagente.
 

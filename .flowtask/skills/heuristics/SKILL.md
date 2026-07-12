@@ -334,4 +334,4 @@ Donde `{alcance}` es:
 
 - Esta skill define el mecanismo de almacenamiento + carga + detección + enseñanza.
 - **No modifica agentes individuales** para que "usen" heurísticas — esa integración es incremental y queda a criterio de cada agente.
-- La carga automática se centraliza en `handshake-protocol` (Context Injection), evitando modificar N agentes.
+- La carga automática se centraliza en el `runner` (Paso 0 Sub-paso 0, ver skill `heuristics`), evitando modificar N agentes.

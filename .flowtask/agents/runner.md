@@ -91,8 +91,6 @@ El runner recibe este contrato y procede con el Checkpoint Protocol según el `s
 
 > **Importante**: La skill NO dicta cómo invocar al subagente. El formato canónico de `task()` permanece en este archivo como fuente única de verdad para el runner.
 
-> **Heurísticas**: La skill `handshake-protocol` ahora incluye carga automática de heurísticas en Context Injection (ver skill `heuristics`). El runner no necesita acción adicional — las heurísticas del proyecto y personales se cargan y se inyectan en `<project_context>` automáticamente.
-
 ***
 
 ## Skills disponibles
@@ -145,7 +143,7 @@ Flujo de delegación — sin excepciones:
 
 **Escenario A: Initial Prompt (Nuevo hilo)**
 Si NO existe un `task_id` válido para el agente en el mapa de instancias, o si Engram no está disponible (`mem_search` falló):
-- Invocar `task()` con el prompt original + contexto inyectado.
+- Invocar `task()` con el prompt original + contexto inyectado + heurísticas cacheadas del Paso 0 (bloque `## Heurísticas del desarrollador`).
 - Instrucción: "Tu nombre de instancia es {instance_name}. Sigue las instrucciones de tu rol."
 
 **Escenario B: Resume Prompt (Hilo existente)**
@@ -153,6 +151,7 @@ Si existe un `task_id` activo en el mapa de instancias:
 - Construir `Resume Prompt` incluyendo:
   - Notificación de reanudación: "Reanudando sesión para {instance_name}."
   - Mini-resumen: Recuperar último checkpoint `mem_search(query: "flow-state/{CA-ID}/{agente}")`.
+  - Heurísticas cacheadas del Paso 0 (bloque `## Heurísticas del desarrollador`).
   - Input Usuario: Texto original del desarrollador.
   - **Sincronización Obligatoria**: "Antes de actuar, sincroniza tu contexto local usando `git status/diff` y consulta las últimas decisiones en Engram (`mem_context`)."
 - Invocar `task()` usando el `task_id` persistido.
@@ -210,11 +209,12 @@ Antes de clasificar, carga el contexto del proyecto:
 
 1. Cargar `memory-protocol` si no está ya cargado.
 2. Ejecutar `mem_context` para recuperar contexto de sesiones previas.
-3. Cargar heurísticas (protocolo `heuristics_load`):
-   a. `mem_search(query: "heuristic", scope: "project")` — heurísticas del proyecto.
-   b. `mem_search(query: "heuristic", scope: "personal")` — heurísticas personales.
-   c. Merge: si la misma key normalizada existe en ambos scopes, prevalece la de `project`.
-   d. Si `mem_search` falla (Engram no disponible): continuar sin heurísticas.
+3. Cargar skill `heuristics` y ejecutar carga de heurísticas (protocolo `heuristics_load`):
+   a. `skill({ name: "heuristics" })`.
+   b. `mem_search(query: "heuristic", scope: "project")` — heurísticas del proyecto.
+   c. `mem_search(query: "heuristic", scope: "personal")` — heurísticas personales.
+   d. Merge: si la misma key normalizada existe en ambos scopes, prevalece la de `project`.
+   e. Si `mem_search` falla (Engram no disponible): continuar sin heurísticas.
 4. Cargar project context (convenciones estructurales):
    a. `mem_search(query: "project/conventions", scope: "project")` — convenciones de código y flujo.
    b. `mem_search(query: "project/naming", scope: "project")` — convenciones de nombrado.
