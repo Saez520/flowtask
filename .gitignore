@@ -49,3 +49,6 @@ flowtask/
 
 # Heap snapshots (debugging)
 *.heapsnapshot
+
+# prfile user
+.flowtask/prfile.json
