@@ -3,5 +3,12 @@
   "keybinds": {
     "input_newline": "shift+return,ctrl+return,alt+return,ctrl+j",
     "input_submit": "return"
-  }
+  },
+  "plugin": [
+    {
+      "id": "flowtask-classifier",
+      "name": "FlowTask Classifier",
+      "path": ".opencode/plugins/flowtask-classifier/dist/tui.js"
+    }
+  ]
 }

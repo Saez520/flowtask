@@ -42,11 +42,11 @@ function findClassification(sessionID: string, api: TuiPluginApi): string | null
  * - Muestra un punto rojo + "sin clasificación" si no hay
  * - Se actualiza reactivamente al cambiar de sesión o recibir nuevos mensajes
  *
- * Entry point para OpenCode: export nombrado `tui`.
+ * Entry point para OpenCode: default export `{ id, tui }`.
  * El server plugin y el TUI plugin son módulos separados porque
  * PluginModule (server) y TuiPluginModule (tui) son mutuamente excluyentes.
  */
-export const tui = async (api: TuiPluginApi) => {
+const tui = async (api: TuiPluginApi) => {
   const slotPlugin: TuiSlotPlugin = {
     sidebar_title: (
       props: { session_id: string; title: string; share_url?: string },
@@ -92,3 +92,5 @@ export const tui = async (api: TuiPluginApi) => {
 
   api.slots.register(slotPlugin);
 };
+
+export default { id: "flowtask-classifier", tui };
