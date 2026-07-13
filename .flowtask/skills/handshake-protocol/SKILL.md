@@ -89,7 +89,7 @@ mem_save(
         "worktree": {
           "path": ".worktrees/{ca_id}/",
           "branch": "worktree/{ca_id}",
-          "base_branch": "development"
+          "base_branch": "{base_branch_detectado}"
         }
       }
     }
@@ -114,7 +114,7 @@ Estructura del mapa de instancias:
       "worktree": {
         "path": ".worktrees/CA-010/",
         "branch": "worktree/CA-010",
-        "base_branch": "development"
+        "base_branch": "{base_branch_detectado}"
       }
     },
     "planner": {
@@ -135,6 +135,8 @@ Estructura del mapa de instancias:
 > **Compatibilidad**: `worktree` es opcional. Los mapas anteriores siguen siendo válidos si solo tienen `task_id`, `instance_name` y `last_resume`.
 
 > **Ubicación esperada**: cuando el agente es `constructor`, el runner guarda `worktree` en `agents.constructor.worktree`.
+
+> **Detección dinámica**: El valor de `base_branch` se detecta dinámicamente en tiempo de ejecución según el orden canónico `development → main → trunk → main`. El runner resuelve la rama base al momento de ejecutar `worktree.sh create` y la persiste en el mapa de instancias.
 
 ---
 
