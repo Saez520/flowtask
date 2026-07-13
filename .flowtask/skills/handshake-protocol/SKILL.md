@@ -33,6 +33,9 @@ El orquestador debe proveer a la skill los siguientes parámetros:
 | `ca_id` | string | ID del CA en curso | `"CA-onboarder-agent"` |
 | `agent_type` | string | Tipo de agente a invocar | `"planner"`, `"constructor"`, `"ca-writer"` |
 | `base_names` | string[] | Lista de nombres base disponibles | `["Aitana", "Kael", "Lyra", ...]` |
+| `topic_signature` | `{ids: string[], keywords: string[]} \| null` | Firma del tema actual extraída del prompt del desarrollador | `{ids: ["CA-topic-validation"], keywords: ["handshake", "sesiones"]}` |
+
+> El parámetro `topic_signature` es opcional — si el orquestador no lo provee (porque la extracción falló o no está implementada), la skill lo trata como `null`. Ver Paso 5 (Topic Validation) para el comportamiento con `topic_signature` null.
 
 > Los `base_names` NO están hardcodeados en esta skill. El orquestador provee su propia lista, permitiendo que distintos orquestadores usen sus propios nombres.
 
@@ -40,7 +43,7 @@ El orquestador debe proveer a la skill los siguientes parámetros:
 
 ## Handshake Protocol (getOrCreateInstance)
 
-El protocolo se ejecuta en 4 pasos. Si cualquiera de los pasos que dependen de Engram falla (porque Engram no está disponible), todo se trata como **Caso C (Nuevo CA)** y **Escenario A (Initial Prompt)**.
+El protocolo se ejecuta en 5 pasos. Si cualquiera de los pasos que dependen de Engram falla (porque Engram no está disponible), todo se trata como **Caso C (Nuevo CA)** y **Escenario A (Initial Prompt)**.
 
 ### Paso 1 — Check Engram Handshake
 
@@ -82,6 +85,7 @@ mem_save(
         "task_id": "...",
         "instance_name": "{BaseName}-{agent_type}",
         "last_resume": "{timestamp}",
+        "topic_signature": {topic_signature},
         "worktree": {
           "path": ".worktrees/{ca_id}/",
           "branch": "worktree/{ca_id}",
@@ -103,6 +107,10 @@ Estructura del mapa de instancias:
       "task_id": "...",
       "instance_name": "Aitana-ca-writer",
       "last_resume": "2026-04-28T...",
+      "topic_signature": {
+        "ids": ["CA-010"],
+        "keywords": ["onboarding", "agente"]
+      },
       "worktree": {
         "path": ".worktrees/CA-010/",
         "branch": "worktree/CA-010",
@@ -112,7 +120,11 @@ Estructura del mapa de instancias:
     "planner": {
       "task_id": "...",
       "instance_name": "Aitana-planner",
-      "last_resume": "..."
+      "last_resume": "...",
+      "topic_signature": {
+        "ids": ["CA-010"],
+        "keywords": ["plan", "tareas"]
+      }
     }
   }
 }
@@ -145,24 +157,86 @@ El orquestador recibe este bloque y lo incorpora al prompt que entregará al sub
 
 ---
 
+## Paso 5 — Topic Validation
+
+Antes de determinar el escenario, la skill valida si el nuevo prompt del desarrollador trata del mismo tema que la sesión anterior del agente.
+
+### Algoritmo
+
+1. **Recuperar último checkpoint**: `cp_get("flow-state/{ca_id}/{agente}")` desde Engram.
+2. **Si no hay checkpoint previo**: Asumir mismo tema → continuar a Escenario B (conservador). Un agente recién creado no tiene historial contra qué comparar.
+3. **Si el checkpoint NO tiene `topic_signature`**: Es un checkpoint antiguo (pre-Topic Validation). Forzar **Escenario A** — no podemos adivinar el tema anterior. El `task_id` se marca como `abandoned` en el mapa de instancias.
+4. **Si ambos tienen `topic_signature`**: Comparar `topic_signature` actual (del prompt) vs `topic_signature` del checkpoint:
+
+   a. **Matching exacto de IDs**: Si hay al menos un ID coincidente entre `ids_actual` y `ids_checkpoint` → **mismo tema** (Escenario B). Los IDs incluyen: CA-ID, nombres de archivo (sin extensión), nombres de skill.
+
+   b. **Si no hay IDs coincidentes → overlap de keywords**: Calcular:
+      ```
+      overlap = |keywords_actual ∩ keywords_checkpoint| / min(|keywords_actual|, |keywords_checkpoint|)
+      ```
+      - Si `overlap >= 0.5` (50%, umbral configurable) → **mismo tema** (Escenario B)
+      - Si `overlap < 0.5` → **tema diferente** (Escenario A)
+
+   c. **Si el tema cambió**: Marcar `task_id` como `abandoned` en el mapa de instancias (no eliminar — el runner lo purga después). Forzar Escenario A con `task_id = null`.
+
+### Ejemplos
+
+| Prompt actual | Último checkpoint | IDs coincidentes | Keywords overlap | Resultado |
+|---------------|-------------------|-------------------|-------------------|-----------|
+| `CA-topic-validation`, keywords: `handshake, sesiones, validacion` | `CA-topic-validation`, keywords: `handshake, protocolo, identidad` | ✅ `CA-topic-validation` | — | **Mismo tema** → Escenario B |
+| `CA-ferris-validation`, keywords: `ferris, search, agents` | `CA-topic-validation`, keywords: `handshake, sesiones, validacion` | ❌ | 0% | **Tema diferente** → Escenario A |
+| Sin IDs, keywords: `runner, identidad, nombre` | Sin IDs, keywords: `runner, instancia, base` | ❌ (sin IDs) | `runner` → 1/3 = 33% | **Tema diferente** → Escenario A |
+| Sin IDs, keywords: `runner, checkpoint, estado, flujo` | Sin IDs, keywords: `runner, checkpoint, flujo, persistencia` | ❌ (sin IDs) | `runner, checkpoint, flujo` → 3/4 = 75% | **Mismo tema** → Escenario B |
+
+> **Nota sobre el contrato de salida**: La skill NO modifica su contrato. El runner sigue recibiendo `{task_id, instance_name, scenario}`. Si el tema cambió, `task_id` será `null` y `scenario` será `"A"`. La skill no notifica explícitamente "tema cambiado" — es transparente para el orquestador.
+
+---
+
 ## Determinación de escenario
 
-La skill determina si la invocación es un hilo nuevo o una reanudación:
+La skill determina si la invocación es un hilo nuevo o una reanudación, considerando tanto la existencia de `task_id` como la validación de tema (ver Paso 5):
 
-- **Escenario A (Initial Prompt)**: No existe `task_id` válido para el `agent_type` en el mapa de instancias, o Engram no está disponible. Se debe invocar al subagente con un prompt nuevo (sin `task_id`).
-- **Escenario B (Resume Prompt)**: Existe `task_id` activo en el mapa de instancias para el `agent_type`. Se debe invocar al subagente reanudando la sesión existente (usando el `task_id` persistido).
+- **Escenario A (Initial Prompt)**: No existe `task_id` válido para el `agent_type` en el mapa de instancias, Engram no está disponible, **o el Topic Validation determinó que el tema cambió**. Se debe invocar al subagente con un prompt nuevo (sin `task_id`).
+- **Escenario B (Resume Prompt)**: Existe `task_id` activo en el mapa de instancias para el `agent_type` **y el Topic Validation confirmó que es el mismo tema** (o no había checkpoint previo). Se debe invocar al subagente reanudando la sesión existente (usando el `task_id` persistido).
+- **Escenario C (Relevo por capacidad)**: El runner detectó una notificación de checkpoint por capacidad del subagente (`[FLOWTASK_CHECKPOINT_CAPACITY: X%]`). El subagente guardó su estado en Engram vía checkpoint-mixin. Se debe crear un nuevo `task_id` e invocar al subagente en una instancia fresca, indicándole que restaure su estado desde Engram.
+
+---
+
+### Escenario C — Relevo por capacidad de contexto
+
+Cuando el runner detecta el tag `[FLOWTASK_CHECKPOINT_CAPACITY: X%]` en la respuesta de un subagente:
+
+1. El subagente ya ejecutó `cp_save()` y guardó su estado en Engram.
+2. El runner verifica que el checkpoint existe: `mem_search(query: "flow-state/{CA-ID}/{agente}")`.
+3. El runner crea un nuevo `task_id` (NO reusa el existente — es una instancia fresca).
+4. El runner invoca al subagente con un prompt de relevo:
+
+    ```
+    Reanudando sesión para {instance_name} tras relevo por capacidad de contexto ({X}%).
+
+    Tu estado fue guardado en Engram antes del relevo. Debes:
+    1. Cargar la skill checkpoint-mixin
+    2. Restaurar tu estado con cp_get("flow-state/{CA-ID}/{agente}")
+    3. Continuar desde donde quedaste según el flow_state restaurado
+    4. NO repetir trabajo ya completado
+
+    [Input del usuario o prompt original aquí]
+    ```
+
+5. El runner usa el formato canónico de `task()` para Escenario C (nuevo `task_id`, sin reanudar el anterior).
 
 ---
 
 ## Contrato de salida
 
-La skill entrega al orquestador un objeto con exactamente 3 campos:
+La skill entrega al orquestador un objeto con exactamente 4 campos:
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `task_id` | `string \| null` | `task_id` existente para reanudación (Escenario B), o `null` para nuevo hilo (Escenario A) |
+| `task_id` | `string \| null` | `task_id` existente para reanudación (Escenario B), o `null` para nuevo hilo (Escenario A) o relevo (Escenario C) |
 | `instance_name` | `string` | Nombre de instancia asignado (ej: `Lyra-planner`) |
-| `scenario` | `string` | `"A"` para nuevo hilo (Initial Prompt), `"B"` para reanudación (Resume Prompt) |
+| `scenario` | `string` | `"A"` para nuevo hilo (Initial Prompt), `"B"` para reanudación (Resume Prompt), `"C"` para relevo por capacidad |
+| `capacity_percentage` | `number \| null` | Porcentaje de contexto al momento del relevo (ej: `72`). Solo presente en Escenario C. `null` para A y B. |
 
 > **La skill NO dicta cómo invocar al subagente.** El orquestador recibe este contrato y decide el formato de llamada (`task()`, API REST, CLI, etc.).
 
@@ -175,3 +249,6 @@ La skill entrega al orquestador un objeto con exactamente 3 campos:
 - **Colisión potencial de BaseNames entre orquestadores**: La skill recibe `base_names` como parámetro externo. Si dos orquestadores distintos usan la misma skill sobre el mismo Engram, podrían asignar el mismo `BaseName` a CAs diferentes. El caso de uso actual asume un solo orquestador por proyecto.
 - **Sin abstracción de storage**: La skill está acoplada a Engram. Si aparece un orquestador sin Engram, la skill debe versionarse con abstracción de storage.
 - **Carga de heurísticas**: Si Engram no está disponible, las heurísticas no se cargan (degradación graceful). No hay mecanismo de fallback local para heurísticas.
+- **Topic Validation con keyword extraction delegada**: La skill no extrae el `topic_signature` del prompt — recibe el valor ya calculado como parámetro desde el orquestador. Si el orquestador no provee `topic_signature` (porque la extracción falló o no está implementada), la skill trata `topic_signature` como `null`. En ese caso, si hay un checkpoint con `topic_signature`, se fuerza Escenario A (no se puede validar). Si el checkpoint tampoco tiene `topic_signature`, se asume mismo tema (degradación graceful, Escenario B).
+- **Falsos positivos/negativos**: El matching por keywords con umbral 50% puede producir falsos positivos (temas distintos con vocabulario similar) o falsos negativos (mismo tema con vocabulario diferente). Aceptado como trade-off del enfoque determinístico sin embeddings.
+- **Escenario C sin Topic Validation**: En el relevo por capacidad, el tema no cambia (es el mismo CA, mismo agente, mismo flujo). No se ejecuta Topic Validation — se asume mismo tema.

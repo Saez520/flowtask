@@ -82,10 +82,11 @@ La skill recibe como parámetros desde el runner:
 - `agent_type` — tipo de agente a invocar (ej: `"planner"`, `"constructor"`, `"ca-writer"`)
 - `base_names` — lista de nombres base disponibles (provista por el runner)
 
-La skill ejecuta el **Handshake Protocol (getOrCreateInstance)** y **Context Injection**, y devuelve un contrato de 3 campos:
-- `task_id` (string | null) — el `task_id` existente para reanudación, o `null` para nuevo hilo
+La skill ejecuta el **Handshake Protocol (getOrCreateInstance)** y **Context Injection**, y devuelve un contrato de 4 campos:
+- `task_id` (string | null) — el `task_id` existente para reanudación, o `null` para nuevo hilo o relevo
 - `instance_name` (string) — nombre de instancia asignado (ej: `Lyra-planner`)
-- `scenario` (string) — `"A"` para nuevo hilo, `"B"` para reanudación
+- `scenario` (string) — `"A"` para nuevo hilo, `"B"` para reanudación, `"C"` para relevo por capacidad
+- `capacity_percentage` (number | null) — porcentaje de contexto en el momento del relevo. Solo presente en Escenario C.
 
 El runner recibe este contrato y procede con el Checkpoint Protocol según el `scenario` y usando `task_id` e `instance_name`.
 
@@ -156,6 +157,16 @@ Si existe un `task_id` activo en el mapa de instancias:
   - **Sincronización Obligatoria**: "Antes de actuar, sincroniza tu contexto local usando `git status/diff` y consulta las últimas decisiones en Engram (`mem_context`)."
 - Invocar `task()` usando el `task_id` persistido.
 
+**Escenario C: Relevo por capacidad (Nueva instancia)**
+Si el runner detectó `[FLOWTASK_CHECKPOINT_CAPACITY: X%]` en la respuesta del subagente y el checkpoint fue verificado en Engram:
+- Construir `Relevo Prompt` incluyendo:
+  - Notificación de relevo: "Reanudando sesión para {instance_name} tras relevo por capacidad de contexto ({X}%)."
+  - Instrucción de restauración: "Carga la skill checkpoint-mixin y restaura tu estado con cp_get()."
+  - Heurísticas cacheadas del Paso 0 (bloque `## Heurísticas del desarrollador`).
+  - Input Usuario: Texto original del desarrollador (mismo prompt que originó la tarea).
+  - **Sincronización Obligatoria**: "Antes de actuar, restaura tu estado desde Engram usando checkpoint-mixin y continúa desde donde quedaste."
+- Invocar `task()` con NUEVO `task_id` (no reusar el anterior — es una instancia fresca).
+
 ### Después de que sub-agente responde (Persist & Cleanup)
 
 1. Si el flujo NO terminó:
@@ -164,6 +175,34 @@ Si existe un `task_id` activo en el mapa de instancias:
 2. Si el flujo SÍ terminó:
    a. El sub-agente marca estado como 'completed' en su topic.
    b. Ejecutar mem_session_summary.
+
+### Detección de checkpoint por capacidad
+
+Después de que un subagente responde, el runner DEBE verificar si la respuesta contiene el tag `[FLOWTASK_CHECKPOINT_CAPACITY: X%]`.
+
+**Si detecta el tag:**
+1. Extraer el porcentaje X del tag.
+2. Verificar que el checkpoint existe en Engram: `mem_search(query: "flow-state/{CA-ID}/{agente}")`.
+3. Si el checkpoint NO existe: el subagente notificó pero no guardó. Ignorar la notificación y continuar normalmente (el plugin reintentará en el siguiente step).
+4. Si el checkpoint SÍ existe: proceder al **Protocolo de relanzamiento por capacidad**:
+
+#### Protocolo de relanzamiento por capacidad
+
+1. **Recuperar mapa de instancias**: `mem_search(query: "flow-state/{CA_ID}/instances")`.
+2. **Contar relanzamientos previos**: leer el campo `relaunch_count` del agente en el mapa. Si no existe, asumir 0.
+3. **Evaluar límite**:
+   - **Relanzamientos 0-2** (1er a 3er relanzamiento):
+     a. Incrementar `relaunch_count` en el mapa.
+     b. Persistir el mapa actualizado: `mem_save(topic_key: "flow-state/{CA_ID}/instances", ...)`.
+     c. Cargar `handshake-protocol` con `scenario = "C"`.
+     d. Crear nuevo `task_id` (NO reusar el existente).
+     e. Invocar al subagente usando el prompt de relevo (ver skill handshake-protocol, Escenario C).
+     f. Mostrar al desarrollador: `🔄 {agente} relanzado ({X}% contexto → nueva instancia)`.
+   - **Relanzamiento 3** (4to intento):
+     a. NO relanzar.
+     b. Mostrar al desarrollador: `⚠️ {agente} alcanzó 3 relanzamientos en {CA-ID}. ¿Dividir la tarea en subtareas más pequeñas?`
+     c. Detener el flujo hasta que el desarrollador responda.
+4. El mensaje `🔄` es informativo, no interactivo. El mensaje `⚠️` SÍ requiere respuesta del desarrollador.
 
 ### Recuperación ante Fallos (Self-Healing)
 
@@ -196,6 +235,18 @@ task(
   description: "[opcional, para trazabilidad]"
 )
 ```
+
+**Escenario C — Relevo Prompt (nuevo `task_id`):**
+
+```
+task(
+  prompt: "[prompt de relevo + instrucción de restauración + input original]",
+  subagent_type: "[tipo]",
+  description: "[opcional, para trazabilidad]"
+)
+```
+
+> **Nota**: El Escenario C usa el mismo formato que Escenario A (sin `task_id`), pero el prompt incluye instrucciones de restauración de estado desde Engram.
 
 > **Regla**: Los templates de flujo referencian este formato. No duplican la sintaxis.
 
@@ -393,6 +444,7 @@ La purga de `task_id` y la gestión de worktrees son independientes: un `task_id
 - **GAP #4 — Sesiones zombie**: Si OpenCode recibe un `task_id` huérfano y crea una sesión nueva silenciosamente (en lugar de fallar), este mecanismo NO lo detecta. La entrada se conserva incorrectamente en el mapa. Aceptado como limitación — requiere herramienta externa (`task_status`) para resolverse.
 - **Si Engram no está disponible**: La purga se omite. Los `task_id` huérfanos persisten hasta la próxima sesión con Engram funcional.
 - **Self-Healing reactivo**: El manejo de errores en la invocación normal (línea 196-201) sigue activo y es el mecanismo primario de detección durante la operación.
+- **Relanzamiento por capacidad**: Si el subagente produce un checkpoint y el runner lo relanza, el contador `relaunch_count` persiste en el mapa de instancias. Si el runner falla después de incrementar el contador pero antes de invocar al subagente, el contador queda incrementado incorrectamente. Aceptado como riesgo menor — la probabilidad es baja (fallo en ventana de ~1s entre mem_save y task()).
 
 ## Cierre del CA — Marcar como completado
 

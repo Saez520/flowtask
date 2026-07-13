@@ -24,15 +24,25 @@ agente puede recibir múltiples mensajes que deben mantener contexto.
   "estado": "active|paused|completed",
   "instance_name": "{Name}",
   "updated_at": "timestamp",
+  "topic_signature": {
+    "ids": ["CA-topic-validation", "handshake-protocol", "checkpoint-mixin"],
+    "keywords": ["validación", "tema", "reanudar", "sesiones"]
+  },
   "flow_state": {
     // Estado específico del agente
   }
 }
 ```
 
+El campo `topic_signature` registra la firma del tema que el desarrollador estaba tratando cuando se guardó el checkpoint. Se usa en Topic Validation (ver handshake-protocol) para detectar cambios de tema entre invocaciones y evitar reanudar sesiones con contexto incorrecto.
+
+- **`ids`** — array de identificadores extraídos del prompt: CA-ID, nombres de archivo (sin extensión), nombres de skill.
+- **`keywords`** — array de términos significativos extraídos del prompt (verbos, conceptos del dominio).
+- **`topic_signature` es opcional**: los checkpoints antiguos (sin este campo) son backward-compatibles. Si no está presente, se fuerza Escenario A al reanudar.
+
 ## Funciones de Checkpoint
 
-### cp_save(topic_key, ca_id, agente, flow_state, instance_name)
+### cp_save(topic_key, ca_id, agente, flow_state, instance_name, topic_signature?)
 
 Guarda el estado actual del agente en Engram con fallback local.
 
@@ -47,6 +57,7 @@ try {
       ca_id, agente, instance_name,
       estado: 'active',
       updated_at: now(),
+      topic_signature,    // incluido solo si se provee (opcional, backward-compatible)
       flow_state
     }
   )
