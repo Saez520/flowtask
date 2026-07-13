@@ -264,11 +264,7 @@ function writeProfile(projectDir, level, persona, onboarded) {
 
 function registerTuiPlugin(projectDir) {
   const tuiPath = path.join(projectDir, "tui.json");
-  const pluginEntry = {
-    id: "flowtask-classifier",
-    name: "FlowTask Classifier",
-    path: ".opencode/plugins/flowtask-classifier/dist/tui.js",
-  };
+  const pluginEntry = ".opencode/plugins/flowtask-classifier/dist/tui.js";
 
   try {
     let config;
@@ -295,7 +291,11 @@ function registerTuiPlugin(projectDir) {
 
     // Merge plugin entry: preserve existing entries, add/replace ours
     let plugins = Array.isArray(config.plugin) ? config.plugin : [];
-    const existingIndex = plugins.findIndex(p => p.id === pluginEntry.id);
+    const existingIndex = plugins.findIndex(p => {
+      // Compare by string value (both plain strings and legacy objects with .path)
+      return (typeof p === "string" && p === pluginEntry) ||
+             (p && p.path === pluginEntry);
+    });
     if (existingIndex >= 0) {
       plugins[existingIndex] = pluginEntry;
     } else {
