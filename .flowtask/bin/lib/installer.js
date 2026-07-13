@@ -260,6 +260,56 @@ function writeProfile(projectDir, level, persona, onboarded) {
   logSuccess("Perfil guardado en .flowtask/profile.json");
 }
 
+// ─── TUI Plugin Registration ──────────────────────────────────────────────────
+
+function registerTuiPlugin(projectDir) {
+  const tuiPath = path.join(projectDir, "tui.json");
+  const pluginEntry = {
+    id: "flowtask-classifier",
+    name: "FlowTask Classifier",
+    path: ".opencode/plugins/flowtask-classifier/dist/tui.js",
+  };
+
+  try {
+    let config;
+    if (fs.existsSync(tuiPath)) {
+      try {
+        const content = fs.readFileSync(tuiPath, "utf8").trim();
+        config = content ? JSON.parse(content) : {};
+      } catch {
+        logWarn("tui.json is invalid, starting fresh.");
+        config = {};
+      }
+    }
+
+    if (!config) config = {};
+
+    // Ensure base structure
+    if (!config.$schema) config.$schema = "https://opencode.ai/tui.json";
+    if (!config.keybinds) {
+      config.keybinds = {
+        input_newline: "shift+return,ctrl+return,alt+return,ctrl+j",
+        input_submit: "return",
+      };
+    }
+
+    // Merge plugin entry: preserve existing entries, add/replace ours
+    let plugins = Array.isArray(config.plugin) ? config.plugin : [];
+    const existingIndex = plugins.findIndex(p => p.id === pluginEntry.id);
+    if (existingIndex >= 0) {
+      plugins[existingIndex] = pluginEntry;
+    } else {
+      plugins.push(pluginEntry);
+    }
+    config.plugin = plugins;
+
+    fs.writeFileSync(tuiPath, JSON.stringify(config, null, 2), "utf8");
+    logSuccess("TUI plugin registered in tui.json");
+  } catch (err) {
+    logError(`Failed to register TUI plugin: ${err.message}`);
+  }
+}
+
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir) {
@@ -376,6 +426,11 @@ ${COLORS.blue}╔═════════════════════
             logSuccess(`Plugin ${pluginName} linked.`);
           }
         }
+      }
+
+      // ── Step 5.5: Register TUI plugin in tui.json (OpenCode only) ─────────
+      if (id === "opencode") {
+        registerTuiPlugin(projectDir);
       }
 
       // ── Step 6: Write installation marker ───────────────────────────────
@@ -496,6 +551,11 @@ ${COLORS.blue}╔═════════════════════
       }
 
       logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
+
+      // ── Register TUI plugin in tui.json (OpenCode only) ──────────────────
+      if (id === "opencode") {
+        registerTuiPlugin(projectDir);
+      }
 
       // ── Inject persona into runner.md ───────────────────────────────
       if (personaContent) {
