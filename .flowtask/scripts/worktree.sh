@@ -2,7 +2,17 @@
 
 set -euo pipefail
 
-DEFAULT_BASE_BRANCH="development"
+detect_base_branch() {
+  local branch
+  for branch in development main trunk; do
+    if git show-ref --verify --quiet "refs/heads/$branch"; then
+      printf '%s' "$branch"
+      return 0
+    fi
+  done
+  printf '%s' "main"
+}
+
 WORKTREES_DIR=".worktrees"
 
 die() {
@@ -127,7 +137,7 @@ ensure_clean_base() {
 
 create_worktree() {
   local ca_name="$1"
-  local base_branch="${2:-$DEFAULT_BASE_BRANCH}"
+  local base_branch="${2:-$(detect_base_branch)}"
   local branch path path_abs root
 
   root="$(repo_root)"
@@ -156,7 +166,7 @@ create_worktree() {
 
 complete_worktree() {
   local ca_name="$1"
-  local base_branch="${2:-$DEFAULT_BASE_BRANCH}"
+  local base_branch="${2:-$(detect_base_branch)}"
   local branch path path_abs root
 
   root="$(repo_root)"
@@ -194,7 +204,7 @@ complete_worktree() {
 
 cleanup_worktree() {
   local ca_name="$1"
-  local base_branch="${2:-$DEFAULT_BASE_BRANCH}"
+  local base_branch="${2:-$(detect_base_branch)}"
   local branch path path_abs root removed_worktree=0 removed_branch=0
 
   root="$(repo_root)"
@@ -296,7 +306,7 @@ main() {
     create)
       local ca_name="${1:-}"
       shift || true
-      local base_branch="$DEFAULT_BASE_BRANCH"
+      local base_branch="$(detect_base_branch)"
       if [[ "${1:-}" == "--base" ]]; then
         base_branch="${2:-}"
       fi
@@ -306,7 +316,7 @@ main() {
     complete)
       local ca_name="${1:-}"
       shift || true
-      local base_branch="$DEFAULT_BASE_BRANCH"
+      local base_branch="$(detect_base_branch)"
       if [[ "${1:-}" == "--base" ]]; then
         base_branch="${2:-}"
       fi
@@ -316,7 +326,7 @@ main() {
     cleanup)
       local ca_name="${1:-}"
       shift || true
-      local base_branch="$DEFAULT_BASE_BRANCH"
+      local base_branch="$(detect_base_branch)"
       if [[ "${1:-}" == "--base" ]]; then
         base_branch="${2:-}"
       fi

@@ -311,7 +311,7 @@ Invoca constructor usando el formato canónico (Escenario A/B según Handshake).
 ### Política de worktrees paralelos
 
 1. El primer CA activo continúa en la rama de trabajo normal del desarrollador.
-2. A partir del segundo CA paralelo activo, crea un worktree aislado con `./.flowtask/scripts/worktree.sh create <CA-ID> --base development`.
+2. A partir del segundo CA paralelo activo, crea un worktree aislado con `./.flowtask/scripts/worktree.sh create <CA-ID>` (la rama base se detecta automáticamente en orden: `development → main → trunk → main`).
 3. Si ya existe un worktree o rama `worktree/<CA-ID>`, no dupliques nada: conserva la entrada actual y escala al desarrollador para resolver el duplicado.
 4. Persiste en `flow-state/CA-{ID}/instances` el campo opcional `constructor.worktree = { path, branch, base_branch }`.
 5. Al despachar el constructor, incluye en el prompt el contexto del worktree cuando exista.
@@ -330,7 +330,7 @@ Invoca validator usando el formato canónico (Escenario A/B según Handshake). P
 Cuando el validator apruebe y el CA tenga worktree asociado:
 
 1. Ejecuta `./.flowtask/scripts/worktree.sh complete <CA-ID>`.
-2. Si completa bien, el script hace squash-merge a `development` y limpia el worktree/branch.
+2. Si completa bien, el script hace squash-merge a la rama base detectada y limpia el worktree/branch.
 3. Si `complete` falla por conflicto, **no limpies** el worktree.
 4. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
 
