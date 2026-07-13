@@ -198,45 +198,20 @@ La skill determina si la invocación es un hilo nuevo o una reanudación, consid
 
 - **Escenario A (Initial Prompt)**: No existe `task_id` válido para el `agent_type` en el mapa de instancias, Engram no está disponible, **o el Topic Validation determinó que el tema cambió**. Se debe invocar al subagente con un prompt nuevo (sin `task_id`).
 - **Escenario B (Resume Prompt)**: Existe `task_id` activo en el mapa de instancias para el `agent_type` **y el Topic Validation confirmó que es el mismo tema** (o no había checkpoint previo). Se debe invocar al subagente reanudando la sesión existente (usando el `task_id` persistido).
-- **Escenario C (Relevo por capacidad)**: El runner detectó una notificación de checkpoint por capacidad del subagente (`[FLOWTASK_CHECKPOINT_CAPACITY: X%]`). El subagente guardó su estado en Engram vía checkpoint-mixin. Se debe crear un nuevo `task_id` e invocar al subagente en una instancia fresca, indicándole que restaure su estado desde Engram.
 
----
-
-### Escenario C — Relevo por capacidad de contexto
-
-Cuando el runner detecta el tag `[FLOWTASK_CHECKPOINT_CAPACITY: X%]` en la respuesta de un subagente:
-
-1. El subagente ya ejecutó `cp_save()` y guardó su estado en Engram.
-2. El runner verifica que el checkpoint existe: `mem_search(query: "flow-state/{CA-ID}/{agente}")`.
-3. El runner crea un nuevo `task_id` (NO reusa el existente — es una instancia fresca).
-4. El runner invoca al subagente con un prompt de relevo:
-
-    ```
-    Reanudando sesión para {instance_name} tras relevo por capacidad de contexto ({X}%).
-
-    Tu estado fue guardado en Engram antes del relevo. Debes:
-    1. Cargar la skill checkpoint-mixin
-    2. Restaurar tu estado con cp_get("flow-state/{CA-ID}/{agente}")
-    3. Continuar desde donde quedaste según el flow_state restaurado
-    4. NO repetir trabajo ya completado
-
-    [Input del usuario o prompt original aquí]
-    ```
-
-5. El runner usa el formato canónico de `task()` para Escenario C (nuevo `task_id`, sin reanudar el anterior).
+> **Nota — Relevo por capacidad**: Si el runner detecta `[FLOWTASK_CHECKPOINT_CAPACITY: X%]` en la respuesta del subagente, el runner maneja el relevo por su cuenta: crea una nueva instancia vía Escenario A e incluye en el prompt instrucciones para restaurar el estado desde el checkpoint en Engram. Esto no requiere un escenario nuevo en esta skill — el contrato de salida sigue siendo A o B.
 
 ---
 
 ## Contrato de salida
 
-La skill entrega al orquestador un objeto con exactamente 4 campos:
+La skill entrega al orquestador un objeto con exactamente 3 campos:
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `task_id` | `string \| null` | `task_id` existente para reanudación (Escenario B), o `null` para nuevo hilo (Escenario A) o relevo (Escenario C) |
+| `task_id` | `string \| null` | `task_id` existente para reanudación (Escenario B), o `null` para nuevo hilo (Escenario A) |
 | `instance_name` | `string` | Nombre de instancia asignado (ej: `Lyra-planner`) |
-| `scenario` | `string` | `"A"` para nuevo hilo (Initial Prompt), `"B"` para reanudación (Resume Prompt), `"C"` para relevo por capacidad |
-| `capacity_percentage` | `number \| null` | Porcentaje de contexto al momento del relevo (ej: `72`). Solo presente en Escenario C. `null` para A y B. |
+| `scenario` | `string` | `"A"` para nuevo hilo (Initial Prompt), `"B"` para reanudación (Resume Prompt) |
 
 > **La skill NO dicta cómo invocar al subagente.** El orquestador recibe este contrato y decide el formato de llamada (`task()`, API REST, CLI, etc.).
 
@@ -251,4 +226,3 @@ La skill entrega al orquestador un objeto con exactamente 4 campos:
 - **Carga de heurísticas**: Si Engram no está disponible, las heurísticas no se cargan (degradación graceful). No hay mecanismo de fallback local para heurísticas.
 - **Topic Validation con keyword extraction delegada**: La skill no extrae el `topic_signature` del prompt — recibe el valor ya calculado como parámetro desde el orquestador. Si el orquestador no provee `topic_signature` (porque la extracción falló o no está implementada), la skill trata `topic_signature` como `null`. En ese caso, si hay un checkpoint con `topic_signature`, se fuerza Escenario A (no se puede validar). Si el checkpoint tampoco tiene `topic_signature`, se asume mismo tema (degradación graceful, Escenario B).
 - **Falsos positivos/negativos**: El matching por keywords con umbral 50% puede producir falsos positivos (temas distintos con vocabulario similar) o falsos negativos (mismo tema con vocabulario diferente). Aceptado como trade-off del enfoque determinístico sin embeddings.
-- **Escenario C sin Topic Validation**: En el relevo por capacidad, el tema no cambia (es el mismo CA, mismo agente, mismo flujo). No se ejecuta Topic Validation — se asume mismo tema.
