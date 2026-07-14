@@ -1,6 +1,6 @@
-import type { TuiPluginApi, TuiSlotPlugin, TuiSlotContext } from "@opencode-ai/plugin";
-// @ts-expect-error - @opentui/solid es parte del runtime de OpenCode, no está en node_modules
-import { createSignal, createEffect, onCleanup } from "@opentui/solid";
+/** @jsxImportSource @opentui/solid */
+import type { TuiPluginApi, TuiSlotPlugin } from "@opencode-ai/plugin";
+import { createSignal, createEffect, onCleanup } from "solid-js";
 
 /**
  * Busca la clasificación FlowTask en los mensajes de una sesión.
@@ -37,60 +37,102 @@ function findClassification(sessionID: string, api: TuiPluginApi): string | null
 /**
  * TUI Plugin: Indicador de estado del clasificador FlowTask.
  *
- * Registra un componente en el slot `sidebar_title` que:
- * - Muestra un punto verde + categoría si hay clasificación
- * - Muestra un punto rojo + "sin clasificación" si no hay
- * - Se actualiza reactivamente al cambiar de sesión o recibir nuevos mensajes
+ * Slot: `app_bottom` (cross-view, verificado en
+ * references/opencode/packages/tui/src/app.tsx:1124-1125).
+ *
+ * Por qué NO `sidebar_title`:
+ * - `sidebar_title` se renderiza únicamente dentro del `<Show when={session()}>` del
+ *   sidebar de sesión, NUNCA en la vista home.
+ * - `app_bottom` está fuera del `<Switch>` home/session (mismo wrapper `<Show when={ready()}>`),
+ *   se renderiza en ambas vistas, lo que hace al indicador visible al abrir OpenCode sin
+ *   sesión activa.
+ * - El slot `app_bottom` no recibe props (verificado en TuiHostSlotMap.app_bottom = {}),
+ *   por lo que la sessionID se obtiene vía `api.route.current` en vez de por props.
+ *
+ * Estilo: mimetiza el subagent footer (subagent-footer.tsx:65-77) usando los mismos theme
+ * tokens (`border`, `backgroundPanel`, `textMuted`) y el mismo padding lateral.
  *
  * Entry point para OpenCode: default export `{ id, tui }`.
- * El server plugin y el TUI plugin son módulos separados porque
- * PluginModule (server) y TuiPluginModule (tui) son mutuamente excluyentes.
+ * El server plugin y el TUI plugin son módulos separados porque PluginModule (server) y
+ * TuiPluginModule (tui) son mutuamente excluyentes.
+ *
+ * Si OpenCode agrega un slot `subagent_footer` dedicado en el futuro, se puede reevaluar
+ * la ubicación para inyectar el indicador DENTRO del bloque del subagent.
  */
 const tui = async (api: TuiPluginApi) => {
+  // IMPORTANTE: la forma correcta del plugin slot es `{ slots: { slot_name: handler } }`,
+  // NO `{ slot_name: handler }` directamente. El `host.register` en
+  // @opentui/core valida con `isHostSlotPlugin` que requiere `id` y `slots` como
+  // propiedades top-level. Si no se envuelve en `{ slots: ... }`, el plugin se ignora
+  // silenciosamente (el slot nunca se invoca).
   const slotPlugin: TuiSlotPlugin = {
-    sidebar_title: (
-      props: { session_id: string; title: string; share_url?: string },
-      context: TuiSlotContext
-    ) => {
-      try {
-        const [classification, setClassification] =
-          createSignal<string | null>(null);
+    slots: {
+      app_bottom: (_props, _context) => {
+        try {
+          const theme = () => api.theme.current;
+          const [label, setLabel] = createSignal<string>("(idle)");
 
-        createEffect(() => {
-          const sid = props.session_id;
-
-          // Lectura inicial
-          setClassification(findClassification(sid, api));
-
-          // Suscripción a nuevos mensajes para reactividad
-          const unsub = api.event.on("message.updated", (event) => {
-            const evtSessionID = (event.properties.info as any).sessionID;
-            if (evtSessionID === sid) {
-              setClassification(findClassification(sid, api));
+          const refresh = () => {
+            const route = api.route.current;
+            if (route.name !== "session") {
+              setLabel("(idle)");
+              return;
             }
+            const sid = route.params.sessionID;
+            setLabel(findClassification(sid, api) ?? "(idle)");
+          };
+
+          createEffect(() => {
+            refresh();
+
+            // NIT #1 (type-safety): `sessionID` está en `properties` directo,
+            // no requiere cast (verificado en types.gen.ts:6212).
+            const unsubMsg = api.event.on("message.updated", (event) => {
+              const evtSid = event.properties.sessionID;
+              const route = api.route.current;
+              if (route.name === "session" && route.params.sessionID === evtSid) {
+                refresh();
+              }
+            });
+
+            const unsubCreated = api.event.on("session.created", () => refresh());
+
+            onCleanup(() => {
+              unsubMsg();
+              unsubCreated();
+            });
           });
 
-          onCleanup(unsub);
-        });
-
-        // Derivar color y label de la señal
-        const color = () =>
-          classification()
-            ? context.theme.current.success
-            : context.theme.current.error;
-        const label = () => classification() || "sin clasificación";
-
-        // @ts-expect-error - Text component de OpenTUI, renderizado en slot sidebar_title
-        return <text color={color()}>⬤ FlowTask · {label()}</text>;
-      } catch {
-        // Fallback silencioso: texto sin color si algo falla
-        // @ts-expect-error - OpenTUI element
-        return <text>⬤ FlowTask · sin clasificación</text>;
-      }
+          return (
+            <box
+              paddingTop={1}
+              paddingBottom={1}
+              paddingLeft={2}
+              paddingRight={1}
+              border={["left"]}
+              borderColor={theme().border}
+              flexShrink={0}
+              backgroundColor={theme().backgroundPanel}
+            >
+              <text fg={theme().textMuted}>
+                Flowtask Classifier · {label()}
+              </text>
+            </box>
+          );
+        } catch {
+          return (
+            <box paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={1}>
+              <text fg="#888888">
+                Flowtask Classifier · (idle)
+              </text>
+            </box>
+          );
+        }
+      },
     },
   };
 
-  api.slots.register(slotPlugin);
+  api.slots.register(slotPlugin as any);
 };
 
 export default { id: "flowtask-classifier", tui };

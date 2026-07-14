@@ -22,7 +22,11 @@ import { showInteractiveSelector } from "./ui.js";
 const ASSETS = {
   opencode: [
     { src: "agents",  dest: "agents" },
-    { src: "plugins", dest: "plugins" },
+    // OpenCode target needs the actual OpenCode TUI plugin (lives in <repo>/.opencode/plugins/),
+    // NOT the legacy FlowTask classifier (lives in <repo>/.flowtask/plugins/).
+    // src/dest use `..` to escape flowtaskDir and TARGET_DIR respectively.
+    // Precedent: opencode.js:29-37 (findOpencodeConfig) uses the same `..` escape pattern.
+    { src: "../.opencode/plugins/flowtask-classifier", dest: "../../.opencode/plugins/flowtask-classifier" },
   ],
   claude: [
     { src: "skills",  dest: "skills" },
@@ -417,7 +421,8 @@ ${COLORS.blue}╔═════════════════════
       // ── Step 5: Adapter Plugin (OpenCode only) ───────────────────────────
       if (id === "opencode") {
         logStep(5, "Linking OpenCode adapter plugin...");
-        const pluginDir = path.join(TARGET_DIR, "plugins", "flowtask-classifier");
+        // Plugin is copied to <project>/.opencode/plugins/flowtask-classifier/ (matches tui.json entry)
+        const pluginDir = path.join(projectDir, ".opencode", "plugins", "flowtask-classifier");
         if (fileExists(pluginDir)) {
           const pkgPath = path.join(pluginDir, "package.json");
           if (fileExists(pkgPath)) {
