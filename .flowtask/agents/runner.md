@@ -116,6 +116,7 @@ skill({ name: "handshake-protocol" })     ← cargar antes de invocar subagentes
 | `flowtask-ca-writer`    | necesita definir un requisito nuevo                               |
 | `flowtask-planner`      | necesita generar plan de implementación basado en el CA existente |
 | `flowtask-plan-auditor` | necesita auditar el plan (>5 tareas o Evolution Mode)             |
+| `flowtask-review-orchestrator` | necesita revisión de código (diff, rama, archivos, PR/MR)   |
 | `flowtask-constructor`  | necesita implementar el plan generado                             |
 | `flowtask-validator`    | necesita validar implementación                                   |
 | `flowtask-inspector`    | pregunta sobre el proyecto o pide análisis                        |
@@ -270,6 +271,7 @@ Busca por substring `FLOWTASK_CLASSIFICATION` en el contexto recibido. Este valo
 | `CA_MENTION:{ID}`       | Invocar ca-writer                                                                                                                  |
 | `PROJECT_QUESTION`      | \`Invocar inspector                                                                                                                |
 | `CHANGE_REQUEST`        | "Invocar ca-writer"                                                                                                                |
+| `REVIEW_REQUEST`        | Invocar review-orchestrator                                                                                                        |
 | `AMBIGUO`               | "No pude clasificar tu intención. ¿Es un nuevo requisito, una consulta sobre el proyecto, o algo relacionado con un CA existente?" |
 
 Si la categoría no está en la tabla o no se detecta `FLOWTASK_CLASSIFICATION` → cargar skill `manual-classification` y seguir sus instrucciones.
@@ -381,6 +383,42 @@ Durante mantenimiento explícito:
 Invoca inspector usando el formato canónico (Escenario A/B según Handshake). Prompt: el texto original del usuario.
 
 El inspector responde al desarrollador. Si el desarrollador solicita una acción posterior (crear CA, evolucionar agente), delega según corresponda. Si no, fin del flujo.
+
+***
+
+## Flujo: Review
+
+### Detección de intención de revisión
+
+Frases que activan este flujo: "revisá el código", "hace un review", "revisa el diff", "revisa la rama", "revisa los archivos", "code review", "review de", "pre-commit review", `/review`.
+
+### Extracción de scope
+
+Determinar el scope de la revisión:
+- **Rama**: `git diff {rama-base}...HEAD` para obtener el diff.
+- **Diff explícito**: el usuario provee el diff directamente.
+- **Archivos**: lista de archivos a revisar.
+- **PR/MR**: extraer diff del PR indicado.
+
+Si el scope no está claro, preguntar al desarrollador antes de invocar.
+
+### Determinación de modo
+
+- **Pre-commit** (default si no se especifica otro modo): scope es el diff staged o unstaged actual.
+- **Full-4R**: activado por rutas críticas, diff > 400 líneas, o solicitud explícita.
+
+### Invocación del review-orchestrator
+
+Invocar review-orchestrator usando el formato canónico (Escenario A/B según Handshake). Prompt: scope de revisión + modo determinado.
+
+### Flujo pre-commit
+
+Si el desarrollador ejecuta `git commit` y el stamp `.flowtask/.review-stamp` no existe:
+1. Bloquear el commit (via plugin `flowtask-review-gate`).
+2. Informar al desarrollador que debe ejecutar una revisión pre-commit primero.
+3. Invocar review-orchestrator en modo pre-commit.
+4. Si no hay BLOCKER/CRITICAL: el stamp se escribe y el commit puede proceder.
+5. Si hay BLOCKER/CRITICAL: reportar y esperar que el desarrollador corrija.
 
 ***
 

@@ -37,6 +37,7 @@
         "flowtask-logger": "allow",
         "flowtask-tester": "allow",
         "flowtask-plan-auditor": "allow",
+        "flowtask-review-orchestrator": "allow",
         "flowtask-inspector": "allow",
         "flowtask-onboarder": "allow",
         "*": "deny"
@@ -117,6 +118,16 @@
       "mode": "subagent",
       "hidden": true,
       "prompt": "{file:.flowtask/agents/plan-auditor.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "flowtask-review-orchestrator": {
+      "description": "Orquestador de revisión de código 4R Lenses. Recibe scope del runner, evalúa contexto, carga skills según criterios, reporta hallazgos con severidad. Read-only.",
+      "mode": "subagent",
+      "hidden": true,
+      "prompt": "{file:.flowtask/agents/review-orchestrator.md}",
       "permission": {
         "edit": "allow",
         "bash": "allow"
