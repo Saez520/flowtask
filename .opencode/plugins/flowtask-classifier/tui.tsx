@@ -67,7 +67,7 @@ const tui = async (api: TuiPluginApi) => {
   // silenciosamente (el slot nunca se invoca).
   const slotPlugin: TuiSlotPlugin = {
     slots: {
-      app_bottom: (_props, _context) => {
+      app_bottom: (ctx, _props) => {
         try {
           const theme = () => api.theme.current;
           const [label, setLabel] = createSignal<string>("(idle)");
@@ -132,7 +132,7 @@ const tui = async (api: TuiPluginApi) => {
     },
   };
 
-  api.slots.register(slotPlugin as any);
+  api.slots.register({ order: 90, ...slotPlugin } as any);
 };
 
 export default { id: "flowtask-classifier", tui };

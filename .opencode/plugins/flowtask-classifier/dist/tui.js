@@ -1,1 +1,110 @@
-var d={context:void 0,registry:void 0,effects:void 0,done:!1,getContextId(){return N(this.context.count)},getNextContextId(){return N(this.context.count++)}};function N(e){let t=String(e),s=t.length-1;return d.context.id+(s?String.fromCharCode(96+s):"")+t}function z(e){d.context=e}var B=!1,Y=(e,t)=>e===t,oe=Symbol("solid-proxy");var ce=Symbol("solid-track"),fe=Symbol("solid-dev-component"),D={equals:Y},R=null,U=_,g=1,k=2,X={owned:null,cleanups:null,context:null,owner:null};var l=null,r=null,T=null,m=null,o=null,f=null,a=null,O=0;function E(e,t){t=t?Object.assign({},D,t):D;let s={value:e,observers:null,observerSlots:null,comparator:t.equals||void 0},n=(i)=>{if(typeof i==="function")if(r&&r.running&&r.sources.has(s))i=i(s.tValue);else i=i(s.value);return W(s,i)};return[Z.bind(s),n]}function $(e,t,s){U=re;let n=ee(e,t,!1,g),i=P&&J(P);if(i)n.suspense=i;if(!s||!s.render)n.user=!0;a?a.push(n):F(n)}function G(e){if(!m&&o===null)return e();let t=o;o=null;try{if(m)return m.untrack(e);return e()}finally{o=t}}function I(e){if(l===null);else if(l.cleanups===null)l.cleanups=[e];else l.cleanups.push(e);return e}function Q(e){if(r&&r.running)return e(),r.done;let t=o,s=l;return Promise.resolve().then(()=>{o=t,l=s;let n;if(T||P)n=r||(r={sources:new Set,effects:[],promises:new Set,disposed:new Set,queue:new Set,running:!0}),n.done||(n.done=new Promise((i)=>n.resolve=i)),n.running=!0;return p(e,!1),o=l=null,n?n.done:void 0})}var[ae,j]=E(!1);function J(e){let t;return l&&l.context&&(t=l.context[e.id])!==void 0?t:e.defaultValue}var P;function Z(){let e=r&&r.running;if(this.sources&&(e?this.tState:this.state))if((e?this.tState:this.state)===g)F(this);else{let t=f;f=null,p(()=>C(this),!1),f=t}if(o){let t=this.observers?this.observers.length:0;if(!o.sources)o.sources=[this],o.sourceSlots=[t];else o.sources.push(this),o.sourceSlots.push(t);if(!this.observers)this.observers=[o],this.observerSlots=[o.sources.length-1];else this.observers.push(o),this.observerSlots.push(o.sources.length-1)}if(e&&r.sources.has(this))return this.tValue;return this.value}function W(e,t,s){let n=r&&r.running&&r.sources.has(e)?e.tValue:e.value;if(!e.comparator||!e.comparator(n,t)){if(r){let i=r.running;if(i||!s&&r.sources.has(e))r.sources.add(e),e.tValue=t;if(!i)e.value=t}else e.value=t;if(e.observers&&e.observers.length)p(()=>{for(let i=0;i<e.observers.length;i+=1){let u=e.observers[i],c=r&&r.running;if(c&&r.disposed.has(u))continue;if(c?!u.tState:!u.state){if(u.pure)f.push(u);else a.push(u);if(u.observers)H(u)}if(!c)u.state=g;else u.tState=g}if(f.length>1e6)throw f=[],Error()},!1)}return t}function F(e){if(!e.fn)return;y(e);let t=O;if(L(e,r&&r.running&&r.sources.has(e)?e.tValue:e.value,t),r&&!r.running&&r.sources.has(e))queueMicrotask(()=>{p(()=>{r&&(r.running=!0),o=l=e,L(e,e.tValue,t),o=l=null},!1)})}function L(e,t,s){let n,i=l,u=o;o=l=e;try{n=e.fn(t)}catch(c){if(e.pure)if(r&&r.running)e.tState=g,e.tOwned&&e.tOwned.forEach(y),e.tOwned=void 0;else e.state=g,e.owned&&e.owned.forEach(y),e.owned=null;return e.updatedAt=s+1,V(c)}finally{o=u,l=i}if(!e.updatedAt||e.updatedAt<=s){if(e.updatedAt!=null&&"observers"in e)W(e,n,!0);else if(r&&r.running&&e.pure){if(!r.sources.has(e))e.value=n;r.sources.add(e),e.tValue=n}else e.value=n;e.updatedAt=s}}function ee(e,t,s,n=g,i){let u={fn:e,state:n,updatedAt:null,owned:null,sources:null,sourceSlots:null,cleanups:null,value:t,owner:l,context:l?l.context:null,pure:s};if(r&&r.running)u.state=0,u.tState=n;if(l===null);else if(l!==X)if(r&&r.running&&l.pure)if(!l.tOwned)l.tOwned=[u];else l.tOwned.push(u);else if(!l.owned)l.owned=[u];else l.owned.push(u);if(m&&u.fn){let c=u.fn,[h,b]=E(void 0,{equals:!1}),x=m.factory(c,b);I(()=>x.dispose());let w,A=()=>Q(b).then(()=>{if(w)w.dispose(),w=void 0});u.fn=(S)=>{if(h(),r&&r.running){if(!w)w=m.factory(c,A);return w.track(S)}return x.track(S)}}return u}function v(e){let t=r&&r.running;if((t?e.tState:e.state)===0)return;if((t?e.tState:e.state)===k)return C(e);if(e.suspense&&G(e.suspense.inFallback))return e.suspense.effects.push(e);let s=[e];while((e=e.owner)&&(!e.updatedAt||e.updatedAt<O)){if(t&&r.disposed.has(e))return;if(t?e.tState:e.state)s.push(e)}for(let n=s.length-1;n>=0;n--){if(e=s[n],t){let i=e,u=s[n+1];while((i=i.owner)&&i!==u)if(r.disposed.has(i))return}if((t?e.tState:e.state)===g)F(e);else if((t?e.tState:e.state)===k){let i=f;f=null,p(()=>C(e,s[0]),!1),f=i}}}function p(e,t){if(f)return e();let s=!1;if(!t)f=[];if(a)s=!0;else a=[];O++;try{let n=e();return te(s),n}catch(n){if(!s)a=null;f=null,V(n)}}function te(e){if(f){if(T&&r&&r.running)ne(f);else _(f);f=null}if(e)return;let t;if(r){if(!r.promises.size&&!r.queue.size){let{sources:n,disposed:i}=r;a.push.apply(a,r.effects),t=r.resolve;for(let u of a)"tState"in u&&(u.state=u.tState),delete u.tState;r=null,p(()=>{for(let u of i)y(u);for(let u of n){if(u.value=u.tValue,u.owned)for(let c=0,h=u.owned.length;c<h;c++)y(u.owned[c]);if(u.tOwned)u.owned=u.tOwned;delete u.tValue,delete u.tOwned,u.tState=0}j(!1)},!1)}else if(r.running){r.running=!1,r.effects.push.apply(r.effects,a),a=null,j(!0);return}}let s=a;if(a=null,s.length)p(()=>U(s),!1);if(t)t()}function _(e){for(let t=0;t<e.length;t++)v(e[t])}function ne(e){for(let t=0;t<e.length;t++){let s=e[t],n=r.queue;if(!n.has(s))n.add(s),T(()=>{n.delete(s),p(()=>{r.running=!0,v(s)},!1),r&&(r.running=!1)})}}function re(e){let t,s=0;for(t=0;t<e.length;t++){let n=e[t];if(!n.user)v(n);else e[s++]=n}if(d.context){if(d.count){d.effects||(d.effects=[]),d.effects.push(...e.slice(0,s));return}z()}if(d.effects&&(d.done||!d.count))e=[...d.effects,...e],s+=d.effects.length,delete d.effects;for(t=0;t<s;t++)v(e[t])}function C(e,t){let s=r&&r.running;if(s)e.tState=0;else e.state=0;for(let n=0;n<e.sources.length;n+=1){let i=e.sources[n];if(i.sources){let u=s?i.tState:i.state;if(u===g){if(i!==t&&(!i.updatedAt||i.updatedAt<O))v(i)}else if(u===k)C(i,t)}}}function H(e){let t=r&&r.running;for(let s=0;s<e.observers.length;s+=1){let n=e.observers[s];if(t?!n.tState:!n.state){if(t)n.tState=k;else n.state=k;if(n.pure)f.push(n);else a.push(n);n.observers&&H(n)}}}function y(e){let t;if(e.sources)while(e.sources.length){let s=e.sources.pop(),n=e.sourceSlots.pop(),i=s.observers;if(i&&i.length){let u=i.pop(),c=s.observerSlots.pop();if(n<i.length)u.sourceSlots[c]=n,i[n]=u,s.observerSlots[n]=c}}if(e.tOwned){for(t=e.tOwned.length-1;t>=0;t--)y(e.tOwned[t]);delete e.tOwned}if(r&&r.running&&e.pure)K(e,!0);else if(e.owned){for(t=e.owned.length-1;t>=0;t--)y(e.owned[t]);e.owned=null}if(e.cleanups){for(t=e.cleanups.length-1;t>=0;t--)e.cleanups[t]();e.cleanups=null}if(r&&r.running)e.tState=0;else e.state=0}function K(e,t){if(!t)e.tState=0,r.disposed.add(e);if(e.owned)for(let s=0;s<e.owned.length;s++)K(e.owned[s])}function se(e){if(e instanceof Error)return e;return Error(typeof e==="string"?e:"Unknown error",{cause:e})}function q(e,t,s){try{for(let n of t)n(e)}catch(n){V(n,s&&s.owner||null)}}function V(e,t=l){let s=R&&t&&t.context&&t.context[R],n=se(e);if(!s)throw n;if(a)a.push({fn(){q(n,s,t)},state:g});else q(n,s,t)}var de=Symbol("fallback");import{jsx as M,jsxs as le}from"@opentui/solid/jsx-runtime";function ue(e,t){try{let s=t.state.session.messages(e);for(let n=s.length-1;n>=0;n--){let i=s[n],u=t.state.part(i.id);for(let c of u)if(c.type==="text"){let h=c.text.match(/\[FLOWTASK_CLASSIFICATION:\s*([^\]]+)\]/);if(h)return h[1]}}}catch{}return null}var ie=async(e)=>{let t={slots:{app_bottom:(s,n)=>{try{let i=()=>e.theme.current,[u,c]=E("(idle)"),h=()=>{let b=e.route.current;if(b.name!=="session"){c("(idle)");return}let x=b.params.sessionID;c(ue(x,e)??"(idle)")};return $(()=>{h();let b=e.event.on("message.updated",(w)=>{let A=w.properties.sessionID,S=e.route.current;if(S.name==="session"&&S.params.sessionID===A)h()}),x=e.event.on("session.created",()=>h());I(()=>{b(),x()})}),M("box",{paddingTop:1,paddingBottom:1,paddingLeft:2,paddingRight:1,border:["left"],borderColor:i().border,flexShrink:0,backgroundColor:i().backgroundPanel,children:le("text",{fg:i().textMuted,children:["Flowtask Classifier · ",u()]})})}catch{return M("box",{paddingTop:1,paddingBottom:1,paddingLeft:2,paddingRight:1,children:M("text",{fg:"#888888",children:"Flowtask Classifier · (idle)"})})}}}};e.slots.register(t)},we={id:"flowtask-classifier",tui:ie};export{we as default};
+// tui.tsx
+import { effect as _$effect } from "@opentui/solid";
+import { insert as _$insert } from "@opentui/solid";
+import { createTextNode as _$createTextNode } from "@opentui/solid";
+import { insertNode as _$insertNode } from "@opentui/solid";
+import { setProp as _$setProp } from "@opentui/solid";
+import { createElement as _$createElement } from "@opentui/solid";
+import { createSignal, createEffect, onCleanup } from "solid-js";
+function findClassification(sessionID, api) {
+  try {
+    const messages = api.state.session.messages(sessionID);
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      const parts = api.state.part(msg.id);
+      for (const part of parts) {
+        if (part.type === "text") {
+          const match = part.text.match(/\[FLOWTASK_CLASSIFICATION:\s*([^\]]+)\]/);
+          if (match) {
+            return match[1];
+          }
+        }
+      }
+    }
+  } catch {
+  }
+  return null;
+}
+var tui = async (api) => {
+  const slotPlugin = {
+    slots: {
+      app_bottom: (ctx, _props) => {
+        try {
+          const theme = () => api.theme.current;
+          const [label, setLabel] = createSignal("(idle)");
+          const refresh = () => {
+            const route = api.route.current;
+            if (route.name !== "session") {
+              setLabel("(idle)");
+              return;
+            }
+            const sid = route.params.sessionID;
+            setLabel(findClassification(sid, api) ?? "(idle)");
+          };
+          createEffect(() => {
+            refresh();
+            const unsubMsg = api.event.on("message.updated", (event) => {
+              const evtSid = event.properties.sessionID;
+              const route = api.route.current;
+              if (route.name === "session" && route.params.sessionID === evtSid) {
+                refresh();
+              }
+            });
+            const unsubCreated = api.event.on("session.created", () => refresh());
+            onCleanup(() => {
+              unsubMsg();
+              unsubCreated();
+            });
+          });
+          return (() => {
+            var _el$ = _$createElement("box"), _el$2 = _$createElement("text"), _el$3 = _$createTextNode(`Flowtask Classifier \xB7 `);
+            _$insertNode(_el$, _el$2);
+            _$setProp(_el$, "paddingTop", 1);
+            _$setProp(_el$, "paddingBottom", 1);
+            _$setProp(_el$, "paddingLeft", 2);
+            _$setProp(_el$, "paddingRight", 1);
+            _$setProp(_el$, "border", ["left"]);
+            _$setProp(_el$, "flexShrink", 0);
+            _$insertNode(_el$2, _el$3);
+            _$insert(_el$2, label, null);
+            _$effect((_p$) => {
+              var _v$ = theme().border, _v$2 = theme().backgroundPanel, _v$3 = theme().textMuted;
+              _v$ !== _p$.e && (_p$.e = _$setProp(_el$, "borderColor", _v$, _p$.e));
+              _v$2 !== _p$.t && (_p$.t = _$setProp(_el$, "backgroundColor", _v$2, _p$.t));
+              _v$3 !== _p$.a && (_p$.a = _$setProp(_el$2, "fg", _v$3, _p$.a));
+              return _p$;
+            }, {
+              e: void 0,
+              t: void 0,
+              a: void 0
+            });
+            return _el$;
+          })();
+        } catch {
+          return (() => {
+            var _el$4 = _$createElement("box"), _el$5 = _$createElement("text");
+            _$insertNode(_el$4, _el$5);
+            _$setProp(_el$4, "paddingTop", 1);
+            _$setProp(_el$4, "paddingBottom", 1);
+            _$setProp(_el$4, "paddingLeft", 2);
+            _$setProp(_el$4, "paddingRight", 1);
+            _$insertNode(_el$5, _$createTextNode(`Flowtask Classifier \xB7 (idle)`));
+            _$setProp(_el$5, "fg", "#888888");
+            return _el$4;
+          })();
+        }
+      }
+    }
+  };
+  api.slots.register({
+    order: 90,
+    ...slotPlugin
+  });
+};
+var tui_default = {
+  id: "flowtask-classifier",
+  tui
+};
+export {
+  tui_default as default
+};

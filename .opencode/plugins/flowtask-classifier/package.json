@@ -8,11 +8,13 @@
     "./tui": "./dist/tui.js"
   },
   "scripts": {
-    "build": "bun build --production ./tui.tsx --outfile ./dist/tui.js --format=esm --external '@opencode-ai/plugin' --external '@opentui/solid' --external '@opentui/solid/jsx-runtime'"
+    "build": "tsup"
   },
   "devDependencies": {
     "@opentui/solid": "0.4.2",
+    "esbuild-plugin-solid": "^0.6.0",
     "solid-js": "^1.9.0",
+    "tsup": "^8.5.1",
     "typescript": "^5.7.0"
   }
 }
