@@ -19,7 +19,7 @@ Activate the onboarder to evaluate developer level and assign a personality.
      - Determine level by majority heuristic with tiebreakers
      - Assign personality: training→tutor-training, mid→tutor-mid, senior→tutor-senior
      - Inject personality between PERSONA_START/PERSONA_END markers in runner.md
-      - Persist profile to `.flowtask/profile.json`
+      - Persist profile to `.flowtask/config/profile.json`
 
 3. After the onboarder completes:
    - If the onboarder assigned a personality, the runner now operates with that personality injected in runner.md. Acknowledge the new personality to the user.

@@ -215,12 +215,12 @@ Mapear el nivel determinado a un archivo de personalidad:
 ### Paso 8 — Persistir perfil
 
 1. **Generar el objeto de perfil** según el esquema definido en la sección "Esquema de profile.json" (abajo).
-2. **Escribir** el archivo `.flowtask/profile.json` con el objeto JSON generado.
+2. **Escribir** el archivo `.flowtask/config/profile.json` con el objeto JSON generado.
 3. **Mostrar resumen al usuario:**
    - Nivel detectado
    - Personalidad asignada
    - Archivo modificado: `runner.md`
-   - Archivo creado/actualizado: `.flowtask/profile.json`
+   - Archivo creado/actualizado: `.flowtask/config/profile.json`
     - Si el quiz se completó: "¡Listo! El runner ahora opera con la personalidad **{persona}**. Podés volver a ejecutar `/onboard` en cualquier momento para re-evaluar tu nivel."
 
 4. **Nota:** El onboarder solo escribe `'training'`, `'mid'`, `'senior'` o `'custom'` en profile.json. Los valores `'junior'` y `'custom'` son escritos por el installer — el onboarder los lee e interpreta, pero no los genera (excepto `'custom'` en caso de abandono).
@@ -274,7 +274,7 @@ Al finalizar las 4 preguntas, se cuenta la frecuencia de cada nivel:
 
 ## Esquema de profile.json
 
-El archivo `.flowtask/profile.json` se genera en el Paso 8. Sigue esta estructura exacta:
+El archivo `.flowtask/config/profile.json` se genera en el Paso 8. Sigue esta estructura exacta:
 
 ```json
 {
@@ -417,7 +417,7 @@ El archivo `.flowtask/profile.json` se genera en el Paso 8. Sigue esta estructur
 
 ### Error al escribir profile.json
 
-- **Condición**: Fallo al escribir `.flowtask/profile.json` (permisos, disco lleno, etc.).
+- **Condición**: Fallo al escribir `.flowtask/config/profile.json` (permisos, disco lleno, etc.).
 - **Acción**: Informar al usuario del error específico. La inyección en `runner.md` ya se realizó (ese paso es anterior).
 - Intentar guardar en Engram igualmente (`mem_save`).
 

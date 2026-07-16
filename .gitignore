@@ -50,5 +50,5 @@ flowtask/
 # Heap snapshots (debugging)
 *.heapsnapshot
 
-# prfile user
-.flowtask/prfile.json
+# profile.json (developer preferences)
+.flowtask/config/profile.json

@@ -7,7 +7,7 @@ import {
 } from "./logger.js";
 import { copyWithProgress, copyDirectoryDelta } from "./copy.js";
 import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
-import { generateClaudeAgents, generateClaudeCommands, generateClaudeMd, mergeClaudeSettings } from "./claude.js";
+import { generateClaudeAgents, generateClaudeCommands, generateClaudeMd, mergeClaudeSettings, mergeClaudeMcpConfig } from "./claude.js";
 import { showInteractiveSelector } from "./ui.js";
 
 // ─── Asset map ────────────────────────────────────────────────────────────────
@@ -254,12 +254,12 @@ function injectPersonaIntoRunner(targetDir, personaContent) {
 }
 
 function writeProfile(projectDir, level, persona, onboarded) {
-  const ftDir = path.join(projectDir, ".flowtask");
-  if (!fs.existsSync(ftDir)) fs.mkdirSync(ftDir, { recursive: true });
+  const configDir = path.join(projectDir, ".flowtask", "config");
+  if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
 
   const profile = { level, persona, onboarded };
-  fs.writeFileSync(path.join(ftDir, "profile.json"), JSON.stringify(profile, null, 2), "utf8");
-  logSuccess("Perfil guardado en .flowtask/profile.json");
+  fs.writeFileSync(path.join(configDir, "profile.json"), JSON.stringify(profile, null, 2), "utf8");
+  logSuccess("Perfil guardado en .flowtask/config/profile.json");
 }
 
 // ─── Plugin Manifest Functions ────────────────────────────────────────────────
@@ -353,6 +353,62 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
   }
 }
 
+// ─── Migration & Cleanup ──────────────────────────────────────────────────────
+
+function migrateProfileLocation(projectDir) {
+  const oldPath = path.join(projectDir, ".flowtask", "profile.json");
+  const newPath = path.join(projectDir, ".flowtask", "config", "profile.json");
+
+  // Already migrated
+  if (fs.existsSync(newPath)) return;
+
+  // Nothing to migrate
+  if (!fs.existsSync(oldPath)) return;
+
+  try {
+    // Try to parse old profile
+    const content = fs.readFileSync(oldPath, "utf8");
+    const profile = JSON.parse(content);
+
+    // Write to new location
+    const configDir = path.dirname(newPath);
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(newPath, JSON.stringify(profile, null, 2), "utf8");
+
+    // Verify new file was written
+    if (!fs.existsSync(newPath)) {
+      logError("No se pudo verificar la escritura de .flowtask/config/profile.json. Perfil legacy preservado en su ubicación original.");
+      return;
+    }
+
+    // Remove old file
+    fs.rmSync(oldPath);
+    logSuccess("Perfil migrado de .flowtask/profile.json a .flowtask/config/profile.json");
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      logError("No se pudo migrar .flowtask/profile.json: contenido inválido/corrupto. Se conserva el archivo original para inspección manual.");
+    } else {
+      logError(`No se pudo migrar profile.json: ${err.message}`);
+    }
+  }
+}
+
+function cleanupOrphanedClaudeAssets(projectDir) {
+  const orphanDirs = [
+    path.join(projectDir, ".claude", "flowtask", "agents"),
+    path.join(projectDir, ".claude", "flowtask", "commands"),
+  ];
+  for (const dir of orphanDirs) {
+    if (!fs.existsSync(dir)) continue;
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      logSuccess(`Carpeta obsoleta eliminada: ${path.relative(projectDir, dir)}`);
+    } catch (err) {
+      logError(`No se pudo eliminar carpeta obsoleta ${path.relative(projectDir, dir)}: ${err.message}`);
+    }
+  }
+}
+
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir) {
@@ -382,6 +438,7 @@ ${COLORS.blue}╔═════════════════════
   const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
 
   const projectDir = process.cwd();
+  migrateProfileLocation(projectDir);
   const results = [];
 
   for (const { id, ideDir, targetSubDir } of targets) {
@@ -448,6 +505,8 @@ ${COLORS.blue}╔═════════════════════
         const cmdResult = generateClaudeCommands(flowtaskDir, projectDir);
         logSuccess(`${cmdResult.generated} commands → .claude/commands/`);
         mergeClaudeSettings(path.join(projectDir, ".claude", "settings.json"), flowtaskDir);
+        mergeClaudeMcpConfig(path.join(projectDir, ".mcp.json"), flowtaskDir);
+        cleanupOrphanedClaudeAssets(projectDir);
         if (personaContent) {
           const targetRunnerPath = path.join(TARGET_DIR, "agents", "runner.md");
           const runnerBody = fs.readFileSync(targetRunnerPath, "utf8");
@@ -504,6 +563,7 @@ ${COLORS.blue}╔═════════════════════
 
   const readline = await import("readline");
   const projectDir = process.cwd();
+  migrateProfileLocation(projectDir);
 
   // ── Step 1: Detect installed targets ────────────────────────────────────
   logStep(1, "Detecting installed targets...");
@@ -533,7 +593,7 @@ ${COLORS.blue}╔═════════════════════
 
   // ── Step 1.5: Personalidad del Agente ──────────────────────────────
   let currentLevel = null;
-  const profilePath = path.join(projectDir, ".flowtask", "profile.json");
+  const profilePath = path.join(projectDir, ".flowtask", "config", "profile.json");
   if (fileExists(profilePath)) {
     try {
       const profile = JSON.parse(fs.readFileSync(profilePath, "utf8"));
@@ -604,6 +664,8 @@ ${COLORS.blue}╔═════════════════════
         const cmdResult = generateClaudeCommands(flowtaskDir, projectDir);
         logSuccess(`Claude commands: ${cmdResult.generated} regenerated`);
         mergeClaudeSettings(path.join(projectDir, ".claude", "settings.json"), flowtaskDir);
+        mergeClaudeMcpConfig(path.join(projectDir, ".mcp.json"), flowtaskDir);
+        cleanupOrphanedClaudeAssets(projectDir);
         if (personaContent) {
           const targetRunnerPath = path.join(TARGET_DIR, "agents", "runner.md");
           const runnerBody = fs.readFileSync(targetRunnerPath, "utf8");

@@ -42,7 +42,6 @@ function generateClaudeAgent(srcPath, destPath) {
     "---",
     `name: ${displayName}`,
     `description: ${description || "FlowTask subagent. Activated only through the runner."}`,
-    "tools: Bash, Read, Write, Edit, Grep, Glob",
     "---",
     "",
     body,
@@ -227,5 +226,26 @@ export function mergeClaudeSettings(settingsPath, flowtaskDir) {
     logSuccess("Claude Code settings.json updated with Engram MCP.");
   } catch (err) {
     logError(`Failed to merge Claude settings: ${err.message}`);
+  }
+}
+
+// ─── MCP Config merger ───────────────────────────────────────────────────────
+
+export function mergeClaudeMcpConfig(mcpJsonPath, flowtaskDir) {
+  const templatePath = path.join(flowtaskDir, "claude", "mcp.json");
+  if (!fileExists(templatePath)) return;
+  logInfo(`Merging Engram MCP into ${mcpJsonPath}...`);
+  try {
+    const template = JSON.parse(fs.readFileSync(templatePath, "utf8"));
+    let existing = {};
+    if (fs.existsSync(mcpJsonPath)) {
+      const content = fs.readFileSync(mcpJsonPath, "utf8").trim();
+      if (content) { try { existing = JSON.parse(content); } catch { existing = {}; } }
+    }
+    const merged = deepMergeObjects(existing, template);
+    fs.writeFileSync(mcpJsonPath, JSON.stringify(merged, null, 2), "utf8");
+    logSuccess(".mcp.json updated with Engram MCP.");
+  } catch (err) {
+    logError(`Failed to merge .mcp.json: ${err.message}`);
   }
 }
