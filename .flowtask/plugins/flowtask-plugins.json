@@ -14,6 +14,13 @@
     "entrypoint": "dist/tui.js"
   },
   {
+    "name": "flowtask-model-selector",
+    "path": "flowtask-model-selector",
+    "kind": "tui",
+    "destinations": ["opencode"],
+    "entrypoint": "dist/tui.js"
+  },
+  {
     "name": "flowtask-review-gate",
     "path": "flowtask-review-gate",
     "kind": "server",
