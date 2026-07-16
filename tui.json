@@ -5,6 +5,6 @@
     "input_submit": "return"
   },
   "plugin": [
-    ".opencode/plugins/flowtask-classifier/dist/tui.js"
+    ".opencode/plugins/flowtask-classifier-tui/dist/tui.js"
   ]
 }

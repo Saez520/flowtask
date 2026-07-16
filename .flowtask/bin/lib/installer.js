@@ -3,10 +3,10 @@ import path from "path";
 import os from "os";
 import {
   COLORS, log, logStep, logSuccess, logError, logWarn, logInfo,
-  isBinaryInstalled, getVersion, run, fileExists,
+  isBinaryInstalled, getVersion, fileExists,
 } from "./logger.js";
 import { copyWithProgress, copyDirectoryDelta } from "./copy.js";
-import { mergeOpencodeConfig } from "./opencode.js";
+import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
 import { generateClaudeAgents, generateClaudeCommands, generateClaudeMd, mergeClaudeSettings } from "./claude.js";
 import { showInteractiveSelector } from "./ui.js";
 
@@ -14,19 +14,17 @@ import { showInteractiveSelector } from "./ui.js";
 // Defines exactly what gets copied into each target directory.
 // Format: { src: relative to flowtaskDir, dest: relative to TARGET_DIR | null for custom dest }
 //
-// opencode  → .opencode/flowtask/  : agents/, plugins/
+// opencode  → .opencode/flowtask/  : agents/
 //             .opencode/skills/    : skills/  (custom dest)
+//             .opencode/plugins/   : manifest-driven, handled by installManifestPlugins()
+//                                    (NOT listed here — each entry's destination and kind,
+//                                    server vs tui, comes from flowtask-plugins.json)
 // claude    → .claude/flowtask/    : skills/  (agents & commands are generated, not copied)
 // standalone → .flowtask/          : agents/, commands/, skills/, plugins/
 
 const ASSETS = {
   opencode: [
     { src: "agents",  dest: "agents" },
-    // OpenCode target needs the actual OpenCode TUI plugin (lives in <repo>/.opencode/plugins/),
-    // NOT the legacy FlowTask classifier (lives in <repo>/.flowtask/plugins/).
-    // src/dest use `..` to escape flowtaskDir and TARGET_DIR respectively.
-    // Precedent: opencode.js:29-37 (findOpencodeConfig) uses the same `..` escape pattern.
-    { src: "../.opencode/plugins/flowtask-classifier", dest: "../../.opencode/plugins/flowtask-classifier" },
   ],
   claude: [
     { src: "skills",  dest: "skills" },
@@ -264,53 +262,94 @@ function writeProfile(projectDir, level, persona, onboarded) {
   logSuccess("Perfil guardado en .flowtask/profile.json");
 }
 
-// ─── TUI Plugin Registration ──────────────────────────────────────────────────
+// ─── Plugin Manifest Functions ────────────────────────────────────────────────
 
-function registerTuiPlugin(projectDir) {
-  const tuiPath = path.join(projectDir, "tui.json");
-  const pluginEntry = ".opencode/plugins/flowtask-classifier/dist/tui.js";
-
+/**
+ * Load plugin manifest from .flowtask/plugins/flowtask-plugins.json.
+ * Each entry: { name, path, kind, destinations, entrypoint }
+ * - path is relative to the manifest's own directory (i.e. flowtaskDir/plugins/<path>).
+ */
+export function loadPluginManifest(flowtaskDir) {
+  const manifestPath = path.join(flowtaskDir, "plugins", "flowtask-plugins.json");
   try {
-    let config;
-    if (fs.existsSync(tuiPath)) {
-      try {
-        const content = fs.readFileSync(tuiPath, "utf8").trim();
-        config = content ? JSON.parse(content) : {};
-      } catch {
-        logWarn("tui.json is invalid, starting fresh.");
-        config = {};
-      }
+    if (!fileExists(manifestPath)) {
+      logWarn(`Plugin manifest not found at ${manifestPath}`);
+      return [];
     }
-
-    if (!config) config = {};
-
-    // Ensure base structure
-    if (!config.$schema) config.$schema = "https://opencode.ai/tui.json";
-    if (!config.keybinds) {
-      config.keybinds = {
-        input_newline: "shift+return,ctrl+return,alt+return,ctrl+j",
-        input_submit: "return",
-      };
-    }
-
-    // Merge plugin entry: preserve existing entries, add/replace ours
-    let plugins = Array.isArray(config.plugin) ? config.plugin : [];
-    const existingIndex = plugins.findIndex(p => {
-      // Compare by string value (both plain strings and legacy objects with .path)
-      return (typeof p === "string" && p === pluginEntry) ||
-             (p && p.path === pluginEntry);
-    });
-    if (existingIndex >= 0) {
-      plugins[existingIndex] = pluginEntry;
-    } else {
-      plugins.push(pluginEntry);
-    }
-    config.plugin = plugins;
-
-    fs.writeFileSync(tuiPath, JSON.stringify(config, null, 2), "utf8");
-    logSuccess("TUI plugin registered in tui.json");
+    const content = fs.readFileSync(manifestPath, "utf8");
+    return JSON.parse(content);
   } catch (err) {
-    logError(`Failed to register TUI plugin: ${err.message}`);
+    logError(`Failed to load plugin manifest: ${err.message}`);
+    return [];
+  }
+}
+
+/**
+ * Validate a single manifest entry has all required fields.
+ */
+export function validateManifestEntry(entry) {
+  const required = ["name", "path", "kind", "destinations", "entrypoint"];
+  for (const field of required) {
+    if (!entry[field]) {
+      logWarn(`Plugin entry missing required field: ${field}`);
+      return false;
+    }
+  }
+  if (!Array.isArray(entry.destinations)) {
+    logWarn(`Plugin entry destinations must be an array`);
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Install plugins from the manifest for the "opencode" destination:
+ * 1. Copies each plugin's directory (filtered by `destinations`) into
+ *    <projectDir>/.opencode/plugins/<name>/ — sibling of .opencode/flowtask,
+ *    NOT nested inside it (TUI/server plugin paths are resolved relative to
+ *    the project root / ideDir, not the flowtask subdir).
+ * 2. Registers each copied plugin in the right config file:
+ *    - kind "tui"    → tui.json          (via registerPluginArrayEntry)
+ *    - kind "server" → .opencode/opencode.json (via registerPluginArrayEntry)
+ */
+export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
+  if (!Array.isArray(manifest) || manifest.length === 0) {
+    logInfo("No plugins to install from manifest");
+    return;
+  }
+
+  const opencodePluginsDir = path.join(projectDir, ".opencode", "plugins");
+
+  for (const entry of manifest) {
+    if (!validateManifestEntry(entry)) continue;
+    if (!entry.destinations.includes("opencode")) continue;
+
+    const srcDir = path.join(flowtaskDir, "plugins", entry.path);
+    if (!fileExists(srcDir)) {
+      logWarn(`Plugin source not found, skipping: ${srcDir}`);
+      continue;
+    }
+    const destDir = path.join(opencodePluginsDir, entry.name);
+
+    try {
+      copyDirectoryDelta(srcDir, destDir);
+      logSuccess(`Plugin ${entry.name} copied to .opencode/plugins/${entry.name}`);
+    } catch (err) {
+      logError(`Failed to copy plugin ${entry.name}: ${err.message}`);
+      continue;
+    }
+
+    const pluginRuntimePath = `.opencode/plugins/${entry.name}/${entry.entrypoint}`;
+
+    if (entry.kind === "tui") {
+      const tuiPath = path.join(projectDir, "tui.json");
+      registerPluginArrayEntry(tuiPath, pluginRuntimePath, "https://opencode.ai/tui.json");
+    } else if (entry.kind === "server") {
+      const opencodeConfigPath = path.join(projectDir, ".opencode", "opencode.json");
+      registerPluginArrayEntry(opencodeConfigPath, pluginRuntimePath, "https://opencode.ai/config.json");
+    } else {
+      logWarn(`Unknown plugin kind "${entry.kind}" for ${entry.name}, skipping registration.`);
+    }
   }
 }
 
@@ -418,24 +457,14 @@ ${COLORS.blue}╔═════════════════════
         }
       }
 
-      // ── Step 5: Adapter Plugin (OpenCode only) ───────────────────────────
+      // ── Step 5: Install plugins from manifest (OpenCode only) ────────────
+      // Copies each manifest entry (filtered by destinations) into
+      // .opencode/plugins/<name>/ and registers it in tui.json (kind tui)
+      // or .opencode/opencode.json (kind server).
       if (id === "opencode") {
-        logStep(5, "Linking OpenCode adapter plugin...");
-        // Plugin is copied to <project>/.opencode/plugins/flowtask-classifier/ (matches tui.json entry)
-        const pluginDir = path.join(projectDir, ".opencode", "plugins", "flowtask-classifier");
-        if (fileExists(pluginDir)) {
-          const pkgPath = path.join(pluginDir, "package.json");
-          if (fileExists(pkgPath)) {
-            const { name: pluginName } = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-            run(`npm link ${pluginName}`, { cwd: pluginDir });
-            logSuccess(`Plugin ${pluginName} linked.`);
-          }
-        }
-      }
-
-      // ── Step 5.5: Register TUI plugin in tui.json (OpenCode only) ─────────
-      if (id === "opencode") {
-        registerTuiPlugin(projectDir);
+        logStep(5, "Installing plugins from manifest...");
+        const manifest = loadPluginManifest(flowtaskDir);
+        installManifestPlugins(projectDir, manifest, flowtaskDir);
       }
 
       // ── Step 6: Write installation marker ───────────────────────────────
@@ -557,9 +586,10 @@ ${COLORS.blue}╔═════════════════════
 
       logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
 
-      // ── Register TUI plugin in tui.json (OpenCode only) ──────────────────
+      // ── Re-install plugins from manifest (OpenCode only) ─────────────────
       if (id === "opencode") {
-        registerTuiPlugin(projectDir);
+        const manifest = loadPluginManifest(flowtaskDir);
+        installManifestPlugins(projectDir, manifest, flowtaskDir);
       }
 
       // ── Inject persona into runner.md ───────────────────────────────

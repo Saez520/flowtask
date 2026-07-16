@@ -1,5 +1,5 @@
 {
-  "name": "flowtask-classifier",
+  "name": "flowtask-classifier-tui",
   "version": "1.1.0",
   "type": "module",
   "main": "./dist/index.js",

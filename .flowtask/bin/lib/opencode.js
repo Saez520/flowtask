@@ -68,6 +68,54 @@ function adjustConfigPaths(config, targetSubDir) {
 }
 
 /**
+ * Register a plugin entry in tui.json or opencode.json (generic).
+ * Supports both string paths and object entries with path property.
+ */
+export function registerPluginArrayEntry(configPath, entry, schema = "https://opencode.ai/tui.json") {
+  try {
+    let config;
+    if (fileExists(configPath)) {
+      try {
+        const content = fs.readFileSync(configPath, "utf8").trim();
+        config = content ? JSON.parse(content) : {};
+      } catch {
+        logWarn(`${configPath} is invalid, starting fresh.`);
+        config = {};
+      }
+    } else {
+      config = {};
+    }
+
+    if (!config) config = {};
+
+    // Ensure base structure
+    if (!config.$schema) config.$schema = schema;
+
+    // Initialize plugin array if needed
+    let plugins = Array.isArray(config.plugin) ? config.plugin : [];
+
+    // Find existing entry by path (supports both string and object with .path)
+    const entryPath = typeof entry === "string" ? entry : entry?.path;
+    const existingIndex = plugins.findIndex(p => {
+      return (typeof p === "string" && p === entryPath) ||
+             (p && p.path === entryPath);
+    });
+
+    if (existingIndex >= 0) {
+      plugins[existingIndex] = entry;
+    } else {
+      plugins.push(entry);
+    }
+    config.plugin = plugins;
+
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+    logSuccess(`Plugin entry registered in ${path.basename(configPath)}`);
+  } catch (err) {
+    logError(`Failed to register plugin entry: ${err.message}`);
+  }
+}
+
+/**
  * Merge FlowTask agent/command/mcp/plugin sections into the IDE's opencode.json.
  */
 export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {

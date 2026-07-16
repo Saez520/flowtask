@@ -1,0 +1,30 @@
+[
+  {
+    "name": "flowtask-classifier-hook",
+    "path": "flowtask-classifier-hook",
+    "kind": "server",
+    "destinations": ["opencode"],
+    "entrypoint": "dist/index.js"
+  },
+  {
+    "name": "flowtask-classifier-tui",
+    "path": "flowtask-classifier-tui",
+    "kind": "tui",
+    "destinations": ["opencode"],
+    "entrypoint": "dist/tui.js"
+  },
+  {
+    "name": "flowtask-review-gate",
+    "path": "flowtask-review-gate",
+    "kind": "server",
+    "destinations": ["opencode"],
+    "entrypoint": "dist/index.js"
+  },
+  {
+    "name": "flowtask-context-checkpoint",
+    "path": "flowtask-context-checkpoint",
+    "kind": "server",
+    "destinations": ["opencode"],
+    "entrypoint": "index.ts"
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "name": "flowtask-context-checkpoint",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./index.ts",
+  "dependencies": {
+    "@opencode-ai/plugin": "latest"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

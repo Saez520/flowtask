@@ -499,10 +499,18 @@ ls ~/.config/opencode/agents/
 ls ~/.config/opencode/commands/
 ```
 
-### Classifier plugin not compiling
+### Classifier plugins not compiling
 
+To rebuild the classifier hook (server-side):
 ```bash
-cd .flowtask/plugins/flowtask-classifier
+cd .flowtask/plugins/flowtask-classifier-hook
+npm install
+npm run build
+```
+
+To rebuild the classifier TUI (OpenCode UI):
+```bash
+cd .flowtask/plugins/flowtask-classifier-tui
 npm install
 npm run build
 ```

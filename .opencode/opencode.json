@@ -1,6 +1,13 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "skills": {
-    "paths": ["./.flowtask/skills/"]
-  }
+    "paths": [
+      "./.flowtask/skills/"
+    ]
+  },
+  "plugin": [
+    ".opencode/plugins/flowtask-classifier-hook/dist/index.js",
+    ".opencode/plugins/flowtask-review-gate/dist/index.js",
+    ".opencode/plugins/flowtask-context-checkpoint/index.ts"
+  ]
 }
