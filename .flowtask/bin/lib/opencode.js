@@ -68,8 +68,18 @@ function adjustConfigPaths(config, targetSubDir) {
 }
 
 /**
+ * Extract plugin name from a path (e.g., ".opencode/plugins/flowtask-classifier/index.js" → "flowtask-classifier")
+ */
+function extractPluginName(pluginPath) {
+  const normalized = pluginPath.replace(/\\/g, "/");
+  const match = normalized.match(/(?:^|\/|\\)plugins\/([^\/\\]+)/);
+  return match ? match[1] : null;
+}
+
+/**
  * Register a plugin entry in tui.json or opencode.json (generic).
  * Supports both string paths and object entries with path property.
+ * Identifies existing entries by plugin name (not just exact path match) to handle path corrections.
  */
 export function registerPluginArrayEntry(configPath, entry, schema = "https://opencode.ai/tui.json") {
   try {
@@ -94,14 +104,30 @@ export function registerPluginArrayEntry(configPath, entry, schema = "https://op
     // Initialize plugin array if needed
     let plugins = Array.isArray(config.plugin) ? config.plugin : [];
 
-    // Find existing entry by path (supports both string and object with .path)
+    // Extract plugin name from new entry
     const entryPath = typeof entry === "string" ? entry : entry?.path;
-    const existingIndex = plugins.findIndex(p => {
-      return (typeof p === "string" && p === entryPath) ||
-             (p && p.path === entryPath);
-    });
+    const newPluginName = extractPluginName(entryPath);
+
+    // Find existing entry by plugin name OR exact path match
+    let existingIndex = -1;
+    if (newPluginName) {
+      existingIndex = plugins.findIndex(p => {
+        const pPath = typeof p === "string" ? p : p?.path;
+        const pPluginName = extractPluginName(pPath);
+        return pPluginName === newPluginName;
+      });
+    }
+
+    // Fallback: find by exact path if plugin name extraction failed
+    if (existingIndex < 0) {
+      existingIndex = plugins.findIndex(p => {
+        return (typeof p === "string" && p === entryPath) ||
+               (p && p.path === entryPath);
+      });
+    }
 
     if (existingIndex >= 0) {
+      logInfo(`Replacing existing plugin entry for ${newPluginName || entryPath}`);
       plugins[existingIndex] = entry;
     } else {
       plugins.push(entry);

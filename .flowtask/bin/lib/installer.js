@@ -303,6 +303,16 @@ export function validateManifestEntry(entry) {
 }
 
 /**
+ * Calculate relative path from a config file's directory to a plugin entrypoint.
+ * OpenCode resolves relative paths from the config file's dirname, not project root.
+ */
+function calculatePluginRelativePath(configPath, projectDir, pluginName, entrypoint) {
+  const configDir = path.dirname(configPath);
+  const pluginAbsPath = path.join(projectDir, ".opencode", "plugins", pluginName, entrypoint);
+  return path.relative(configDir, pluginAbsPath);
+}
+
+/**
  * Install plugins from the manifest for the "opencode" destination:
  * 1. Copies each plugin's directory (filtered by `destinations`) into
  *    <projectDir>/.opencode/plugins/<name>/ — sibling of .opencode/flowtask,
@@ -339,13 +349,19 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
       continue;
     }
 
-    const pluginRuntimePath = `.opencode/plugins/${entry.name}/${entry.entrypoint}`;
+    // Validate that entrypoint file exists
+    const entrypointAbsPath = path.join(destDir, entry.entrypoint);
+    if (!fileExists(entrypointAbsPath)) {
+      logWarn(`⚠️  Plugin entrypoint not found for ${entry.name}: ${entry.entrypoint} (expected at ${entrypointAbsPath})`);
+    }
 
     if (entry.kind === "tui") {
       const tuiPath = path.join(projectDir, "tui.json");
+      const pluginRuntimePath = calculatePluginRelativePath(tuiPath, projectDir, entry.name, entry.entrypoint);
       registerPluginArrayEntry(tuiPath, pluginRuntimePath, "https://opencode.ai/tui.json");
     } else if (entry.kind === "server") {
       const opencodeConfigPath = path.join(projectDir, ".opencode", "opencode.json");
+      const pluginRuntimePath = calculatePluginRelativePath(opencodeConfigPath, projectDir, entry.name, entry.entrypoint);
       registerPluginArrayEntry(opencodeConfigPath, pluginRuntimePath, "https://opencode.ai/config.json");
     } else {
       logWarn(`Unknown plugin kind "${entry.kind}" for ${entry.name}, skipping registration.`);
