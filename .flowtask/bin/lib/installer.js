@@ -309,7 +309,11 @@ export function validateManifestEntry(entry) {
 function calculatePluginRelativePath(configPath, projectDir, pluginName, entrypoint) {
   const configDir = path.dirname(configPath);
   const pluginAbsPath = path.join(projectDir, ".opencode", "plugins", pluginName, entrypoint);
-  return path.relative(configDir, pluginAbsPath);
+  let relative = path.relative(configDir, pluginAbsPath).split(path.sep).join('/');
+  if (!relative.startsWith('.') && !relative.startsWith('/')) {
+    relative = './' + relative;
+  }
+  return relative;
 }
 
 /**
