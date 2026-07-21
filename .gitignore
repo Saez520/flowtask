@@ -37,7 +37,8 @@ docs/backup/
 # Nested repos
 flowtask/
 .workspace/
-.claude/ 
+.claude/
+.opencode/
 # FlowTask internals 
 .temp/ 
 .worktrees/
