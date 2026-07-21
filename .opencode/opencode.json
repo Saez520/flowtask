@@ -6,9 +6,9 @@
     ]
   },
   "plugin": [
-    "plugins/flowtask-classifier-hook/dist/index.js",
-    "plugins/flowtask-review-gate/dist/index.js",
-    "plugins/flowtask-context-checkpoint/index.ts"
+    "./plugins/flowtask-classifier-hook/dist/index.js",
+    "./plugins/flowtask-review-gate/dist/index.js",
+    "./plugins/flowtask-context-checkpoint/index.ts"
   ],
   "mcp": {
     "engram": {
