@@ -30,7 +30,9 @@ export default async function (input: PluginInput) {
               "",
               "Se requiere una revisión pre-commit antes de hacer commit.",
               "Ejecuta una revisión de código primero:",
-              "  → Dile al runner: 'review pre-commit'",
+              "  → llama al agente flowtask-review-gate 'review pre-commit'",
+              "",
+              "No tienes que pasarle informacion de nada, solo invocarlo",
               "",
               "El commit se desbloqueará automáticamente si no hay BLOCKER/CRITICAL.",
             ].join("\n")
@@ -46,7 +48,9 @@ export default async function (input: PluginInput) {
           "",
           "Se requiere una revisión pre-commit antes de hacer commit.",
           "Ejecuta una revisión de código primero:",
-          "  → Dile al runner: 'review pre-commit'",
+          "  → llama al agente flowtask-review-gate 'review pre-commit'",
+          "",
+          "No tienes que pasarle informacion de nada, solo invocarlo",
           "",
           "El commit se desbloqueará automáticamente si no hay BLOCKER/CRITICAL.",
         ].join("\n")
