@@ -5,50 +5,52 @@ import { join } from "node:path";
 const STAMP_PATH = ".flowtask/.review-stamp";
 
 export default async function (input: PluginInput) {
+  const sessionDir = input.directory;
   return {
     // Intercept bash tool executions
-    "tool.execute.before": async (hookInput: {
-      tool: string;
-      input: Record<string, unknown>;
-    }) => {
-      try {
-        const { tool, input: toolInput } = hookInput;
+    "tool.execute.before": async (
+      hookInput: { tool: string; sessionID: string; callID: string },
+      hookOutput: { args: any }
+    ) => {
+      const { tool } = hookInput;
+      if (tool !== "bash") return;
+      const command = String(hookOutput?.args?.command ?? "");
+      if (!command.includes("git commit")) return;
+      const workdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
+      const stampPath = join(workdir, STAMP_PATH);
 
-        // Only intercept bash tool calls
-        if (tool !== "bash") return;
-
-        const command = String(toolInput?.command ?? "");
-
-        // Only block git commit commands
-        if (!command.includes("git commit")) return;
-
-        // Resolve stamp path relative to cwd
-        const stampPath = join(process.cwd(), STAMP_PATH);
-
-        // If stamp exists: consume it and allow the commit
-        if (existsSync(stampPath)) {
+      // If stamp exists: consume it and allow the commit
+      if (existsSync(stampPath)) {
+        try {
           unlinkSync(stampPath);
-          return;
+        } catch {
+          throw new Error(
+            [
+              "[FlowTask Review Gate] Commit bloqueado.",
+              "",
+              "Se requiere una revisión pre-commit antes de hacer commit.",
+              "Ejecuta una revisión de código primero:",
+              "  → Dile al runner: 'review pre-commit'",
+              "",
+              "El commit se desbloqueará automáticamente si no hay BLOCKER/CRITICAL.",
+            ].join("\n")
+          );
         }
-
-        // No stamp: block the commit
-        return {
-          prevent: true,
-          message: [
-            "[FlowTask Review Gate] Commit bloqueado.",
-            "",
-            "Se requiere una revisión pre-commit antes de hacer commit.",
-            "Ejecuta una revisión de código primero:",
-            "  → Dile al runner: 'review pre-commit'",
-            "",
-            "El commit se desbloqueará automáticamente si no hay BLOCKER/CRITICAL.",
-          ].join("\n"),
-          exit_code: 1,
-        };
-      } catch (_err) {
-        // Silent degradation — never interrupt OpenCode
         return;
       }
+
+      // No stamp: block the commit
+      throw new Error(
+        [
+          "[FlowTask Review Gate] Commit bloqueado.",
+          "",
+          "Se requiere una revisión pre-commit antes de hacer commit.",
+          "Ejecuta una revisión de código primero:",
+          "  → Dile al runner: 'review pre-commit'",
+          "",
+          "El commit se desbloqueará automáticamente si no hay BLOCKER/CRITICAL.",
+        ].join("\n")
+      );
     },
 
     dispose: async () => {
