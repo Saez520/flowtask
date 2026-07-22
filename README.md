@@ -8,44 +8,18 @@ The system includes a **personality system** that adapts the runner's tone and d
 
 ***
 
-## Requirements
-
-- **OpenCode**: [Install OpenCode](https://opencode.ai/docs/)
-- **Engram**: Persistent memory system for AI agents (MCP-based) — see [docs/architecture/LSP + AST-Grep.txt](docs/architecture/LSP%20+%20AST-Grep.txt)
-- **LSP** (Language Server Protocol): Semantic code discovery
-- **ast-grep**: Structural pattern matching via AST
-- **ferris-search**: Web search and content fetching via MCP
-
-### Install Engram
-
-```bash
-# macOS / Linux
-brew install gentleman-programming/tap/engram
-
-# Or download from releases
-# https://github.com/Gentleman-Programming/engram/releases
-```
-
-Verify installation:
-
-```bash
-engram --version
-```
-
-***
-
 ## Installation
 
 ### Step 1: Clone FlowTask
 
 ```bash
-git clone git@your-gitlab-server/flowtask.git ~/dev/flowtask
+git clone git@your-gitlab-server/flowtask.git
 ```
 
 ### Step 2: Install globally with npm link
 
 ```bash
-cd ~/dev/flowtask/.flowtask
+cd .flowtask
 npm link
 
 # Verify installation
@@ -62,7 +36,7 @@ flowtask install
 ### Updating FlowTask
 
 ```bash
-cd ~/dev/flowtask
+cd .flowtask
 git pull
 
 cd ~/proyectos/mi-proyecto
