@@ -1,6 +1,6 @@
 # FlowTask
 
-**v1.9.0** — AI-driven development workflow system with persistent memory via Engram.
+AI-driven development workflow system with persistent memory via Engram.
 
 FlowTask provides specialized AI agents that work together to automate software development tasks — from requirements capture to implementation and validation. Artifacts (CAs, plans, audits, reports) are stored in Engram as ca-artifact type; Engram persists both artifact content and operational state. Legacy CA artifacts remain in .workspace/ as fallback (Dual-Source).
 
@@ -182,6 +182,7 @@ Shows Engram memory statistics, active workflows, and project initialization sta
 | `/inspect`           | Inspector           | Explore and analyze the project                          |
 | `/evolve-agent`      | All (via Runner)    | Evolve a FlowTask agent (Evolution Mode)                 |
 | `/onboard`           | Onboarder           | Run technical quiz and assign runner personality         |
+| `/register-skills`   | Runner              | Register FlowTask skills into OpenCode                   |
 | `/status`            | Runner              | Show FlowTask and Engram status                          |
 | `/update`            | Runner              | Update FlowTask in current project                       |
 
@@ -193,7 +194,7 @@ Shows Engram memory statistics, active workflows, and project initialization sta
 
 The runner is always active as the primary agent. You can speak directly to it without slash commands — it classifies your intent automatically. Commands still work but are optional.
 
-The `flowtask-classifier` plugin intercepts your input and injects a `FLOWTASK_CLASSIFICATION` tag into context before the runner sees it:
+The `flowtask-classifier-hook` plugin (server-side) intercepts your input and the `flowtask-classifier-tui` plugin (OpenCode UI) injects a `FLOWTASK_CLASSIFICATION` tag into context before the runner sees it:
 
 | Classification          | Detected when                             |
 | ----------------------- | ----------------------------------------- |
@@ -262,9 +263,17 @@ FlowTask uses **OpenCode skills** for reusable protocol instructions. Skills are
 | `handshake-protocol`   | Identity, task_id assignment, and context injection |
 | `heuristics`           | Developer heuristic storage and detection          |
 | `manual-classification`| Fallback input classifier (when auto is inactive)  |
+| `memory-contract`      | Data contracts, categories, and topic_key format   |
 | `memory-protocol`      | Engram mem_* usage protocol                        |
 | `plan-template`        | Standard plan structure template                   |
+| `review-readability`   | R2 lens — naming, complexity, maintainability      |
+| `review-reliability`   | R3 lens — tests, coverage, edge cases              |
+| `review-resilience`    | R4 lens — fallbacks, retry, graceful degradation   |
+| `review-risk`          | R1 lens — security, privilege, data exposure       |
 | `topic-keys-convention`| Engram topic_key ownership rules                   |
+| `zero-assumptions`     | Prohibits assuming entity state without verification |
+
+FlowTask includes **13 skills** covering memory protocols, identity management, and the **4R review lenses** (Risk, Readability, Reliability, Resilience) for comprehensive code review.
 
 Skills are loaded via `skill({ name: "..." })` before invocation.
 
@@ -353,6 +362,7 @@ FlowTask/
 │   │   ├── flowtask-tester.md
 │   │   └── flowtask-validator.md
 │   ├── commands/                 # Slash command definitions (mirror)
+│   │   └── register-skills.md    # /register-skills
 │   └── flowtask/                 # FlowTask CLI environment
 ├── .flowtask/
 │   ├── bin/
@@ -372,8 +382,8 @@ FlowTask/
 │   │   ├── initializer.md        # Project scanning and Engram population
 │   │   ├── logger.md             # Logging instrumentation
 │   │   ├── tester.md             # Test generation
-│   │   └── onboarder.md          # Technical quiz and personality assignment
-│   ├── agents-backup/            # Evolution Mode agent backups
+│   │   ├── onboarder.md          # Technical quiz and personality assignment
+│   │   └── review-orchestrator.md # 4R review orchestration
 │   ├── checkpoints/              # Checkpoint state storage
 │   ├── claude/                   # FlowTask CLI environment (OpenCode)
 │   │   └── settings.json         # OpenCode settings
@@ -389,20 +399,24 @@ FlowTask/
 │   │   ├── inspect.md            # /inspect
 │   │   ├── evolve-agent.md       # /evolve-agent
 │   │   ├── onboard.md            # /onboard
+│   │   ├── register-skills.md    # /register-skills
 │   │   ├── status.md             # /status
 │   │   └── update.md             # /update
-│   ├── exports/                  # Exported data (e.g., commit-history.csv)
+│   ├── config/                   # FlowTask configuration
 │   ├── personas/                 # Runner personality definitions
-│   │   ├── tutor-default.md
 │   │   ├── tutor-mid.md
 │   │   ├── tutor-senior.md
 │   │   └── tutor-training.md
 │   ├── plugins/
-│   │   ├── flowtask-classifier/  # Input classification plugin (TypeScript)
+│   │   ├── flowtask-classifier-hook/  # Server-side classification plugin
 │   │   │   ├── src/
-│   │   │   │   ├── index.ts      # Plugin entry point
-│   │   │   │   └── classifier.ts # Classification logic
-│   │   │   └── dist/             # Compiled output
+│   │   │   └── dist/
+│   │   ├── flowtask-classifier-tui/   # OpenCode UI classification plugin
+│   │   │   ├── src/
+│   │   │   └── dist/
+│   │   ├── flowtask-review-gate/      # Review gate plugin
+│   │   ├── flowtask-model-selector/   # Model selection plugin
+│   │   ├── flowtask-context-checkpoint/ # Context checkpoint plugin
 │   │   └── flowtask.js           # Additional plugin
 │   ├── scripts/                  # Utility scripts
 │   │   ├── version-watcher.ps1   # Engram version monitoring
@@ -417,12 +431,24 @@ FlowTask/
 │   │   │   └── SKILL.md          # Developer heuristic storage and detection
 │   │   ├── manual-classification/
 │   │   │   └── SKILL.md          # Fallback input classifier
+│   │   ├── memory-contract/
+│   │   │   └── SKILL.md          # Data contracts and topic_key format
 │   │   ├── memory-protocol/
 │   │   │   └── SKILL.md          # Engram mem_* usage protocol
 │   │   ├── plan-template/
 │   │   │   └── SKILL.md          # Plan structure template
-│   │   └── topic-keys-convention/
-│   │       └── SKILL.md          # Engram topic_key ownership rules
+│   │   ├── review-readability/
+│   │   │   └── SKILL.md          # R2 lens — naming, complexity
+│   │   ├── review-reliability/
+│   │   │   └── SKILL.md          # R3 lens — tests, coverage
+│   │   ├── review-resilience/
+│   │   │   └── SKILL.md          # R4 lens — fallbacks, retry
+│   │   ├── review-risk/
+│   │   │   └── SKILL.md          # R1 lens — security, privilege
+│   │   ├── topic-keys-convention/
+│   │   │   └── SKILL.md          # Engram topic_key ownership rules
+│   │   └── zero-assumptions/
+│   │       └── SKILL.md          # Zero-assumptions protocol
 │   └── .temp/                    # Local buffer for checkpoints
 ├── .opencode/                    # OpenCode configuration
 │   ├── plugins/
@@ -448,6 +474,8 @@ FlowTask/
 
 ## FlowTask Agents
 
+FlowTask includes **12 specialized agents** that work together to automate development workflows:
+
 | Agent                   | Role                                                                             |
 | ----------------------- | -------------------------------------------------------------------------------- |
 | `flowtask-runner`       | Primary orchestrator — always active, classifies intent, coordinates subagents   |
@@ -461,12 +489,13 @@ FlowTask/
 | `flowtask-onboarder`    | Runs technical quiz based on project stack, assigns runner personality           |
 | `flowtask-logger`       | Adds logging instrumentation                                                     |
 | `flowtask-tester`       | Generates tests                                                                  |
+| `flowtask-review-orchestrator` | Orchestrates 4R review lenses (Risk, Readability, Reliability, Resilience) |
 
 ### Evolution Mode
 
 Evolution Mode lets you improve FlowTask agents using the same workflow used for your project. Use `/evolve-agent [agent-name] [description]` to:
 
-1. Backup the existing agent to `.flowtask/agents-backup/`
+1. Backup the existing agent before modifications
 2. Clarify the change with CA-Writer
 3. Plan the change with Planner (scoped to `.flowtask/` files only)
 4. Audit the plan with Plan-Auditor (always invoked, no task threshold)
