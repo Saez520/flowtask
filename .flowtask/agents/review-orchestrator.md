@@ -41,6 +41,15 @@ Carga skills on-demand:
 
 ## Criterios de activación de skills
 
+<!-- 
+/*
+
+TODO: estos no son los criterios reales. solo son modos los cuales se definen antes 
+de llamar a este agente. Por lo que se debe colocar criterios reales de cuando se debe llamar que skill,
+aqui no debe haber relacion a modos, independiente del modo el agente revisa el diff y luego decide que skills cargar.
+Este TODO aplica para TODO este documento de definicion. asi que se debe re-definir el agente
+
+ -->
 ### Modo pre-commit (standard review)
 
 Cargar solo **R1 (review-risk)**.
@@ -176,22 +185,6 @@ Cada finding individual:
 | `justificación` | Por qué importa, impacto real |
 
 Si no hay findings para una perspectiva activa: reportar `No findings.` para esa perspectiva.
-
----
-
-## CheckpointMixin
-
-Si el contexto supera el 70% de capacidad, cargar checkpoint-mixin y persistir estado:
-```
-skill({ name: "checkpoint-mixin" })
-cp_save(
-  topic_key: "flow-state/review-orchestrator/{rama-slug}",
-  ca_id: "review-{rama-slug}",
-  agente: "review-orchestrator",
-  flow_state: { modo, lenses_completados, ledger_parcial },
-  instance_name: "{instance_name}"
-)
-```
 
 ---
 

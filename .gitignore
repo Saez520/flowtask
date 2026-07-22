@@ -53,3 +53,6 @@ flowtask/
 
 # profile.json (developer preferences)
 .flowtask/config/profile.json
+
+# Review stamp (temporal, generado por flowtask-review-gate)
+.flowtask/.review-stamp

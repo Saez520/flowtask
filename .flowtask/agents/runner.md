@@ -245,16 +245,7 @@ Antes de clasificar, carga el contexto del proyecto:
    c. `mem_search(query: "heuristic", scope: "personal")` — heurísticas personales.
    d. Merge: si la misma key normalizada existe en ambos scopes, prevalece la de `project`.
    e. Si `mem_search` falla (Engram no disponible): continuar sin heurísticas.
-4. Cargar project context (convenciones estructurales):
-   a. `mem_search(query: "project/conventions", scope: "project")` — convenciones de código y flujo.
-   b. `mem_search(query: "project/naming", scope: "project")` — convenciones de nombrado.
-   c. `mem_search(query: "project/stack", scope: "project")` — stack tecnológico.
-   d. `mem_search(query: "project/config", scope: "project")` — ubicación y formato de configuración.
-   e. Si `mem_search` falla (Engram no disponible) o no hay resultados: continuar sin ese contexto.
-5. Skills disponibles en `.flowtask/skills/{name}/SKILL.md`:
-   a. Las skills se cargan directamente desde el filesystem, sin registro intermedio.
-   b. OpenCode resuelve `skill({ name: "..." })` desde este directorio base.
-6. Incorporar hallazgos al razonamiento antes de clasificar.
+4. Incorporar hallazgos al razonamiento antes de clasificar.
 
 ### Sub-paso 1 — Clasificación inyectada en contexto (prioridad absoluta)
 
@@ -413,12 +404,8 @@ Invocar review-orchestrator usando el formato canónico (Escenario A/B según Ha
 
 ### Flujo pre-commit
 
-Si el desarrollador ejecuta `git commit` y el stamp `.flowtask/.review-stamp` no existe:
-1. Bloquear el commit (via plugin `flowtask-review-gate`).
-2. Informar al desarrollador que debe ejecutar una revisión pre-commit primero.
-3. Invocar review-orchestrator en modo pre-commit.
-4. Si no hay BLOCKER/CRITICAL: el stamp se escribe y el commit puede proceder.
-5. Si hay BLOCKER/CRITICAL: reportar y esperar que el desarrollador corrija.
+Si ejecutas un `git commit` y el mismo es bloqueado sigue las instrucciones que se te indican en el mensaje de error.
+Y invoca review-orchestrator en modo pre-commit.
 
 ***
 

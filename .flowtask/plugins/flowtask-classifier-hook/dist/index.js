@@ -14,7 +14,7 @@ export default (async ({ client }) => {
             try {
                 // Solo clasificar en el agente principal (runner).
                 // Subagentes reciben prompts del runner, no del usuario.
-                if (input.agent !== "flowtask-runner")
+                if (input.agent !== "Flowtask-Runner")
                     return;
                 // `output.parts` ya son los parts del user message que se está admitiendo.
                 const userText = (output.parts || [])
