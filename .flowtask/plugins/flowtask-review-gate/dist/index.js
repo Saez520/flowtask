@@ -31,7 +31,7 @@ function buildGateMessage(stats) {
     if (stats) {
         lines.push(`📊 Diff: ${stats.files} archivo(s), ${stats.lines} línea(s).`, "");
     }
-    lines.push("→ Runner: evaluá si este cambio requiere revisión pre-commit.", "  - Si es trivial (gitignore, docs, chore ≤ 5 líneas): re-ejecutá el commit con --no-verify.", "  - Si no: invocá flowtask-review-orchestrator.");
+    lines.push("→ Runner: evaluá si este cambio requiere revisión pre-commit.", "  - Si es trivial (gitignore, docs, chore ≤ 5 líneas): re-ejecutá el commit con --no-verify.", "  - Si no: invocá flowtask-review-orchestrator. En caso de BLOCKER/CRITICAL, reportar y esperar que el desarrollador corrija.");
     return lines.join("\n");
 }
 export default async function (input) {
