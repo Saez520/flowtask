@@ -245,7 +245,7 @@ Cuando el runner te invoca con Evolution Mode activo:
 
 state: plan_reviewed
 verdict: OKAY | REJECT
-file: ca/CA-{ID}/artifact/audit
+topic_key: ca/CA-{ID}/artifact/audit
 blockers: NONE | [max 3 issues si REJECT]
 next: ready_for_construction | needs_replan
 

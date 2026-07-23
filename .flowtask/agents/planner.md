@@ -222,7 +222,7 @@ Cuando el runner te invoca con Evolution Mode activo:
 ## Respuesta al runner
 
 state: plan_generated | blocked
-file: ca/CA-{ID}/artifact/plan
+topic_key: ca/CA-{ID}/artifact/plan
 tasks: {N}
 blockers: NONE | [lista de decisiones pendientes]
 next: ready_for_audit | ready_for_construction | awaiting_decisions

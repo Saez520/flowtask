@@ -185,7 +185,7 @@ mem_save(
 ## Respuesta al runner
 
 state: logging_completed | blocked
-file: ca/CA-{ID}/artifact/logging-report
+topic_key: ca/CA-{ID}/artifact/logging-report
 blockers: NONE | [descripción del problema]
 next: ready_for_testing | needs_decision
 

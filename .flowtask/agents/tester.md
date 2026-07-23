@@ -182,7 +182,7 @@ mem_save(
 ## Respuesta al runner
 
 state: tests_generated | blocked
-file: ca/CA-{ID}/artifact/tests-report
+topic_key: ca/CA-{ID}/artifact/tests-report
 blockers: NONE | [descripción del problema]
 next: ready_for_validation | needs_decision
 

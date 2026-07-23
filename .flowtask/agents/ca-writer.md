@@ -299,7 +299,7 @@ El runner te pasa nombre del agente y descripción del cambio.
 
 state: ca_created | ca_updated | blocked
 ca_status: draft | complete
-file: ca/CA-{ID}/artifact/ca
+topic_key: ca/CA-{ID}/artifact/ca
 blockers: NONE | [lista de decisiones pendientes]
 tradeoffs:
   - [tradeoff 1]: [descripción]

@@ -217,7 +217,7 @@ mem_save(
 
 state: validation_completed | blocked
 verdict: APPROVED | REJECTED
-file: ca/CA-{ID}/artifact/validacion
+topic_key: ca/CA-{ID}/artifact/validacion
 blockers: NONE | [errores bloqueantes]
 next: ready_for_delivery | needs_fix
 
