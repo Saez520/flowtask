@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { install, update } from "./lib/installer.js";
+import { runLocalQueryCli } from "./lib/graphify-local-query.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +24,26 @@ switch (command) {
     update(FLOWTASK_DIR);
     break;
 
+  case "graphify": {
+    // Sub-command: graphify query --query <query-string>
+    const subCommand = args[1];
+    if (subCommand === "query") {
+      const queryIdx = args.indexOf("--query");
+      if (queryIdx === -1 || queryIdx + 1 >= args.length) {
+        process.stderr.write("[graphify] Error: --query <query-string> requerido.\n");
+        process.exitCode = 1;
+        break;
+      }
+      const queryString = args[queryIdx + 1];
+      const projectDir = process.cwd();
+      runLocalQueryCli(projectDir, queryString);
+    } else {
+      process.stderr.write(`[graphify] Subcomando desconocido: ${subCommand}. Usa: graphify query --query <query>\n`);
+      process.exitCode = 1;
+    }
+    break;
+  }
+
   case "--help":
   case "-h":
     console.log(`
@@ -31,12 +52,14 @@ FlowTask CLI
 Usage:
   flowtask install    Install FlowTask in the current project
   flowtask update     Update FlowTask files (delta-only sync)
+  flowtask graphify query --query <q>  Query local code graph (JSON stdout)
   flowtask --help     Show this help message
   flowtask --version  Show version
 
 Examples:
   flowtask install    Install FlowTask in current directory
   flowtask update     Update existing FlowTask installation
+  flowtask graphify query --query UserService  Query code graph
     `);
     break;
 

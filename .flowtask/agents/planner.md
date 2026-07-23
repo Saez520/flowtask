@@ -32,6 +32,7 @@ Carga skills on-demand con el skill tool:
 |---|---|
 | `memory-protocol` | Antes de usar mem_save o mem_search |
 | `plan-template` | Antes de generar el plan estructurado |
+| `graphify-protocol` | Antes de consultar contexto del repositorio |
 
 **Ejemplo:**
 ```
@@ -105,6 +106,45 @@ Utilizas las queries necesarias que se especifican en el skill memory-protocol:
 
 Evalúa cada capa buscando en Engram la estructura de capas del proyecto.
 Usa el protocolo definido en `memory-protocol` para la query.
+
+---
+
+### Paso 3.5 — Consulta Graphify y evidencia verificable
+
+**Alcance**: repositorio principal exclusivamente. Constructor, validator y tester en worktrees no participan.
+
+Antes de generar el plan, consulta el grafo Graphify para toda necesidad de contexto del repositorio usando la cadena obligatoria:
+
+1. Integración de consulta configurada para el CLI actual
+2. Si no disponible o sin resultado utilizable → `node .flowtask/bin/flowtask.js graphify query --query <query-string>`
+3. Si la CLI local devuelve `ok:false`/exit 1 → búsqueda normal del proyecto
+
+**Mensajes de degradación**:
+- Si integración falla pero CLI local funciona: `[Graphify] Integración no disponible — usando herramienta local: node .flowtask/bin/flowtask.js graphify query --query <query-string>`
+- Si ambas fallan, emite literalmente: `no pude consultar el grafo, estoy usando búsqueda normal`
+
+**Evidencia obligatoria**: Antes de finalizar el plan, inserta una sección top-level `## Evidencia verificable del grafo` en el artifact. Para cada hallazgo que **realmente provino de integración/local**:
+
+```markdown
+## Evidencia verificable del grafo
+
+- **G-001**
+  - **Consulta:** `<consulta exacta enviada>`
+  - **Vía:** `integración` | `local`
+  - **Estado:** `consultado`
+  - **Hallazgo:** `<hecho resumido, sin inferencia no marcada>`
+  - **Referencias:** `<repo-relative path[:line-range] / symbol / Graphify node-edge IDs>`
+  - **Fecha/commit:** `<timestamp o commit de la consulta>`
+```
+
+Si el grafo no estuvo disponible o la CLI local devolvió `ok:false`, incluye: `Sin evidencia derivada del grafo: se usó búsqueda normal`.
+
+**Reglas**:
+- `Vía` solo puede ser `integración` o `local` — la búsqueda normal NO es evidencia de grafo
+- Una afirmación sin referencia concreta NO es evidencia verificable
+- Si una consulta retornó `empty` (ok:true, results:[]), regístralo como ausencia verificable
+- **NUNCA** inventes nodos, rutas o símbolos no devueltos por Graphify
+- **NUNCA** presentes búsqueda normal como evidencia de grafo
 
 ---
 

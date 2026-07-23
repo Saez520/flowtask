@@ -56,3 +56,7 @@ flowtask/
 
 # Review stamp (temporal, generado por flowtask-review-gate)
 .flowtask/.review-stamp
+
+# Graphify outputs and local state
+graphify-out/
+.flowtask/config/graphify.json

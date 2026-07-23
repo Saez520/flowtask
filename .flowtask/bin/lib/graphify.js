@@ -1,0 +1,647 @@
+import fs from "fs";
+import path from "path";
+import os from "os";
+import { spawnSync } from "child_process";
+import {
+  COLORS, logStep, logSuccess, logError, logWarn, logInfo,
+  isBinaryInstalled, getVersion,
+} from "./logger.js";
+import { extractCodeOnly } from "./graphify-extract.js";
+import { configureMcpForTargets } from "./graphify-query.js";
+
+// ─── Schema v1 ────────────────────────────────────────────────────────────────
+// Single source of truth for the Graphify state shape.
+// plan-habilitar owns the base fields; plan-grafo, plan-consumo and
+// plan-docs-media consume the same schema without creating parallel storage.
+
+/**
+ * Create a fresh project-state object with all schema v1 fields initialised
+ * to safe defaults (null, [], "pending", etc.).
+ */
+export function createProjectState() {
+  return {
+    schema: 1,
+    enabled: false,
+    selectedClis: [],
+    initialized: false,
+    graphPath: null,
+    hooksInstalled: false,
+    ignoredOutput: "graphify-out/",
+    lastInitializationResult: null,   // null | "success" | "skipped" | "failed"
+    lastWarning: null,
+    updatedAt: null,
+    // ── plan-grafo fields (owner: plan-grafo, initialised by plan-habilitar) ──
+    extract_status: "pending",        // pending | success | failed | skipped
+    extract_last_attempt: null,
+    query_status: "pending",          // pending | success | failed | unsupported | skipped
+    query_last_attempt: null,
+    query_diagnostic: null,
+    // ── plan-docs-media fields (owner: plan-docs-media) ───────────────────────
+    docs_media_status: "pending",     // pending | success | failed
+    docs_media_last_attempt: null,
+    docs_media_attempt_status: null,  // accepted | running | success | failed | inconclusive | rejected
+    docs_media_output_paths: [],
+    docs_media_finished_at: null,
+    docs_media_diagnostic: null,
+  };
+}
+
+/**
+ * Create a fresh global-state object (per-machine, not per-project).
+ */
+export function createGlobalState() {
+  return {
+    schema: 1,
+    available: false,
+    version: null,
+    lastCheckedAt: null,
+    lastInstallResult: null,  // null | "success" | "failed"
+    lastWarning: null,
+  };
+}
+
+// ─── Paths ────────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve the global (per-machine) config directory.
+ * macOS/Linux: $XDG_CONFIG_HOME/flowtask  or  ~/.config/flowtask
+ * Windows:     %APPDATA%/FlowTask
+ */
+export function resolveGlobalConfigDir() {
+  if (process.platform === "win32") {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "FlowTask");
+  }
+  const xdg = process.env.XDG_CONFIG_HOME;
+  if (xdg) return path.join(xdg, "flowtask");
+  return path.join(os.homedir(), ".config", "flowtask");
+}
+
+/** Path to the global state file. */
+export function globalStatePath() {
+  return path.join(resolveGlobalConfigDir(), "graphify.json");
+}
+
+/** Path to the project-level state file. */
+export function projectStatePath(projectDir) {
+  return path.join(projectDir, ".flowtask", "config", "graphify.json");
+}
+
+// ─── Atomic read / write ──────────────────────────────────────────────────────
+
+/**
+ * Read and parse a JSON file. Returns `fallback` when the file does not exist
+ * or contains invalid JSON.
+ */
+export function readJsonSafe(filePath, fallback = null) {
+  try {
+    if (!fs.existsSync(filePath)) return fallback;
+    const raw = fs.readFileSync(filePath, "utf8").trim();
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Write JSON atomically: write to a temp file in the same directory, then
+ * rename over the target.  If the write fails the target is untouched and
+ * no orphan temp file is left behind.
+ *
+ * @returns {boolean} true on success
+ */
+export function writeJsonAtomic(filePath, data) {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const tmp = path.join(dir, `.${path.basename(filePath)}.${process.pid}.tmp`);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
+    fs.renameSync(tmp, filePath);
+    return true;
+  } catch (err) {
+    // Best-effort cleanup of the temp file
+    try { fs.unlinkSync(tmp); } catch { /* already gone */ }
+    return false;
+  }
+}
+
+/**
+ * Load global state, creating a fresh one if missing or invalid.
+ */
+export function loadGlobalState() {
+  const existing = readJsonSafe(globalStatePath());
+  if (existing && existing.schema === 1) return existing;
+  return createGlobalState();
+}
+
+/**
+ * Persist global state atomically.
+ * @returns {boolean}
+ */
+export function saveGlobalState(state) {
+  return writeJsonAtomic(globalStatePath(), state);
+}
+
+/**
+ * Load project state, creating a fresh one if missing or invalid.
+ */
+export function loadProjectState(projectDir) {
+  const existing = readJsonSafe(projectStatePath(projectDir));
+  if (existing && existing.schema === 1) return existing;
+  return createProjectState();
+}
+
+/**
+ * Persist project state atomically.
+ * @returns {boolean}
+ */
+export function saveProjectState(projectDir, state) {
+  return writeJsonAtomic(projectStatePath(projectDir), state);
+}
+
+// ─── Detection ────────────────────────────────────────────────────────────────
+
+/**
+ * Detect whether the `graphify` binary is available and refresh global state.
+ * Mutates and persists global state.
+ *
+ * @param {object} [opts]
+ * @param {Function} [opts.detectFn]  - override for isBinaryInstalled (testing)
+ * @param {Function} [opts.versionFn] - override for getVersion (testing)
+ * @returns {object} updated global state
+ */
+export function detectGraphify(globalState, opts = {}) {
+  const detect = opts.detectFn ?? isBinaryInstalled;
+  const ver    = opts.versionFn ?? getVersion;
+
+  globalState.available = detect("graphify");
+  globalState.version = globalState.available ? ver("graphify") : null;
+  globalState.lastCheckedAt = new Date().toISOString();
+
+  if (!saveGlobalState(globalState)) {
+    logWarn("Graphify: no se pudo persistir estado global. Reintenta con flowtask update o contacta a un administrador.");
+  }
+  return globalState;
+}
+
+// ─── Prompts (opt-in) ─────────────────────────────────────────────────────────
+
+/**
+ * Ask the developer whether to install Graphify.
+ * @param {object} readline - Node readline module
+ * @returns {Promise<boolean>}
+ */
+export async function promptInstallGraphify(readline) {
+  const answer = await new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(
+      `${COLORS.cyan}?${COLORS.reset} Graphify no está instalado. ¿Instalarlo ahora? ${COLORS.dim}(Y/n):${COLORS.reset} `,
+      (ans) => { rl.close(); resolve(ans.trim().toLowerCase()); },
+    );
+  });
+  return answer !== "n" && answer !== "no";
+}
+
+/**
+ * Ask the developer whether to enable Graphify for this project.
+ * @param {object} readline - Node readline module
+ * @returns {Promise<boolean>}
+ */
+export async function promptEnableGraphify(readline) {
+  const answer = await new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(
+      `${COLORS.cyan}?${COLORS.reset} ¿Habilitar Graphify para este proyecto? ${COLORS.dim}(Y/n):${COLORS.reset} `,
+      (ans) => { rl.close(); resolve(ans.trim().toLowerCase()); },
+    );
+  });
+  return answer !== "n" && answer !== "no";
+}
+
+/**
+ * Ask the developer whether to install Git hooks via Graphify.
+ * @param {object} readline - Node readline module
+ * @returns {Promise<boolean>}
+ */
+export async function promptInstallHooks(readline) {
+  const answer = await new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(
+      `${COLORS.cyan}?${COLORS.reset} ¿Instalar hooks Git de Graphify? ${COLORS.dim}(Y/n):${COLORS.reset} `,
+      (ans) => { rl.close(); resolve(ans.trim().toLowerCase()); },
+    );
+  });
+  return answer !== "n" && answer !== "no";
+}
+
+// ─── Installation adapter ─────────────────────────────────────────────────────
+
+/**
+ * Default install command resolver.
+ * Honours FLOWTASK_GRAPHIFY_INSTALL_COMMAND env var; falls back to the
+ * official launcher for the current platform.
+ */
+export function defaultInstallCommand() {
+  if (process.env.FLOWTASK_GRAPHIFY_INSTALL_COMMAND) {
+    return process.env.FLOWTASK_GRAPHIFY_INSTALL_COMMAND;
+  }
+  // Official launcher per platform
+  if (process.platform === "win32") return "winget install graphify";
+  if (process.platform === "darwin") return "brew install graphify";
+  return "curl -fsSL https://graphify.dev/install.sh | sh";
+}
+
+/**
+ * Run the Graphify installation command.
+ *
+ * @param {object} [opts]
+ * @param {Function} [opts.runFn]    - override runner (testing): (cmd, opts) => { status }
+ * @param {string}   [opts.command]  - override install command
+ * @returns {{ success: boolean, warning: string|null }}
+ */
+export function installGraphify(opts = {}) {
+  const cmd = opts.command ?? defaultInstallCommand();
+  const runner = opts.runFn;
+
+  try {
+    let result;
+    if (runner) {
+      result = runner(cmd, { shell: true, stdio: "inherit" });
+    } else {
+      result = spawnSync(cmd, { shell: true, stdio: "inherit" });
+    }
+
+    if (result.status === 0) {
+      return { success: true, warning: null };
+    }
+    return {
+      success: false,
+      warning: `Graphify: instalación falló (exit ${result.status}). Reintenta con flowtask update o contacta a un administrador.`,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      warning: `Graphify: instalación falló (${err.message}). Reintenta con flowtask update o contacta a un administrador.`,
+    };
+  }
+}
+
+// ─── Hooks ────────────────────────────────────────────────────────────────────
+
+/**
+ * Install Git hooks via `graphify hook install` in the project root.
+ *
+ * @param {string} projectDir
+ * @param {object} [opts]
+ * @param {Function} [opts.runFn] - override runner (testing): (cmd, opts) => { status }
+ * @returns {{ success: boolean, warning: string|null }}
+ */
+export function installHooks(projectDir, opts = {}) {
+  const cmd = "graphify hook install";
+  const runner = opts.runFn;
+
+  try {
+    let result;
+    if (runner) {
+      result = runner(cmd, { shell: true, stdio: "inherit", cwd: projectDir });
+    } else {
+      result = spawnSync(cmd, { shell: true, stdio: "inherit", cwd: projectDir });
+    }
+
+    if (result.status === 0) {
+      return { success: true, warning: null };
+    }
+    return {
+      success: false,
+      warning: `Graphify: hooks fallaron (exit ${result.status}). Reintenta con flowtask update o contacta a un administrador.`,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      warning: `Graphify: hooks fallaron (${err.message}). Reintenta con flowtask update o contacta a un administrador.`,
+    };
+  }
+}
+
+// ─── .gitignore management ────────────────────────────────────────────────────
+
+const GITIGNORE_ENTRIES = [
+  "graphify-out/",
+  ".flowtask/config/graphify.json",
+];
+
+/**
+ * Ensure `.gitignore` contains the Graphify output and state entries.
+ * Idempotent: does not duplicate existing entries.
+ *
+ * @param {string} projectDir
+ * @returns {boolean} true if entries are present after the call
+ */
+export function ensureGitignoreEntries(projectDir) {
+  const gitignorePath = path.join(projectDir, ".gitignore");
+  let content = "";
+  if (fs.existsSync(gitignorePath)) {
+    content = fs.readFileSync(gitignorePath, "utf8");
+  }
+
+  const lines = content.split("\n");
+  let modified = false;
+
+  for (const entry of GITIGNORE_ENTRIES) {
+    // Check if entry already exists (exact match or with trailing comment)
+    const exists = lines.some((l) => l.trim() === entry || l.trim().startsWith(entry + " "));
+    if (!exists) {
+      lines.push(entry);
+      modified = true;
+    }
+  }
+
+  if (modified) {
+    // Add a section comment if not already present
+    if (!content.includes("# Graphify")) {
+      const insertIdx = lines.length - GITIGNORE_ENTRIES.length;
+      lines.splice(insertIdx, 0, "", "# Graphify outputs and local state");
+    }
+    fs.writeFileSync(gitignorePath, lines.join("\n"), "utf8");
+  }
+
+  return true;
+}
+
+// ─── Extension registry (handoff to plan-grafo) ──────────────────────────────
+
+/** @type {Map<string, Function>} */
+const _extensions = new Map();
+
+/**
+ * Register a named extension phase (e.g. "extract", "query").
+ * The handler receives `{ projectDir, selectedClis, state, run, logger }`
+ * and must return `{ status, warning?, graphPath?, diagnostic? }`.
+ *
+ * @param {string} phaseName
+ * @param {Function} handler
+ */
+export function registerExtension(phaseName, handler) {
+  if (typeof phaseName !== "string" || !phaseName) {
+    throw new Error("registerExtension: phaseName must be a non-empty string");
+  }
+  if (typeof handler !== "function") {
+    throw new Error("registerExtension: handler must be a function");
+  }
+  _extensions.set(phaseName, handler);
+}
+
+/**
+ * Run a registered extension phase.
+ * Returns null if no extension is registered for the phase.
+ *
+ * @param {string} phaseName
+ * @param {object} context - { projectDir, selectedClis, state, run, logger }
+ * @returns {Promise<object|null>} extension result or null
+ */
+export async function runExtension(phaseName, context) {
+  const handler = _extensions.get(phaseName);
+  if (!handler) return null;
+
+  try {
+    const result = await handler(context);
+    // Validate: graphPath can only be written if status is "success"
+    if (result && result.graphPath && result.status !== "success") {
+      logWarn(`Graphify: extensión "${phaseName}" devolvió graphPath sin status=success; se ignora graphPath.`);
+      result.graphPath = null;
+    }
+    return result || null;
+  } catch (err) {
+    return {
+      status: "failed",
+      warning: `Graphify: extensión "${phaseName}" falló (${err.message}). Reintenta con flowtask update o contacta a un administrador.`,
+      diagnostic: err.message,
+    };
+  }
+}
+
+/**
+ * Clear all registered extensions (testing only).
+ */
+export function clearExtensions() {
+  _extensions.clear();
+}
+
+// ─── Grafo extensions (plan-grafo) ───────────────────────────────────────────
+
+/**
+ * Register the extract and query extension handlers for plan-grafo.
+ * Called once per coordinateGraphify invocation.
+ *
+ * @param {object} [opts] - injection for testing
+ * @param {Function} [opts.extractFn] - override extractCodeOnly
+ * @param {Function} [opts.configureMcpFn] - override configureMcpForTargets
+ */
+export function registerGrafoExtensions(opts = {}) {
+  const extractFn = opts.extractFn ?? extractCodeOnly;
+  const configureMcpFn = opts.configureMcpFn ?? configureMcpForTargets;
+
+  // Only register if no extension is already registered for the phase
+  // (allows tests to pre-register custom handlers)
+  if (!_extensions.has("extract")) {
+    registerExtension("extract", (context) => {
+      const { projectDir, run, logger } = context;
+      logger.logStep("+", "Graphify extract --code-only…");
+
+      const result = extractFn(projectDir, { runFn: run });
+
+      if (result.ok) {
+        logger.logSuccess(`Graphify extract: grafo generado en ${result.graphPath}`);
+      } else if (result.warning) {
+        logger.logWarn(result.warning);
+      }
+
+      return {
+        status: result.ok ? "success" : result.status,
+        graphPath: result.ok ? result.graphPath : null,
+        warning: result.warning,
+      };
+    });
+  }
+
+  if (!_extensions.has("query")) {
+    registerExtension("query", (context) => {
+      const { projectDir, selectedClis, state, logger } = context;
+
+      // Only configure MCP if extract succeeded and graphPath is available
+      if (!state.graphPath) {
+        logger.logWarn("Graphify query: sin graphPath disponible; se omite configuración MCP.");
+        return {
+          status: "skipped",
+          diagnostic: "graphPath no disponible — extract no ejecutado o fallido.",
+          warning: "Graphify query: MCP omitido por falta de graphPath.",
+        };
+      }
+
+      logger.logStep("+", "Graphify MCP configuration…");
+      const mcpResult = configureMcpFn({
+        projectDir,
+        selectedClis,
+        graphPath: state.graphPath,
+      });
+
+      if (mcpResult.warning) {
+        logger.logWarn(mcpResult.warning);
+      } else {
+        logger.logSuccess("Graphify MCP: configuración aplicada para targets seleccionados.");
+      }
+
+      return {
+        status: mcpResult.status,
+        diagnostic: mcpResult.warning,
+        warning: mcpResult.warning,
+      };
+    });
+  }
+}
+
+// ─── Coordinator ──────────────────────────────────────────────────────────────
+
+/**
+ * Main coordination entry point.  Called once per install/update, after
+ * target selection/detection and asset/plugin processing.
+ *
+ * Never throws — all errors are captured and surfaced as warnings.
+ *
+ * @param {object} params
+ * @param {string} params.projectDir
+ * @param {string[]} params.selectedClis - CLI targets chosen/detected
+ * @param {object} params.readline       - Node readline module
+ * @param {object} [params.opts]         - injection points for testing
+ * @param {Function} [params.opts.detectFn]
+ * @param {Function} [params.opts.versionFn]
+ * @param {Function} [params.opts.runFn]       - runner for install/hooks
+ * @param {Function} [params.opts.installCmdFn] - override install command
+ * @returns {Promise<object>} { projectState, globalState, warnings: string[] }
+ */
+export async function coordinateGraphify({ projectDir, selectedClis, readline, opts = {} }) {
+  const warnings = [];
+
+  // ── 1. Load / detect ────────────────────────────────────────────────────
+  let globalState = loadGlobalState();
+  globalState = detectGraphify(globalState, opts);
+
+  let projectState = loadProjectState(projectDir);
+
+  // ── 2. Install Graphify if not available ────────────────────────────────
+  if (!globalState.available) {
+    const wantsInstall = await promptInstallGraphify(readline);
+    if (!wantsInstall) {
+      projectState.enabled = false;
+      projectState.lastInitializationResult = "skipped";
+      projectState.selectedClis = selectedClis;
+      projectState.updatedAt = new Date().toISOString();
+      saveProjectState(projectDir, projectState);
+      return { projectState, globalState, warnings: ["Graphify: instalación rechazada por el desarrollador."] };
+    }
+
+    const installResult = installGraphify({
+      runFn: opts.runFn,
+      command: opts.installCmdFn ? opts.installCmdFn() : undefined,
+    });
+
+    if (!installResult.success) {
+      globalState.lastInstallResult = "failed";
+      globalState.lastWarning = installResult.warning;
+      saveGlobalState(globalState);
+
+      projectState.enabled = false;
+      projectState.lastInitializationResult = "failed";
+      projectState.lastWarning = installResult.warning;
+      projectState.selectedClis = selectedClis;
+      projectState.updatedAt = new Date().toISOString();
+      saveProjectState(projectDir, projectState);
+
+      warnings.push(installResult.warning);
+      return { projectState, globalState, warnings };
+    }
+
+    globalState.lastInstallResult = "success";
+    // Re-detect after install
+    globalState = detectGraphify(globalState, opts);
+    saveGlobalState(globalState);
+  }
+
+  // ── 3. Enable opt-in ────────────────────────────────────────────────────
+  const wantsEnable = await promptEnableGraphify(readline);
+  if (!wantsEnable) {
+    projectState.enabled = false;
+    projectState.lastInitializationResult = "skipped";
+    projectState.selectedClis = selectedClis;
+    projectState.updatedAt = new Date().toISOString();
+    saveProjectState(projectDir, projectState);
+    return { projectState, globalState, warnings: ["Graphify: habilitación rechazada por el desarrollador."] };
+  }
+
+  projectState.enabled = true;
+  projectState.selectedClis = selectedClis;
+
+  // ── 4. Warn about later phases ──────────────────────────────────────────
+  logInfo("Graphify: la extracción code-only, consulta MCP y docs/media son fases posteriores (plan-grafo / plan-docs-media). Este coordinador no ejecuta --code-only.");
+
+  // ── 5. .gitignore ───────────────────────────────────────────────────────
+  ensureGitignoreEntries(projectDir);
+
+  // ── 6. Hooks ────────────────────────────────────────────────────────────
+  const wantsHooks = await promptInstallHooks(readline);
+  if (wantsHooks) {
+    const hookResult = installHooks(projectDir, { runFn: opts.runFn });
+    if (hookResult.success) {
+      projectState.hooksInstalled = true;
+    } else {
+      projectState.hooksInstalled = false;
+      projectState.lastWarning = hookResult.warning;
+      warnings.push(hookResult.warning);
+    }
+  } else {
+    projectState.hooksInstalled = false;
+  }
+
+  // ── 7. Run registered extensions (plan-grafo extract/query) ─────────────
+  if (opts.grafoExtensions !== false) {
+    registerGrafoExtensions(opts);
+  }
+
+  const extContext = {
+    projectDir,
+    selectedClis,
+    state: projectState,
+    run: opts.runFn,
+    logger: { logStep, logSuccess, logError, logWarn, logInfo },
+  };
+
+  const extractResult = await runExtension("extract", extContext);
+  if (extractResult) {
+    projectState.extract_status = extractResult.status || "failed";
+    projectState.extract_last_attempt = new Date().toISOString();
+    if (extractResult.graphPath) projectState.graphPath = extractResult.graphPath;
+    if (extractResult.warning) warnings.push(extractResult.warning);
+  }
+
+  const queryResult = await runExtension("query", extContext);
+  if (queryResult) {
+    projectState.query_status = queryResult.status || "failed";
+    projectState.query_last_attempt = new Date().toISOString();
+    if (queryResult.diagnostic) projectState.query_diagnostic = queryResult.diagnostic;
+    if (queryResult.warning) warnings.push(queryResult.warning);
+  }
+
+  // ── 8. Finalise ─────────────────────────────────────────────────────────
+  projectState.initialized = true;
+  projectState.lastInitializationResult = warnings.length > 0 ? "failed" : "success";
+  projectState.lastWarning = warnings.length > 0 ? warnings[warnings.length - 1] : null;
+  projectState.updatedAt = new Date().toISOString();
+
+  if (!saveProjectState(projectDir, projectState)) {
+    const w = "Graphify: no se pudo persistir estado de proyecto. Reintenta con flowtask update o contacta a un administrador.";
+    warnings.push(w);
+    logWarn(w);
+  }
+
+  return { projectState, globalState, warnings };
+}

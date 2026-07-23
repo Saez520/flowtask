@@ -9,6 +9,7 @@ import { copyWithProgress, copyDirectoryDelta } from "./copy.js";
 import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
 import { generateClaudeAgents, generateClaudeCommands, generateClaudeMd, mergeClaudeSettings, mergeClaudeMcpConfig } from "./claude.js";
 import { showInteractiveSelector } from "./ui.js";
+import { coordinateGraphify } from "./graphify.js";
 
 // ─── Asset map ────────────────────────────────────────────────────────────────
 // Defines exactly what gets copied into each target directory.
@@ -559,6 +560,14 @@ ${COLORS.blue}╔═════════════════════
     }
   }
 
+  // ── Graphify coordination (once, after all targets) ─────────────────────
+  try {
+    const selectedCliIds = targets.map((t) => t.id);
+    await coordinateGraphify({ projectDir, selectedClis: selectedCliIds, readline });
+  } catch (err) {
+    logWarn(`Graphify: coordinación falló (${err.message}). Reintenta con flowtask update o contacta a un administrador.`);
+  }
+
   // ── Write profile ──────────────────────────────────────────────────
   writeProfile(projectDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
 
@@ -712,6 +721,14 @@ ${COLORS.blue}╔═════════════════════
       logError(`Failed to update ${id}: ${err.message}`);
       results.push({ target: id, status: "Error", message: err.message });
     }
+  }
+
+  // ── Graphify coordination (once, after all targets) ─────────────────────
+  try {
+    const selectedCliIds = targets.map((t) => t.id);
+    await coordinateGraphify({ projectDir, selectedClis: selectedCliIds, readline });
+  } catch (err) {
+    logWarn(`Graphify: coordinación falló (${err.message}). Reintenta con flowtask update o contacta a un administrador.`);
   }
 
   // ── Write profile ──────────────────────────────────────────────────

@@ -123,6 +123,7 @@ skill({ name: "handshake-protocol" })     ← cargar antes de invocar subagentes
 | `flowtask-initializer`  | necesita escanear proyecto                                        |
 | `flowtask-logger`       | necesita instrumentar logging                                     |
 | `flowtask-tester`       | necesita generar tests                                            |
+| `flowtask-graphify-docs-media` | necesita generar docs/media de Graphify (background, tras aceptación) |
 
 Formato para invocar:
 Flujo de delegación — sin excepciones:
@@ -246,6 +247,33 @@ Antes de clasificar, carga el contexto del proyecto:
    d. Merge: si la misma key normalizada existe en ambos scopes, prevalece la de `project`.
    e. Si `mem_search` falla (Engram no disponible): continuar sin heurísticas.
 4. Incorporar hallazgos al razonamiento antes de clasificar.
+
+### Sub-paso 0.5 — Oferta diferida de Graphify docs/media
+
+Después de cargar contexto y antes de clasificar la intención, comprobar el estado de docs/media:
+
+1. Leer `docs_media_status` del estado de proyecto Graphify (`.flowtask/config/graphify.json`, schema v1).
+2. Si `docs_media_status` es `pending` o `failed` y **aún no se ofreció en esta conversación**:
+   - Mostrar oferta única: `📊 Graphify docs/media está pendiente. ¿Generar documentación y medios ahora? (sí/no)`
+   - Marcar localmente como ofrecida (variable efímera, no persistida) para no repetir en esta conversación.
+3. Si `docs_media_status` es `success`: no ofrecer.
+4. **Aceptar solo afirmación explícita** (`sí`, `yes`, `y`, `s`, `si`). Rechazo, silencio o ambigüedad no inician generación.
+
+**Tras aceptación:**
+1. Persistir `docs_media_last_attempt` (ISO-8601) y `docs_media_attempt_status = "accepted"`.
+2. Actualizar a `docs_media_attempt_status = "running"` antes de invocar.
+3. Invocar `flowtask-graphify-docs-media` en background con `projectDir` del repositorio principal (no worktree).
+4. El background **no bloquea** la clasificación ni el trabajo solicitado — continúa con Sub-paso 1.
+
+**Tras respuesta del background agent:**
+- `attemptStatus = "success"` + tres outputPaths verificados → persistir `docs_media_status = "success"`, `docs_media_attempt_status = "success"`, `docs_media_output_paths`, `docs_media_finished_at`. El recordatorio se retira.
+- `attemptStatus = "failed"` → persistir `docs_media_status = "failed"`, `docs_media_attempt_status = "failed"`, `docs_media_output_paths = []`, `docs_media_diagnostic`. Se volverá a ofrecer.
+- `attemptStatus = "inconclusive"` → persistir `docs_media_status = "failed"`, `docs_media_attempt_status = "inconclusive"`. Se volverá a ofrecer.
+
+**Tras rechazo:**
+- Persistir `docs_media_attempt_status = "rejected"`, `docs_media_finished_at`. Conservar `docs_media_status` en su valor no exitoso. Se volverá a ofrecer en conversación futura.
+
+> **Regla**: Solo `docs_media_status = "success"` retira el recordatorio. Todo otro resultado permite reintento.
 
 ### Sub-paso 1 — Clasificación inyectada en contexto (prioridad absoluta)
 

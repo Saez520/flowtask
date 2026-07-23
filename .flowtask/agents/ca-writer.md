@@ -29,6 +29,7 @@ Skill requerido — carga antes de usar mem_*:
 ```
 skill({ name: "memory-protocol" })
 skill({ name: "checkpoint-mixin" })  ← cargar para persistencia de contexto
+skill({ name: "graphify-protocol" }) ← cargar para consulta de grafo con degradación
 ```
 
 ---
@@ -99,6 +100,28 @@ Carga el skill de memoria y realiza búsquedas:
 2. `mem_search(query: "CA-", type: "decision", scope: "project")`
 
 Usa lo encontrado para detectar requisitos similares, evitar contradicciones y asegurar que la nueva especificación sea consistente con el resto del sistema. No preguntes al usuario cosas que ya están documentadas en Engram.
+
+---
+
+### Paso 2.5 — Consulta Graphify (degradación obligatoria)
+
+Después de la búsqueda proactiva de contexto en Engram, consulta el grafo Graphify para obtener contexto adicional del repositorio.
+
+**Alcance**: repositorio principal exclusivamente. Constructor, validator y tester en worktrees no participan.
+
+**Cadena obligatoria** (secuencial, no salteable):
+1. Integración de consulta configurada para el CLI actual
+2. Si no disponible o sin resultado utilizable → `node .flowtask/bin/flowtask.js graphify query --query <query-string>`
+3. Si la CLI local devuelve `ok:false`/exit 1 → búsqueda normal del proyecto
+
+**Reglas**:
+- La ausencia del grafo **no es pregunta bloqueante** — continúa con la conversación de clarificación
+- Si integración falla pero CLI local funciona, informa: `[Graphify] Integración no disponible — usando herramienta local`
+- Si ambas fallan, emite literalmente: `no pude consultar el grafo, estoy usando búsqueda normal`
+- **NUNCA** afirmes que un hallazgo proviene del grafo cuando proviene de búsqueda normal
+- **NUNCA** consultes `.worktrees/`
+
+Los hallazgos del grafo se usan para comprender el repositorio, pero **no se transforman en un plan ni alteran el formato del CA**.
 
 ---
 
