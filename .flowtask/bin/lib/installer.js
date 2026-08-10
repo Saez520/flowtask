@@ -222,6 +222,29 @@ function resolvePersonaContent(flowtaskDir, personaChoice) {
   return fs.readFileSync(personaPath, "utf8");
 }
 
+export function injectPersonaIntoRunnerContent(content, personaContent) {
+  if (!personaContent) return content;
+
+  const startMarker = "<!-- FLOWTASK:PERSONA_START -->";
+  const endMarker = "<!-- FLOWTASK:PERSONA_END -->";
+
+  const startIdx = content.indexOf(startMarker);
+  const endIdx = content.indexOf(endMarker);
+
+  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx + startMarker.length) {
+    logWarn("Marcadores PERSONA no encontrados en runner.md. No se inyectó personalidad.");
+    return content;
+  }
+
+  return (
+    content.slice(0, startIdx + startMarker.length) +
+    "\n" +
+    personaContent +
+    "\n" +
+    content.slice(endIdx)
+  );
+}
+
 function injectPersonaIntoRunner(targetDir, personaContent) {
   if (personaContent === null) return;
 
@@ -232,25 +255,7 @@ function injectPersonaIntoRunner(targetDir, personaContent) {
   }
 
   const content = fs.readFileSync(runnerPath, "utf8");
-  const startMarker = "<!-- FLOWTASK:PERSONA_START -->";
-  const endMarker = "<!-- FLOWTASK:PERSONA_END -->";
-
-  const startIdx = content.indexOf(startMarker);
-  const endIdx = content.indexOf(endMarker);
-
-  if (startIdx === -1 || endIdx === -1) {
-    logWarn(`Marcadores PERSONA no encontrados en runner.md de ${targetDir}.`);
-    return;
-  }
-
-  const newContent =
-    content.slice(0, startIdx + startMarker.length) +
-    "\n" +
-    personaContent +
-    "\n" +
-    content.slice(endIdx);
-
-  fs.writeFileSync(runnerPath, newContent, "utf8");
+  fs.writeFileSync(runnerPath, injectPersonaIntoRunnerContent(content, personaContent), "utf8");
   logSuccess(`Personalidad inyectada en runner.md de ${targetDir}.`);
 }
 
@@ -507,7 +512,7 @@ ${COLORS.blue}╔═════════════════════
       }
 
       // ── Inject persona into runner.md ───────────────────────────────
-      if (personaContent) {
+      if (personaContent && id !== "claude") {
         injectPersonaIntoRunner(TARGET_DIR, personaContent);
       }
 
@@ -529,8 +534,9 @@ ${COLORS.blue}╔═════════════════════
         mergeClaudeMcpConfig(path.join(projectDir, ".mcp.json"), flowtaskDir);
         cleanupOrphanedClaudeAssets(projectDir);
         if (personaContent) {
-          const targetRunnerPath = path.join(TARGET_DIR, "agents", "runner.md");
-          const runnerBody = fs.readFileSync(targetRunnerPath, "utf8");
+          const sourceRunnerPath = path.join(flowtaskDir, "agents", "runner.md");
+          const sourceRunner = fs.readFileSync(sourceRunnerPath, "utf8");
+          const runnerBody = injectPersonaIntoRunnerContent(sourceRunner, personaContent);
           generateClaudeMd(flowtaskDir, projectDir, runnerBody);
         } else {
           generateClaudeMd(flowtaskDir, projectDir);
@@ -682,7 +688,7 @@ ${COLORS.blue}╔═════════════════════
       }
 
       // ── Inject persona into runner.md ───────────────────────────────
-      if (personaContent) {
+      if (personaContent && id !== "claude") {
         injectPersonaIntoRunner(TARGET_DIR, personaContent);
       }
 
@@ -696,8 +702,9 @@ ${COLORS.blue}╔═════════════════════
         mergeClaudeMcpConfig(path.join(projectDir, ".mcp.json"), flowtaskDir);
         cleanupOrphanedClaudeAssets(projectDir);
         if (personaContent) {
-          const targetRunnerPath = path.join(TARGET_DIR, "agents", "runner.md");
-          const runnerBody = fs.readFileSync(targetRunnerPath, "utf8");
+          const sourceRunnerPath = path.join(flowtaskDir, "agents", "runner.md");
+          const sourceRunner = fs.readFileSync(sourceRunnerPath, "utf8");
+          const runnerBody = injectPersonaIntoRunnerContent(sourceRunner, personaContent);
           generateClaudeMd(flowtaskDir, projectDir, runnerBody);
         } else {
           generateClaudeMd(flowtaskDir, projectDir);
