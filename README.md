@@ -478,6 +478,22 @@ Evolution Mode lets you improve FlowTask agents using the same workflow used for
 
 ***
 
+## Deprecated Features / Funcionalidades deprecadas
+
+El clasificador de FlowTask está deprecado y desactivado por defecto. La unidad incluye el hook automático `flowtask-classifier-hook` y el indicador visual `flowtask-classifier-tui`. Motivo: **los modelos ya son lo suficientemente inteligentes y con agent mode para saber a quién delegar**.
+
+El código fuente se conserva en `.flowtask/plugins/flowtask-classifier-hook/` y `.flowtask/plugins/flowtask-classifier-tui/`. Para reactivarlo excepcionalmente, edita ambas entradas correspondientes del manifiesto `.flowtask/plugins/flowtask-plugins.json`, cambia `enabled` a `true` en las dos y ejecuta:
+
+```bash
+flowtask update
+```
+
+Ambas entradas deben cambiarse juntas: cualquier estado parcial se trata como desactivado. En ese caso, `flowtask update` retira las instalaciones existentes de ambos componentes y muestra la alerta exacta: `el plugin de clasificación fue deprecado`.
+
+El toggle visual nativo de OpenCode no se sincroniza con el hook server-side; la activación oficial se gestiona únicamente mediante el manifiesto y `flowtask update`.
+
+***
+
 ## Troubleshooting
 
 ### Engram not found

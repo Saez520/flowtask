@@ -45,6 +45,11 @@ const ASSETS = {
   ],
 };
 
+const CLASSIFIER_PLUGIN_NAMES = [
+  "flowtask-classifier-hook",
+  "flowtask-classifier-tui",
+];
+
 // ─── Dependency checks ────────────────────────────────────────────────────────
 
 function checkOpenCode() {
@@ -322,6 +327,93 @@ function calculatePluginRelativePath(configPath, projectDir, pluginName, entrypo
   return relative;
 }
 
+function getClassifierEntries(manifest) {
+  return CLASSIFIER_PLUGIN_NAMES.map((name) => manifest.find((entry) => entry?.name === name));
+}
+
+function isClassifierEnabled(manifest) {
+  const entries = getClassifierEntries(manifest);
+  return entries.length === CLASSIFIER_PLUGIN_NAMES.length && entries.every((entry) => entry?.enabled === true);
+}
+
+function extractPluginName(pluginPath) {
+  if (typeof pluginPath !== "string") return null;
+  const normalizedPath = pluginPath.replace(/\\/g, "/");
+  return normalizedPath.match(/(?:^|\/)plugins\/([^/]+)(?:\/|$)/)?.[1] ?? null;
+}
+
+function configContainsClassifier(configPath) {
+  if (!fileExists(configPath)) return false;
+
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    return Array.isArray(config.plugin) && config.plugin.some((entry) => {
+      const pluginPath = typeof entry === "string" ? entry : entry?.path;
+      return CLASSIFIER_PLUGIN_NAMES.includes(extractPluginName(pluginPath));
+    });
+  } catch (err) {
+    logWarn(`Could not inspect plugin config ${configPath}: ${err.message}`);
+    return false;
+  }
+}
+
+function removeClassifierEntries(configPath) {
+  if (!fileExists(configPath)) return false;
+
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    if (!Array.isArray(config.plugin)) return false;
+
+    const originalLength = config.plugin.length;
+    config.plugin = config.plugin.filter((entry) => {
+      const pluginPath = typeof entry === "string" ? entry : entry?.path;
+      return !CLASSIFIER_PLUGIN_NAMES.includes(extractPluginName(pluginPath));
+    });
+
+    if (config.plugin.length === originalLength) return false;
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+    return true;
+  } catch (err) {
+    logWarn(`Could not clean classifier entries from ${configPath}: ${err.message}`);
+    return false;
+  }
+}
+
+function removeClassifierDirectories(projectDir) {
+  let removed = false;
+  const pluginsDir = path.join(projectDir, ".opencode", "plugins");
+
+  for (const name of CLASSIFIER_PLUGIN_NAMES) {
+    const pluginDir = path.join(pluginsDir, name);
+    if (!fileExists(pluginDir)) continue;
+    try {
+      fs.rmSync(pluginDir, { recursive: true, force: true });
+      removed = true;
+    } catch (err) {
+      logWarn(`Could not remove deprecated plugin ${name}: ${err.message}`);
+    }
+  }
+  return removed;
+}
+
+function cleanupDisabledClassifier(projectDir, manifest) {
+  if (isClassifierEnabled(manifest)) return;
+
+  const tuiConfigPath = path.join(projectDir, "tui.json");
+  const serverConfigPath = path.join(projectDir, ".opencode", "opencode.json");
+  const hasInstallation = CLASSIFIER_PLUGIN_NAMES.some((name) =>
+    fileExists(path.join(projectDir, ".opencode", "plugins", name))
+  ) || configContainsClassifier(tuiConfigPath) || configContainsClassifier(serverConfigPath);
+
+  const removedDirectory = removeClassifierDirectories(projectDir);
+  const removedTuiEntry = removeClassifierEntries(tuiConfigPath);
+  const removedServerEntry = removeClassifierEntries(serverConfigPath);
+
+  if (hasInstallation || removedDirectory || removedTuiEntry || removedServerEntry) {
+    logWarn("el plugin de clasificación fue deprecado");
+  }
+}
+
 /**
  * Install plugins from the manifest for the "opencode" destination:
  * 1. Copies each plugin's directory (filtered by `destinations`) into
@@ -340,9 +432,12 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
 
   const opencodePluginsDir = path.join(projectDir, ".opencode", "plugins");
 
+  cleanupDisabledClassifier(projectDir, manifest);
+
   for (const entry of manifest) {
     if (!validateManifestEntry(entry)) continue;
     if (!entry.destinations.includes("opencode")) continue;
+    if (CLASSIFIER_PLUGIN_NAMES.includes(entry.name) && !isClassifierEnabled(manifest)) continue;
 
     const srcDir = path.join(flowtaskDir, "plugins", entry.path);
     if (!fileExists(srcDir)) {

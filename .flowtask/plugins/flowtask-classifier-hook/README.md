@@ -1,5 +1,7 @@
 # FlowTask Classifier Plugin
 
+> **Deprecated / Deprecated:** This plugin is deprecated and is not installed by default. Its source is preserved for exceptional reactivation together with `flowtask-classifier-tui`; enable both manifest entries before running `flowtask update`.
+
 Plugin de OpenCode que clasifica automaticamente el input del usuario en categorias de intencion para el workflow de FlowTask.
 
 ## Descripcion

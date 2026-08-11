@@ -4,14 +4,18 @@
     "path": "flowtask-classifier-hook",
     "kind": "server",
     "destinations": ["opencode"],
-    "entrypoint": "dist/index.js"
+    "entrypoint": "dist/index.js",
+    "deprecated": true,
+    "enabled": false
   },
   {
     "name": "flowtask-classifier-tui",
     "path": "flowtask-classifier-tui",
     "kind": "tui",
     "destinations": ["opencode"],
-    "entrypoint": "dist/tui.js"
+    "entrypoint": "dist/tui.js",
+    "deprecated": true,
+    "enabled": false
   },
   {
     "name": "flowtask-model-selector",
