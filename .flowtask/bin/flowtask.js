@@ -15,13 +15,36 @@ export const FLOWTASK_DIR = path.resolve(__dirname, "..");
 const args = process.argv.slice(2);
 const command = args[0] || "install";
 
+const PERSONA_LEVELS = ["training", "mid", "senior", "custom"];
+
+function parseOptions(commandArgs) {
+  const options = {};
+  const personaIndex = commandArgs.indexOf("--persona");
+  if (personaIndex === -1) return options;
+
+  const value = commandArgs[personaIndex + 1];
+  if (!PERSONA_LEVELS.includes(value)) {
+    throw new Error(`--persona debe ser uno de: ${PERSONA_LEVELS.join(", ")}`);
+  }
+  options.persona = value;
+  return options;
+}
+
+let options;
+try {
+  options = parseOptions(args.slice(1));
+} catch (err) {
+  console.error(err.message);
+  process.exit(1);
+}
+
 switch (command) {
   case "install":
-    install(FLOWTASK_DIR);
+    install(FLOWTASK_DIR, options);
     break;
 
   case "update":
-    update(FLOWTASK_DIR);
+    update(FLOWTASK_DIR, options);
     break;
 
   case "graphify": {
@@ -51,7 +74,10 @@ FlowTask CLI
 
 Usage:
   flowtask install    Install FlowTask in the current project
+  flowtask install --persona <training|mid|senior|custom>
+                      Select the agent personality explicitly
   flowtask update     Update FlowTask files (delta-only sync)
+  flowtask update --persona <training|mid|senior|custom>
   flowtask graphify query --query <q>  Query local code graph (JSON stdout)
   flowtask --help     Show this help message
   flowtask --version  Show version

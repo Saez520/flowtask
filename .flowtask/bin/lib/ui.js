@@ -7,6 +7,10 @@ import { COLORS, log } from "./logger.js";
  * @returns {Promise<string[]>}
  */
 export async function showInteractiveSelector(readline) {
+  if (!process.stdin.isTTY) {
+    throw new Error("No hay TTY para seleccionar targets. Pasá una selección explícita en un terminal interactivo.");
+  }
+
   const options = [
     { name: "OpenCode (.opencode/flowtask/)", value: "opencode", selected: false },
     { name: "VS Code (.vscode/flowtask/)",    value: "vscode",   selected: false },
@@ -45,7 +49,7 @@ export async function showInteractiveSelector(readline) {
   return new Promise((resolve) => {
     const cleanup = () => {
       process.stdout.removeListener("resize", onResize);
-      process.stdin.setRawMode(false);
+      if (process.stdin.isTTY) process.stdin.setRawMode(false);
       process.stdin.pause();
       process.stdin.removeListener("keypress", onKeypress);
     };

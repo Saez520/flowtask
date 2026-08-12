@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 import { afterEach, test } from "node:test";
-import { installManifestPlugins } from "./installer.js";
+import { installManifestPlugins, resolvePersonaSelection } from "./installer.js";
+import { showInteractiveSelector } from "./ui.js";
 
 const fixtures = [];
+const FLOWTASK_CLI = fileURLToPath(new URL("../flowtask.js", import.meta.url));
 
 afterEach(() => {
   for (const fixture of fixtures.splice(0)) {
@@ -196,4 +200,60 @@ test("cleanup detects classifier paths without a leading slash", () => {
   assert.equal(fs.existsSync(path.join(pluginRoot, "flowtask-classifier-tui")), false);
   assert.deepEqual(installedPluginEntries(path.join(root, "tui.json")), []);
   assert.deepEqual(installedPluginEntries(path.join(root, ".opencode", "opencode.json")), []);
+});
+
+test("explicit persona flag takes priority over the saved profile", async () => {
+  const { root } = createFixture();
+  writeJson(path.join(root, ".flowtask", "config", "profile.json"), { level: "senior" });
+  const choice = await resolvePersonaSelection(root, {}, { persona: "mid" });
+  assert.equal(choice.level, "mid");
+});
+
+test("valid profile resolves without prompting", async () => {
+  const { root } = createFixture();
+  writeJson(path.join(root, ".flowtask", "config", "profile.json"), { level: "senior" });
+  const choice = await resolvePersonaSelection(root, {}, {});
+  assert.equal(choice.level, "senior");
+});
+
+test("target selector rejects non-TTY stdin without touching raw mode", async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: false });
+  try {
+    await assert.rejects(() => showInteractiveSelector({}), /No hay TTY/);
+  } finally {
+    if (descriptor) Object.defineProperty(process.stdin, "isTTY", descriptor);
+    else delete process.stdin.isTTY;
+  }
+});
+
+test("update integrates the canonical OpenCode config into an installed target", () => {
+  const { root } = createFixture();
+  const targetDir = path.join(root, ".opencode", "flowtask");
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.writeFileSync(path.join(targetDir, ".installation-method"), JSON.stringify({ target: "opencode" }));
+  writeJson(path.join(root, ".flowtask", "config", "profile.json"), {
+    level: "senior",
+    persona: "tutor-senior",
+    onboarded: true,
+  });
+  writeJson(path.join(root, ".opencode", "opencode.json"), {
+    $schema: "https://custom/schema.json",
+    agent: { existing: { description: "manual" } },
+  });
+
+  const result = spawnSync(process.execPath, [FLOWTASK_CLI, "update", "--persona", "senior"], {
+    cwd: root,
+    env: { ...process.env, XDG_CONFIG_HOME: path.join(root, "xdg-config") },
+    input: "n\n",
+    encoding: "utf8",
+    timeout: 120000,
+  });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  const updatedConfig = readJson(path.join(root, ".opencode", "opencode.json"));
+  assert.ok(updatedConfig.agent["flowtask-validator"], "update must merge the new canonical agent");
+  assert.equal(updatedConfig.agent["flowtask-validator"].prompt, "{file:flowtask/agents/validator.md}");
+  assert.deepEqual(updatedConfig.agent.existing, { description: "manual" });
 });

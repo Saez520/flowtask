@@ -71,9 +71,43 @@ function adjustConfigPaths(config, targetSubDir) {
  * Extract plugin name from a path (e.g., ".opencode/plugins/flowtask-classifier/index.js" → "flowtask-classifier")
  */
 function extractPluginName(pluginPath) {
+  if (typeof pluginPath !== "string") return null;
   const normalized = pluginPath.replace(/\\/g, "/");
   const match = normalized.match(/(?:^|\/|\\)plugins\/([^\/\\]+)/);
   return match ? match[1] : null;
+}
+
+function mergeMissingObjects(target, source) {
+  const result = { ...target };
+  for (const [key, sourceValue] of Object.entries(source)) {
+    if (sourceValue === undefined || Object.prototype.hasOwnProperty.call(result, key)) {
+      if (sourceValue && typeof sourceValue === "object" && !Array.isArray(sourceValue) &&
+          result[key] && typeof result[key] === "object" && !Array.isArray(result[key])) {
+        result[key] = mergeMissingObjects(result[key], sourceValue);
+      }
+      continue;
+    }
+    result[key] = sourceValue;
+  }
+  return result;
+}
+
+function normalizePluginEntries(existing, incoming) {
+  const result = [];
+  const indexes = new Map();
+  const add = (entry, canonical = false) => {
+    const entryPath = typeof entry === "string" ? entry : entry?.path;
+    const name = extractPluginName(entryPath);
+    if (!name || !indexes.has(name)) {
+      if (name) indexes.set(name, result.length);
+      result.push(entry);
+      return;
+    }
+    if (canonical) result[indexes.get(name)] = entry;
+  };
+  for (const entry of existing) add(entry);
+  for (const entry of incoming) add(entry, true);
+  return result;
 }
 
 /**
@@ -132,7 +166,7 @@ export function registerPluginArrayEntry(configPath, entry, schema = "https://op
     } else {
       plugins.push(entry);
     }
-    config.plugin = plugins;
+    config.plugin = normalizePluginEntries(plugins, []);
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
     logSuccess(`Plugin entry registered in ${path.basename(configPath)}`);
@@ -167,18 +201,21 @@ export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
       if (!ftConfig[section]) continue;
       const adjusted = adjustConfigPaths(ftConfig[section], targetSubDir);
       if (!ideConfig[section]) {
-        ideConfig[section] = adjusted;
+        ideConfig[section] = section === "plugin"
+          ? normalizePluginEntries([], Array.isArray(adjusted) ? adjusted : [])
+          : adjusted;
       } else if (section === "plugin") {
         const existing = Array.isArray(ideConfig[section]) ? ideConfig[section] : [];
         const incoming = Array.isArray(adjusted) ? adjusted : [];
-        ideConfig[section] = [...existing, ...incoming];
+        ideConfig[section] = normalizePluginEntries(existing, incoming);
       } else {
-        ideConfig[section] = deepMergeObjects(ideConfig[section], adjusted);
+        ideConfig[section] = mergeMissingObjects(ideConfig[section], adjusted);
       }
     }
 
     if (!ideConfig.$schema) ideConfig.$schema = "https://opencode.ai/config.json";
 
+    fs.mkdirSync(path.dirname(ideConfigPath), { recursive: true });
     fs.writeFileSync(ideConfigPath, JSON.stringify(ideConfig, null, 2), "utf8");
     logSuccess("Configuration merged successfully.");
   } catch (err) {

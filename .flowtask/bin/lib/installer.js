@@ -146,6 +146,10 @@ const mapping = {
 };
 
 async function promptPersonaSeleccion(readline, currentLevel = null) {
+  if (!process.stdin.isTTY) {
+    throw new Error("No hay TTY para seleccionar personalidad. Pasá --persona <training|mid|senior|custom> o creá/corregí .flowtask/config/profile.json.");
+  }
+
   logStep("P", "Personalidad del Agente");
   logInfo("Define cómo el asistente se comunicará contigo según tu nivel de experiencia.");
 
@@ -188,7 +192,7 @@ async function promptPersonaSeleccion(readline, currentLevel = null) {
   return new Promise((resolve) => {
     const cleanup = () => {
       process.stdout.removeListener("resize", onResize);
-      process.stdin.setRawMode(false);
+      if (process.stdin.isTTY) process.stdin.setRawMode(false);
       process.stdin.pause();
       process.stdin.removeListener("keypress", onKeypress);
     };
@@ -271,6 +275,28 @@ function writeProfile(projectDir, level, persona, onboarded) {
   const profile = { level, persona, onboarded };
   fs.writeFileSync(path.join(configDir, "profile.json"), JSON.stringify(profile, null, 2), "utf8");
   logSuccess("Perfil guardado en .flowtask/config/profile.json");
+}
+
+function readProfileLevel(projectDir) {
+  const profilePath = path.join(projectDir, ".flowtask", "config", "profile.json");
+  if (!fileExists(profilePath)) return null;
+  try {
+    const level = JSON.parse(fs.readFileSync(profilePath, "utf8")).level;
+    return level && levelToChoice[level] ? level : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function resolvePersonaSelection(projectDir, readline, options = {}) {
+  const profileLevel = readProfileLevel(projectDir);
+  if (options.persona && levelToChoice[options.persona]) {
+    return mapping[levelToChoice[options.persona]];
+  }
+  if (profileLevel) {
+    return mapping[levelToChoice[profileLevel]];
+  }
+  return promptPersonaSeleccion(readline);
 }
 
 // ─── Plugin Manifest Functions ────────────────────────────────────────────────
@@ -532,7 +558,7 @@ function cleanupOrphanedClaudeAssets(projectDir) {
 
 // ─── Install ──────────────────────────────────────────────────────────────────
 
-export async function install(flowtaskDir) {
+export async function install(flowtaskDir, options = {}) {
   console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
 ║        FlowTask Installation Wizard       ║
@@ -555,11 +581,10 @@ ${COLORS.blue}╔═════════════════════
   }
 
   // ── Step P: Personalidad del Agente ─────────────────────────────────
-  const personaChoice = await promptPersonaSeleccion(readline);
-  const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
-
   const projectDir = process.cwd();
   migrateProfileLocation(projectDir);
+  const personaChoice = await resolvePersonaSelection(projectDir, readline, options);
+  const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
   const results = [];
 
   for (const { id, ideDir, targetSubDir } of targets) {
@@ -684,7 +709,7 @@ ${COLORS.blue}╔═════════════════════
 
 // ─── Update ───────────────────────────────────────────────────────────────────
 
-export async function update(flowtaskDir) {
+export async function update(flowtaskDir, options = {}) {
   console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
 ║        FlowTask Update Wizard (Delta)     ║
@@ -722,22 +747,9 @@ ${COLORS.blue}╔═════════════════════
   }
 
   // ── Step 1.5: Personalidad del Agente ──────────────────────────────
-  let currentLevel = null;
-  const profilePath = path.join(projectDir, ".flowtask", "config", "profile.json");
-  if (fileExists(profilePath)) {
-    try {
-      const profile = JSON.parse(fs.readFileSync(profilePath, "utf8"));
-      currentLevel = profile.level || null;
-    } catch { /* ignore invalid profile.json */ }
-  }
-
-  let personaChoice;
-  if (currentLevel && levelToChoice[currentLevel]) {
-    personaChoice = mapping[levelToChoice[currentLevel]];
-    logInfo(`Conservando personalidad existente: ${personaChoice.persona}`);
-  } else {
-    personaChoice = await promptPersonaSeleccion(readline, currentLevel);
-  }
+  const currentLevel = readProfileLevel(projectDir);
+  const personaChoice = await resolvePersonaSelection(projectDir, readline, options);
+  if (currentLevel && !options.persona) logInfo(`Conservando personalidad existente: ${personaChoice.persona}`);
   const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
 
   // ── Step 2: Delta sync each target ──────────────────────────────────────
@@ -772,6 +784,7 @@ ${COLORS.blue}╔═════════════════════
           totalCopied += stats.copied;
           totalSkipped += stats.skipped;
         }
+        mergeOpencodeConfig(path.join(projectDir, ideDir, "opencode.json"), flowtaskDir, ideDir);
       }
 
       logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
