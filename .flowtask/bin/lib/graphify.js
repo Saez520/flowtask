@@ -57,6 +57,10 @@ export function createGlobalState() {
     lastCheckedAt: null,
     lastInstallResult: null,  // null | "success" | "failed"
     lastWarning: null,
+    lastInstallMethod: null,
+    lastInstallCommand: null,
+    lastInstallExitCode: null,
+    lastInstallStderr: null,
   };
 }
 
@@ -257,50 +261,82 @@ export async function promptInstallHooks(readline) {
 
 /**
  * Default install command resolver.
- * Honours FLOWTASK_GRAPHIFY_INSTALL_COMMAND env var; falls back to the
- * official launcher for the current platform.
+ * Honours FLOWTASK_GRAPHIFY_INSTALL_COMMAND env var, then detects pipx/uv.
  */
-export function defaultInstallCommand() {
-  if (process.env.FLOWTASK_GRAPHIFY_INSTALL_COMMAND) {
-    return process.env.FLOWTASK_GRAPHIFY_INSTALL_COMMAND;
+export function defaultInstallCommand(opts = {}) {
+  const detect = opts.detectFn ?? isBinaryInstalled;
+  const override = process.env.FLOWTASK_GRAPHIFY_INSTALL_COMMAND;
+  if (override && override.trim()) {
+    return { method: "override", command: override };
   }
-  // Official launcher per platform
-  if (process.platform === "win32") return "winget install graphify";
-  if (process.platform === "darwin") return "brew install graphify";
-  return "curl -fsSL https://graphify.dev/install.sh | sh";
+  if (detect("pipx")) return { method: "pipx", command: "pipx install graphifyy" };
+  if (detect("uv")) return { method: "uv", command: "uv tool install graphifyy" };
+  return { method: "none", command: null };
+}
+
+const MAX_INSTALL_STDERR = 2048;
+const NO_INSTALLER_DIAGNOSTIC = "No hay instalador disponible: instala pipx o uv y reintenta con flowtask update o contacta a un administrador.";
+
+function truncateStderr(stderr) {
+  if (stderr == null) return "";
+  return String(stderr).slice(0, MAX_INSTALL_STDERR);
 }
 
 /**
  * Run the Graphify installation command.
  *
  * @param {object} [opts]
- * @param {Function} [opts.runFn]    - override runner (testing): (cmd, opts) => { status }
+ * @param {Function} [opts.runFn]    - override runner (testing): (cmd, opts) => { status, stderr }
  * @param {string}   [opts.command]  - override install command
- * @returns {{ success: boolean, warning: string|null }}
+ * @returns {{ success: boolean, warning: string|null, method: string, command: string|null, exitCode: number|null, stderr: string }}
  */
 export function installGraphify(opts = {}) {
-  const cmd = opts.command ?? defaultInstallCommand();
+  const resolution = opts.command != null
+    ? { method: "override", command: opts.command }
+    : defaultInstallCommand({ detectFn: opts.detectFn });
+  const { method, command: cmd } = resolution;
   const runner = opts.runFn;
+
+  if (method === "none") {
+    return {
+      success: false,
+      warning: `Graphify: ${NO_INSTALLER_DIAGNOSTIC}`,
+      method,
+      command: null,
+      exitCode: null,
+      stderr: NO_INSTALLER_DIAGNOSTIC,
+    };
+  }
 
   try {
     let result;
     if (runner) {
-      result = runner(cmd, { shell: true, stdio: "inherit" });
+      result = runner(cmd, { shell: true, stdio: ["inherit", "inherit", "pipe"] });
     } else {
-      result = spawnSync(cmd, { shell: true, stdio: "inherit" });
+      result = spawnSync(cmd, { shell: true, stdio: ["inherit", "inherit", "pipe"] });
     }
 
-    if (result.status === 0) {
-      return { success: true, warning: null };
+    const exitCode = typeof result.status === "number" ? result.status : null;
+    const stderr = truncateStderr(result.stderr);
+    if (exitCode === 0) {
+      return { success: true, warning: null, method, command: cmd, exitCode: 0, stderr };
     }
     return {
       success: false,
-      warning: `Graphify: instalación falló (exit ${result.status}). Reintenta con flowtask update o contacta a un administrador.`,
+      warning: `Graphify: instalación falló (exit ${exitCode}). Reintenta con flowtask update o contacta a un administrador.`,
+      method,
+      command: cmd,
+      exitCode,
+      stderr,
     };
   } catch (err) {
     return {
       success: false,
       warning: `Graphify: instalación falló (${err.message}). Reintenta con flowtask update o contacta a un administrador.`,
+      method,
+      command: cmd,
+      exitCode: null,
+      stderr: truncateStderr(err.message),
     };
   }
 }
@@ -567,13 +603,22 @@ export async function coordinateGraphify({ projectDir, flowtaskDir = path.join(p
     const installResult = installGraphify({
       runFn: opts.runFn,
       command: opts.installCmdFn ? opts.installCmdFn() : undefined,
+      detectFn: opts.detectFn,
     });
 
-    if (!installResult.success) {
-      globalState.lastInstallResult = "failed";
-      globalState.lastWarning = installResult.warning;
-      saveGlobalState(globalState);
+    globalState.lastInstallMethod = installResult.method;
+    globalState.lastInstallCommand = installResult.command;
+    globalState.lastInstallExitCode = installResult.exitCode;
+    globalState.lastInstallStderr = installResult.stderr;
+    globalState.lastInstallResult = installResult.success ? "success" : "failed";
+    globalState.lastWarning = installResult.warning;
+    if (!saveGlobalState(globalState)) {
+      const persistWarning = "Graphify: no se pudo persistir el diagnóstico de instalación. Reintenta con flowtask update o contacta a un administrador.";
+      logWarn(persistWarning);
+      warnings.push(persistWarning);
+    }
 
+    if (!installResult.success) {
       projectState.enabled = false;
       projectState.lastInitializationResult = "failed";
       projectState.lastWarning = installResult.warning;
@@ -585,10 +630,8 @@ export async function coordinateGraphify({ projectDir, flowtaskDir = path.join(p
       return { projectState, globalState, warnings };
     }
 
-    globalState.lastInstallResult = "success";
     // Re-detect after install
     globalState = detectGraphify(globalState, opts);
-    saveGlobalState(globalState);
   }
 
   // ── 3. Enable opt-in ────────────────────────────────────────────────────

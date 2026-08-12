@@ -73,6 +73,10 @@ describe("Schema v1", () => {
     assert.equal(state.lastCheckedAt, null);
     assert.equal(state.lastInstallResult, null);
     assert.equal(state.lastWarning, null);
+    assert.equal(state.lastInstallMethod, null);
+    assert.equal(state.lastInstallCommand, null);
+    assert.equal(state.lastInstallExitCode, null);
+    assert.equal(state.lastInstallStderr, null);
   });
 });
 
@@ -288,27 +292,107 @@ describe("detectGraphify", () => {
 describe("installGraphify", () => {
   it("returns success when runner returns exit 0", () => {
     const result = installGraphify({
+      command: "custom install graphifyy",
       runFn: () => ({ status: 0 }),
     });
     assert.equal(result.success, true);
     assert.equal(result.warning, null);
+    assert.equal(result.method, "override");
+    assert.equal(result.command, "custom install graphifyy");
+    assert.equal(result.exitCode, 0);
+    assert.equal(result.stderr, "");
   });
 
   it("returns failure with warning when runner returns non-zero", () => {
     const result = installGraphify({
-      runFn: () => ({ status: 1 }),
+      command: "custom install graphifyy",
+      runFn: () => ({ status: 1, stderr: "falló" }),
     });
     assert.equal(result.success, false);
     assert.ok(result.warning.includes("Reintenta con flowtask update"));
     assert.ok(result.warning.includes("contacta a un administrador"));
+    assert.equal(result.exitCode, 1);
+    assert.equal(result.stderr, "falló");
   });
 
   it("returns failure when runner throws", () => {
     const result = installGraphify({
+      command: "custom install graphifyy",
       runFn: () => { throw new Error("network error"); },
     });
     assert.equal(result.success, false);
     assert.ok(result.warning.includes("network error"));
+    assert.equal(result.exitCode, null);
+    assert.equal(result.stderr, "network error");
+  });
+
+  it("resuelve el override antes de detectar instaladores", () => {
+    const original = process.env.FLOWTASK_GRAPHIFY_INSTALL_COMMAND;
+    process.env.FLOWTASK_GRAPHIFY_INSTALL_COMMAND = "operador --instala graphifyy";
+    try {
+      const result = installGraphify({
+        detectFn: () => { throw new Error("no debe detectar"); },
+        runFn: (command) => {
+          assert.equal(command, "operador --instala graphifyy");
+          return { status: 0 };
+        },
+      });
+      assert.equal(result.method, "override");
+      assert.equal(result.command, "operador --instala graphifyy");
+    } finally {
+      if (original === undefined) delete process.env.FLOWTASK_GRAPHIFY_INSTALL_COMMAND;
+      else process.env.FLOWTASK_GRAPHIFY_INSTALL_COMMAND = original;
+    }
+  });
+
+  it("selecciona pipx antes que uv", () => {
+    const result = installGraphify({
+      detectFn: (name) => name === "pipx" || name === "uv",
+      runFn: (command) => {
+        assert.equal(command, "pipx install graphifyy");
+        return { status: 0 };
+      },
+    });
+    assert.equal(result.method, "pipx");
+    assert.equal(result.command, "pipx install graphifyy");
+  });
+
+  it("selecciona uv cuando pipx no está disponible", () => {
+    const result = installGraphify({
+      detectFn: (name) => name === "uv",
+      runFn: (command) => {
+        assert.equal(command, "uv tool install graphifyy");
+        return { status: 0 };
+      },
+    });
+    assert.equal(result.method, "uv");
+    assert.equal(result.command, "uv tool install graphifyy");
+  });
+
+  it("rechaza sin instalador y no ejecuta el runner", () => {
+    let called = false;
+    const result = installGraphify({
+      detectFn: () => false,
+      runFn: () => { called = true; return { status: 0 }; },
+    });
+    assert.equal(called, false);
+    assert.equal(result.success, false);
+    assert.equal(result.method, "none");
+    assert.equal(result.command, null);
+    assert.equal(result.exitCode, null);
+    assert.match(result.warning, /pipx.*uv/);
+    assert.match(result.stderr, /pipx.*uv/);
+  });
+
+  it("trunca stderr a 2048 caracteres", () => {
+    const stderr = "x".repeat(3000);
+    const result = installGraphify({
+      command: "custom install graphifyy",
+      runFn: () => ({ status: 7, stderr }),
+    });
+    assert.equal(result.exitCode, 7);
+    assert.equal(result.stderr.length, 2048);
+    assert.equal(result.stderr, stderr.slice(0, 2048));
   });
 });
 
@@ -533,13 +617,19 @@ describe("coordinateGraphify", () => {
       opts: {
         detectFn: () => false,
         versionFn: () => null,
-        runFn: () => ({ status: 1 }),
+        installCmdFn: () => "custom install graphifyy",
+        runFn: () => ({ status: 1, stderr: "error de prueba" }),
       },
     });
 
     assert.equal(projectState.enabled, false);
     assert.equal(projectState.lastInitializationResult, "failed");
     assert.ok(warnings.some((w) => w.includes("Reintenta con flowtask update")));
+    const globalState = loadGlobalState();
+    assert.equal(globalState.lastInstallMethod, "override");
+    assert.equal(globalState.lastInstallCommand, "custom install graphifyy");
+    assert.equal(globalState.lastInstallExitCode, 1);
+    assert.equal(globalState.lastInstallStderr, "error de prueba");
   });
 
   it("hook failure: hooksInstalled=false, warning returned, flow continues", async () => {
@@ -577,10 +667,37 @@ describe("coordinateGraphify", () => {
         opts: {
           detectFn: () => false,
           versionFn: () => null,
+          installCmdFn: () => "custom install graphifyy",
           runFn: () => { throw new Error("total failure"); },
         },
       }),
     );
+  });
+
+  it("persiste metadata de instalación exitosa antes de redetectar", async () => {
+    const rl = mockReadline({ install: "y", enable: "n" });
+    const { projectState, globalState } = await coordinateGraphify({
+      projectDir: tempDir,
+      selectedClis: ["opencode"],
+      readline: rl,
+      opts: {
+        detectFn: (name) => name === "pipx",
+        versionFn: () => "1.0",
+        runFn: (command) => {
+          assert.equal(command, "pipx install graphifyy");
+          return { status: 0, stderr: "" };
+        },
+        grafoExtensions: false,
+      },
+    });
+
+    assert.equal(projectState.lastInitializationResult, "skipped");
+    assert.equal(globalState.lastInstallResult, "success");
+    assert.equal(globalState.lastInstallMethod, "pipx");
+    assert.equal(globalState.lastInstallCommand, "pipx install graphifyy");
+    assert.equal(globalState.lastInstallExitCode, 0);
+    assert.equal(globalState.lastInstallStderr, "");
+    assert.deepEqual(loadGlobalState(), globalState);
   });
 
   it("runs registered extensions and persists their results", async () => {
