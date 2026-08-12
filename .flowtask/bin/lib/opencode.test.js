@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, test } from "node:test";
-import { mergeOpencodeConfig } from "./opencode.js";
+import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
 
 const fixtures = [];
 
@@ -58,4 +58,35 @@ test("merge preserves manual values and repairs duplicate plugins idempotently",
   assert.equal(first.command.check.command, "manual");
   assert.equal(first.plugin.filter((entry) => entry.includes("flowtask-plugin")).length, 1);
   assert.ok(first.plugin.some((entry) => entry.includes("external")));
+});
+
+test("register replaces FlowTask objects without disturbing third-party entries", () => {
+  const { root } = fixture();
+  const configPath = path.join(root, ".opencode", "tui.json");
+  writeJson(configPath, {
+    $schema: "https://custom/tui-schema.json",
+    keybinds: { input_submit: "return" },
+    plugin: [
+      { path: "./plugins/flowtask-model-selector/old.js", enabled: false },
+      "./plugins/external/index.js",
+      { path: ".\\plugins\\flowtask-model-selector\\duplicate.js" },
+    ],
+  });
+
+  assert.equal(registerPluginArrayEntry(configPath, "./plugins/flowtask-model-selector/dist/tui.js"), true);
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  assert.deepEqual(config.keybinds, { input_submit: "return" });
+  assert.equal(config.plugin.filter((entry) => JSON.stringify(entry).includes("flowtask-model-selector")).length, 1);
+  assert.deepEqual(config.plugin[1], "./plugins/external/index.js");
+});
+
+test("invalid existing TUI config fails without replacing it", () => {
+  const { root } = fixture();
+  const configPath = path.join(root, ".opencode", "tui.json");
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  const original = "{ invalid tui config\n";
+  fs.writeFileSync(configPath, original);
+
+  assert.equal(registerPluginArrayEntry(configPath, "./plugins/flowtask-model-selector/dist/tui.js"), false);
+  assert.equal(fs.readFileSync(configPath, "utf8"), original);
 });

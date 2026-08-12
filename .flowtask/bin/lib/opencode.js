@@ -77,6 +77,14 @@ function extractPluginName(pluginPath) {
   return match ? match[1] : null;
 }
 
+function isFlowTaskPluginEntry(entry) {
+  const entryPath = typeof entry === "string" ? entry : entry?.path;
+  if (typeof entryPath !== "string") return false;
+  const normalized = entryPath.replace(/\\/g, "/");
+  const name = extractPluginName(entryPath);
+  return Boolean(name?.includes("flowtask-") || normalized.includes("flowtask-"));
+}
+
 function mergeMissingObjects(target, source) {
   const result = { ...target };
   for (const [key, sourceValue] of Object.entries(source)) {
@@ -95,18 +103,39 @@ function mergeMissingObjects(target, source) {
 function normalizePluginEntries(existing, incoming) {
   const result = [];
   const indexes = new Map();
-  const add = (entry, canonical = false) => {
+  const incomingByName = new Map();
+  for (const entry of incoming) {
     const entryPath = typeof entry === "string" ? entry : entry?.path;
     const name = extractPluginName(entryPath);
-    if (!name || !indexes.has(name)) {
+    if (name && !incomingByName.has(name)) incomingByName.set(name, entry);
+  }
+
+  for (const entry of existing) {
+    const entryPath = typeof entry === "string" ? entry : entry?.path;
+    const name = extractPluginName(entryPath);
+    if (isFlowTaskPluginEntry(entry)) {
+      if (name && indexes.has(name)) continue;
+      if (name) indexes.set(name, result.length);
+    }
+    result.push(entry);
+  }
+
+  for (const entry of incoming) {
+    const entryPath = typeof entry === "string" ? entry : entry?.path;
+    const name = extractPluginName(entryPath);
+    if (name && indexes.has(name)) {
+      result[indexes.get(name)] = entry;
+    } else {
       if (name) indexes.set(name, result.length);
       result.push(entry);
-      return;
     }
-    if (canonical) result[indexes.get(name)] = entry;
-  };
-  for (const entry of existing) add(entry);
-  for (const entry of incoming) add(entry, true);
+  }
+
+  // Incoming entries are canonical, but only one entry per FlowTask plugin is kept.
+  for (const [name, entry] of incomingByName) {
+    const index = indexes.get(name);
+    if (index !== undefined) result[index] = entry;
+  }
   return result;
 }
 
@@ -123,8 +152,8 @@ export function registerPluginArrayEntry(configPath, entry, schema = "https://op
         const content = fs.readFileSync(configPath, "utf8").trim();
         config = content ? JSON.parse(content) : {};
       } catch {
-        logWarn(`${configPath} is invalid, starting fresh.`);
-        config = {};
+        logError(`${configPath} es inválido o ilegible. Corrígelo y reintenta con flowtask update.`);
+        return false;
       }
     } else {
       config = {};
@@ -169,8 +198,21 @@ export function registerPluginArrayEntry(configPath, entry, schema = "https://op
     config.plugin = normalizePluginEntries(plugins, []);
 
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
-    if (!fs.existsSync(configPath)) throw new Error(`no se pudo verificar ${configPath}`);
+    const original = fileExists(configPath) ? fs.readFileSync(configPath) : null;
+    const tempPath = `${configPath}.${process.pid}.tmp`;
+    try {
+      fs.writeFileSync(tempPath, JSON.stringify(config, null, 2), "utf8");
+      fs.renameSync(tempPath, configPath);
+      const verified = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      if (JSON.stringify(verified) !== JSON.stringify(config)) throw new Error("la verificación del destino falló");
+    } catch (err) {
+      try {
+        if (original) fs.writeFileSync(configPath, original);
+        else fs.rmSync(configPath, { force: true });
+        fs.rmSync(tempPath, { force: true });
+      } catch { /* preserve the original error */ }
+      throw err;
+    }
     logSuccess(`Plugin entry registered in ${path.basename(configPath)}`);
     return true;
   } catch (err) {

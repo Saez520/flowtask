@@ -438,7 +438,7 @@ function removeClassifierDirectories(projectDir) {
 function cleanupDisabledClassifier(projectDir, manifest) {
   if (isClassifierEnabled(manifest)) return;
 
-  const tuiConfigPath = path.join(projectDir, "tui.json");
+  const tuiConfigPath = path.join(projectDir, ".opencode", "tui.json");
   const serverConfigPath = path.join(projectDir, ".opencode", "opencode.json");
   const hasInstallation = CLASSIFIER_PLUGIN_NAMES.some((name) =>
     fileExists(path.join(projectDir, ".opencode", "plugins", name))
@@ -459,7 +459,7 @@ function cleanupDisabledClassifier(projectDir, manifest) {
  *    NOT nested inside it (TUI/server plugin paths are resolved relative to
  *    the project root / ideDir, not the flowtask subdir).
  * 2. Registers each copied plugin in the right config file:
- *    - kind "tui"    → tui.json          (via registerPluginArrayEntry)
+ *    - kind "tui"    → .opencode/tui.json (via registerPluginArrayEntry)
  *    - kind "server" → .opencode/opencode.json (via registerPluginArrayEntry)
  */
 export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
@@ -470,7 +470,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
 
   const opencodePluginsDir = path.join(projectDir, ".opencode", "plugins");
 
-  const tuiManifestPath = path.join(flowtaskDir, "tui.json");
+  const nativeTuiPath = path.join(projectDir, ".opencode", "tui.json");
   const projectTuiPath = path.join(projectDir, "tui.json");
   let legacyTui = null;
   if (fileExists(projectTuiPath)) {
@@ -513,11 +513,11 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
     }
 
     if (entry.kind === "tui") {
-      const installationRuntimePath = calculatePluginRelativePath(tuiManifestPath, projectDir, entry.name, entry.entrypoint);
-      if (!registerPluginArrayEntry(tuiManifestPath, installationRuntimePath, "https://opencode.ai/tui.json")) {
-        throw new Error(`No se pudo escribir el manifiesto TUI de instalación ${tuiManifestPath}`);
+      const installationRuntimePath = calculatePluginRelativePath(nativeTuiPath, projectDir, entry.name, entry.entrypoint);
+      if (!registerPluginArrayEntry(nativeTuiPath, installationRuntimePath, "https://opencode.ai/tui.json")) {
+        throw new Error(`No se pudo escribir el registro TUI nativo ${nativeTuiPath}`);
       }
-      const installationTui = JSON.parse(fs.readFileSync(tuiManifestPath, "utf8"));
+      const installationTui = JSON.parse(fs.readFileSync(nativeTuiPath, "utf8"));
       const registered = Array.isArray(installationTui.plugin) && installationTui.plugin.some((plugin) => {
         const pluginPath = typeof plugin === "string" ? plugin : plugin?.path;
         return pluginPath === installationRuntimePath;
@@ -526,7 +526,10 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
       if (legacyTui) {
         legacyTui.plugins.forEach((plugin, index) => {
           const pluginPath = typeof plugin === "string" ? plugin : plugin?.path;
-          if (extractPluginName(pluginPath) === entry.name) migratedLegacyIndexes.add(index);
+          const normalizedPath = typeof pluginPath === "string" ? pluginPath.replace(/\\/g, "/") : "";
+          if (extractPluginName(pluginPath) === entry.name || normalizedPath.includes(entry.name)) {
+            migratedLegacyIndexes.add(index);
+          }
         });
       }
     } else if (entry.kind === "server") {

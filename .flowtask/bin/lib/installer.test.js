@@ -77,8 +77,8 @@ function installedPluginEntries(configPath) {
   return readJson(configPath).plugin ?? [];
 }
 
-function installationTuiEntries(flowtaskDir) {
-  return installedPluginEntries(path.join(flowtaskDir, "tui.json"));
+function nativeTuiEntries(root) {
+  return installedPluginEntries(path.join(root, ".opencode", "tui.json"));
 }
 
 test("disabled default does not install classifier plugins", () => {
@@ -93,8 +93,8 @@ test("disabled default does not install classifier plugins", () => {
   assert.equal(fs.existsSync(path.join(root, ".opencode", "plugins", "flowtask-classifier-hook")), false);
   assert.equal(fs.existsSync(path.join(root, ".opencode", "plugins", "flowtask-classifier-tui")), false);
   assert.ok(fs.existsSync(path.join(root, ".opencode", "plugins", "flowtask-model-selector")));
-  assert.deepEqual(installationTuiEntries(flowtaskDir), [
-    "../.opencode/plugins/flowtask-model-selector/dist/tui.js",
+  assert.deepEqual(nativeTuiEntries(root), [
+    "./plugins/flowtask-model-selector/dist/tui.js",
   ]);
 });
 
@@ -107,7 +107,7 @@ test("enabled pair installs and registers both classifier plugins", () => {
 
   assert.ok(fs.existsSync(path.join(root, ".opencode", "plugins", "flowtask-classifier-hook", "dist", "index.js")));
   assert.ok(fs.existsSync(path.join(root, ".opencode", "plugins", "flowtask-classifier-tui", "dist", "tui.js")));
-  assert.ok(installationTuiEntries(flowtaskDir).some((entry) => entry.includes("flowtask-classifier-tui")));
+  assert.ok(nativeTuiEntries(root).some((entry) => entry.includes("flowtask-classifier-tui")));
   assert.ok(installedPluginEntries(path.join(root, ".opencode", "opencode.json")).some((entry) => entry.includes("flowtask-classifier-hook")));
 });
 
@@ -143,8 +143,8 @@ test("mismatch removes both components and emits the exact deprecation alert onc
   assert.equal(fs.existsSync(path.join(pluginRoot, "flowtask-classifier-hook")), false);
   assert.equal(fs.existsSync(path.join(pluginRoot, "flowtask-classifier-tui")), false);
   assert.equal(output.join("\n").split("el plugin de clasificación fue deprecado").length - 1, 1);
-  assert.deepEqual(installationTuiEntries(flowtaskDir), [
-    "../.opencode/plugins/flowtask-model-selector/dist/tui.js",
+  assert.deepEqual(nativeTuiEntries(root), [
+    "./plugins/flowtask-model-selector/dist/tui.js",
   ]);
   assert.deepEqual(installedPluginEntries(path.join(root, "tui.json")), [
     "./.opencode/plugins/flowtask-classifier-tui/dist/tui.js",
@@ -171,6 +171,11 @@ test("cleanup preserves unrelated plugin directories and config entries", () => 
       "./plugins/user-tui/dist/index.js",
     ],
   });
+  writeJson(path.join(root, ".opencode", "tui.json"), {
+    "$schema": "https://custom/tui-schema.json",
+    keybinds: { input_submit: "tab" },
+    plugin: ["./plugins/user-tui/dist/index.js"],
+  });
   writeJson(path.join(root, ".opencode", "opencode.json"), {
     "$schema": "https://opencode.ai/config.json",
     plugin: [
@@ -188,6 +193,12 @@ test("cleanup preserves unrelated plugin directories and config entries", () => 
     "./.opencode/plugins/flowtask-classifier-tui/dist/tui.js",
     "./plugins/user-tui/dist/index.js",
   ]);
+  assert.deepEqual(nativeTuiEntries(root), [
+    "./plugins/user-tui/dist/index.js",
+    "./plugins/flowtask-model-selector/dist/tui.js",
+  ]);
+  assert.deepEqual(readJson(path.join(root, ".opencode", "tui.json")).keybinds, { input_submit: "tab" });
+  assert.equal(readJson(path.join(root, ".opencode", "tui.json")).$schema, "https://custom/tui-schema.json");
   assert.deepEqual(installedPluginEntries(path.join(root, ".opencode", "opencode.json")), [
     "./plugins/flowtask-review-gate/dist/index.js",
     "./plugins/flowtask-context-checkpoint/index.ts",
@@ -259,14 +270,15 @@ test("update integrates the canonical OpenCode config into an installed target",
   assert.deepEqual(updatedConfig.agent.existing, { description: "manual" });
 });
 
-test("writes TUI only in the installation and preserves an absent consumer manifest", () => {
+test("writes TUI only in the native consumer manifest", () => {
   const { root, flowtaskDir } = createFixture();
   const manifest = createManifest();
   createSources(flowtaskDir, manifest);
 
   installManifestPlugins(root, manifest, flowtaskDir);
 
-  assert.ok(fs.existsSync(path.join(flowtaskDir, "tui.json")));
+  assert.ok(fs.existsSync(path.join(root, ".opencode", "tui.json")));
+  assert.equal(fs.existsSync(path.join(flowtaskDir, "tui.json")), false);
   assert.equal(fs.existsSync(path.join(root, "tui.json")), false);
 });
 
@@ -325,7 +337,9 @@ test("does not remove a manifest TUI entry when its source was not copied", () =
     "./.opencode/plugins/flowtask-model-selector/dist/tui.js",
     "./plugins/user-tui/dist/index.js",
   ]);
-  assert.ok(installationTuiEntries(flowtaskDir).some((entry) => entry.includes("flowtask-classifier-tui")));
+  assert.deepEqual(nativeTuiEntries(root), [
+    "./plugins/flowtask-classifier-tui/dist/tui.js",
+  ]);
 });
 
 test("preserves an unmanifested TUI plugin even when its source exists", () => {
@@ -363,7 +377,7 @@ test("preserves a legacy entry when installation TUI registration fails", () => 
   const { root, flowtaskDir } = createFixture();
   const manifest = [createManifest()[2]];
   createSources(flowtaskDir, manifest);
-  fs.mkdirSync(path.join(flowtaskDir, "tui.json"));
+  fs.mkdirSync(path.join(root, ".opencode", "tui.json"), { recursive: true });
   writeJson(path.join(root, "tui.json"), {
     plugin: ["./.opencode/plugins/flowtask-model-selector/dist/tui.js"],
   });
@@ -372,6 +386,7 @@ test("preserves a legacy entry when installation TUI registration fails", () => 
   assert.deepEqual(installedPluginEntries(path.join(root, "tui.json")), [
     "./.opencode/plugins/flowtask-model-selector/dist/tui.js",
   ]);
+  assert.equal(fs.existsSync(path.join(root, ".opencode", "tui.json")), true);
 });
 
 test("removes duplicate legacy entries when one TUI plugin is migrated", () => {
@@ -387,8 +402,14 @@ test("removes duplicate legacy entries when one TUI plugin is migrated", () => {
   });
 
   installManifestPlugins(root, manifest, flowtaskDir);
+  const firstNative = fs.readFileSync(path.join(root, ".opencode", "tui.json"), "utf8");
+  installManifestPlugins(root, manifest, flowtaskDir);
 
   assert.deepEqual(installedPluginEntries(path.join(root, "tui.json")), [
     "./plugins/user-tui/dist/index.js",
   ]);
+  assert.deepEqual(nativeTuiEntries(root), [
+    "./plugins/flowtask-model-selector/dist/tui.js",
+  ]);
+  assert.equal(fs.readFileSync(path.join(root, ".opencode", "tui.json"), "utf8"), firstNative);
 });
