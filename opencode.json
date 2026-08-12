@@ -40,6 +40,7 @@
         "flowtask-review-orchestrator": "allow",
         "flowtask-inspector": "allow",
         "flowtask-onboarder": "allow",
+        "flowtask-graphify-docs-media": "allow",
         "*": "deny"
       }
     },
@@ -152,6 +153,16 @@
         "edit": "allow",
         "bash": "allow"
       }
+    },
+    "flowtask-graphify-docs-media": {
+      "description": "Generates documentation and media for Graphify. Background agent activated after acceptance.",
+      "mode": "subagent",
+      "hidden": true,
+      "prompt": "{file:.flowtask/agents/graphify-docs-media.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
     }
   },
   "command": {
@@ -224,6 +235,12 @@
       "description": "Evaluate developer level and assign a runner personality",
       "template": "Activate the onboarder to evaluate developer level and assign a personality.\n\n1. Detect the command as COMMAND:/onboard.\n2. Activate @flowtask-onboarder with the user's prompt.\n3. After the onboarder completes, acknowledge the new personality if assigned.\n\n$ARGUMENTS",
       "agent": "flowtask-runner",
+      "subtask": true
+    },
+    "update": {
+      "description": "Update FlowTask installation: sync agents, skills, plugins and config",
+      "template": "Update FlowTask installation in this project.\n1. Sync agents from canonical source\n2. Sync skills\n3. Merge opencode.json\n4. Reinstall plugins from manifest\n5. Regenerate derived configs\n$ARGUMENTS",
+      "agent": "flowtask-initializer",
       "subtask": true
     }
   }
