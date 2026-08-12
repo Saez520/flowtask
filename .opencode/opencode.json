@@ -28,7 +28,7 @@
     "flowtask-runner": {
       "description": "Orchestrator of FlowTask workflow. Activates subagents, manages state via Engram. Only agent the user talks to directly.",
       "mode": "primary",
-      "prompt": "{file:.flowtask/agents/runner.md}",
+      "prompt": "{file:../.flowtask/agents/runner.md}",
       "permission": {
         "bash": "allow",
         "task": "allow"
@@ -53,7 +53,7 @@
       "description": "Guides requirement clarification through conversation. Helps user clarify what they need before formalizing CA. Never writes code or plans.",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "{file:.flowtask/agents/ca-writer.md}",
+      "prompt": "{file:../.flowtask/agents/ca-writer.md}",
       "permission": {
         "edit": "allow",
         "bash": "allow"
@@ -63,7 +63,7 @@
       "description": "Analyzes requirements and generates implementation plans. Never writes code. Activated only through runner.",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "{file:.flowtask/agents/planner.md}",
+      "prompt": "{file:../.flowtask/agents/planner.md}",
       "permission": {
         "edit": "allow",
         "bash": "allow"
@@ -73,7 +73,7 @@
       "description": "Implements plans following project conventions retrieved from Engram. Never makes design decisions. Activated only through runner.",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "{file:.flowtask/agents/constructor.md}",
+      "prompt": "{file:../.flowtask/agents/constructor.md}",
       "permission": {
         "edit": "allow",
         "bash": "allow"
@@ -83,7 +83,7 @@
       "description": "Validates implementation against plan and project conventions. Never writes code. Activated only through runner.",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "{file:.flowtask/agents/validator.md}",
+      "prompt": "{file:../.flowtask/agents/validator.md}",
       "permission": {
         "edit": "allow",
         "bash": "allow"
@@ -93,7 +93,7 @@
       "description": "Scans project and populates Engram with project context. Activated by /init commands.",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "{file:.flowtask/agents/initializer.md}",
+      "prompt": "{file:../.flowtask/agents/initializer.md}",
       "permission": {
         "edit": "allow",
         "bash": "allow"
@@ -103,7 +103,7 @@
       "description": "Instruments code with logging. Never modifies business logic. Activated by runner when logging is needed.",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "{file:.flowtask/agents/logger.md}",
+      "prompt": "{file:../.flowtask/agents/logger.md}",
       "permission": {
         "edit": "allow",
         "bash": "allow"
@@ -113,7 +113,7 @@
       "description": "Generates tests for implemented code. Never modifies production code. Activated by runner when tests are needed.",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "{file:.flowtask/agents/tester.md}",
+      "prompt": "{file:../.flowtask/agents/tester.md}",
       "permission": {
         "edit": "allow",
         "bash": "allow"
@@ -123,7 +123,7 @@
       "description": "Plan reviewer. Verifies plans are executable and references are valid. Auto-activates for plans with >5 tasks.",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "{file:.flowtask/agents/plan-auditor.md}",
+      "prompt": "{file:../.flowtask/agents/plan-auditor.md}",
       "permission": {
         "edit": "allow",
         "bash": "allow"
@@ -133,7 +133,7 @@
       "description": "Orquestador de revisión de código 4R Lenses. Recibe scope del runner, evalúa contexto, carga skills según criterios, reporta hallazgos con severidad. Read-only.",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "{file:.flowtask/agents/review-orchestrator.md}",
+      "prompt": "{file:../.flowtask/agents/review-orchestrator.md}",
       "permission": {
         "edit": "allow",
         "bash": "allow"
@@ -143,7 +143,7 @@
       "description": "Explore and validate any aspect of the project without creating a CA. Presents tradeoffs and GAPs.",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "{file:.flowtask/agents/inspector.md}",
+      "prompt": "{file:../.flowtask/agents/inspector.md}",
       "permission": {
         "edit": "allow",
         "bash": "allow"
@@ -153,7 +153,7 @@
       "description": "Evaluates developer experience level through a technical quiz based on the project stack and assigns a runner personality.",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "{file:.flowtask/agents/onboarder.md}",
+      "prompt": "{file:../.flowtask/agents/onboarder.md}",
       "permission": {
         "edit": "allow",
         "bash": "allow"
