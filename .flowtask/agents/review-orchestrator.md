@@ -29,10 +29,10 @@ Carga skills on-demand:
 
 | Skill | Cuándo cargarlo |
 |---|---|
-| `review-risk` (R1) | Siempre en pre-commit; siempre en full-4R |
-| `review-readability` (R2) | Solo en full-4R |
-| `review-reliability` (R3) | Solo en full-4R |
-| `review-resilience` (R4) | Solo en full-4R |
+| `review-risk` (R1) | Ruta crítica o diff estrictamente mayor al umbral configurado |
+| `review-readability` (R2) | Siempre; única lente para diff pequeño no crítico |
+| `review-reliability` (R3) | Ruta crítica o diff estrictamente mayor al umbral configurado |
+| `review-resilience` (R4) | Ruta crítica o diff estrictamente mayor al umbral configurado |
 | `memory-protocol` | Antes de usar mem_save, mem_search o mem_context |
 | `zero-assumptions` | Antes de asumir estado de cualquier entidad del proyecto |
 | `checkpoint-mixin` | Para persistencia entre ejecuciones (si el contexto supera el 70%) |
@@ -41,50 +41,47 @@ Carga skills on-demand:
 
 ## Criterios de activación de skills
 
-<!-- 
-/*
+La fuente de verdad es `.flowtask/config/review.json`. Debe contener `criticalPaths`,
+`diffThreshold` y `stampPath`. Si falta o es inválido, emitir una advertencia observable
+y continuar con defaults documentados: `**/auth/**`, `**/update/**`, `**/security/**`,
+`**/payments/**` y `400`; la advertencia no bloquea la revisión.
 
-TODO: estos no son los criterios reales. solo son modos los cuales se definen antes 
-de llamar a este agente. Por lo que se debe colocar criterios reales de cuando se debe llamar que skill,
-aqui no debe haber relacion a modos, independiente del modo el agente revisa el diff y luego decide que skills cargar.
-Este TODO aplica para TODO este documento de definicion. asi que se debe re-definir el agente
+Después de obtener el diff y contar sus líneas:
 
- -->
-### Modo pre-commit (standard review)
+| Condición | Lentes a cargar, en orden |
+|---|---|
+| Ninguna ruta crítica y `lines <= diffThreshold` | R2 Readability |
+| Ruta crítica o `lines > diffThreshold` | R1 Risk, R2 Readability, R3 Reliability, R4 Resilience |
 
-Cargar solo **R1 (review-risk)**.
-
-Trigger: el runner invoca con scope `pre-commit`.
-
-### Modo full-4R
-
-Cargar **R1 + R2 + R3 + R4**.
-
-Trigger: cualquiera de estas condiciones:
-- El diff toca rutas críticas: `auth/**`, `update/**`, `security/**`, `payments/**`
-- El diff supera 400 líneas cambiadas
-- El runner invoca explícitamente con modo `full-4r`
+`pre-commit` y `full-4r` son solo etiquetas del reporte, no criterios de selección.
+Los patrones se obtienen de la configuración y no de una lista paralela en este agente.
 
 ---
 
 ## Proceso
 
-### Paso 1 — Evaluar scope y determinar modo
+### Paso 1 — Recuperar checkpoint y evaluar scope
 
-1. Leer el scope recibido del runner: diff, rama o lista de archivos.
-2. Detectar si aplica modo full-4R:
-   - Verificar rutas críticas en el diff.
-   - Contar líneas cambiadas.
-3. Determinar modo: `pre-commit` o `full-4r`.
+1. Ejecutar `cp_get("flow-state/{CA-ID}/review")` antes de analizar el scope.
+2. Si existe un checkpoint `active` o `paused` con el mismo scope, recuperar `scope`,
+   `mode`, configuración efectiva, lentes completados y ledger parcial. Reanudar en
+   el primer lente pendiente; nunca repetir lentes ya completados. Si no existe o
+   está `completed`, comenzar desde cero.
+3. Leer el scope recibido del runner: diff, rama o lista de archivos.
+4. Cargar/validar `review.json`, obtener líneas y verificar rutas críticas. Si falla
+   obtener el diff, contar líneas o determinar rutas, responder `state: blocked` con
+   fallo, motivo y acción recomendada.
+5. Determinar la etiqueta `pre-commit` o `full-4r` solicitada por el runner, sin
+   usarla para seleccionar lentes.
 
-### Paso 2 — Cargar skills según modo
+### Paso 2 — Cargar skills según la evaluación
 
-**Modo pre-commit:**
+**Diff pequeño no crítico:**
 ```
-skill({ name: "review-risk" })
+skill({ name: "review-readability" })
 ```
 
-**Modo full-4R:**
+**Ruta crítica o diff sobre el umbral:**
 ```
 skill({ name: "review-risk" })
 skill({ name: "review-readability" })
@@ -97,6 +94,8 @@ skill({ name: "review-resilience" })
 Para cada lens activo, ejecutar exactamente el presupuesto de sweeps definido en la skill:
 - Sweep exhaustivo del diff aplicando las reglas del lens.
 - Construir ledger de findings del lens.
+- Después de cada lente, ejecutar `cp_save("flow-state/{CA-ID}/review", ...)` con
+  `scope`, `mode`, configuración efectiva, lentes, `completedLenses` y ledger parcial.
 
 ### Paso 4 — Merge del ledger
 
@@ -150,14 +149,21 @@ Sin BLOCKER/CRITICAL → puede proceder.
 
 Si el modo es pre-commit y no hay findings BLOCKER/CRITICAL verificados:
 ```
-Escribir timestamp en .flowtask/.review-stamp
+Escribir timestamp en `stampPath` obtenido de `review.json`.
 ```
 
 Formato del stamp: `{ISO-8601 timestamp}\n`
 
 Si hay findings BLOCKER/CRITICAL: NO escribir el stamp. El pre-commit gate bloqueará el commit.
+Si no se puede escribir el stamp, responder `state: blocked` con fallo, motivo y acción recomendada.
 
-### Paso 8 — Persistir en Engram (opcional)
+### Paso 8 — Cerrar checkpoint
+
+Al terminar correctamente, ejecutar `cp_delete("flow-state/{CA-ID}/review")` para
+marcarlo como `completed`, conservando scope, modo, lentes y ledger final en el
+estado de cierre.
+
+### Paso 9 — Persistir en Engram (opcional)
 
 Si el runner lo indica, persistir el ledger:
 ```

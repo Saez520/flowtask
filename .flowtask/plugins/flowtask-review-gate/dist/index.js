@@ -1,67 +1,113 @@
-import { execSync } from "node:child_process";
-import { existsSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
-const STAMP_PATH = ".flowtask/.review-stamp";
+import { execFileSync } from "node:child_process";
+import { readFileSync, unlinkSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
+const CONFIG_PATH = ".flowtask/config/review.json";
+function gateError(operation, cause, action) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    return new Error(`[FlowTask Review Gate] Commit bloqueado.\n` +
+        `Operación fallida: ${operation}.\n` +
+        `Causa: ${detail}.\n` +
+        `Acción recomendada: ${action}`);
+}
+function readConfig(cwd) {
+    const path = resolve(cwd, CONFIG_PATH);
+    let raw;
+    try {
+        raw = readFileSync(path, "utf8");
+    }
+    catch (error) {
+        throw gateError("leer configuración", error, "restaurá review.json y reintentá");
+    }
+    let value;
+    try {
+        value = JSON.parse(raw);
+    }
+    catch (error) {
+        throw gateError("parsear configuración", error, "corregí el JSON y reintentá");
+    }
+    if (!value || typeof value !== "object" ||
+        typeof value.enabled !== "boolean" ||
+        typeof value.stampPath !== "string" ||
+        !value.stampPath) {
+        throw gateError("validar configuración", "enabled debe ser boolean y stampPath una ruta no vacía", "completá el contrato de review.json y reintentá");
+    }
+    const config = value;
+    return { enabled: config.enabled, stampPath: config.stampPath };
+}
 function getDiffStats(cwd) {
+    let lastError;
     for (const args of [["diff", "--cached", "--stat"], ["diff", "--stat"]]) {
         try {
-            const out = execSync(`git ${args.join(" ")}`, { cwd, encoding: "utf-8" }).trim();
-            if (!out)
-                continue;
-            const last = out.split("\n").pop() ?? "";
-            const m = last.match(/(\d+)\s+insertions?\(\+\)/);
-            const d = last.match(/(\d+)\s+deletions?\(-\)/);
-            const f = last.match(/(\d+)\s+files?\s+changed/);
+            const output = execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+            if (!output)
+                return { lines: 0, files: 0 };
+            const summary = output.split("\n").pop() ?? "";
+            const insertions = summary.match(/(\d+)\s+insertions?\(\+\)/);
+            const deletions = summary.match(/(\d+)\s+deletions?\(-\)/);
+            const files = summary.match(/(\d+)\s+files? changed/);
+            if (!insertions && !deletions && !files) {
+                throw new Error(`salida de git diff no reconocida: ${summary}`);
+            }
             return {
-                lines: (m ? +m[1] : 0) + (d ? +d[1] : 0),
-                files: f ? +f[1] : 0,
+                lines: (insertions ? Number(insertions[1]) : 0) + (deletions ? Number(deletions[1]) : 0),
+                files: files ? Number(files[1]) : 0,
             };
         }
-        catch {
-            continue;
+        catch (error) {
+            lastError = error;
         }
     }
-    return null;
+    throw gateError("analizar diff", lastError ?? "sin estadísticas", "verificá el repositorio y reintentá");
 }
 function buildGateMessage(stats) {
-    const lines = [
+    return [
         "[FlowTask Review Gate] Commit bloqueado.",
         "",
-    ];
-    if (stats) {
-        lines.push(`📊 Diff: ${stats.files} archivo(s), ${stats.lines} línea(s).`, "");
-    }
-    lines.push("→ Runner: evaluá si este cambio requiere revisión pre-commit.", "  - Si es trivial (gitignore, docs, chore ≤ 5 líneas): re-ejecutá el commit con --no-verify.", "  - Si no: invocá flowtask-review-orchestrator. En caso de BLOCKER/CRITICAL, reportar y esperar que el desarrollador corrija.");
-    return lines.join("\n");
+        `📊 Diff: ${stats.files} archivo(s), ${stats.lines} línea(s).`,
+        "",
+        "→ Runner: evaluá si este cambio requiere revisión pre-commit.",
+        "  - Si es trivial (gitignore, docs, chore ≤ 5 líneas): re-ejecutá el commit con --no-verify.",
+        "  - Si no: invocá flowtask-review-orchestrator y generá el stamp antes de reintentar.",
+    ].join("\n");
 }
 export default async function (input) {
     const sessionDir = input.directory;
     return {
         "tool.execute.before": async (hookInput, hookOutput) => {
-            const { tool } = hookInput;
-            if (tool !== "bash")
+            if (hookInput.tool !== "bash")
                 return;
             const command = String(hookOutput?.args?.command ?? "");
             if (!command.includes("git commit"))
                 return;
-            // Bypass flags — skip the gate entirely
             if (command.includes("--no-verify") || command.includes("--no-review"))
                 return;
             const workdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
-            const stampPath = join(workdir, STAMP_PATH);
-            // Stamp exists: consume it and allow the commit
-            if (existsSync(stampPath)) {
-                try {
-                    unlinkSync(stampPath);
-                }
-                catch {
-                    throw new Error(buildGateMessage(null));
-                }
+            const config = readConfig(workdir);
+            if (!config.enabled)
                 return;
+            const stampPath = isAbsolute(config.stampPath)
+                ? config.stampPath
+                : resolve(workdir, config.stampPath);
+            let stamp;
+            try {
+                stamp = readFileSync(stampPath, "utf8").trim();
             }
-            // No stamp: measure diff and ask runner to evaluate
-            const stats = getDiffStats(workdir);
-            throw new Error(buildGateMessage(stats));
+            catch (error) {
+                if (error.code === "ENOENT") {
+                    throw new Error(buildGateMessage(getDiffStats(workdir)));
+                }
+                throw gateError("leer stamp", error, "ejecutá la revisión pre-commit y generá un stamp válido");
+            }
+            if (!stamp || Number.isNaN(Date.parse(stamp))) {
+                throw gateError("validar stamp", "timestamp ISO-8601 inválido", "regenerá el stamp mediante la revisión");
+            }
+            try {
+                unlinkSync(stampPath);
+            }
+            catch (error) {
+                throw gateError("consumir stamp", error, "verificá permisos y reintentá");
+            }
+            return;
         },
         dispose: async () => { },
     };
