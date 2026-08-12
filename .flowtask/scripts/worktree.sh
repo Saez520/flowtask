@@ -131,7 +131,7 @@ worktree_registered_for_branch() {
 
 ensure_clean_base() {
   if ! git diff --quiet || ! git diff --cached --quiet; then
-    die "La rama base tiene cambios locales; limpiá el estado antes de completar el CA"
+    die "La rama base tiene cambios locales; limpiá el estado antes de completar la ejecución"
   fi
 }
 
@@ -156,7 +156,7 @@ create_worktree() {
     die "La ruta '$path' ya existe; limpiá el directorio antes de crear el worktree"
   fi
 
-  mkdir -p "$WORKTREES_DIR"
+  mkdir -p "$(dirname "$path_abs")"
   git worktree add -b "$branch" "$path_abs" "$base_branch"
 
   printf 'path: %s\n' "$path/"
@@ -265,8 +265,8 @@ prune_worktrees() {
   done < <(git worktree list --porcelain)
 
   if [[ -d "$WORKTREES_DIR" ]]; then
-    while IFS= read -r -d '' candidate; do
-      candidate="$(cd "$root" && pwd)/$candidate"
+    while IFS= read -r -d '' git_file; do
+      candidate="$(dirname "$(cd "$root" && pwd)/$git_file")"
       local registered=0 existing
       for existing in "${existing_paths[@]}"; do
         if [[ "$candidate" == "$existing" ]]; then
@@ -279,7 +279,7 @@ prune_worktrees() {
         orphan_count=$((orphan_count + 1))
         printf 'orphan: %s\n' "$candidate"
       fi
-    done < <(find "$WORKTREES_DIR" -mindepth 1 -maxdepth 1 -type d -print0)
+    done < <(find "$WORKTREES_DIR" -type f -name .git -print0)
   fi
 
   printf 'pruned: %s\n' "$orphan_count"
@@ -288,9 +288,9 @@ prune_worktrees() {
 usage() {
   cat <<'EOF'
 Uso:
-  worktree.sh create <ca-name> [--base <branch>]
-  worktree.sh complete <ca-name> [--base <branch>]
-  worktree.sh cleanup <ca-name> [--base <branch>]
+  worktree.sh create <execution-name> [--base <branch>]
+  worktree.sh complete <execution-name> [--base <branch>]
+  worktree.sh cleanup <execution-name> [--base <branch>]
   worktree.sh prune
   worktree.sh list
 EOF

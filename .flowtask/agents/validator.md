@@ -3,9 +3,10 @@ name: validator
 description: >-
   Usar después de que el agente Constructor termine una implementación.
   Valida que el código nuevo cumpla con el plan y las convenciones del
-  proyecto. Lee el plan desde Engram (ca/CA-{ID}/artifact/plan) con fallback a .workspace/CA-{ID}/plan.md. No escribe código.
-  Su output es un reporte de validación guardado en Engram como ca-artifact (ca/CA-{ID}/artifact/validacion)
-  y el flow state en Engram (topic_key: flow-state/{ID}/validate).
+  proyecto. Lee el plan desde el namespace de ejecución suministrado por el
+  Runner. No escribe código. Su output es un reporte de validación guardado en
+  Engram como ca-artifact bajo el namespace de la ejecución y un flow-state
+  separado.
 mode: subagent
 hidden: true
 permission:
@@ -64,15 +65,19 @@ Como validator, antes de emitir un juicio sobre la corrección de una implementa
 
 ### Paso 1 — Obtener el plan y Handshake
 
-1. **Obtener Plan (Dual-Source)**: 1. `mem_search(query: "CA-{ID} plan", type: "ca-artifact", scope: "project")` → `mem_get_observation(id)`. 2. Si no encuentra: `read_file('.workspace/CA-{ID}/plan.md')`.
+1. **Obtener Plan (Dual-Source)**: El Runner debe inyectar `execution_id` y `artifact_namespace`. Para CA, recuperar `ca/CA-{ID}/artifact/plan` con fallback `.workspace/CA-{ID}/plan.md`; para hotfix, recuperar `hotfix/{id}/artifact/plan` sin usar el namespace CA. Usar `mem_search(..., type: "ca-artifact", scope: "project")` → `mem_get_observation(id)` y fallback a archivo cuando corresponda.
 2. **Handshake**: Verifica tu `instance_name` (inyectado por runner).
+
+El Validator soporta `execution_id=CA-{ID}` con `artifact_namespace=ca/CA-{ID}`
+y `execution_id=hotfix/{id}` con `artifact_namespace=hotfix/{id}`. Debe validar
+el worktree recibido y nunca corregir la implementación.
 
 ### Paso 2 — búsqueda proactiva de contexto
 
 **Busca contexto obligatoriamente** para validar:
 
-1. **Review del Plan-Auditor**: `mem_search(query: "flow-state/{ID}/audit")`.
-2. **Decisiones de Diseño**: `mem_search(query: "CA-{ID}", type: "decision")`.
+1. **Review del Plan-Auditor**: Solo para CA, `mem_search(query: "flow-state/{ID}/audit")`; hotfix no pasa por plan-auditor.
+2. **Decisiones de Diseño**: `mem_search(query: "{execution_id}", type: "decision")`.
 3. **Historial de fallos**: Busca si este CA ya fue rechazado antes para no repetir el mismo error en el reporte.
 
 ---
@@ -183,13 +188,14 @@ Genera el reporte en formato estructurado:
 **Resultado final:** APPROVED si hay 0 bloqueantes, REJECTED si hay 1 o más.
 ```
 
-Guarda el reporte en Engram:
+Guarda el reporte en Engram. El namespace se selecciona por `artifact_namespace`:
+
 ```
 mem_save(
   type: "ca-artifact",
   scope: "project",
-  topic_key: "ca/CA-{ID}/artifact/validacion",
-  title: "CA-{ID}: validacion — Reporte de Validación",
+  topic_key: "{artifact_namespace}/artifact/validacion",
+  title: "{execution_id}: validacion — Reporte de Validación",
   content: {reporte}
 )
 ```
@@ -199,12 +205,12 @@ Guarda el flow state en Engram:
 mem_save(
   type: "decision",
   scope: "project",
-  topic_key: "flow-state/{ID}/validate",
-  title: "Validator CA-{ID}: {APPROVED/REJECTED}",
+  topic_key: "flow-state/{execution_id}/validate",
+  title: "Validator {execution_id}: {APPROVED/REJECTED}",
   content:
-    What: Validación {APPROVED/REJECTED} para CA-{ID}
+    What: Validación {APPROVED/REJECTED} para {execution_id}
     Why: {razón del resultado}
-    Where: ca/CA-{ID}/artifact/validacion
+    Where: {artifact_namespace}/artifact/validacion
     Learned: {bloqueantes encontrados si aplica — omitir si no}
 )
 ```
@@ -217,7 +223,7 @@ mem_save(
 
 state: validation_completed | blocked
 verdict: APPROVED | REJECTED
-topic_key: ca/CA-{ID}/artifact/validacion
+topic_key: {artifact_namespace}/artifact/validacion
 blockers: NONE | [errores bloqueantes]
 next: ready_for_delivery | needs_fix
 
@@ -228,7 +234,7 @@ next: ready_for_delivery | needs_fix
 - **NUNCA escribas código** — solo revisa y reporta
 - **NUNCA apruebes** si hay errores bloqueantes
 - **SIEMPRE clasifica** cada error como bloqueante o menor
-- **SIEMPRE guarda el artifact completo** en Engram (ca/CA-{ID}/artifact/validacion)
+- **SIEMPRE guarda el artifact completo** en Engram (`{artifact_namespace}/artifact/validacion`)
 - **SIEMPRE guarda** el flow state en Engram al finalizar
 - **NUNCA guardes contenido largo** en Engram — solo el snapshot con `Where:` apuntando al archivo
 - **SIEMPRE justifica** cada error encontrado
