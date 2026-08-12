@@ -82,8 +82,8 @@ export function globalStatePath() {
 }
 
 /** Path to the project-level state file. */
-export function projectStatePath(projectDir) {
-  return path.join(projectDir, ".flowtask", "config", "graphify.json");
+export function projectStatePath(projectDir, flowtaskDir = path.join(projectDir, ".flowtask")) {
+  return path.join(flowtaskDir, "config", "graphify.json");
 }
 
 // ─── Atomic read / write ──────────────────────────────────────────────────────
@@ -145,8 +145,8 @@ export function saveGlobalState(state) {
 /**
  * Load project state, creating a fresh one if missing or invalid.
  */
-export function loadProjectState(projectDir) {
-  const existing = readJsonSafe(projectStatePath(projectDir));
+export function loadProjectState(projectDir, flowtaskDir) {
+  const existing = readJsonSafe(projectStatePath(projectDir, flowtaskDir));
   if (existing && existing.schema === 1) return existing;
   return createProjectState();
 }
@@ -155,8 +155,27 @@ export function loadProjectState(projectDir) {
  * Persist project state atomically.
  * @returns {boolean}
  */
-export function saveProjectState(projectDir, state) {
-  return writeJsonAtomic(projectStatePath(projectDir), state);
+export function saveProjectState(projectDir, state, flowtaskDir) {
+  return writeJsonAtomic(projectStatePath(projectDir, flowtaskDir), state);
+}
+
+export function migrateProjectState(projectDir, flowtaskDir) {
+  const destination = projectStatePath(projectDir, flowtaskDir);
+  const legacy = path.join(projectDir, ".flowtask", "config", "graphify.json");
+  if (path.resolve(destination) === path.resolve(legacy) || !fs.existsSync(legacy) || fs.existsSync(destination)) return true;
+  try {
+    const state = readJsonSafe(legacy);
+    if (!state || state.schema !== 1) throw new Error("JSON inválido");
+    if (!writeJsonAtomic(destination, state) || !fs.existsSync(destination)) throw new Error("no se pudo verificar la escritura");
+    const verified = readJsonSafe(destination);
+    if (JSON.stringify(verified) !== JSON.stringify(state)) throw new Error("la verificación del destino falló");
+    fs.rmSync(legacy);
+    logSuccess(`Graphify: estado migrado a ${destination}`);
+    return true;
+  } catch (err) {
+    logWarn(`Graphify: no se pudo migrar ${legacy} a ${destination}: ${err.message}. Verifica permisos/espacio y reintenta con flowtask update.`);
+    return false;
+  }
 }
 
 // ─── Detection ────────────────────────────────────────────────────────────────
@@ -327,7 +346,6 @@ export function installHooks(projectDir, opts = {}) {
 
 const GITIGNORE_ENTRIES = [
   "graphify-out/",
-  ".flowtask/config/graphify.json",
 ];
 
 /**
@@ -519,14 +537,20 @@ export function registerGrafoExtensions(opts = {}) {
  * @param {Function} [params.opts.installCmdFn] - override install command
  * @returns {Promise<object>} { projectState, globalState, warnings: string[] }
  */
-export async function coordinateGraphify({ projectDir, selectedClis, readline, opts = {} }) {
+export async function coordinateGraphify({ projectDir, flowtaskDir = path.join(projectDir, ".flowtask"), selectedClis, readline, opts = {} }) {
   const warnings = [];
 
   // ── 1. Load / detect ────────────────────────────────────────────────────
   let globalState = loadGlobalState();
   globalState = detectGraphify(globalState, opts);
 
-  let projectState = loadProjectState(projectDir);
+  const migrated = migrateProjectState(projectDir, flowtaskDir);
+  if (!migrated) {
+    const warning = `Graphify: no se pudo migrar el estado a ${projectStatePath(projectDir, flowtaskDir)}. Se conserva el legacy; verifica permisos/espacio y reintenta con flowtask update.`;
+    logWarn(warning);
+    return { projectState: createProjectState(), globalState, warnings: [warning] };
+  }
+  let projectState = loadProjectState(projectDir, flowtaskDir);
 
   // ── 2. Install Graphify if not available ────────────────────────────────
   if (!globalState.available) {
@@ -536,7 +560,7 @@ export async function coordinateGraphify({ projectDir, selectedClis, readline, o
       projectState.lastInitializationResult = "skipped";
       projectState.selectedClis = selectedClis;
       projectState.updatedAt = new Date().toISOString();
-      saveProjectState(projectDir, projectState);
+      saveProjectState(projectDir, projectState, flowtaskDir);
       return { projectState, globalState, warnings: ["Graphify: instalación rechazada por el desarrollador."] };
     }
 
@@ -555,7 +579,7 @@ export async function coordinateGraphify({ projectDir, selectedClis, readline, o
       projectState.lastWarning = installResult.warning;
       projectState.selectedClis = selectedClis;
       projectState.updatedAt = new Date().toISOString();
-      saveProjectState(projectDir, projectState);
+      saveProjectState(projectDir, projectState, flowtaskDir);
 
       warnings.push(installResult.warning);
       return { projectState, globalState, warnings };
@@ -574,7 +598,7 @@ export async function coordinateGraphify({ projectDir, selectedClis, readline, o
     projectState.lastInitializationResult = "skipped";
     projectState.selectedClis = selectedClis;
     projectState.updatedAt = new Date().toISOString();
-    saveProjectState(projectDir, projectState);
+    saveProjectState(projectDir, projectState, flowtaskDir);
     return { projectState, globalState, warnings: ["Graphify: habilitación rechazada por el desarrollador."] };
   }
 
@@ -637,7 +661,7 @@ export async function coordinateGraphify({ projectDir, selectedClis, readline, o
   projectState.lastWarning = warnings.length > 0 ? warnings[warnings.length - 1] : null;
   projectState.updatedAt = new Date().toISOString();
 
-  if (!saveProjectState(projectDir, projectState)) {
+  if (!saveProjectState(projectDir, projectState, flowtaskDir)) {
     const w = "Graphify: no se pudo persistir estado de proyecto. Reintenta con flowtask update o contacta a un administrador.";
     warnings.push(w);
     logWarn(w);

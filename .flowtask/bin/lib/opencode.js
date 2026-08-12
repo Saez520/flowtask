@@ -168,10 +168,14 @@ export function registerPluginArrayEntry(configPath, entry, schema = "https://op
     }
     config.plugin = normalizePluginEntries(plugins, []);
 
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+    if (!fs.existsSync(configPath)) throw new Error(`no se pudo verificar ${configPath}`);
     logSuccess(`Plugin entry registered in ${path.basename(configPath)}`);
+    return true;
   } catch (err) {
-    logError(`Failed to register plugin entry: ${err.message}`);
+    logError(`Failed to register plugin entry en ${configPath}: ${err.message}. Verifica permisos/espacio y reintenta con flowtask update.`);
+    return false;
   }
 }
 

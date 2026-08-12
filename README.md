@@ -43,6 +43,19 @@ cd ~/proyectos/mi-proyecto
 flowtask update
 ```
 
+### Configuración por instalación
+
+FlowTask guarda su configuración propia en el directorio de la instalación activa:
+`<flowtaskDir>/config/profile.json`, `<flowtaskDir>/config/graphify.json` y
+`<flowtaskDir>/tui.json`. La instalación no crea un `tui.json` en el proyecto
+consumidor cuando no hay plugins TUI que registrar; si ese archivo ya existe,
+solo se mergean las entradas de FlowTask y se preservan keybinds y plugins ajenos.
+
+Durante `install` y `update`, los archivos legacy del consumidor se migran con
+write-then-verify-then-delete. Si la ruta de instalación no permite escribir,
+se conserva el origen y el mensaje indica revisar permisos/espacio y reintentar
+con `flowtask update`.
+
 ### CLI Command Reference
 
 | Command              | Description                             |
@@ -376,7 +389,7 @@ FlowTask/
 │   │   ├── register-skills.md    # /register-skills
 │   │   ├── status.md             # /status
 │   │   └── update.md             # /update
-│   ├── config/                   # FlowTask configuration
+│   ├── config/                   # Configuration used by this installation
 │   ├── personas/                 # Runner personality definitions
 │   │   ├── tutor-mid.md
 │   │   ├── tutor-senior.md
@@ -432,7 +445,7 @@ FlowTask/
 ├── Flowtask-Architecture/        # Architecture documentation
 ├── CLAUDE.md                     # Runner definition (always active)
 ├── opencode.json                 # OpenCode configuration
-├── tui.json                      # TUI configuration
+├── tui.json                      # Optional consumer TUI configuration
 ├── update-engram.ps1             # Engram update script
 ├── presentacion-flowtask.md      # Project presentation
 ├── .gitignore                    # Git ignore rules

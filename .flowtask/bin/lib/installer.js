@@ -268,13 +268,13 @@ function injectPersonaIntoRunner(targetDir, personaContent) {
   logSuccess(`Personalidad inyectada en runner.md de ${targetDir}.`);
 }
 
-function writeProfile(projectDir, level, persona, onboarded) {
-  const configDir = path.join(projectDir, ".flowtask", "config");
+function writeProfile(flowtaskDir, level, persona, onboarded) {
+  const configDir = path.join(flowtaskDir, "config");
   if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
 
   const profile = { level, persona, onboarded };
   fs.writeFileSync(path.join(configDir, "profile.json"), JSON.stringify(profile, null, 2), "utf8");
-  logSuccess("Perfil guardado en .flowtask/config/profile.json");
+  logSuccess(`Perfil guardado en ${path.join(configDir, "profile.json")}`);
 }
 
 function readProfileLevel(projectDir) {
@@ -405,6 +405,19 @@ function removeClassifierEntries(configPath) {
   }
 }
 
+function writeJsonVerified(filePath, value) {
+  const tempPath = `${filePath}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(value, null, 2), "utf8");
+    fs.renameSync(tempPath, filePath);
+    const verified = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return JSON.stringify(verified) === JSON.stringify(value);
+  } catch {
+    try { fs.rmSync(tempPath, { force: true }); } catch { /* preserve original */ }
+    return false;
+  }
+}
+
 function removeClassifierDirectories(projectDir) {
   let removed = false;
   const pluginsDir = path.join(projectDir, ".opencode", "plugins");
@@ -432,10 +445,9 @@ function cleanupDisabledClassifier(projectDir, manifest) {
   ) || configContainsClassifier(tuiConfigPath) || configContainsClassifier(serverConfigPath);
 
   const removedDirectory = removeClassifierDirectories(projectDir);
-  const removedTuiEntry = removeClassifierEntries(tuiConfigPath);
   const removedServerEntry = removeClassifierEntries(serverConfigPath);
 
-  if (hasInstallation || removedDirectory || removedTuiEntry || removedServerEntry) {
+  if (hasInstallation || removedDirectory || removedServerEntry) {
     logWarn("el plugin de clasificación fue deprecado");
   }
 }
@@ -458,7 +470,20 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
 
   const opencodePluginsDir = path.join(projectDir, ".opencode", "plugins");
 
-  cleanupDisabledClassifier(projectDir, manifest);
+  const tuiManifestPath = path.join(flowtaskDir, "tui.json");
+  const projectTuiPath = path.join(projectDir, "tui.json");
+  let legacyTui = null;
+  if (fileExists(projectTuiPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(projectTuiPath, "utf8"));
+      if (Array.isArray(parsed.plugin)) {
+        legacyTui = { config: parsed, plugins: [...parsed.plugin] };
+      }
+    } catch (err) {
+      logWarn(`No se pudo leer el tui.json legacy ${projectTuiPath}: ${err.message}. Se conserva sin migrar.`);
+    }
+  }
+  const migratedLegacyIndexes = new Set();
 
   for (const entry of manifest) {
     if (!validateManifestEntry(entry)) continue;
@@ -484,59 +509,77 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
     const entrypointAbsPath = path.join(destDir, entry.entrypoint);
     if (!fileExists(entrypointAbsPath)) {
       logWarn(`⚠️  Plugin entrypoint not found for ${entry.name}: ${entry.entrypoint} (expected at ${entrypointAbsPath})`);
+      continue;
     }
 
     if (entry.kind === "tui") {
-      const tuiPath = path.join(projectDir, "tui.json");
-      const pluginRuntimePath = calculatePluginRelativePath(tuiPath, projectDir, entry.name, entry.entrypoint);
-      registerPluginArrayEntry(tuiPath, pluginRuntimePath, "https://opencode.ai/tui.json");
+      const installationRuntimePath = calculatePluginRelativePath(tuiManifestPath, projectDir, entry.name, entry.entrypoint);
+      if (!registerPluginArrayEntry(tuiManifestPath, installationRuntimePath, "https://opencode.ai/tui.json")) {
+        throw new Error(`No se pudo escribir el manifiesto TUI de instalación ${tuiManifestPath}`);
+      }
+      const installationTui = JSON.parse(fs.readFileSync(tuiManifestPath, "utf8"));
+      const registered = Array.isArray(installationTui.plugin) && installationTui.plugin.some((plugin) => {
+        const pluginPath = typeof plugin === "string" ? plugin : plugin?.path;
+        return pluginPath === installationRuntimePath;
+      });
+      if (!registered) throw new Error(`No se pudo verificar la ruta TUI ${installationRuntimePath}`);
+      if (legacyTui) {
+        legacyTui.plugins.forEach((plugin, index) => {
+          const pluginPath = typeof plugin === "string" ? plugin : plugin?.path;
+          if (extractPluginName(pluginPath) === entry.name) migratedLegacyIndexes.add(index);
+        });
+      }
     } else if (entry.kind === "server") {
       const opencodeConfigPath = path.join(projectDir, ".opencode", "opencode.json");
       const pluginRuntimePath = calculatePluginRelativePath(opencodeConfigPath, projectDir, entry.name, entry.entrypoint);
-      registerPluginArrayEntry(opencodeConfigPath, pluginRuntimePath, "https://opencode.ai/config.json");
+      if (!registerPluginArrayEntry(opencodeConfigPath, pluginRuntimePath, "https://opencode.ai/config.json")) {
+        throw new Error(`No se pudo actualizar ${opencodeConfigPath}`);
+      }
     } else {
       logWarn(`Unknown plugin kind "${entry.kind}" for ${entry.name}, skipping registration.`);
     }
   }
+
+  // A legacy consumer manifest is cleaned only after installation manifest writes succeeded.
+  if (legacyTui && migratedLegacyIndexes.size > 0) {
+    try {
+      const remaining = legacyTui.plugins.filter((_, index) => !migratedLegacyIndexes.has(index));
+      if (remaining.length !== legacyTui.plugins.length) {
+        const cleaned = { ...legacyTui.config, plugin: remaining };
+        if (!writeJsonVerified(projectTuiPath, cleaned)) throw new Error("la verificación del destino falló");
+      }
+    } catch (err) {
+      logWarn(`No se pudo limpiar el tui.json legacy ${projectTuiPath}: ${err.message}. Se conserva la configuración; reintenta con flowtask update.`);
+    }
+  }
+
+  cleanupDisabledClassifier(projectDir, manifest);
 }
 
 // ─── Migration & Cleanup ──────────────────────────────────────────────────────
 
-function migrateProfileLocation(projectDir) {
-  const oldPath = path.join(projectDir, ".flowtask", "profile.json");
-  const newPath = path.join(projectDir, ".flowtask", "config", "profile.json");
-
-  // Already migrated
-  if (fs.existsSync(newPath)) return;
-
-  // Nothing to migrate
-  if (!fs.existsSync(oldPath)) return;
-
+export function migrateProfileLocation(projectDir, flowtaskDir) {
+  const destination = path.join(flowtaskDir, "config", "profile.json");
+  const legacyPaths = [
+    path.join(projectDir, ".flowtask", "config", "profile.json"),
+    path.join(projectDir, ".flowtask", "profile.json"),
+  ];
+  if (legacyPaths.some((source) => path.resolve(source) === path.resolve(destination))) return true;
+  if (fs.existsSync(destination)) return true;
+  const source = legacyPaths.find((candidate) => fs.existsSync(candidate));
+  if (!source) return true;
   try {
-    // Try to parse old profile
-    const content = fs.readFileSync(oldPath, "utf8");
-    const profile = JSON.parse(content);
-
-    // Write to new location
-    const configDir = path.dirname(newPath);
-    fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(newPath, JSON.stringify(profile, null, 2), "utf8");
-
-    // Verify new file was written
-    if (!fs.existsSync(newPath)) {
-      logError("No se pudo verificar la escritura de .flowtask/config/profile.json. Perfil legacy preservado en su ubicación original.");
-      return;
-    }
-
-    // Remove old file
-    fs.rmSync(oldPath);
-    logSuccess("Perfil migrado de .flowtask/profile.json a .flowtask/config/profile.json");
+    const profile = JSON.parse(fs.readFileSync(source, "utf8"));
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, JSON.stringify(profile, null, 2), "utf8");
+    const verified = JSON.parse(fs.readFileSync(destination, "utf8"));
+    if (JSON.stringify(verified) !== JSON.stringify(profile)) throw new Error("la verificación del destino falló");
+    fs.rmSync(source);
+    logSuccess(`Perfil migrado de ${source} a ${destination}`);
+    return true;
   } catch (err) {
-    if (err instanceof SyntaxError) {
-      logError("No se pudo migrar .flowtask/profile.json: contenido inválido/corrupto. Se conserva el archivo original para inspección manual.");
-    } else {
-      logError(`No se pudo migrar profile.json: ${err.message}`);
-    }
+    logError(`No se pudo migrar profile.json de ${source} a ${destination}: ${err.message}. Verifica permisos/espacio y reintenta con flowtask update.`);
+    return false;
   }
 }
 
@@ -581,10 +624,13 @@ ${COLORS.blue}╔═════════════════════
   }
 
   // ── Step P: Personalidad del Agente ─────────────────────────────────
-  const projectDir = process.cwd();
-  migrateProfileLocation(projectDir);
-  const personaChoice = await resolvePersonaSelection(projectDir, readline, options);
+  const personaChoice = await promptPersonaSeleccion(readline);
   const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
+
+  const projectDir = process.cwd();
+  if (!migrateProfileLocation(projectDir, flowtaskDir)) {
+    throw new Error("No se pudo migrar profile.json; se conserva el origen. Verifica permisos/espacio y reintenta con flowtask update.");
+  }
   const results = [];
 
   for (const { id, ideDir, targetSubDir } of targets) {
@@ -689,13 +735,13 @@ ${COLORS.blue}╔═════════════════════
   // ── Graphify coordination (once, after all targets) ─────────────────────
   try {
     const selectedCliIds = targets.map((t) => t.id);
-    await coordinateGraphify({ projectDir, selectedClis: selectedCliIds, readline });
+    await coordinateGraphify({ projectDir, flowtaskDir, selectedClis: selectedCliIds, readline });
   } catch (err) {
     logWarn(`Graphify: coordinación falló (${err.message}). Reintenta con flowtask update o contacta a un administrador.`);
   }
 
   // ── Write profile ──────────────────────────────────────────────────
-  writeProfile(projectDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
+  writeProfile(flowtaskDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
 
   // Cleanup empty root .flowtask if it was migrated (skip if it's the source dir)
   const rootFT = path.join(projectDir, ".flowtask");
@@ -718,7 +764,9 @@ ${COLORS.blue}╔═════════════════════
 
   const readline = await import("readline");
   const projectDir = process.cwd();
-  migrateProfileLocation(projectDir);
+  if (!migrateProfileLocation(projectDir, flowtaskDir)) {
+    throw new Error("No se pudo migrar profile.json; se conserva el origen. Verifica permisos/espacio y reintenta con flowtask update.");
+  }
 
   // ── Step 1: Detect installed targets ────────────────────────────────────
   logStep(1, "Detecting installed targets...");
@@ -747,9 +795,22 @@ ${COLORS.blue}╔═════════════════════
   }
 
   // ── Step 1.5: Personalidad del Agente ──────────────────────────────
-  const currentLevel = readProfileLevel(projectDir);
-  const personaChoice = await resolvePersonaSelection(projectDir, readline, options);
-  if (currentLevel && !options.persona) logInfo(`Conservando personalidad existente: ${personaChoice.persona}`);
+  let currentLevel = null;
+  const profilePath = path.join(flowtaskDir, "config", "profile.json");
+  if (fileExists(profilePath)) {
+    try {
+      const profile = JSON.parse(fs.readFileSync(profilePath, "utf8"));
+      currentLevel = profile.level || null;
+    } catch { /* ignore invalid profile.json */ }
+  }
+
+  let personaChoice;
+  if (currentLevel && levelToChoice[currentLevel]) {
+    personaChoice = mapping[levelToChoice[currentLevel]];
+    logInfo(`Conservando personalidad existente: ${personaChoice.persona}`);
+  } else {
+    personaChoice = await promptPersonaSeleccion(readline, currentLevel);
+  }
   const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
 
   // ── Step 2: Delta sync each target ──────────────────────────────────────
@@ -841,14 +902,14 @@ ${COLORS.blue}╔═════════════════════
   // ── Graphify coordination (once, after all targets) ─────────────────────
   try {
     const selectedCliIds = targets.map((t) => t.id);
-    await coordinateGraphify({ projectDir, selectedClis: selectedCliIds, readline });
+    await coordinateGraphify({ projectDir, flowtaskDir, selectedClis: selectedCliIds, readline });
   } catch (err) {
     logWarn(`Graphify: coordinación falló (${err.message}). Reintenta con flowtask update o contacta a un administrador.`);
   }
 
   // ── Write profile ──────────────────────────────────────────────────
   if (!currentLevel || personaChoice.level !== currentLevel) {
-    writeProfile(projectDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
+    writeProfile(flowtaskDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
   }
 
   printSummary("Update Summary", results, (res) =>

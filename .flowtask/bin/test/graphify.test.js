@@ -15,6 +15,7 @@ import {
   saveGlobalState,
   loadProjectState,
   saveProjectState,
+  migrateProjectState,
   detectGraphify,
   installGraphify,
   installHooks,
@@ -91,6 +92,39 @@ describe("Paths", () => {
   it("resolveGlobalConfigDir returns a non-empty string", () => {
     const dir = resolveGlobalConfigDir();
     assert.ok(typeof dir === "string" && dir.length > 0);
+  });
+
+  it("resolves project state under the active installation", () => {
+    assert.equal(
+      projectStatePath("/tmp/project", "/tmp/flowtask"),
+      path.join("/tmp/flowtask", "config", "graphify.json"),
+    );
+  });
+
+  it("migrates legacy state and removes it only after verification", () => {
+    const projectDir = makeTempDir();
+    const flowtaskDir = path.join(projectDir, "installation");
+    const legacyPath = path.join(projectDir, ".flowtask", "config", "graphify.json");
+    const state = createProjectState();
+    fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+    fs.writeFileSync(legacyPath, JSON.stringify(state), "utf8");
+
+    assert.equal(migrateProjectState(projectDir, flowtaskDir), true);
+    assert.equal(fs.existsSync(legacyPath), false);
+    assert.deepEqual(JSON.parse(fs.readFileSync(projectStatePath(projectDir, flowtaskDir), "utf8")), state);
+    cleanupDir(projectDir);
+  });
+
+  it("preserves legacy state when installation destination cannot be written", () => {
+    const projectDir = makeTempDir();
+    const legacyPath = path.join(projectDir, ".flowtask", "config", "graphify.json");
+    fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+    fs.writeFileSync(legacyPath, JSON.stringify(createProjectState()), "utf8");
+
+    assert.equal(migrateProjectState(projectDir, "/dev/null/flowtask"), false);
+    assert.equal(fs.existsSync(legacyPath), true);
+    assert.equal(fs.existsSync("/dev/null/flowtask/config/graphify.json"), false);
+    cleanupDir(projectDir);
   });
 });
 
@@ -327,7 +361,6 @@ describe("ensureGitignoreEntries", () => {
     ensureGitignoreEntries(tempDir);
     const content = fs.readFileSync(path.join(tempDir, ".gitignore"), "utf8");
     assert.ok(content.includes("graphify-out/"));
-    assert.ok(content.includes(".flowtask/config/graphify.json"));
   });
 
   it("adds entries to existing .gitignore", () => {
@@ -336,7 +369,6 @@ describe("ensureGitignoreEntries", () => {
     const content = fs.readFileSync(path.join(tempDir, ".gitignore"), "utf8");
     assert.ok(content.includes("node_modules"));
     assert.ok(content.includes("graphify-out/"));
-    assert.ok(content.includes(".flowtask/config/graphify.json"));
   });
 
   it("is idempotent — does not duplicate entries", () => {
@@ -659,6 +691,5 @@ describe("coordinateGraphify", () => {
     assert.ok(fs.existsSync(gitignorePath));
     const content = fs.readFileSync(gitignorePath, "utf8");
     assert.ok(content.includes("graphify-out/"));
-    assert.ok(content.includes(".flowtask/config/graphify.json"));
   });
 });
