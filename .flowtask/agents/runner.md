@@ -485,7 +485,15 @@ Si el scope no está claro, preguntar al desarrollador antes de invocar.
 
 ### Invocación del review-orchestrator
 
-Invocar review-orchestrator usando el formato canónico (Escenario A/B según Handshake). Prompt: scope de revisión + modo determinado.
+Invocar review-orchestrator usando el formato canónico (Escenario A/B según Handshake). El prompt delegado debe contener únicamente:
+
+- `mode`: modo determinado (`pre-commit`, `branch`, `files`, `pr-mr` o `full-4r`);
+- `worktree`: ruta del worktree;
+- `branch`: branch bajo revisión;
+- `base_branch`: branch base;
+- `error`: mensaje del error de bloqueo, solo si existe.
+
+Para las variantes `files` y `pr-mr`, incluir además únicamente la lista de rutas o el identificador PR/MR que permite al review-orchestrator recuperar el scope. Nunca adjuntar ni serializar el diff, ni prescribir lentes, skills o marcos de revisión. Conservar el contrato de findings con estado `APPROVED | BLOCKED | CHANGES_REQUIRED`, severidad, archivo/línea, evidencia, justificación y recomendación.
 
 ### Flujo pre-commit
 
