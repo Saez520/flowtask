@@ -6,6 +6,8 @@ import {
   CLEAR_SENTINEL,
   buildAgentOptions,
   buildModelOptions,
+  buildVariantOptions,
+  readAgentModel,
   resolveGlobalConfigFile,
   stripJsonBom,
   removeAgentModel,
@@ -45,6 +47,13 @@ test("buildAgentOptions: description with agent model override", () => {
       description: "anthropic/claude-opus",
     },
   ]);
+});
+
+test("buildAgentOptions: includes an explicit variant", () => {
+  const result = buildAgentOptions({
+    agent: { build: { model: "anthropic/claude-opus", variant: "high" } },
+  });
+  expect(result[0].description).toBe("anthropic/claude-opus (high)");
 });
 
 test("buildAgentOptions: description with base model (no agent override)", () => {
@@ -142,6 +151,48 @@ test("buildModelOptions: fallback to model id if name is missing", () => {
   expect(result[1].title).toBe("model-without-name");
 });
 
+test("buildVariantOptions: resolves variants and preserves order", () => {
+  const providers = [
+    {
+      id: "anthropic",
+      models: {
+        opus: {
+          variants: {
+            low: { reasoningEffort: "low" },
+            high: { reasoningEffort: "high", textVerbosity: "detailed" },
+          },
+        },
+      },
+    },
+  ];
+  expect(buildVariantOptions("anthropic/opus", providers)).toEqual([
+    { title: "low", value: "low", description: "reasoningEffort: low" },
+    {
+      title: "high",
+      value: "high",
+      description: "reasoningEffort: high, textVerbosity: detailed",
+    },
+  ]);
+});
+
+test("buildVariantOptions: returns no options for missing or unsupported variants", () => {
+  const providers = [
+    { id: "anthropic", models: { opus: {}, plain: { variants: [] } } },
+  ];
+  expect(buildVariantOptions("anthropic/missing", providers)).toEqual([]);
+  expect(buildVariantOptions("anthropic/opus", providers)).toEqual([]);
+  expect(buildVariantOptions("anthropic/plain", providers)).toEqual([]);
+  expect(buildVariantOptions("anthropic/opus/high", providers)).toEqual([]);
+});
+
+test("readAgentModel: reads explicit model and optional variant only", () => {
+  const config = { agent: { build: { model: "anthropic/opus", variant: "high" } } };
+  expect(readAgentModel(config, "build")).toEqual({ model: "anthropic/opus", variant: "high" });
+  expect(readAgentModel({ agent: { build: { model: "anthropic/opus" } } }, "build")).toEqual({
+    model: "anthropic/opus",
+  });
+});
+
 test("stripJsonBom: removes UTF-8 BOM", () => {
   const textWithBom = "﻿{\"test\": true}";
   const result = stripJsonBom(textWithBom);
@@ -168,11 +219,12 @@ test("removeAgentModel: does not mutate input", () => {
 test("removeAgentModel: removes model field", () => {
   const config = {
     agent: {
-      "flowtask-planner": { model: "anthropic/claude-opus", other: "value" },
+      "flowtask-planner": { model: "anthropic/claude-opus", variant: "high", other: "value" },
     },
   };
   const result = removeAgentModel(config, "flowtask-planner");
   expect(result.agent["flowtask-planner"].model).toBeUndefined();
+  expect(result.agent["flowtask-planner"].variant).toBeUndefined();
   expect(result.agent["flowtask-planner"].other).toBe("value");
 });
 
@@ -236,5 +288,14 @@ test("buildAgentModelPatch: creates correct patch structure", () => {
         model: "anthropic/claude-opus",
       },
     },
+  });
+});
+
+test("buildAgentModelPatch: includes variant only when provided", () => {
+  expect(buildAgentModelPatch("build", "anthropic/opus", "high")).toEqual({
+    agent: { build: { model: "anthropic/opus", variant: "high" } },
+  });
+  expect(buildAgentModelPatch("build", "anthropic/opus")).toEqual({
+    agent: { build: { model: "anthropic/opus" } },
   });
 });

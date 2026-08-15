@@ -10,13 +10,13 @@ function buildAgentOptions(config) {
   const agents = config.agent ?? {};
   const baseModel = config.model;
   const options = Object.keys(agents).sort().map((name) => {
-    const agent = agents[name];
-    const agentModel = agent?.model;
-    const current = agentModel ?? baseModel ?? "(hereda)";
+    const override = readAgentModel(config, name);
+    const current = override.model ?? baseModel ?? "(hereda)";
+    const description = override.variant ? `${current} (${override.variant})` : current;
     return {
       title: name,
       value: name,
-      description: current
+      description
     };
   });
   return options;
@@ -44,6 +44,29 @@ function buildModelOptions(providers) {
   }
   return options;
 }
+function buildVariantOptions(modelRef, providers) {
+  const separator = modelRef.indexOf("/");
+  if (separator <= 0 || separator === modelRef.length - 1) return [];
+  const providerId = modelRef.slice(0, separator);
+  const modelId = modelRef.slice(separator + 1);
+  const provider = providers.find((item) => item?.id === providerId);
+  const variants = provider?.models?.[modelId]?.variants;
+  if (!variants || typeof variants !== "object" || Array.isArray(variants)) {
+    return [];
+  }
+  return Object.keys(variants).map((name) => {
+    const details = variants[name];
+    const description = details && typeof details === "object" ? Object.entries(details).map(([key, value]) => `${key}: ${String(value)}`).join(", ") : "";
+    return { title: name, value: name, description };
+  });
+}
+function readAgentModel(config, agentName) {
+  const agent = config?.agent?.[agentName];
+  const result = {};
+  if (typeof agent?.model === "string") result.model = agent.model;
+  if (typeof agent?.variant === "string") result.variant = agent.variant;
+  return result;
+}
 function resolveGlobalConfigFile() {
   const home = os.homedir();
   const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
@@ -70,6 +93,7 @@ function removeAgentModel(config, agentName) {
   const cloned = JSON.parse(JSON.stringify(config));
   if (cloned.agent && cloned.agent[agentName]) {
     delete cloned.agent[agentName].model;
+    delete cloned.agent[agentName].variant;
   }
   return cloned;
 }
@@ -118,12 +142,12 @@ function atomicWriteFile(filePath, content) {
     }
   }
 }
-function buildAgentModelPatch(agentName, modelRef) {
+function buildAgentModelPatch(agentName, modelRef, variant) {
+  const agent = { model: modelRef };
+  if (variant !== void 0) agent.variant = variant;
   return {
     agent: {
-      [agentName]: {
-        model: modelRef
-      }
+      [agentName]: agent
     }
   };
 }
@@ -175,7 +199,22 @@ var tui = async (api) => {
           title: `Modelo para ${agentName}`,
           options: models,
           onSelect: (item) => {
-            applySelection(agentName, item.value);
+            if (item.value === CLEAR_SENTINEL) {
+              applySelection(agentName, item.value);
+              return;
+            }
+            const variants = buildVariantOptions(item.value, providers);
+            if (variants.length === 0) {
+              applySelection(agentName, item.value);
+              return;
+            }
+            api.ui.dialog.replace(() => _$createComponent(api.ui.DialogSelect, {
+              title: `Variant para ${agentName}`,
+              options: variants,
+              onSelect: (variant) => {
+                applySelection(agentName, item.value, variant.value);
+              }
+            }));
           }
         }));
       } catch (error) {
@@ -186,7 +225,7 @@ var tui = async (api) => {
         });
       }
     };
-    const applySelection = async (agentName, value) => {
+    const applySelection = async (agentName, value, variant) => {
       try {
         if (value === CLEAR_SENTINEL) {
           const file = resolveGlobalConfigFile();
@@ -247,7 +286,7 @@ var tui = async (api) => {
             });
             return;
           }
-          const patch = buildAgentModelPatch(agentName, value);
+          const patch = buildAgentModelPatch(agentName, value, variant);
           const result = await api.client.global.config.update({
             config: patch
           });
@@ -258,6 +297,27 @@ var tui = async (api) => {
               variant: "error"
             });
             return;
+          }
+          if (variant === void 0) {
+            const file = resolveGlobalConfigFile();
+            if (fs2.existsSync(file)) {
+              try {
+                const rawContent = fs2.readFileSync(file, "utf-8");
+                const cfg = JSON.parse(stripJsonBom(rawContent));
+                const next = JSON.parse(JSON.stringify(cfg));
+                if (next.agent?.[agentName]) {
+                  delete next.agent[agentName].variant;
+                  atomicWriteFile(file, JSON.stringify(next, null, 2));
+                }
+              } catch (error) {
+                api.ui.toast({
+                  title: "FlowTask Model",
+                  message: `Error al limpiar variant anterior: ${error instanceof Error ? error.message : "desconocido"}`,
+                  variant: "error"
+                });
+                return;
+              }
+            }
           }
           api.ui.toast({
             title: "FlowTask Model",

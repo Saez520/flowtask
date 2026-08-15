@@ -3,6 +3,7 @@ import type { TuiPluginApi } from "@opencode-ai/plugin";
 import {
   buildAgentOptions,
   buildModelOptions,
+  buildVariantOptions,
   CLEAR_SENTINEL,
   resolveGlobalConfigFile,
   stripJsonBom,
@@ -69,7 +70,26 @@ const tui = async (api: TuiPluginApi) => {
             title={`Modelo para ${agentName}`}
             options={models}
             onSelect={(item) => {
-              applySelection(agentName, item.value);
+              if (item.value === CLEAR_SENTINEL) {
+                applySelection(agentName, item.value);
+                return;
+              }
+
+              const variants = buildVariantOptions(item.value, providers);
+              if (variants.length === 0) {
+                applySelection(agentName, item.value);
+                return;
+              }
+
+              api.ui.dialog.replace(() => (
+                <api.ui.DialogSelect
+                  title={`Variant para ${agentName}`}
+                  options={variants}
+                  onSelect={(variant) => {
+                    applySelection(agentName, item.value, variant.value);
+                  }}
+                />
+              ));
             }}
           />
         ));
@@ -84,7 +104,8 @@ const tui = async (api: TuiPluginApi) => {
 
     const applySelection = async (
       agentName: string,
-      value: string
+      value: string,
+      variant?: string
     ): Promise<void> => {
       try {
         if (value === CLEAR_SENTINEL) {
@@ -158,7 +179,7 @@ const tui = async (api: TuiPluginApi) => {
             return;
           }
 
-          const patch = buildAgentModelPatch(agentName, value);
+          const patch = buildAgentModelPatch(agentName, value, variant);
           const result = await api.client.global.config.update({
             config: patch,
           });
@@ -170,6 +191,28 @@ const tui = async (api: TuiPluginApi) => {
               variant: "error",
             });
             return;
+          }
+
+          if (variant === undefined) {
+            const file = resolveGlobalConfigFile();
+            if (fs.existsSync(file)) {
+              try {
+                const rawContent = fs.readFileSync(file, "utf-8");
+                const cfg = JSON.parse(stripJsonBom(rawContent));
+                const next = JSON.parse(JSON.stringify(cfg));
+                if (next.agent?.[agentName]) {
+                  delete next.agent[agentName].variant;
+                  atomicWriteFile(file, JSON.stringify(next, null, 2));
+                }
+              } catch (error) {
+                api.ui.toast({
+                  title: "FlowTask Model",
+                  message: `Error al limpiar variant anterior: ${error instanceof Error ? error.message : "desconocido"}`,
+                  variant: "error",
+                });
+                return;
+              }
+            }
           }
 
           api.ui.toast({

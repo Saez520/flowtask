@@ -16,13 +16,15 @@ export function buildAgentOptions(
   const options = Object.keys(agents)
     .sort()
     .map((name) => {
-      const agent = agents[name];
-      const agentModel = agent?.model;
-      const current = agentModel ?? baseModel ?? "(hereda)";
+      const override = readAgentModel(config, name);
+      const current = override.model ?? baseModel ?? "(hereda)";
+      const description = override.variant
+        ? `${current} (${override.variant})`
+        : current;
       return {
         title: name,
         value: name,
-        description: current,
+        description,
       };
     });
 
@@ -63,6 +65,50 @@ export function buildModelOptions(
 }
 
 /**
+ * Build variant options for a provider/model reference.
+ */
+export function buildVariantOptions(
+  modelRef: string,
+  providers: any[]
+): { title: string; value: string; description: string }[] {
+  const separator = modelRef.indexOf("/");
+  if (separator <= 0 || separator === modelRef.length - 1) return [];
+
+  const providerId = modelRef.slice(0, separator);
+  const modelId = modelRef.slice(separator + 1);
+  const provider = providers.find((item) => item?.id === providerId);
+  const variants = provider?.models?.[modelId]?.variants;
+  if (!variants || typeof variants !== "object" || Array.isArray(variants)) {
+    return [];
+  }
+
+  return Object.keys(variants).map((name) => {
+    const details = variants[name];
+    const description =
+      details && typeof details === "object"
+        ? Object.entries(details)
+            .map(([key, value]) => `${key}: ${String(value)}`)
+            .join(", ")
+        : "";
+    return { title: name, value: name, description };
+  });
+}
+
+/**
+ * Read the explicit model and variant override for an agent.
+ */
+export function readAgentModel(
+  config: any,
+  agentName: string
+): { model?: string; variant?: string } {
+  const agent = config?.agent?.[agentName];
+  const result: { model?: string; variant?: string } = {};
+  if (typeof agent?.model === "string") result.model = agent.model;
+  if (typeof agent?.variant === "string") result.variant = agent.variant;
+  return result;
+}
+
+/**
  * Resolve global OpenCode config file path using XDG conventions.
  * Returns the first existing file among opencode.jsonc, opencode.json, config.json,
  * or defaults to opencode.json if none exist.
@@ -100,7 +146,7 @@ export function stripJsonBom(text: string): string {
 }
 
 /**
- * Deep clone config and remove agent[agentName].model field.
+ * Deep clone config and remove agent[agentName].model and variant fields.
  * Does not mutate the original config.
  * If agent[agentName] becomes empty after removal, it is preserved (not deleted).
  */
@@ -108,6 +154,7 @@ export function removeAgentModel(config: any, agentName: string): any {
   const cloned = JSON.parse(JSON.stringify(config));
   if (cloned.agent && cloned.agent[agentName]) {
     delete cloned.agent[agentName].model;
+    delete cloned.agent[agentName].variant;
   }
   return cloned;
 }
@@ -178,13 +225,14 @@ export function atomicWriteFile(filePath: string, content: string): void {
  */
 export function buildAgentModelPatch(
   agentName: string,
-  modelRef: string
+  modelRef: string,
+  variant?: string
 ): object {
+  const agent: { model: string; variant?: string } = { model: modelRef };
+  if (variant !== undefined) agent.variant = variant;
   return {
     agent: {
-      [agentName]: {
-        model: modelRef,
-      },
+      [agentName]: agent,
     },
   };
 }
