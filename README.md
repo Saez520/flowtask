@@ -47,14 +47,15 @@ flowtask update
 
 FlowTask guarda su configuración propia en el directorio de la instalación activa:
 `<flowtaskDir>/config/profile.json`, `<flowtaskDir>/config/graphify.json` y
-`<flowtaskDir>/tui.json`. La instalación no crea un `tui.json` en el proyecto
-consumidor cuando no hay plugins TUI que registrar; si ese archivo ya existe,
-solo se mergean las entradas de FlowTask y se preservan keybinds y plugins ajenos.
+`<flowtaskDir>/tui.json`. Este último es la declaración TUI canónica y se
+regenera desde el manifest y las fuentes de la instalación; no se usa ningún
+residuo anterior como fuente.
 
-Durante `install` y `update`, los archivos legacy del consumidor se migran con
-write-then-verify-then-delete. Si la ruta de instalación no permite escribir,
-se conserva el origen y el mensaje indica revisar permisos/espacio y reintentar
-con `flowtask update`.
+Durante `update`, el `tui.json` raíz y `CLAUDE.md` son residuos legacy del
+consumidor: se eliminan automáticamente y no se regeneran. Graphify continúa
+coordinándose como parte de la actualización. Si la ruta de instalación no
+permite escribir, el mensaje indica revisar permisos/espacio y reintentar con
+`flowtask update`.
 
 ### CLI Command Reference
 
@@ -443,9 +444,9 @@ FlowTask/
 │   └── bun.lock
 ├── docs/                         # Additional documentation
 ├── Flowtask-Architecture/        # Architecture documentation
-├── CLAUDE.md                     # Runner definition (always active)
+├── CLAUDE.md                     # Legacy del consumidor; update lo elimina
 ├── opencode.json                 # OpenCode configuration
-├── tui.json                      # Optional consumer TUI configuration
+├── tui.json                      # Legacy del consumidor; update lo elimina
 ├── update-engram.ps1             # Engram update script
 ├── presentacion-flowtask.md      # Project presentation
 ├── .gitignore                    # Git ignore rules

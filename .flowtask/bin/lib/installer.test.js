@@ -5,7 +5,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { afterEach, test } from "node:test";
-import { installManifestPlugins, migrateProfileLocation } from "./installer.js";
+import {
+  installManifestPlugins,
+  migrateProfileLocation,
+  regenerateCanonicalTui,
+  removeLegacyConsumerFiles,
+} from "./installer.js";
 import { showInteractiveSelector } from "./ui.js";
 import { registerPluginArrayEntry } from "./opencode.js";
 
@@ -412,4 +417,86 @@ test("removes duplicate legacy entries when one TUI plugin is migrated", () => {
     "./plugins/flowtask-model-selector/dist/tui.js",
   ]);
   assert.equal(fs.readFileSync(path.join(root, ".opencode", "tui.json"), "utf8"), firstNative);
+});
+
+test("regenerates canonical standalone TUI and discards contaminated residual", () => {
+  const { root, flowtaskDir } = createFixture();
+  const manifest = [createManifest()[2]];
+  createSources(flowtaskDir, manifest);
+  writeJson(path.join(flowtaskDir, "tui.json"), {
+    plugin: ["/Users/other-project/ClipLab/plugins/foreign/dist/tui.js"],
+  });
+  writeJson(path.join(root, "tui.json"), {
+    plugin: ["./.opencode/plugins/flowtask-model-selector/dist/tui.js"],
+  });
+
+  regenerateCanonicalTui(root, flowtaskDir, manifest);
+  assert.deepEqual(readJson(path.join(flowtaskDir, "tui.json")), {
+    $schema: "https://opencode.ai/tui.json",
+    plugin: ["./plugins/flowtask-model-selector/dist/tui.js"],
+  });
+  assert.equal(removeLegacyConsumerFiles(root, ["tui.json"]), true);
+  assert.equal(fs.existsSync(path.join(root, "tui.json")), false);
+  assert.doesNotMatch(fs.readFileSync(path.join(flowtaskDir, "tui.json"), "utf8"), /ClipLab/);
+});
+
+test("regenerates an empty canonical TUI from an empty manifest", () => {
+  const { root, flowtaskDir } = createFixture();
+
+  regenerateCanonicalTui(root, flowtaskDir, []);
+
+  assert.deepEqual(readJson(path.join(flowtaskDir, "tui.json")), {
+    $schema: "https://opencode.ai/tui.json",
+    plugin: [],
+  });
+});
+
+test("preserves legacy keybinds and other top-level fields before removing root TUI", () => {
+  const { root, flowtaskDir } = createFixture();
+  const manifest = [createManifest()[2]];
+  createSources(flowtaskDir, manifest);
+  writeJson(path.join(root, "tui.json"), {
+    $schema: "https://legacy.example/tui.json",
+    keybinds: { input_newline: "shift+return", input_submit: "return" },
+    theme: "custom-dark",
+    editor: { tabSize: 4 },
+    plugin: ["./plugins/user-tui/dist/index.js"],
+  });
+
+  regenerateCanonicalTui(root, flowtaskDir, manifest);
+
+  assert.deepEqual(readJson(path.join(flowtaskDir, "tui.json")), {
+    keybinds: { input_newline: "shift+return", input_submit: "return" },
+    theme: "custom-dark",
+    editor: { tabSize: 4 },
+    $schema: "https://opencode.ai/tui.json",
+    plugin: ["./plugins/flowtask-model-selector/dist/tui.js"],
+  });
+  assert.equal(removeLegacyConsumerFiles(root, ["tui.json"]), true);
+  assert.equal(fs.existsSync(path.join(root, "tui.json")), false);
+
+  const first = fs.readFileSync(path.join(flowtaskDir, "tui.json"));
+  regenerateCanonicalTui(root, flowtaskDir, manifest);
+  assert.deepEqual(fs.readFileSync(path.join(flowtaskDir, "tui.json")), first);
+});
+
+test("legacy CLAUDE.md cleanup is idempotent and does not recreate the file", () => {
+  const { root } = createFixture();
+  const claudePath = path.join(root, "CLAUDE.md");
+  fs.writeFileSync(claudePath, "residuo local", "utf8");
+
+  assert.equal(removeLegacyConsumerFiles(root, ["CLAUDE.md"]), true);
+  assert.equal(removeLegacyConsumerFiles(root, ["CLAUDE.md"]), true);
+  assert.equal(fs.existsSync(claudePath), false);
+});
+
+test("canonical TUI bytes remain identical on a second regeneration", () => {
+  const { root, flowtaskDir } = createFixture();
+  const manifest = [createManifest()[2]];
+  createSources(flowtaskDir, manifest);
+
+  regenerateCanonicalTui(root, flowtaskDir, manifest);
+  const first = fs.readFileSync(path.join(flowtaskDir, "tui.json"));
+  regenerateCanonicalTui(root, flowtaskDir, manifest);
+  assert.deepEqual(fs.readFileSync(path.join(flowtaskDir, "tui.json")), first);
 });

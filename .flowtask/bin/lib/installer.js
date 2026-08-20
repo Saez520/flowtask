@@ -50,6 +50,8 @@ const CLASSIFIER_PLUGIN_NAMES = [
   "flowtask-classifier-tui",
 ];
 
+const CANONICAL_TUI_KEYS = new Set(["$schema", "plugin"]);
+
 // ─── Dependency checks ────────────────────────────────────────────────────────
 
 function checkOpenCode() {
@@ -418,6 +420,93 @@ function writeJsonVerified(filePath, value) {
   }
 }
 
+function writeBytesIfChanged(filePath, content) {
+  const next = Buffer.from(content, "utf8");
+  try {
+    if (fs.existsSync(filePath) && fs.readFileSync(filePath).equals(next)) return true;
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const tempPath = `${filePath}.${process.pid}.tmp`;
+    fs.writeFileSync(tempPath, next);
+    fs.renameSync(tempPath, filePath);
+    return fs.readFileSync(filePath).equals(next);
+  } catch (err) {
+    try { fs.rmSync(`${filePath}.${process.pid}.tmp`, { force: true }); } catch { /* preserve original */ }
+    logError(`No se pudo escribir ${filePath}: ${err.message}`);
+    return false;
+  }
+}
+
+/** Regenerate the standalone TUI declaration from the active installation only. */
+export function regenerateCanonicalTui(projectDir, flowtaskDir, manifest) {
+  const plugins = [];
+  for (const entry of Array.isArray(manifest) ? manifest : []) {
+    if (!validateManifestEntry(entry) || entry.kind !== "tui" || !entry.destinations.includes("opencode")) continue;
+    if (CLASSIFIER_PLUGIN_NAMES.includes(entry.name) && !isClassifierEnabled(manifest)) continue;
+    const sourceEntrypoint = path.join(flowtaskDir, "plugins", entry.path, entry.entrypoint);
+    if (!fileExists(sourceEntrypoint)) {
+      logWarn(`Plugin TUI omitido de la declaración canónica: ${entry.name}`);
+      continue;
+    }
+    let relative = path.relative(path.dirname(path.join(flowtaskDir, "tui.json")), sourceEntrypoint).split(path.sep).join("/");
+    if (!relative.startsWith(".")) relative = `./${relative}`;
+    plugins.push(relative);
+  }
+
+  const canonical = { "$schema": "https://opencode.ai/tui.json", plugin: plugins };
+  const unexpectedKeys = Object.keys(canonical).filter((key) => !CANONICAL_TUI_KEYS.has(key));
+  if (unexpectedKeys.length > 0) {
+    logWarn(`La declaración TUI canónica contiene claves inesperadas: ${unexpectedKeys.join(", ")}`);
+  }
+
+  const legacyPath = path.join(projectDir, "tui.json");
+  const destination = path.join(flowtaskDir, "tui.json");
+  const preservationSource = fileExists(legacyPath)
+    ? legacyPath
+    : (fileExists(destination) ? destination : null);
+  let preservedFields = {};
+  if (preservationSource) {
+    try {
+      const legacy = JSON.parse(fs.readFileSync(preservationSource, "utf8"));
+      if (legacy && typeof legacy === "object" && !Array.isArray(legacy)) {
+        preservedFields = Object.fromEntries(
+          Object.entries(legacy).filter(([key]) => !CANONICAL_TUI_KEYS.has(key)),
+        );
+      }
+    } catch (err) {
+      logWarn(`No se pudieron preservar campos de ${preservationSource}: ${err.message}`);
+    }
+  }
+
+  const content = `${JSON.stringify({ ...preservedFields, ...canonical }, null, 2)}\n`;
+  if (!writeBytesIfChanged(destination, content)) {
+    throw new Error(`no se pudo verificar la declaración TUI canónica ${destination}`);
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(destination, "utf8"));
+    if (JSON.stringify(parsed) !== JSON.stringify(JSON.parse(content))) throw new Error("contenido TUI inválido");
+  } catch (err) {
+    throw new Error(`la verificación de ${destination} falló: ${err.message}`);
+  }
+  return destination;
+}
+
+export function removeLegacyConsumerFiles(projectDir, fileNames = ["tui.json", "CLAUDE.md"]) {
+  let success = true;
+  for (const fileName of fileNames) {
+    const filePath = path.join(projectDir, fileName);
+    if (!fs.existsSync(filePath)) continue;
+    try {
+      fs.rmSync(filePath, { force: true });
+      if (fs.existsSync(filePath)) throw new Error("el archivo sigue presente");
+      logInfo(`Residuo legacy eliminado: ${fileName}`);
+    } catch (err) {
+      success = false;
+      logError(`No se pudo eliminar ${filePath}: ${err.message}. Reintenta con flowtask update.`);
+    }
+  }
+  return success;
+}
+
 function removeClassifierDirectories(projectDir) {
   let removed = false;
   const pluginsDir = path.join(projectDir, ".opencode", "plugins");
@@ -767,6 +856,8 @@ ${COLORS.blue}╔═════════════════════
 
   const readline = await import("readline");
   const projectDir = process.cwd();
+  const legacyCleanupOk = removeLegacyConsumerFiles(projectDir, ["CLAUDE.md"]);
+  if (!legacyCleanupOk) logWarn("La limpieza de CLAUDE.md no fue completa; el resultado debe revisarse.");
   if (!migrateProfileLocation(projectDir, flowtaskDir)) {
     throw new Error("No se pudo migrar profile.json; se conserva el origen. Verifica permisos/espacio y reintenta con flowtask update.");
   }
@@ -819,6 +910,7 @@ ${COLORS.blue}╔═════════════════════
   // ── Step 2: Delta sync each target ──────────────────────────────────────
   const preservePaths = ["CA-", "workspace", ".workspace", ".installation-method"];
   const results = [];
+  const manifest = loadPluginManifest(flowtaskDir);
 
   for (const { id, subDir, ideDir, previousMethod } of targets) {
     const TARGET_DIR = path.join(projectDir, subDir);
@@ -855,7 +947,6 @@ ${COLORS.blue}╔═════════════════════
 
       // ── Re-install plugins from manifest (OpenCode only) ─────────────────
       if (id === "opencode") {
-        const manifest = loadPluginManifest(flowtaskDir);
         installManifestPlugins(projectDir, manifest, flowtaskDir);
       }
 
@@ -873,14 +964,6 @@ ${COLORS.blue}╔═════════════════════
         mergeClaudeSettings(path.join(projectDir, ".claude", "settings.json"), flowtaskDir);
         mergeClaudeMcpConfig(path.join(projectDir, ".mcp.json"), flowtaskDir);
         cleanupOrphanedClaudeAssets(projectDir);
-        if (personaContent) {
-          const sourceRunnerPath = path.join(flowtaskDir, "agents", "runner.md");
-          const sourceRunner = fs.readFileSync(sourceRunnerPath, "utf8");
-          const runnerBody = injectPersonaIntoRunnerContent(sourceRunner, personaContent);
-          generateClaudeMd(flowtaskDir, projectDir, runnerBody);
-        } else {
-          generateClaudeMd(flowtaskDir, projectDir);
-        }
       }
 
       fs.writeFileSync(
@@ -900,6 +983,17 @@ ${COLORS.blue}╔═════════════════════
       logError(`Failed to update ${id}: ${err.message}`);
       results.push({ target: id, status: "Error", message: err.message });
     }
+  }
+
+  try {
+    regenerateCanonicalTui(projectDir, flowtaskDir, manifest);
+    logSuccess("Declaración TUI canónica regenerada");
+    // The canonical destination is verified before deleting the legacy source.
+    if (!removeLegacyConsumerFiles(projectDir)) {
+      logWarn("flowtask update terminó con residuos legacy que no pudieron eliminarse.");
+    }
+  } catch (err) {
+    logError(`No se pudo regenerar la declaración TUI canónica: ${err.message}`);
   }
 
   // ── Graphify coordination (once, after all targets) ─────────────────────
