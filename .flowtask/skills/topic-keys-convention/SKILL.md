@@ -46,8 +46,11 @@ Cada topic_key tiene un **owner** que es el único agente (o grupo) autorizado a
 | `project/patterns` | Initializer | Patrones generales del proyecto | Todos (read-only) |
 | `project/heuristics/*` | **Todos los agentes** (escritura compartida) | Heurísticas idiomáticas del desarrollador para este proyecto | Todos los agentes |
 | `personal/heuristics/*` | **Todos los agentes** (escritura compartida, scope: personal) | Heurísticas cross-proyecto del desarrollador | Todos los agentes |
+| `pending/*` | Runner, CA-Writer e Inspector (escritura compartida) | Runner: detección de pendientes; CA-Writer: clarificación previa a un CA; Inspector: hallazgos de auditoría | Agentes que necesiten conocer pendientes antes de formalizar un CA |
 
 > **Nota — Modelo de escritura compartida para heurísticas**: A diferencia de otros topic_keys que tienen owner único, `project/heuristics/*` y `personal/heuristics/*` usan **escritura compartida**: cualquier agente puede escribir en estos namespaces. No hay owner único. La detección de colisiones se maneja por key normalizada (misma key normalizada = upsert, último escribe gana). Las heurísticas en `project/heuristics/*` NO son un `project/{layer}` — es un namespace nuevo con ownership compartido que convive sin conflicto con los `project/*` existentes del Initializer.
+
+> **Nota — Pendientes**: La escritura compartida de `pending/*` es cooperativa por responsabilidad. Cada escritor actualiza únicamente el slug que creó o que está tratando en su contexto; no se sobreescriben pendientes ajenos sin coordinación explícita. Al promover un pendiente a un CA, se conserva `pending/{slug}` como registro separado y se crea o actualiza el artifacto canónico `ca/CA-{ID}/artifact/{filename}`; la promoción no elimina ni migra el registro pendiente.
 
 ---
 

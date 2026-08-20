@@ -59,6 +59,7 @@ interface SessionSummary {
 | `pattern` | Convenciones de código o patrones de diseño detectados. |
 | `config` | Stack, herramientas, configuración del proyecto. |
 | `discovery` | Hallazgos exploratorios o reportes de validación. |
+| `pending` | Propuesta o tarea identificada, no decidida y no asociada todavía a un CA aprobado. |
 
 ---
 
@@ -72,6 +73,7 @@ Todo `topic_key` debe seguir el formato canónico:
 
 **Reglas**:
 - Prefijo `CA-` **obligatorio** en el ID (ej: `plan/CA-search-integration`, no `plan/054`)
+- `pending/{slug}` es un namespace oficial para pendientes no decididos y una excepción explícita al prefijo `CA-` obligatorio, igual que el ID especial `project` usado en `ca/project/artifact/project-context`.
 - `flow-state/{ID}` **NUNCA** se usa sin sub-namespace
 - Cada agente escribe **SOLO** sus namespaces autorizados
 
