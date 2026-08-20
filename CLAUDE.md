@@ -51,4 +51,22 @@ impiden calcular la revisión. Los estados públicos son únicamente
 `APPROVED | BLOCKED | CHANGES_REQUIRED` y las severidades públicas únicamente
 `BLOQUEANTE | WARNING | SUGGESTION`; `BLOCKER` y `CRITICAL` internos se mapean a
 `BLOQUEANTE`.
+
+### Sub-paso 1 — Investigación directa
+
+Para consultas investigables, el Runner sigue la cadena obligatoria de
+`graphify-protocol`: integración configurada → `node .flowtask/bin/flowtask.js
+graphify query --query <query-string>` → escalación automática al Inspector ante
+cualquier resultado no utilizable de la primera vía aplicable. Consulta desde la
+raíz del repositorio principal y nunca `.worktrees/`. Emite literalmente:
+
+```
+no pude obtener referencias utilizables del grafo, escalando al Inspector
+```
+
+La delegación conserva el contrato de pregunta y alcance exactos, hallazgos
+verificables y fuentes, vías consultadas y fallos/degradaciones, incertidumbres,
+tradeoffs y GAPs. Si el Inspector no está disponible, el Runner reporta que no
+pudo obtener evidencia porque el Inspector no está disponible y escala al
+desarrollador, sin búsqueda normal ni invención de contexto.
 <!-- FLOWTASK:END -->
