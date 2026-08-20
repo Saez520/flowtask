@@ -520,7 +520,7 @@ export function registerGrafoExtensions(opts = {}) {
 
   if (!_extensions.has("query")) {
     registerExtension("query", (context) => {
-      const { projectDir, selectedClis, state, logger } = context;
+      const { projectDir, selectedClis, state, logger, detectFn } = context;
 
       // Only configure MCP if extract succeeded and graphPath is available
       if (!state.graphPath) {
@@ -537,6 +537,7 @@ export function registerGrafoExtensions(opts = {}) {
         projectDir,
         selectedClis,
         graphPath: state.graphPath,
+        detectFn,
       });
 
       if (mcpResult.warning) {
@@ -679,6 +680,7 @@ export async function coordinateGraphify({ projectDir, flowtaskDir = path.join(p
     selectedClis,
     state: projectState,
     run: opts.runFn,
+    detectFn: opts.detectFn,
     logger: { logStep, logSuccess, logError, logWarn, logInfo },
   };
 
@@ -694,7 +696,7 @@ export async function coordinateGraphify({ projectDir, flowtaskDir = path.join(p
   if (queryResult) {
     projectState.query_status = queryResult.status || "failed";
     projectState.query_last_attempt = new Date().toISOString();
-    if (queryResult.diagnostic) projectState.query_diagnostic = queryResult.diagnostic;
+    projectState.query_diagnostic = queryResult.diagnostic ?? null;
     if (queryResult.warning) warnings.push(queryResult.warning);
   }
 

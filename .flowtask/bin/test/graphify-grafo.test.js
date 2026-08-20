@@ -31,6 +31,9 @@ function cleanupDir(dir) {
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
 }
 
+const detectNone = () => false;
+const detectOnly = (...available) => (name) => available.includes(name);
+
 // ─── Task 1: Extract code-only ────────────────────────────────────────────────
 
 describe("extractCodeOnly", () => {
@@ -119,17 +122,26 @@ describe("extractCodeOnly", () => {
 // ─── Task 2: MCP configuration ───────────────────────────────────────────────
 
 describe("MCP configuration builders", () => {
-  it("buildOpencodeMcpEntry returns correct structure", () => {
-    const entry = buildOpencodeMcpEntry("graphify-out/graph.json");
+  it("prioritizes graphify-mcp and uses target-specific argument shapes", () => {
+    const entry = buildOpencodeMcpEntry("graphify-out/graph.json", { detectFn: detectOnly("python", "graphify-mcp") });
     assert.equal(entry.type, "local");
-    assert.deepEqual(entry.command, ["python", "-m", "graphify.serve", "graphify-out/graph.json"]);
+    assert.deepEqual(entry.command, ["graphify-mcp", "graphify-out/graph.json"]);
     assert.equal(entry.enabled, true);
+    const claude = buildClaudeMcpEntry("graphify-out/graph.json", { detectFn: detectOnly("python", "graphify-mcp") });
+    assert.equal(claude.command, "graphify-mcp");
+    assert.deepEqual(claude.args, ["graphify-out/graph.json"]);
   });
 
-  it("buildClaudeMcpEntry returns correct structure", () => {
-    const entry = buildClaudeMcpEntry("graphify-out/graph.json");
-    assert.equal(entry.command, "python");
-    assert.deepEqual(entry.args, ["-m", "graphify.serve", "graphify-out/graph.json"]);
+  it("uses python, python3, and python fallback in order", () => {
+    assert.deepEqual(
+      buildOpencodeMcpEntry("graph.json", { detectFn: detectOnly("python") }).command,
+      ["python", "-m", "graphify.serve", "graph.json"],
+    );
+    assert.equal(buildClaudeMcpEntry("graph.json", { detectFn: detectOnly("python3") }).command, "python3");
+    assert.deepEqual(
+      buildClaudeMcpEntry("graph.json", { detectFn: detectNone }).args,
+      ["-m", "graphify.serve", "graph.json"],
+    );
   });
 });
 
@@ -184,7 +196,7 @@ describe("mergeGraphifyClaudeMcp", () => {
 
   it("creates .mcp.json with graphify entry", () => {
     const mcpPath = path.join(tempDir, ".mcp.json");
-    const result = mergeGraphifyClaudeMcp(mcpPath, "graphify-out/graph.json");
+    const result = mergeGraphifyClaudeMcp(mcpPath, "graphify-out/graph.json", { detectFn: detectNone });
 
     assert.equal(result.success, true);
     const config = JSON.parse(fs.readFileSync(mcpPath, "utf8"));
@@ -198,7 +210,7 @@ describe("mergeGraphifyClaudeMcp", () => {
       mcpServers: { engram: { command: "engram", args: ["mcp"] } },
     }), "utf8");
 
-    mergeGraphifyClaudeMcp(mcpPath, "graphify-out/graph.json");
+    mergeGraphifyClaudeMcp(mcpPath, "graphify-out/graph.json", { detectFn: detectNone });
     const config = JSON.parse(fs.readFileSync(mcpPath, "utf8"));
 
     assert.ok(config.mcpServers.engram);

@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { logInfo, logWarn, logSuccess, logError } from "./logger.js";
+import { logInfo, logWarn, logSuccess, logError, isBinaryInstalled } from "./logger.js";
 import { deepMergeObjects } from "./opencode.js";
 
 // ─── Supported MCP targets ────────────────────────────────────────────────────
@@ -14,10 +14,20 @@ const SUPPORTED_MCP_TARGETS = new Set(["opencode", "claude"]);
  * @param {string} graphPath - relative path to graph.json (e.g. "graphify-out/graph.json")
  * @returns {object} MCP config object
  */
-export function buildOpencodeMcpEntry(graphPath) {
+export function resolveGraphifyLauncher(detectFn = isBinaryInstalled) {
+  for (const launcher of ["graphify-mcp", "python", "python3"]) {
+    if (detectFn(launcher)) return launcher;
+  }
+  return "python";
+}
+
+export function buildOpencodeMcpEntry(graphPath, opts = {}) {
+  const launcher = resolveGraphifyLauncher(opts.detectFn);
   return {
     type: "local",
-    command: ["python", "-m", "graphify.serve", graphPath],
+    command: launcher === "graphify-mcp"
+      ? [launcher, graphPath]
+      : [launcher, "-m", "graphify.serve", graphPath],
     enabled: true,
   };
 }
@@ -27,10 +37,11 @@ export function buildOpencodeMcpEntry(graphPath) {
  * @param {string} graphPath - relative path to graph.json
  * @returns {object} MCP config object
  */
-export function buildClaudeMcpEntry(graphPath) {
+export function buildClaudeMcpEntry(graphPath, opts = {}) {
+  const launcher = resolveGraphifyLauncher(opts.detectFn);
   return {
-    command: "python",
-    args: ["-m", "graphify.serve", graphPath],
+    command: launcher,
+    args: launcher === "graphify-mcp" ? [graphPath] : ["-m", "graphify.serve", graphPath],
   };
 }
 
@@ -44,7 +55,7 @@ export function buildClaudeMcpEntry(graphPath) {
  * @param {string} graphPath  - relative path to graph.json
  * @returns {{ success: boolean, warning: string|null }}
  */
-export function mergeGraphifyOpencodeMcp(configPath, graphPath) {
+export function mergeGraphifyOpencodeMcp(configPath, graphPath, opts = {}) {
   try {
     let config = {};
     if (fs.existsSync(configPath)) {
@@ -55,7 +66,7 @@ export function mergeGraphifyOpencodeMcp(configPath, graphPath) {
     }
 
     if (!config.mcp) config.mcp = {};
-    config.mcp.graphify = buildOpencodeMcpEntry(graphPath);
+    config.mcp.graphify = buildOpencodeMcpEntry(graphPath, opts);
 
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
     return { success: true, warning: null };
@@ -77,7 +88,7 @@ export function mergeGraphifyOpencodeMcp(configPath, graphPath) {
  * @param {string} graphPath   - relative path to graph.json
  * @returns {{ success: boolean, warning: string|null }}
  */
-export function mergeGraphifyClaudeMcp(mcpJsonPath, graphPath) {
+export function mergeGraphifyClaudeMcp(mcpJsonPath, graphPath, opts = {}) {
   try {
     let config = {};
     if (fs.existsSync(mcpJsonPath)) {
@@ -88,7 +99,7 @@ export function mergeGraphifyClaudeMcp(mcpJsonPath, graphPath) {
     }
 
     if (!config.mcpServers) config.mcpServers = {};
-    config.mcpServers.graphify = buildClaudeMcpEntry(graphPath);
+    config.mcpServers.graphify = buildClaudeMcpEntry(graphPath, opts);
 
     fs.writeFileSync(mcpJsonPath, JSON.stringify(config, null, 2), "utf8");
     return { success: true, warning: null };
@@ -113,7 +124,7 @@ export function mergeGraphifyClaudeMcp(mcpJsonPath, graphPath) {
  * @param {string} [params.ideDir]  - IDE directory name (e.g. ".opencode", ".claude")
  * @returns {{ status: string, warning: string|null, details: object[] }}
  */
-export function configureMcpForTargets({ projectDir, selectedClis, graphPath }) {
+export function configureMcpForTargets({ projectDir, selectedClis, graphPath, detectFn }) {
   const warnings = [];
   const details = [];
 
@@ -127,14 +138,14 @@ export function configureMcpForTargets({ projectDir, selectedClis, graphPath }) 
 
     if (cli === "opencode") {
       const configPath = path.join(projectDir, ".opencode", "opencode.json");
-      const result = mergeGraphifyOpencodeMcp(configPath, graphPath);
+      const result = mergeGraphifyOpencodeMcp(configPath, graphPath, { detectFn });
       details.push({ target: cli, status: result.success ? "success" : "failed", ...result });
       if (result.warning) warnings.push(result.warning);
     }
 
     if (cli === "claude") {
       const mcpJsonPath = path.join(projectDir, ".mcp.json");
-      const result = mergeGraphifyClaudeMcp(mcpJsonPath, graphPath);
+      const result = mergeGraphifyClaudeMcp(mcpJsonPath, graphPath, { detectFn });
       details.push({ target: cli, status: result.success ? "success" : "failed", ...result });
       if (result.warning) warnings.push(result.warning);
     }

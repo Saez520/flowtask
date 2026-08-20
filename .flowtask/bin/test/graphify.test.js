@@ -731,6 +731,43 @@ describe("coordinateGraphify", () => {
     assert.ok(projectState.query_last_attempt);
   });
 
+  it("clears a stale query diagnostic after a successful query", async () => {
+    const previous = createProjectState();
+    previous.query_status = "failed";
+    previous.query_diagnostic = "grafo indisponible";
+    saveProjectState(tempDir, previous);
+    registerExtension("query", () => ({ status: "success" }));
+
+    const { projectState } = await coordinateGraphify({
+      projectDir: tempDir,
+      selectedClis: ["opencode"],
+      readline: mockReadline({ install: "y", enable: "y", hooks: "n" }),
+      opts: { detectFn: () => true, versionFn: () => "1.0", runFn: () => ({ status: 0 }), grafoExtensions: false },
+    });
+
+    assert.equal(projectState.query_status, "success");
+    assert.equal(projectState.query_diagnostic, null);
+    assert.equal(JSON.parse(fs.readFileSync(projectStatePath(tempDir), "utf8")).query_diagnostic, null);
+  });
+
+  it("preserves diagnostics for failed and skipped queries", async () => {
+    for (const result of [
+      { status: "failed", diagnostic: "MCP no disponible" },
+      { status: "skipped", diagnostic: "graphPath no disponible" },
+    ]) {
+      clearExtensions();
+      registerExtension("query", () => result);
+      const { projectState } = await coordinateGraphify({
+        projectDir: tempDir,
+        selectedClis: ["opencode"],
+        readline: mockReadline({ install: "y", enable: "y", hooks: "n" }),
+        opts: { detectFn: () => true, versionFn: () => "1.0", runFn: () => ({ status: 0 }), grafoExtensions: false },
+      });
+      assert.equal(projectState.query_status, result.status);
+      assert.equal(projectState.query_diagnostic, result.diagnostic);
+    }
+  });
+
   it("does not execute extract when extension is not registered", async () => {
     const rl = mockReadline({ install: "y", enable: "y", hooks: "n" });
     const { projectState } = await coordinateGraphify({
