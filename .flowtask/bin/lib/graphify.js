@@ -344,6 +344,37 @@ export function installGraphify(opts = {}) {
 // ─── Hooks ────────────────────────────────────────────────────────────────────
 
 /**
+ * Check whether projectDir belongs to a Git repository.
+ *
+ * @param {string} projectDir
+ * @param {object} [opts]
+ * @param {Function} [opts.runFnPreflight] - override runner (testing): (cmd, opts) => { status }
+ * @param {Function} [opts.runFn] - backwards-compatible runner override
+ * @returns {boolean} true when Git resolves a repository root
+ */
+export function hasGitRepo(projectDir, opts = {}) {
+  const runner = opts.runFnPreflight ?? opts.runFn;
+
+  try {
+    const result = runner
+      ? runner("git", {
+        args: ["rev-parse", "--show-toplevel"],
+        cwd: projectDir,
+        shell: false,
+        stdio: "pipe",
+      })
+      : spawnSync("git", ["rev-parse", "--show-toplevel"], {
+        cwd: projectDir,
+        shell: false,
+        stdio: "pipe",
+      });
+    return result?.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Install Git hooks via `graphify hook install` in the project root.
  *
  * @param {string} projectDir
@@ -571,6 +602,7 @@ export function registerGrafoExtensions(opts = {}) {
  * @param {Function} [params.opts.detectFn]
  * @param {Function} [params.opts.versionFn]
  * @param {Function} [params.opts.runFn]       - runner for install/hooks
+ * @param {Function} [params.opts.runFnPreflight] - runner for Git preflight
  * @param {Function} [params.opts.installCmdFn] - override install command
  * @returns {Promise<object>} { projectState, globalState, warnings: string[] }
  */
@@ -664,18 +696,28 @@ export async function coordinateGraphify({ projectDir, flowtaskDir = path.join(p
   if (projectState.hooksInstalled === true) {
     projectState.hooksInstalled = true;
   } else {
-    const wantsHooks = await promptInstallHooks(readline);
-    if (wantsHooks) {
-      const hookResult = installHooks(projectDir, { runFn: opts.runFn });
-      if (hookResult.success) {
-        projectState.hooksInstalled = true;
+    if (!hasGitRepo(projectDir, {
+      runFnPreflight: opts.runFnPreflight,
+      runFn: opts.runFn,
+    })) {
+      projectState.hooksInstalled = false;
+      const warning = "Graphify: proyecto sin repositorio git; hooks omitidos.";
+      logWarn(warning);
+      warnings.push(warning);
+    } else {
+      const wantsHooks = await promptInstallHooks(readline);
+      if (wantsHooks) {
+        const hookResult = installHooks(projectDir, { runFn: opts.runFn });
+        if (hookResult.success) {
+          projectState.hooksInstalled = true;
+        } else {
+          projectState.hooksInstalled = false;
+          projectState.lastWarning = hookResult.warning;
+          warnings.push(hookResult.warning);
+        }
       } else {
         projectState.hooksInstalled = false;
-        projectState.lastWarning = hookResult.warning;
-        warnings.push(hookResult.warning);
       }
-    } else {
-      projectState.hooksInstalled = false;
     }
   }
 

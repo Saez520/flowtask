@@ -19,6 +19,7 @@ import {
   detectGraphify,
   installGraphify,
   installHooks,
+  hasGitRepo,
   ensureGitignoreEntries,
   registerExtension,
   runExtension,
@@ -433,6 +434,22 @@ describe("installHooks", () => {
   });
 });
 
+describe("hasGitRepo", () => {
+  it("uses the injectable preflight runner", () => {
+    const calls = [];
+    assert.equal(hasGitRepo("/tmp/project", {
+      runFnPreflight: (cmd, opts) => {
+        calls.push({ cmd, opts });
+        return { status: 0 };
+      },
+    }), true);
+    assert.equal(calls[0].cmd, "git");
+    assert.deepEqual(calls[0].opts.args, ["rev-parse", "--show-toplevel"]);
+    assert.equal(calls[0].opts.shell, false);
+    assert.equal(calls[0].opts.cwd, "/tmp/project");
+  });
+});
+
 // ─── .gitignore ───────────────────────────────────────────────────────────────
 
 describe("ensureGitignoreEntries", () => {
@@ -618,6 +635,69 @@ describe("coordinateGraphify", () => {
     });
 
     assert.equal(projectState.hooksInstalled, true);
+  });
+
+  it("no git repo: hooks prompt skipped, flow continues", async () => {
+    registerExtension("extract", () => ({ status: "success" }));
+    registerExtension("query", () => ({ status: "success" }));
+    let hooksPrompts = 0;
+    const rl = {
+      createInterface: () => ({
+        question: (prompt, cb) => {
+          if (prompt.includes("hooks")) hooksPrompts++;
+          if (prompt.includes("Habilitar")) cb("y");
+          else cb("n");
+        },
+        close: () => {},
+      }),
+    };
+
+    const { projectState, warnings } = await coordinateGraphify({
+      projectDir: tempDir,
+      selectedClis: ["opencode"],
+      readline: rl,
+      opts: {
+        detectFn: () => true,
+        versionFn: () => "1.0",
+        runFnPreflight: () => ({ status: 1 }),
+      },
+    });
+
+    assert.equal(projectState.enabled, true);
+    assert.equal(projectState.hooksInstalled, false);
+    assert.equal(projectState.extract_status, "success");
+    assert.equal(projectState.query_status, "success");
+    assert.equal(hooksPrompts, 0);
+    assert.ok(warnings.some((warning) => warning.includes("sin repositorio git")));
+  });
+
+  it("git repo present: hooks prompt shown", async () => {
+    let hooksPrompts = 0;
+    const rl = {
+      createInterface: () => ({
+        question: (prompt, cb) => {
+          if (prompt.includes("hooks")) hooksPrompts++;
+          if (prompt.includes("Habilitar")) cb("y");
+          else if (prompt.includes("hooks")) cb("n");
+          else cb("y");
+        },
+        close: () => {},
+      }),
+    };
+
+    const { projectState } = await coordinateGraphify({
+      projectDir: tempDir,
+      selectedClis: ["opencode"],
+      readline: rl,
+      opts: {
+        detectFn: () => true,
+        versionFn: () => "1.0",
+        runFnPreflight: () => ({ status: 0 }),
+      },
+    });
+
+    assert.equal(projectState.hooksInstalled, false);
+    assert.equal(hooksPrompts, 1);
   });
 
   it("reject install: state is skipped, no hooks or init", async () => {
