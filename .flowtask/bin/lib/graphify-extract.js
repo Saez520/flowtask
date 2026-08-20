@@ -5,7 +5,7 @@ import { spawnSync } from "child_process";
 /**
  * Adaptador de extracción code-only para Graphify.
  *
- * Ejecuta `graphify extract --code-only` con cwd = projectDir (raíz principal).
+ * Ejecuta `graphify update <projectDir> --no-cluster` con cwd = projectDir (raíz principal).
  * Rechaza rutas bajo `.worktrees/`.
  * Devuelve resultado estructurado no lanzable.
  *
@@ -32,7 +32,7 @@ export function extractCodeOnly(projectDir, opts = {}) {
     };
   }
 
-  const cmd = "graphify extract --code-only";
+  const cmd = `graphify update "${projectDir}" --no-cluster`;
 
   try {
     let result;

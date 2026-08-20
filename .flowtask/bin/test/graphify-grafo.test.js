@@ -39,7 +39,7 @@ describe("extractCodeOnly", () => {
   beforeEach(() => { tempDir = makeTempDir(); });
   afterEach(() => { cleanupDir(tempDir); });
 
-  it("runs graphify extract --code-only with correct cwd", () => {
+  it("runs graphify update <path> --no-cluster with correct cwd", () => {
     let capturedCmd, capturedOpts;
     const result = extractCodeOnly(tempDir, {
       runFn: (cmd, opts) => {
@@ -53,7 +53,7 @@ describe("extractCodeOnly", () => {
       },
     });
 
-    assert.ok(capturedCmd.includes("graphify extract --code-only"));
+    assert.ok(capturedCmd.includes(`graphify update "${tempDir}" --no-cluster`));
     assert.equal(capturedOpts.cwd, tempDir);
     assert.equal(result.ok, true);
     assert.equal(result.status, "success");
