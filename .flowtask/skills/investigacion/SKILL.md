@@ -70,12 +70,14 @@ utilizables, escala automáticamente al Inspector con:
 - vías consultadas y fallos/degradaciones;
 - incertidumbres, tradeoffs y GAPs pendientes.
 
+Cuando Graphify y Engram no bastan para responder con evidencia, se escala al
+Inspector; la búsqueda normal del proyecto no reemplaza esa escalada. La búsqueda normal no se presenta como evidencia Graphify. Si no pude consultar el grafo, estoy usando búsqueda normal.
+
 El contrato de delegación no cambia y no convierte una inferencia en hecho ni
 autoriza al Runner a escribir. Si el Inspector no está disponible, el Runner
 reporta explícitamente que no pudo obtener evidencia porque el Inspector no está
 disponible y escala al desarrollador. En ese caso no usa búsqueda normal ni
-inventa contexto. El Inspector no se modifica por este contrato; el Runner
-nunca escribe archivos de producto ni configuración.
+inventa contexto. El Inspector no se modifica por este contrato. Runner nunca escribe archivos de producto ni configuración.
 
 ## Conversación y transición a ejecución
 
@@ -83,14 +85,22 @@ Durante la investigación el Runner presenta diagnóstico, tradeoffs y GAPs, y
 espera una decisión explícita. El evento literal `ejecutar` es la única
 transición a la ejecución de una corrección acordada.
 
-Antes de despachar al Constructor, genera una sola vez un ID único UTC con el
-formato `hotfix-YYYYMMDD-HHMMSS-<nonce>` y persiste los artifacts completos:
+Antes de despachar al Constructor, construye una sola vez un slug descriptivo
+normalizado en minúsculas y kebab-case a partir del problema acordado, y forma
+el ID `HF-{slug}`. Si el operador ya entrega `HF-`, no dupliques el prefijo.
+Consulta Engram por el candidato completo `hotfix/{id}` antes de persistir.
+Ante una colisión, conserva el nombre base y prueba `HF-{slug}-2`, luego
+`-3`, etc., hasta encontrar el primer candidato libre; no sobrescribas ni
+mezcles historiales. Los IDs temporales históricos no se renombran.
+
+Persiste los artifacts completos:
 
 - `hotfix/{id}/artifact/investigacion`;
 - `hotfix/{id}/artifact/plan`.
 
-El mismo ID se reutiliza en flow-state, prompts, worktree y branch. El hotfix
-no pasa por ca-writer, planner ni plan-auditor.
+El mismo ID elegido se reutiliza exactamente en flow-state, prompts, worktree,
+branch, `execution_id` y `artifact_namespace`. Los namespaces internos siguen
+siendo `hotfix/{id}`. El hotfix no pasa por ca-writer, planner ni plan-auditor.
 
 ## Ejecución aislada
 

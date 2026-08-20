@@ -329,10 +329,18 @@ plan-auditor.
 
 ### Paso 1 — Persistencia previa
 
-Genera una sola vez un ID UTC único con formato
-`hotfix-YYYYMMDD-HHMMSS-<nonce>`. Si colisiona, regenera antes de persistir.
-Guarda en Engram, como artifacts completos `type: ca-artifact`, los namespaces
-`hotfix/{id}/artifact/investigacion` y `hotfix/{id}/artifact/plan`.
+Construye una sola vez un slug descriptivo normalizado en minúsculas y
+kebab-case a partir del problema acordado, y forma el ID `HF-{slug}`. Si el
+operador ya entrega el prefijo `HF-`, no lo dupliques. Antes de persistir,
+consulta Engram por el candidato completo `hotfix/{id}`. Si ya existe,
+conserva el nombre base y prueba secuencialmente `HF-{slug}-2`, `-3`, etc.,
+hasta encontrar el primer candidato libre; no sobrescribas ni mezcles
+historiales. Los IDs temporales históricos no se renombran.
+
+Una vez fijado, reutiliza exactamente el mismo ID en los artifacts completos
+`type: ca-artifact`, los namespaces `hotfix/{id}/artifact/investigacion` y
+`hotfix/{id}/artifact/plan`, el flow-state, los prompts, el `execution_id`, el
+`artifact_namespace`, el worktree y la branch.
 
 ### Paso 2 — Worktree y Constructor
 

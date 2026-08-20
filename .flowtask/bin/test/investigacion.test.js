@@ -60,6 +60,26 @@ describe("Runner hotfix integration contract", () => {
     assert.ok(runner.includes("worktree/hotfix/{id}"));
   });
 
+  it("documents descriptive HF naming, collision handling, and propagation", () => {
+    for (const content of [runner, read(".flowtask/skills/investigacion/SKILL.md")]) {
+      assert.match(content, /HF-\{(?:slug|nombre-descriptivo)\}/);
+      assert.match(content, /[Cc]onsulta Engram/);
+      assert.ok(content.includes("HF-{slug}-2"));
+      assert.ok(content.includes("-3"));
+      assert.match(content, /no sobrescribas ni\s+mezcles/);
+      assert.ok(content.includes("Los IDs temporales históricos no se renombran"));
+      assert.ok(!content.includes("hotfix-YYYYMMDD-HHMMSS-<nonce>"));
+    }
+  });
+
+  it("keeps the hotfix namespace while Validator distinguishes legacy IDs", () => {
+    const validator = read(".flowtask/agents/validator.md");
+    assert.ok(validator.includes("HF-{nombre-descriptivo}"));
+    assert.ok(validator.includes("IDs temporales de hotfixes anteriores"));
+    assert.ok(validator.includes("execution_id=hotfix/{id}"));
+    assert.ok(validator.includes("artifact_namespace=hotfix/{id}"));
+  });
+
   it("does not modify the Inspector contract", () => {
     const inspector = path.join(ROOT, ".flowtask", "agents", "inspector.md");
     assert.ok(fs.existsSync(inspector));

@@ -78,7 +78,7 @@ el worktree recibido y nunca corregir la implementación.
 
 1. **Review del Plan-Auditor**: Solo para CA, `mem_search(query: "flow-state/{ID}/audit")`; hotfix no pasa por plan-auditor.
 2. **Decisiones de Diseño**: `mem_search(query: "{execution_id}", type: "decision")`.
-3. **Historial de fallos**: Busca si este CA o hotfix ya fue rechazado antes para no repetir el mismo error en el reporte. (CA usa ID `CA-{ID}`; hotfix usa ID `hotfix-YYYYMMDD-HHMMSS-{nonce}`.)
+3. **Historial de fallos**: Busca si este CA o hotfix ya fue rechazado antes para no repetir el mismo error en el reporte. Los hotfixes nuevos usan `HF-{nombre-descriptivo}` y se buscan bajo `hotfix/{id}`. Los IDs temporales de hotfixes anteriores siguen siendo buscables como historial legado.
 
 ---
 
