@@ -40,16 +40,19 @@ de `graphify-protocol`:
 1. integración de consulta configurada para el CLI actual
    ↓ si no está disponible o no devuelve resultado utilizable
 2. node .flowtask/bin/flowtask.js graphify query --query <query-string>
-   ↓ si no está disponible, devuelve ok:false o no produce resultado utilizable
-3. búsqueda normal del proyecto
+   ↓ si no está disponible, devuelve ok:false, está vacío o no produce
+     referencias utilizables
+3. escalar automáticamente al Inspector
 ```
 
 La consulta se ejecuta desde la raíz del repositorio principal y nunca consulta
-`.worktrees/`. La búsqueda normal no se presenta como evidencia Graphify. Si
-ambas vías Graphify fallan, se emite exactamente:
+`.worktrees/`. Ante cualquier resultado no utilizable de la primera vía Graphify
+aplicable —incluidos resultado vacío, integración o CLI no disponibles, `ok:false`,
+exit code `1` o ausencia de referencias utilizables— se detiene la cadena y se
+emite exactamente:
 
 ```
-no pude consultar el grafo, estoy usando búsqueda normal
+no pude obtener referencias utilizables del grafo, escalando al Inspector
 ```
 
 La evidencia y los resultados se resumen sin volcar secretos ni salidas
@@ -58,18 +61,21 @@ o `[No verificado]`; la ausencia de resultados no se rellena con suposiciones.
 
 ## Frontera Runner / Inspector
 
-El Runner responde directamente cuando Engram, Graphify o la búsqueda normal
-permiten diagnosticar sin suponer. Si Graphify y Engram no bastan y responder
-exige suponer, escala automáticamente al Inspector con:
+El Runner responde directamente cuando Engram o Graphify permiten diagnosticar
+sin suponer. Cuando la primera vía Graphify aplicable no entrega referencias
+utilizables, escala automáticamente al Inspector con:
 
 - pregunta y alcance exactos;
 - hallazgos verificables y sus fuentes;
 - vías consultadas y fallos/degradaciones;
 - incertidumbres, tradeoffs y GAPs pendientes.
 
-El Inspector no se modifica por este contrato. La delegación no convierte una
-inferencia en hecho ni autoriza al Runner a escribir. El Runner nunca escribe archivos
-de producto ni configuración.
+El contrato de delegación no cambia y no convierte una inferencia en hecho ni
+autoriza al Runner a escribir. Si el Inspector no está disponible, el Runner
+reporta explícitamente que no pudo obtener evidencia porque el Inspector no está
+disponible y escala al desarrollador. En ese caso no usa búsqueda normal ni
+inventa contexto. El Inspector no se modifica por este contrato; el Runner
+nunca escribe archivos de producto ni configuración.
 
 ## Conversación y transición a ejecución
 

@@ -283,10 +283,15 @@ Después de cargar contexto y antes de clasificar la intención, comprobar el es
 
 Para consultas investigables, el Runner sigue la cadena obligatoria de
 `graphify-protocol`: integración configurada → `node .flowtask/bin/flowtask.js
-graphify query --query <query-string>` → búsqueda normal del proyecto. Consulta
-desde la raíz del repositorio principal y nunca `.worktrees/`. Si ambas vías
-Graphify fallan, emite literalmente `no pude consultar el grafo, estoy usando
-búsqueda normal`. La búsqueda normal nunca se presenta como evidencia Graphify.
+graphify query --query <query-string>` → escalación automática al Inspector ante
+cualquier resultado no utilizable de la primera vía aplicable. Consulta desde la
+raíz del repositorio principal y nunca `.worktrees/`. Emite literalmente
+`no pude obtener referencias utilizables del grafo, escalando al Inspector`.
+La delegación conserva el contrato de pregunta y alcance exactos, hallazgos
+verificables y fuentes, vías consultadas y fallos/degradaciones, incertidumbres,
+tradeoffs y GAPs. Si el Inspector no está disponible, reporta que no pudo obtener
+evidencia porque el Inspector no está disponible y escala al desarrollador, sin
+búsqueda normal ni contexto inventado.
 
 El Runner etiqueta certeza (`[Inferencia]`, `[Especulación]`, `[No verificado]`),
 expone tradeoffs y GAPs y no escribe. Si Engram y Graphify no bastan y
