@@ -258,7 +258,7 @@ Después de cargar contexto y antes de clasificar la intención, comprobar el es
 
 1. Leer `docs_media_status` del estado de proyecto Graphify (`.flowtask/config/graphify.json`, schema v1).
 2. Si `docs_media_status` es `pending` o `failed` y **aún no se ofreció en esta conversación**:
-   - Mostrar oferta única: `📊 Graphify docs/media está pendiente. ¿Generar documentación y medios ahora? (sí/no)`
+   - Mostrar oferta única: `📊 Ey — todavía no se generó el grafo del proyecto ni los archivos media. ¿Los genero ahora? (sí/no)`
    - Marcar localmente como ofrecida (variable efímera, no persistida) para no repetir en esta conversación.
 3. Si `docs_media_status` es `success`: no ofrecer.
 4. **Aceptar solo afirmación explícita** (`sí`, `yes`, `y`, `s`, `si`). Rechazo, silencio o ambigüedad no inician generación.
