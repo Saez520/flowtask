@@ -636,17 +636,22 @@ export async function coordinateGraphify({ projectDir, flowtaskDir = path.join(p
   }
 
   // ── 3. Enable opt-in ────────────────────────────────────────────────────
-  const wantsEnable = await promptEnableGraphify(readline);
-  if (!wantsEnable) {
-    projectState.enabled = false;
-    projectState.lastInitializationResult = "skipped";
-    projectState.selectedClis = selectedClis;
-    projectState.updatedAt = new Date().toISOString();
-    saveProjectState(projectDir, projectState, flowtaskDir);
-    return { projectState, globalState, warnings: ["Graphify: habilitación rechazada por el desarrollador."] };
+  if (projectState.enabled === true) {
+    logInfo("Graphify ya habilitado para este proyecto; se conserva la habilitación.");
+  } else {
+    const wantsEnable = await promptEnableGraphify(readline);
+    if (!wantsEnable) {
+      projectState.enabled = false;
+      projectState.lastInitializationResult = "skipped";
+      projectState.selectedClis = selectedClis;
+      projectState.updatedAt = new Date().toISOString();
+      saveProjectState(projectDir, projectState, flowtaskDir);
+      return { projectState, globalState, warnings: ["Graphify: habilitación rechazada por el desarrollador."] };
+    }
+
+    projectState.enabled = true;
   }
 
-  projectState.enabled = true;
   projectState.selectedClis = selectedClis;
 
   // ── 4. Warn about later phases ──────────────────────────────────────────
@@ -656,18 +661,22 @@ export async function coordinateGraphify({ projectDir, flowtaskDir = path.join(p
   ensureGitignoreEntries(projectDir);
 
   // ── 6. Hooks ────────────────────────────────────────────────────────────
-  const wantsHooks = await promptInstallHooks(readline);
-  if (wantsHooks) {
-    const hookResult = installHooks(projectDir, { runFn: opts.runFn });
-    if (hookResult.success) {
-      projectState.hooksInstalled = true;
+  if (projectState.hooksInstalled === true) {
+    projectState.hooksInstalled = true;
+  } else {
+    const wantsHooks = await promptInstallHooks(readline);
+    if (wantsHooks) {
+      const hookResult = installHooks(projectDir, { runFn: opts.runFn });
+      if (hookResult.success) {
+        projectState.hooksInstalled = true;
+      } else {
+        projectState.hooksInstalled = false;
+        projectState.lastWarning = hookResult.warning;
+        warnings.push(hookResult.warning);
+      }
     } else {
       projectState.hooksInstalled = false;
-      projectState.lastWarning = hookResult.warning;
-      warnings.push(hookResult.warning);
     }
-  } else {
-    projectState.hooksInstalled = false;
   }
 
   // ── 7. Run registered extensions (plan-grafo extract/query) ─────────────

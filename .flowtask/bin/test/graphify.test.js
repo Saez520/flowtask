@@ -572,6 +572,54 @@ describe("coordinateGraphify", () => {
     assert.equal(warnings.length, 0);
   });
 
+  it("already enabled: skips enable prompt and preserves state", async () => {
+    const previous = createProjectState();
+    previous.enabled = true;
+    saveProjectState(tempDir, previous);
+    let enablePrompts = 0;
+    const rl = {
+      createInterface: () => ({
+        question: (prompt, cb) => {
+          if (prompt.includes("Habilitar")) enablePrompts++;
+          cb("n");
+        },
+        close: () => {},
+      }),
+    };
+
+    const { projectState } = await coordinateGraphify({
+      projectDir: tempDir,
+      selectedClis: ["opencode"],
+      readline: rl,
+      opts: { detectFn: () => true, versionFn: () => "1.0", grafoExtensions: false },
+    });
+
+    assert.equal(projectState.enabled, true);
+    assert.equal(enablePrompts, 0);
+  });
+
+  it("hooks already installed: skips hooks prompt and preserves state", async () => {
+    const previous = createProjectState();
+    previous.enabled = true;
+    previous.hooksInstalled = true;
+    saveProjectState(tempDir, previous);
+    const rl = {
+      createInterface: () => ({
+        question: () => { throw new Error("no se esperaba ningún prompt"); },
+        close: () => {},
+      }),
+    };
+
+    const { projectState } = await coordinateGraphify({
+      projectDir: tempDir,
+      selectedClis: ["opencode"],
+      readline: rl,
+      opts: { detectFn: () => true, versionFn: () => "1.0", grafoExtensions: false },
+    });
+
+    assert.equal(projectState.hooksInstalled, true);
+  });
+
   it("reject install: state is skipped, no hooks or init", async () => {
     const rl = mockReadline({ install: "n" });
     const { projectState, warnings } = await coordinateGraphify({
