@@ -23,6 +23,8 @@ Thumbs.db
 *.log
 
 # Local config (each project has its own)
+CLAUDE.md
+.mcp.json
 # flowtask.config.json
 
 # npm

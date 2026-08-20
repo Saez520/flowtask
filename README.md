@@ -337,21 +337,6 @@ If a session is abandoned or lost, orphan CAs retain their instance name until a
 
 ```
 FlowTask/
-├── .claude/                      # OpenCode CLI environment
-│   ├── agents/                   # OpenCode agent definitions
-│   │   ├── flowtask-ca-writer.md
-│   │   ├── flowtask-constructor.md
-│   │   ├── flowtask-initializer.md
-│   │   ├── flowtask-inspector.md
-│   │   ├── flowtask-logger.md
-│   │   ├── flowtask-onboarder.md
-│   │   ├── flowtask-plan-auditor.md
-│   │   ├── flowtask-planner.md
-│   │   ├── flowtask-tester.md
-│   │   └── flowtask-validator.md
-│   ├── commands/                 # Slash command definitions (mirror)
-│   │   └── register-skills.md    # /register-skills
-│   └── flowtask/                 # FlowTask CLI environment
 ├── .flowtask/
 │   ├── bin/
 │   │   ├── flowtask.js           # CLI entry point (npm link)
@@ -373,8 +358,8 @@ FlowTask/
 │   │   ├── onboarder.md          # Technical quiz and personality assignment
 │   │   └── review-orchestrator.md # 4R review orchestration
 │   ├── checkpoints/              # Checkpoint state storage
-│   ├── claude/                   # FlowTask CLI environment (OpenCode)
-│   │   └── settings.json         # OpenCode settings
+│   ├── claude/                   # Global Claude Code support/templates
+│   │   └── settings.json         # Claude Code settings template
 │   ├── commands/                 # FlowTask slash commands
 │   │   ├── init.md               # /init
 │   │   ├── init-api.md           # /init-api
@@ -444,7 +429,6 @@ FlowTask/
 │   └── bun.lock
 ├── docs/                         # Additional documentation
 ├── Flowtask-Architecture/        # Architecture documentation
-├── CLAUDE.md                     # Legacy del consumidor; update lo elimina
 ├── opencode.json                 # OpenCode configuration
 ├── tui.json                      # Legacy del consumidor; update lo elimina
 ├── update-engram.ps1             # Engram update script

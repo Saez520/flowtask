@@ -1,6 +1,8 @@
-import { describe, it } from "node:test";
+import { before, after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "fs";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -8,20 +10,54 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..", "..", "..");
-// Main repo root (mirrors are gitignored in worktree, exist in main repo)
-const MAIN_REPO = path.resolve(ROOT, "..", "..");
+let fixtureRoot;
+let claudeFixtureRoot;
+
+before(async () => {
+  fixtureRoot = await mkdtemp(path.join(tmpdir(), "graphify-consumo-"));
+  claudeFixtureRoot = path.join(fixtureRoot, "claude");
+  await mkdir(path.join(claudeFixtureRoot, "agents"), { recursive: true });
+  await mkdir(path.join(claudeFixtureRoot, "flowtask", "skills", "graphify-protocol"), { recursive: true });
+
+  await writeFile(
+    path.join(claudeFixtureRoot, "agents", "flowtask-ca-writer.md"),
+    "flowtask-ca-writer\\n\\ngraphify-protocol\\nmemory-protocol\\nConsulta Graphify\\nnode .flowtask/bin/flowtask.js graphify query\\n.worktrees/",
+    "utf8"
+  );
+  await writeFile(
+    path.join(claudeFixtureRoot, "agents", "flowtask-planner.md"),
+    "flowtask-planner\\n\\ngraphify-protocol\\nmemory-protocol\\nEvidencia verificable del grafo\\nG-001\\n**Consulta:**\\n**Vía:**\\n**Referencias:**\\nSin evidencia derivada del grafo",
+    "utf8"
+  );
+
+  // The canonical skill is the controlled normative source; only compatibility differs.
+  const canonical = fs.readFileSync(path.join(ROOT, ".flowtask/skills/graphify-protocol/SKILL.md"), "utf8");
+  await writeFile(
+    path.join(claudeFixtureRoot, "flowtask", "skills", "graphify-protocol", "SKILL.md"),
+    canonical.replace("compatibility: opencode", "compatibility: claude-code"),
+    "utf8"
+  );
+});
+
+after(async () => {
+  await rm(fixtureRoot, { recursive: true, force: true });
+  assert.equal(fs.existsSync(fixtureRoot), false, "temporary fixtures should be removed");
+});
 
 function readRelative(relPath) {
-  // Try worktree first, then main repo (for gitignored mirrors)
-  const worktreePath = path.join(ROOT, relPath);
-  if (fs.existsSync(worktreePath)) {
-    return fs.readFileSync(worktreePath, "utf8");
+  const sourcePath = path.join(ROOT, relPath);
+  return fs.existsSync(sourcePath) ? fs.readFileSync(sourcePath, "utf8") : null;
+}
+
+function fixturePath(relativePath) {
+  return `fixture:${relativePath}`;
+}
+
+function readPath(filePath) {
+  if (filePath.startsWith("fixture:")) {
+    return fs.readFileSync(path.join(claudeFixtureRoot, filePath.slice("fixture:".length)), "utf8");
   }
-  const mainRepoPath = path.join(MAIN_REPO, relPath);
-  if (fs.existsSync(mainRepoPath)) {
-    return fs.readFileSync(mainRepoPath, "utf8");
-  }
-  return null;
+  return readRelative(filePath);
 }
 
 // ─── Task 1: Skill contract ──────────────────────────────────────────────────
@@ -128,48 +164,40 @@ describe("graphify-protocol skill contract", () => {
 
 describe("graphify-protocol mirrors", () => {
   const canonical = readRelative(".flowtask/skills/graphify-protocol/SKILL.md");
-  const opencode = readRelative(".opencode/skills/graphify-protocol/SKILL.md");
-  const claude = readRelative(".claude/flowtask/skills/graphify-protocol/SKILL.md");
+  let claude;
 
-  it("opencode mirror exists", () => {
-    assert.ok(opencode !== null, "OpenCode mirror should exist");
+  before(() => {
+    claude = readPath(fixturePath("flowtask/skills/graphify-protocol/SKILL.md"));
   });
 
-  it("claude mirror exists", () => {
-    assert.ok(claude !== null, "Claude mirror should exist");
+  it("synthetic Claude fixture exists", () => {
+    assert.ok(claude !== null, "Claude fixture should exist");
   });
 
   it("all three contain the exact CLI command", () => {
     const cmd = "node .flowtask/bin/flowtask.js graphify query --query <query-string>";
     assert.ok(canonical.includes(cmd));
-    assert.ok(opencode.includes(cmd));
     assert.ok(claude.includes(cmd));
   });
 
   it("all three contain the exact degradation phrase", () => {
     const phrase = "no pude consultar el grafo, estoy usando búsqueda normal";
     assert.ok(canonical.includes(phrase));
-    assert.ok(opencode.includes(phrase));
     assert.ok(claude.includes(phrase));
   });
 
   it("all three contain the evidence template", () => {
     assert.ok(canonical.includes("## Evidencia verificable del grafo"));
-    assert.ok(opencode.includes("## Evidencia verificable del grafo"));
     assert.ok(claude.includes("## Evidencia verificable del grafo"));
   });
 
   it("all three contain JSON contract keys", () => {
-    for (const [name, content] of [["canonical", canonical], ["opencode", opencode], ["claude", claude]]) {
+    for (const [name, content] of [["canonical", canonical], ["claude", claude]]) {
       assert.ok(content.includes('"ok"'), `${name} missing ok`);
       assert.ok(content.includes('"source"'), `${name} missing source`);
       assert.ok(content.includes('"results"'), `${name} missing results`);
       assert.ok(content.includes('"diagnostic"'), `${name} missing diagnostic`);
     }
-  });
-
-  it("opencode declares compatibility: opencode", () => {
-    assert.ok(opencode.includes("compatibility: opencode"));
   });
 
   it("claude declares compatibility: claude-code", () => {
@@ -185,11 +213,8 @@ describe("graphify-protocol mirrors", () => {
     }
 
     const normCanonical = extractNormative(canonical);
-    const normOpencode = extractNormative(opencode);
     const normClaude = extractNormative(claude);
 
-    // All three should have the same normative content
-    assert.equal(normOpencode, normCanonical, "OpenCode normative should match canonical");
     assert.equal(normClaude, normCanonical, "Claude normative should match canonical");
   });
 });
@@ -200,15 +225,13 @@ describe("Agent integration — graphify-protocol loaded", () => {
   const agents = [
     { path: ".flowtask/agents/ca-writer.md", name: "canonical ca-writer" },
     { path: ".flowtask/agents/planner.md", name: "canonical planner" },
-    { path: ".opencode/flowtask/agents/ca-writer.md", name: "opencode ca-writer" },
-    { path: ".opencode/flowtask/agents/planner.md", name: "opencode planner" },
-    { path: ".claude/agents/flowtask-ca-writer.md", name: "claude ca-writer" },
-    { path: ".claude/agents/flowtask-planner.md", name: "claude planner" },
+    { path: fixturePath("agents/flowtask-ca-writer.md"), name: "claude ca-writer" },
+    { path: fixturePath("agents/flowtask-planner.md"), name: "claude planner" },
   ];
 
   for (const agent of agents) {
     it(`${agent.name} loads graphify-protocol`, () => {
-      const content = readRelative(agent.path);
+      const content = readPath(agent.path);
       assert.ok(content !== null, `${agent.path} should exist`);
       assert.ok(
         content.includes("graphify-protocol"),
@@ -219,7 +242,7 @@ describe("Agent integration — graphify-protocol loaded", () => {
 
   for (const agent of agents) {
     it(`${agent.name} preserves memory-protocol skill`, () => {
-      const content = readRelative(agent.path);
+      const content = readPath(agent.path);
       assert.ok(
         content.includes("memory-protocol"),
         `${agent.name} should still reference memory-protocol`
@@ -230,13 +253,12 @@ describe("Agent integration — graphify-protocol loaded", () => {
   // CA-writer specific checks
   const caWriters = [
     ".flowtask/agents/ca-writer.md",
-    ".opencode/flowtask/agents/ca-writer.md",
-    ".claude/agents/flowtask-ca-writer.md",
+    fixturePath("agents/flowtask-ca-writer.md"),
   ];
 
   for (const cwPath of caWriters) {
     it(`${cwPath} contains Graphify consultation step`, () => {
-      const content = readRelative(cwPath);
+      const content = readPath(cwPath);
       assert.ok(content.includes("Consulta Graphify"), `${cwPath} should have Graphify step`);
       assert.ok(
         content.includes("node .flowtask/bin/flowtask.js graphify query"),
@@ -245,7 +267,7 @@ describe("Agent integration — graphify-protocol loaded", () => {
     });
 
     it(`${cwPath} declares worktree exclusion`, () => {
-      const content = readRelative(cwPath);
+      const content = readPath(cwPath);
       assert.ok(
         content.includes(".worktrees/") || content.includes("worktrees no participan"),
         `${cwPath} should exclude worktrees`
@@ -256,13 +278,12 @@ describe("Agent integration — graphify-protocol loaded", () => {
   // Planner specific checks
   const planners = [
     ".flowtask/agents/planner.md",
-    ".opencode/flowtask/agents/planner.md",
-    ".claude/agents/flowtask-planner.md",
+    fixturePath("agents/flowtask-planner.md"),
   ];
 
   for (const plPath of planners) {
     it(`${plPath} requires evidence section`, () => {
-      const content = readRelative(plPath);
+      const content = readPath(plPath);
       assert.ok(
         content.includes("Evidencia verificable del grafo"),
         `${plPath} should require evidence section`
@@ -270,7 +291,7 @@ describe("Agent integration — graphify-protocol loaded", () => {
     });
 
     it(`${plPath} contains G-NNN evidence schema`, () => {
-      const content = readRelative(plPath);
+      const content = readPath(plPath);
       assert.ok(content.includes("G-001"), `${plPath} should have G-NNN format`);
       assert.ok(content.includes("**Consulta:**"), `${plPath} should have Consulta field`);
       assert.ok(content.includes("**Vía:**"), `${plPath} should have Vía field`);
@@ -278,7 +299,7 @@ describe("Agent integration — graphify-protocol loaded", () => {
     });
 
     it(`${plPath} contains absence declaration`, () => {
-      const content = readRelative(plPath);
+      const content = readPath(plPath);
       assert.ok(
         content.includes("Sin evidencia derivada del grafo"),
         `${plPath} should have absence declaration`
