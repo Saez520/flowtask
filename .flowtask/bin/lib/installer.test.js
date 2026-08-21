@@ -79,6 +79,28 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
+const canonicalRunnerPermission = {
+  "*": "deny",
+  bash: {
+    "*": "deny",
+    "node .flowtask/bin/flowtask.js graphify *": "allow",
+    "git status": "allow", "git add": "allow", "git restore --staged": "allow",
+    "git commit": "allow", "git push": "allow", "git merge": "allow",
+    "./.flowtask/scripts/worktree.sh create": "allow",
+    "./.flowtask/scripts/worktree.sh complete": "allow",
+    "./.flowtask/scripts/worktree.sh list": "allow",
+  },
+  task: {
+    "*": "deny", "flowtask-ca-writer": "allow", "flowtask-planner": "allow",
+    "flowtask-plan-auditor": "allow", "flowtask-constructor": "allow",
+    "flowtask-validator": "allow", "flowtask-initializer": "allow", "flowtask-logger": "allow",
+    "flowtask-tester": "allow", "flowtask-review-orchestrator": "allow",
+    "flowtask-inspector": "allow", "flowtask-onboarder": "allow",
+    "flowtask-graphify-docs-media": "allow", "flowtask-runner": "deny",
+  },
+  skill: "allow", "engram_*": "allow",
+};
+
 function installedPluginEntries(configPath) {
   return readJson(configPath).plugin ?? [];
 }
@@ -255,6 +277,9 @@ test("update integrates the canonical OpenCode config into an installed target",
     persona: "tutor-senior",
     onboarded: true,
   });
+  writeJson(path.join(root, ".flowtask", "opencode.json"), {
+    agent: { "flowtask-runner": { permission: canonicalRunnerPermission } },
+  });
   writeJson(path.join(root, ".opencode", "opencode.json"), {
     $schema: "https://custom/schema.json",
     agent: { existing: { description: "manual" } },
@@ -274,8 +299,13 @@ test("update integrates the canonical OpenCode config into an installed target",
   assert.ok(updatedConfig.agent["flowtask-validator"], "update must merge the new canonical agent");
   assert.equal(updatedConfig.agent["flowtask-validator"].prompt, "{file:flowtask/agents/validator.md}");
   assert.deepEqual(updatedConfig.agent.existing, { description: "manual" });
-  assert.equal(updatedConfig.agent["flowtask-runner"].permission.skill, "allow");
-  assert.equal(updatedConfig.agent["flowtask-runner"].permission["*"], "deny");
+  const permission = updatedConfig.agent["flowtask-runner"].permission;
+  assert.deepEqual(Object.keys(permission), ["*", "bash", "task", "skill", "engram_*"]);
+  assert.equal(Object.keys(permission.bash)[0], "*");
+  assert.equal(Object.keys(permission.task)[0], "*");
+  assert.equal(Object.keys(permission.task).at(-1), "flowtask-runner");
+  assert.equal(permission.skill, "allow");
+  assert.equal(permission["engram_*"], "allow");
   assert.equal(Object.hasOwn(updatedConfig.agent["flowtask-runner"], "task"), false);
 });
 

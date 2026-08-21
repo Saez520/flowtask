@@ -24,7 +24,9 @@
       "mode": "primary",
       "prompt": "{file:.flowtask/agents/runner.md}",
       "permission": {
+        "*": "deny",
         "bash": {
+          "*": "deny",
           "node .flowtask/bin/flowtask.js graphify *": "allow",
           "git status": "allow",
           "git add": "allow",
@@ -34,10 +36,10 @@
           "git merge": "allow",
           "./.flowtask/scripts/worktree.sh create": "allow",
           "./.flowtask/scripts/worktree.sh complete": "allow",
-          "./.flowtask/scripts/worktree.sh list": "allow",
-          "*": "deny"
+          "./.flowtask/scripts/worktree.sh list": "allow"
         },
         "task": {
+          "*": "deny",
           "flowtask-ca-writer": "allow",
           "flowtask-planner": "allow",
           "flowtask-plan-auditor": "allow",
@@ -50,12 +52,10 @@
           "flowtask-inspector": "allow",
           "flowtask-onboarder": "allow",
           "flowtask-graphify-docs-media": "allow",
-          "flowtask-runner": "deny",
-          "*": "deny"
+          "flowtask-runner": "deny"
         },
         "skill": "allow",
-        "engram_*": "allow",
-        "*": "deny"
+        "engram_*": "allow"
       }
     },
     "flowtask-ca-writer": {

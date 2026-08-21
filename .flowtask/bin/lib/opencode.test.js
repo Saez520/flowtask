@@ -24,6 +24,90 @@ function writeJson(file, value) {
   fs.writeFileSync(file, JSON.stringify(value, null, 2));
 }
 
+const canonicalPermission = {
+  "*": "deny",
+  bash: {
+    "*": "deny",
+    "node .flowtask/bin/flowtask.js graphify *": "allow",
+    "git status": "allow",
+    "git add": "allow",
+    "git restore --staged": "allow",
+    "git commit": "allow",
+    "git push": "allow",
+    "git merge": "allow",
+    "./.flowtask/scripts/worktree.sh create": "allow",
+    "./.flowtask/scripts/worktree.sh complete": "allow",
+    "./.flowtask/scripts/worktree.sh list": "allow",
+  },
+  task: {
+    "*": "deny",
+    "flowtask-ca-writer": "allow",
+    "flowtask-planner": "allow",
+    "flowtask-plan-auditor": "allow",
+    "flowtask-constructor": "allow",
+    "flowtask-validator": "allow",
+    "flowtask-initializer": "allow",
+    "flowtask-logger": "allow",
+    "flowtask-tester": "allow",
+    "flowtask-review-orchestrator": "allow",
+    "flowtask-inspector": "allow",
+    "flowtask-onboarder": "allow",
+    "flowtask-graphify-docs-media": "allow",
+    "flowtask-runner": "deny",
+  },
+  skill: "allow",
+  "engram_*": "allow",
+};
+
+test("canonical Runner permission has deny-first ordering and visible allowlist", () => {
+  assert.deepEqual(Object.keys(canonicalPermission), ["*", "bash", "task", "skill", "engram_*"]);
+  assert.equal(Object.keys(canonicalPermission.bash)[0], "*");
+  assert.equal(Object.keys(canonicalPermission.task)[0], "*");
+  assert.equal(Object.keys(canonicalPermission.task).length - 2, 12);
+  assert.equal(Object.keys(canonicalPermission.task).at(-1), "flowtask-runner");
+  assert.notDeepEqual(Object.entries(canonicalPermission.bash).at(-1), ["*", "deny"]);
+  assert.notDeepEqual(Object.entries(canonicalPermission.task).at(-1), ["*", "deny"]);
+  assert.equal(canonicalPermission.skill, "allow");
+  assert.equal(canonicalPermission["engram_*"], "allow");
+});
+
+test("merge replaces the complete managed permission block and preserves unrelated config", () => {
+  const { root, flowtaskDir } = fixture();
+  writeJson(path.join(flowtaskDir, "opencode.json"), {
+    agent: { "flowtask-runner": { permission: canonicalPermission } },
+  });
+  const configPath = path.join(root, ".opencode", "opencode.json");
+  writeJson(configPath, {
+    $schema: "https://custom/schema.json",
+    mcp: { external: { enabled: true } },
+    agent: {
+      unrelated: { model: "manual" },
+      "flowtask-runner": {
+        permission: { bash: "allow", task: { old: "allow" }, "*": "deny" },
+        task: { old: "allow" },
+      },
+    },
+    command: { custom: { template: "keep" } },
+  });
+  const output = [];
+  const originalLog = console.log;
+  console.log = (message) => output.push(String(message));
+  try {
+    mergeOpencodeConfig(configPath, flowtaskDir, ".opencode");
+  } finally {
+    console.log = originalLog;
+  }
+  const first = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  assert.deepEqual(first.agent["flowtask-runner"].permission, canonicalPermission);
+  assert.equal(Object.hasOwn(first.agent["flowtask-runner"], "task"), false);
+  assert.deepEqual(first.agent.unrelated, { model: "manual" });
+  assert.deepEqual(first.mcp.external, { enabled: true });
+  assert.deepEqual(first.command.custom, { template: "keep" });
+  assert.match(output.join("\n"), /política canónica gestionada/);
+  mergeOpencodeConfig(configPath, flowtaskDir, ".opencode");
+  assert.deepEqual(JSON.parse(fs.readFileSync(configPath, "utf8")), first);
+});
+
 test("merge preserves manual values and repairs duplicate plugins idempotently", () => {
   const { root, flowtaskDir } = fixture();
   writeJson(path.join(flowtaskDir, "opencode.json"), {
@@ -61,13 +145,6 @@ test("merge preserves manual values and repairs duplicate plugins idempotently",
 });
 
 test("managed Runner permissions overwrite legacy customization and preserve unrelated fields", () => {
-  const canonicalPermission = {
-    "git status": "allow",
-    task: { "flowtask-validator": "allow", "*": "deny" },
-    skill: "allow",
-    "engram_*": "allow",
-    "*": "deny",
-  };
   const config = {
     mcp: { user: { enabled: true } },
     agent: {
