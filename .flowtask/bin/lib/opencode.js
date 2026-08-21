@@ -100,6 +100,32 @@ function mergeMissingObjects(target, source) {
   return result;
 }
 
+/**
+ * Replace the managed Runner permission block without overwriting Runner metadata.
+ * The canonical permission is intentionally not merged: local customizations must
+ * not be able to widen the Runner's runtime capabilities after an update.
+ */
+export function applyManagedRunnerPermission(config, canonicalConfig) {
+  const canonicalRunner = canonicalConfig?.agent?.["flowtask-runner"];
+  if (!canonicalRunner?.permission) return config;
+
+  const runner = config.agent?.["flowtask-runner"];
+  const hadCustomization = Boolean(
+    runner?.permission && JSON.stringify(runner.permission) !== JSON.stringify(canonicalRunner.permission),
+  );
+  const hadLegacyTask = Boolean(runner && Object.prototype.hasOwnProperty.call(runner, "task"));
+
+  if (!config.agent) config.agent = {};
+  if (!config.agent["flowtask-runner"]) config.agent["flowtask-runner"] = {};
+  config.agent["flowtask-runner"].permission = JSON.parse(JSON.stringify(canonicalRunner.permission));
+  delete config.agent["flowtask-runner"].task;
+
+  if (hadCustomization || hadLegacyTask) {
+    logWarn("La personalización previa de permisos del Runner fue reemplazada por la política canónica gestionada.");
+  }
+  return config;
+}
+
 function normalizePluginEntries(existing, incoming) {
   const result = [];
   const indexes = new Map();
@@ -259,10 +285,27 @@ export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
       }
     }
 
+    applyManagedRunnerPermission(ideConfig, ftConfig);
+
     if (!ideConfig.$schema) ideConfig.$schema = "https://opencode.ai/config.json";
 
     fs.mkdirSync(path.dirname(ideConfigPath), { recursive: true });
-    fs.writeFileSync(ideConfigPath, JSON.stringify(ideConfig, null, 2), "utf8");
+    const original = fs.existsSync(ideConfigPath) ? fs.readFileSync(ideConfigPath) : null;
+    const tempPath = `${ideConfigPath}.${process.pid}.tmp`;
+    try {
+      const content = JSON.stringify(ideConfig, null, 2);
+      fs.writeFileSync(tempPath, content, "utf8");
+      fs.renameSync(tempPath, ideConfigPath);
+      const verified = JSON.parse(fs.readFileSync(ideConfigPath, "utf8"));
+      if (JSON.stringify(verified) !== JSON.stringify(ideConfig)) throw new Error("la verificación del destino falló");
+    } catch (writeError) {
+      try {
+        if (original) fs.writeFileSync(ideConfigPath, original);
+        else fs.rmSync(ideConfigPath, { force: true });
+        fs.rmSync(tempPath, { force: true });
+      } catch { /* preserve the original error */ }
+      throw writeError;
+    }
     logSuccess("Configuration merged successfully.");
   } catch (err) {
     logError(`Failed to merge config: ${err.message}`);

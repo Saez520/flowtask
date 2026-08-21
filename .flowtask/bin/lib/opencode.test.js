@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, test } from "node:test";
-import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
+import { applyManagedRunnerPermission, mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
 
 const fixtures = [];
 
@@ -58,6 +58,54 @@ test("merge preserves manual values and repairs duplicate plugins idempotently",
   assert.equal(first.command.check.command, "manual");
   assert.equal(first.plugin.filter((entry) => entry.includes("flowtask-plugin")).length, 1);
   assert.ok(first.plugin.some((entry) => entry.includes("external")));
+});
+
+test("managed Runner permissions overwrite legacy customization and preserve unrelated fields", () => {
+  const canonicalPermission = {
+    "git status": "allow",
+    task: { "flowtask-validator": "allow", "*": "deny" },
+    skill: "allow",
+    "engram_*": "allow",
+    "*": "deny",
+  };
+  const config = {
+    mcp: { user: { enabled: true } },
+    agent: {
+      existing: { model: "user-model" },
+      "flowtask-runner": {
+        description: "user description",
+        prompt: "user prompt",
+        permission: { bash: "allow", task: "allow" },
+        task: { "old-agent": "allow" },
+      },
+    },
+  };
+  const output = [];
+  const originalLog = console.log;
+  console.log = (message) => output.push(String(message));
+  try {
+    applyManagedRunnerPermission(config, { agent: { "flowtask-runner": { permission: canonicalPermission } } });
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.deepEqual(config.agent["flowtask-runner"].permission, canonicalPermission);
+  assert.equal(Object.hasOwn(config.agent["flowtask-runner"], "task"), false);
+  assert.equal(config.agent["flowtask-runner"].description, "user description");
+  assert.deepEqual(config.agent.existing, { model: "user-model" });
+  assert.ok(output.join("\n").includes("política canónica gestionada"));
+});
+
+test("managed Runner reconciliation is idempotent for a new project", () => {
+  const canonical = { agent: { "flowtask-runner": { permission: {
+    bash: { "git status": "allow", "*": "deny" },
+    task: { "flowtask-constructor": "allow", "*": "deny" },
+    skill: "allow", "engram_*": "allow", "*": "deny",
+  } } } };
+  const first = applyManagedRunnerPermission({}, canonical);
+  const snapshot = JSON.parse(JSON.stringify(first));
+  const second = applyManagedRunnerPermission(first, canonical);
+  assert.deepEqual(second, snapshot);
 });
 
 test("register replaces FlowTask objects without disturbing third-party entries", () => {

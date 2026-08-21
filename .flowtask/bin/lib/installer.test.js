@@ -273,6 +273,9 @@ test("update integrates the canonical OpenCode config into an installed target",
   assert.ok(updatedConfig.agent["flowtask-validator"], "update must merge the new canonical agent");
   assert.equal(updatedConfig.agent["flowtask-validator"].prompt, "{file:flowtask/agents/validator.md}");
   assert.deepEqual(updatedConfig.agent.existing, { description: "manual" });
+  assert.equal(updatedConfig.agent["flowtask-runner"].permission.skill, "allow");
+  assert.equal(updatedConfig.agent["flowtask-runner"].permission["*"], "deny");
+  assert.equal(Object.hasOwn(updatedConfig.agent["flowtask-runner"], "task"), false);
 });
 
 test("writes TUI only in the native consumer manifest", () => {
