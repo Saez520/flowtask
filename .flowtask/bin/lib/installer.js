@@ -21,9 +21,9 @@ import { coordinateGraphify } from "./graphify.js";
 //                                    (NOT listed here — each entry's destination and kind,
 //                                    server vs tui, comes from flowtask-plugins.json)
 // claude    → .claude/flowtask/    : skills/  (agents & commands are generated, not copied)
-// standalone → .flowtask/          : agents/, commands/, skills/, plugins/
+// standalone → .flowtask/          : agents/, commands/, skills/, plugins/, scripts/
 
-const ASSETS = {
+export const ASSETS = {
   opencode: [
     { src: "agents",  dest: "agents" },
   ],
@@ -35,6 +35,7 @@ const ASSETS = {
     { src: "commands", dest: "commands" },
     { src: "skills",   dest: "skills" },
     { src: "plugins",  dest: "plugins" },
+    { src: "scripts",  dest: "scripts" },
   ],
   // vscode mirrors standalone for now
   vscode: [
@@ -805,6 +806,14 @@ ${COLORS.blue}╔═════════════════════
         copyWithProgress(srcDir, destDir, src, readline);
       }
 
+      // IDE targets also need the worktree script at the canonical project root.
+      if (id !== "standalone") {
+        const srcScripts = path.join(flowtaskDir, "scripts");
+        if (fileExists(srcScripts)) {
+          copyWithProgress(srcScripts, path.join(projectDir, ".flowtask", "scripts"), "scripts (canonical)", readline);
+        }
+      }
+
       // ── Inject persona into runner.md ───────────────────────────────
       if (personaContent && id !== "claude") {
         injectPersonaIntoRunner(TARGET_DIR, personaContent);
@@ -965,6 +974,16 @@ ${COLORS.blue}╔═════════════════════
         const stats = copyDirectoryDelta(srcDir, destDir, preservePaths);
         totalCopied += stats.copied;
         totalSkipped += stats.skipped;
+      }
+
+      // IDE targets also need the worktree script at the canonical project root.
+      if (id !== "standalone") {
+        const srcScripts = path.join(flowtaskDir, "scripts");
+        if (fileExists(srcScripts)) {
+          const stats = copyDirectoryDelta(srcScripts, path.join(projectDir, ".flowtask", "scripts"), preservePaths);
+          totalCopied += stats.copied;
+          totalSkipped += stats.skipped;
+        }
       }
 
       // OpenCode: skills delta

@@ -11,6 +11,7 @@ import {
   syncTargetConfig,
   regenerateCanonicalTui,
   removeLegacyConsumerFiles,
+  ASSETS,
 } from "./installer.js";
 import { showInteractiveSelector } from "./ui.js";
 import { registerPluginArrayEntry } from "./opencode.js";
@@ -267,6 +268,13 @@ test("target selector rejects non-TTY stdin without touching raw mode", async ()
   }
 });
 
+test("standalone assets include scripts for the canonical root location", () => {
+  assert.deepEqual(ASSETS.standalone.find(({ src }) => src === "scripts"), {
+    src: "scripts",
+    dest: "scripts",
+  });
+});
+
 test("update integrates the canonical OpenCode config into an installed target", () => {
   const { root } = createFixture();
   const targetDir = path.join(root, ".opencode", "flowtask");
@@ -307,6 +315,9 @@ test("update integrates the canonical OpenCode config into an installed target",
   assert.equal(permission.skill, "allow");
   assert.equal(permission["engram_*"], "allow");
   assert.equal(Object.hasOwn(updatedConfig.agent["flowtask-runner"], "task"), false);
+  const installedScript = path.join(root, ".flowtask", "scripts", "worktree.sh");
+  assert.ok(fs.existsSync(installedScript));
+  assert.equal(fs.statSync(installedScript).mode & 0o111, 0o111);
 });
 
 test("writes TUI only in the native consumer manifest", () => {
@@ -419,6 +430,9 @@ test("update preserves divergent valid profiles independently across two targets
   assert.deepEqual(readJson(path.join(root, ".opencode/flowtask/config/profile.json")), targets[0][2]);
   assert.deepEqual(readJson(path.join(root, ".claude/flowtask/config/profile.json")), targets[1][2]);
   assert.deepEqual(readJson(path.join(root, ".vscode/flowtask/config/profile.json")), targets[2][2]);
+  const installedScript = path.join(root, ".flowtask", "scripts", "worktree.sh");
+  assert.ok(fs.existsSync(installedScript));
+  assert.equal(fs.statSync(installedScript).mode & 0o111, 0o111);
 });
 
 test("does not accept a TUI write failure as a successful registration", () => {
