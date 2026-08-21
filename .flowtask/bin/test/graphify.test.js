@@ -131,6 +131,30 @@ describe("Paths", () => {
     assert.equal(fs.existsSync("/dev/null/flowtask/config/graphify.json"), false);
     cleanupDir(projectDir);
   });
+
+  it("fans out legacy project state to multiple targets and keeps them isolated", () => {
+    const projectDir = makeTempDir();
+    const targets = [
+      path.join(projectDir, ".opencode", "flowtask"),
+      path.join(projectDir, ".claude", "flowtask"),
+      path.join(projectDir, ".vscode", "flowtask"),
+    ];
+    const legacyPath = path.join(projectDir, ".flowtask", "config", "graphify.json");
+    const state = createProjectState();
+    state.selectedClis = ["legacy"];
+    fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
+    fs.writeFileSync(legacyPath, JSON.stringify(state), "utf8");
+
+    assert.equal(migrateProjectState(projectDir, targets), true);
+    for (const targetDir of targets) {
+      assert.deepEqual(JSON.parse(fs.readFileSync(projectStatePath(projectDir, targetDir), "utf8")), state);
+    }
+    const first = { ...state, selectedClis: ["opencode"] };
+    saveProjectState(projectDir, first, targets[0]);
+    assert.deepEqual(loadProjectState(projectDir, targets[1]).selectedClis, ["legacy"]);
+    assert.equal(fs.existsSync(legacyPath), false);
+    cleanupDir(projectDir);
+  });
 });
 
 // ─── Atomic read / write ──────────────────────────────────────────────────────
@@ -587,6 +611,30 @@ describe("coordinateGraphify", () => {
     assert.deepEqual(projectState.selectedClis, ["opencode", "claude"]);
     assert.equal(projectState.docs_media_status, "pending");
     assert.equal(warnings.length, 0);
+  });
+
+  it("persists project state in the explicit target and never in global state", async () => {
+    const targets = [
+      path.join(tempDir, ".opencode", "flowtask"),
+      path.join(tempDir, ".claude", "flowtask"),
+    ];
+    const rl = mockReadline({ enable: "y", hooks: "n" });
+    for (const [index, targetDir] of targets.entries()) {
+      const result = await coordinateGraphify({
+        projectDir: tempDir,
+        targetDir,
+        flowtaskDir: path.join(tempDir, "cli-source"),
+        selectedClis: [index === 0 ? "opencode" : "claude"],
+        readline: rl,
+        opts: { detectFn: () => true, versionFn: () => "2.0.0", grafoExtensions: false },
+      });
+      assert.equal(result.projectState.selectedClis[0], index === 0 ? "opencode" : "claude");
+      assert.ok(fs.existsSync(projectStatePath(tempDir, targetDir)));
+    }
+    assert.equal(fs.existsSync(globalStatePath()), true);
+    assert.equal(fs.existsSync(path.join(tempDir, ".config", "flowtask", "graphify.json")), false);
+    assert.deepEqual(loadProjectState(tempDir, targets[0]).selectedClis, ["opencode"]);
+    assert.deepEqual(loadProjectState(tempDir, targets[1]).selectedClis, ["claude"]);
   });
 
   it("already enabled: skips enable prompt and preserves state", async () => {

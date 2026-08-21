@@ -41,7 +41,7 @@ Carga skills on-demand:
 
 ## Criterios de activación de skills
 
-La fuente de verdad es `.flowtask/config/review.json`. Debe contener `criticalPaths`,
+La fuente de verdad materializada es `TARGET_DIR/config/review.json`. Debe contener `criticalPaths`,
 `diffThreshold` y `stampPath`. Si falta o es inválido, emitir una advertencia observable
 y continuar con defaults documentados: `**/auth/**`, `**/update/**`, `**/security/**`,
 `**/payments/**` y `400`; la advertencia no bloquea la revisión.
@@ -181,7 +181,7 @@ findings bloqueantes y con stamp escrito cuando corresponde → `APPROVED`.
 
 Si el modo es pre-commit y no hay findings internos BLOCKER/CRITICAL verificados:
 ```
-Escribir timestamp en `stampPath` obtenido de `review.json`.
+Escribir timestamp en `TARGET_DIR/config/.review-stamp` (el `stampPath` obtenido de `review.json`).
 ```
 
 Formato del stamp: `{ISO-8601 timestamp}\n`

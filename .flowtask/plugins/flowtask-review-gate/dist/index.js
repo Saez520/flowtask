@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, unlinkSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-const CONFIG_PATH = ".flowtask/config/review.json";
+const CONFIG_PATH = ".opencode/flowtask/config/review.json";
 function gateError(operation, cause, action) {
     const detail = cause instanceof Error ? cause.message : String(cause);
     return new Error(`[FlowTask Review Gate] Commit bloqueado.\n` +
@@ -16,20 +16,23 @@ function readConfig(cwd) {
         raw = readFileSync(path, "utf8");
     }
     catch (error) {
-        throw gateError("leer configuración", error, "restaurá review.json y reintentá");
+        console.warn(`[FlowTask Review Gate] No se pudo leer ${path}; se continúa sin bloquear.`);
+        return null;
     }
     let value;
     try {
         value = JSON.parse(raw);
     }
     catch (error) {
-        throw gateError("parsear configuración", error, "corregí el JSON y reintentá");
+        console.warn(`[FlowTask Review Gate] JSON inválido en ${path}; se continúa sin bloquear.`);
+        return null;
     }
     if (!value || typeof value !== "object" ||
         typeof value.enabled !== "boolean" ||
         typeof value.stampPath !== "string" ||
         !value.stampPath) {
-        throw gateError("validar configuración", "enabled debe ser boolean y stampPath una ruta no vacía", "completá el contrato de review.json y reintentá");
+        console.warn(`[FlowTask Review Gate] Configuración inválida en ${path}; se continúa sin bloquear.`);
+        return null;
     }
     const config = value;
     return { enabled: config.enabled, stampPath: config.stampPath };
@@ -82,12 +85,14 @@ export default async function (input) {
             if (command.includes("--no-verify") || command.includes("--no-review"))
                 return;
             const workdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
-            const config = readConfig(workdir);
+            const config = readConfig(sessionDir || workdir);
+            if (!config)
+                return;
             if (!config.enabled)
                 return;
             const stampPath = isAbsolute(config.stampPath)
                 ? config.stampPath
-                : resolve(workdir, config.stampPath);
+                : resolve(sessionDir || workdir, config.stampPath);
             let stamp;
             try {
                 stamp = readFileSync(stampPath, "utf8").trim();

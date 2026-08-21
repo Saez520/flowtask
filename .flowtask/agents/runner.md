@@ -256,7 +256,7 @@ Antes de clasificar, carga el contexto del proyecto:
 
 Después de cargar contexto y antes de clasificar la intención, comprobar el estado de docs/media:
 
-1. Leer `docs_media_status` del estado de proyecto Graphify (`.flowtask/config/graphify.json`, schema v1).
+1. Leer `docs_media_status` del estado de proyecto Graphify (`TARGET_DIR/config/graphify.json`, schema v1).
 2. Si `docs_media_status` es `pending` o `failed` y **aún no se ofreció en esta conversación**:
    - Mostrar oferta única: `📊 Ey — todavía no se generó el grafo del proyecto ni los archivos media. ¿Los genero ahora? (sí/no)`
    - Marcar localmente como ofrecida (variable efímera, no persistida) para no repetir en esta conversación.

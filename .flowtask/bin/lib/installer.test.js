@@ -8,6 +8,7 @@ import { afterEach, test } from "node:test";
 import {
   installManifestPlugins,
   migrateProfileLocation,
+  syncTargetConfig,
   regenerateCanonicalTui,
   removeLegacyConsumerFiles,
 } from "./installer.js";
@@ -318,6 +319,76 @@ test("preserves legacy profile when installation destination cannot be written",
 
   assert.equal(fs.existsSync(legacy), true);
   assert.ok(output.join("\n").includes("reintenta con flowtask update"));
+});
+
+test("materializes managed config and profile independently for three targets", () => {
+  const { root, flowtaskDir } = createFixture();
+  writeJson(path.join(flowtaskDir, "config", "review.json"), {
+    enabled: true,
+    stampPath: ".flowtask/config/.review-stamp",
+    criticalPaths: ["**/security/**"],
+    diffThreshold: 10,
+  });
+  const targets = [
+    ["opencode", path.join(root, ".opencode", "flowtask"), "senior"],
+    ["claude", path.join(root, ".claude", "flowtask"), "mid"],
+    ["vscode", path.join(root, ".vscode", "flowtask"), "training"],
+  ];
+
+  for (const [, targetDir, level] of targets) {
+    syncTargetConfig(flowtaskDir, targetDir, { level, persona: `tutor-${level}`, onboarded: true });
+    const configDir = path.join(targetDir, "config");
+    assert.ok(fs.existsSync(path.join(configDir, "review.json")));
+    assert.deepEqual(readJson(path.join(configDir, "profile.json")), {
+      level, persona: `tutor-${level}`, onboarded: true,
+    });
+    assert.equal(readJson(path.join(configDir, "review.json")).stampPath,
+      path.relative(root, path.join(configDir, ".review-stamp")));
+    assert.equal(fs.existsSync(path.join(root, ".flowtask", "config", "review.json")), false);
+  }
+});
+
+test("fans out legacy profile and preserves it when one target fails", () => {
+  const { root } = createFixture();
+  const legacy = path.join(root, ".flowtask", "profile.json");
+  const profile = { level: "senior", persona: "tutor-senior", onboarded: true };
+  writeJson(legacy, profile);
+  const targets = [
+    path.join(root, ".opencode", "flowtask"),
+    path.join(root, ".claude", "flowtask"),
+    "/dev/null/flowtask",
+  ];
+
+  assert.equal(migrateProfileLocation(root, path.join(root, ".flowtask"), targets), false);
+  assert.equal(fs.existsSync(legacy), true);
+  assert.deepEqual(readJson(path.join(targets[0], "config", "profile.json")), profile);
+  assert.deepEqual(readJson(path.join(targets[1], "config", "profile.json")), profile);
+});
+
+test("update preserves divergent valid profiles independently across two targets", () => {
+  const { root } = createFixture();
+  const targets = [
+    ["opencode", ".opencode/flowtask", { level: "senior", persona: "tutor-senior", onboarded: true }],
+    ["claude", ".claude/flowtask", { level: "mid", persona: "tutor-mid", onboarded: true }],
+    ["vscode", ".vscode/flowtask", { level: "training", persona: "tutor-training", onboarded: true }],
+  ];
+  for (const [id, subDir, profile] of targets) {
+    const targetDir = path.join(root, subDir);
+    fs.mkdirSync(targetDir, { recursive: true });
+    fs.writeFileSync(path.join(targetDir, ".installation-method"), JSON.stringify({ target: id }));
+    writeJson(path.join(targetDir, "config", "profile.json"), profile);
+  }
+  const result = spawnSync(process.execPath, [FLOWTASK_CLI, "update"], {
+    cwd: root,
+    env: { ...process.env, XDG_CONFIG_HOME: path.join(root, "xdg-config") },
+    input: "n\nn\nn\n",
+    encoding: "utf8",
+    timeout: 120000,
+  });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.deepEqual(readJson(path.join(root, ".opencode/flowtask/config/profile.json")), targets[0][2]);
+  assert.deepEqual(readJson(path.join(root, ".claude/flowtask/config/profile.json")), targets[1][2]);
+  assert.deepEqual(readJson(path.join(root, ".vscode/flowtask/config/profile.json")), targets[2][2]);
 });
 
 test("does not accept a TUI write failure as a successful registration", () => {

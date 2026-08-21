@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, unlinkSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 
-const CONFIG_PATH = ".flowtask/config/review.json";
+const CONFIG_PATH = ".opencode/flowtask/config/review.json";
 
 type ReviewConfig = { enabled: boolean; stampPath: string };
 
@@ -17,20 +17,22 @@ function gateError(operation: string, cause: unknown, action: string): Error {
   );
 }
 
-function readConfig(cwd: string): ReviewConfig {
+function readConfig(cwd: string): ReviewConfig | null {
   const path = resolve(cwd, CONFIG_PATH);
   let raw: string;
   try {
     raw = readFileSync(path, "utf8");
   } catch (error) {
-    throw gateError("leer configuración", error, "restaurá review.json y reintentá");
+    console.warn(`[FlowTask Review Gate] No se pudo leer ${path}; se continúa sin bloquear.`);
+    return null;
   }
 
   let value: unknown;
   try {
     value = JSON.parse(raw);
   } catch (error) {
-    throw gateError("parsear configuración", error, "corregí el JSON y reintentá");
+    console.warn(`[FlowTask Review Gate] JSON inválido en ${path}; se continúa sin bloquear.`);
+    return null;
   }
 
   if (
@@ -39,11 +41,8 @@ function readConfig(cwd: string): ReviewConfig {
     typeof (value as Record<string, unknown>).stampPath !== "string" ||
     !(value as Record<string, unknown>).stampPath
   ) {
-    throw gateError(
-      "validar configuración",
-      "enabled debe ser boolean y stampPath una ruta no vacía",
-      "completá el contrato de review.json y reintentá",
-    );
+    console.warn(`[FlowTask Review Gate] Configuración inválida en ${path}; se continúa sin bloquear.`);
+    return null;
   }
   const config = value as ReviewConfig;
   return { enabled: config.enabled, stampPath: config.stampPath };
@@ -98,11 +97,12 @@ export default async function (input: PluginInput) {
       if (command.includes("--no-verify") || command.includes("--no-review")) return;
 
       const workdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
-      const config = readConfig(workdir);
+      const config = readConfig(sessionDir || workdir);
+      if (!config) return;
       if (!config.enabled) return;
       const stampPath = isAbsolute(config.stampPath)
         ? config.stampPath
-        : resolve(workdir, config.stampPath);
+        : resolve(sessionDir || workdir, config.stampPath);
 
       let stamp: string;
       try {

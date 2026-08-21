@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "stampPath": ".flowtask/.review-stamp",
+  "stampPath": ".flowtask/config/.review-stamp",
   "criticalPaths": ["**/auth/**", "**/update/**", "**/security/**", "**/payments/**"],
   "diffThreshold": 400
 }
