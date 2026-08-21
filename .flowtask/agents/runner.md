@@ -70,9 +70,25 @@ El runner utiliza la skill `handshake-protocol` para gestionar la asignación de
 
 Lista de nombres base disponibles que el runner provee a la skill: `['Aitana', 'Kael', 'Lyra', 'Zev', 'Thalía', 'Iago', 'Elowen', 'Mael']`.
 
+### Matriz de elegibilidad
+
+El handshake completo se aplica únicamente a `ca-writer` y `planner`. Para
+`constructor`, `validator`, `inspector`, `tester`, `review-orchestrator`,
+`logger` e `initializer` rige el modo **B-lite**:
+
+- Se conserva el `BaseName`, el `instance_name` derivado
+  (`{BaseName}-{agent_type}`), el mapa de instancias y el checkpoint
+  `flow-state/{CA_ID}/{agente}` como traza operativa.
+- La invocación siempre es Escenario A en un hilo fresco. No se reutiliza
+  `task_id` ni sesión, no se ejecuta Topic Validation, no se construye Resume
+  Prompt y no se inyecta contexto de una sesión anterior.
+- El agente recompone el contexto desde las fuentes actuales del CA. Los
+  checkpoints históricos se conservan como histórico y no se migran, eliminan,
+  invalidan ni habilitan reanudación.
+
 ### Uso
 
-Antes de invocar cualquier subagente, el runner DEBE cargar la skill:
+Antes de invocar `ca-writer` o `planner`, el runner DEBE cargar la skill:
 ```
 skill({ name: "handshake-protocol" })
 ```
@@ -133,10 +149,15 @@ Formato para invocar:
 Flujo de delegación — sin excepciones:
 
 1. Identificas el subagente por la tabla.
-2. Cargas `handshake-protocol` y ejecutas el Handshake para obtener `{ task_id, instance_name, scenario }`.
+2. Si el subagente es `ca-writer` o `planner`, cargas `handshake-protocol` y
+   ejecutas el Handshake para obtener `{ task_id, instance_name, scenario }`.
+   Si es B-lite, conservas/derivas `instance_name` desde el mapa y fuerzas
+   Escenario A sin `task_id` ni contexto de sesión.
 3. La skill ya ejecutó **Context Injection** (mem_context + mem_search). Incorporas los hallazgos al prompt.
 4. **Antes de invocar**: verificar si existe checkpoint en Engram (`flow-state/{CA_ID}/{agente}`).
-5. Invocas `task(...)`.
+5. Si el agente es `ca-writer` o `planner`, invocas `task(...)` según A/B.
+   Para cualquier agente B-lite, invocas siempre `task(...)` como Escenario A
+   fresco, conservando únicamente su identidad y trazabilidad.
 
 ***
 
@@ -144,7 +165,12 @@ Flujo de delegación — sin excepciones:
 
 ### Antes de invocar sub-agente (Handshake & Context)
 
-1. **Handshake**: Cargar `handshake-protocol` y obtener `{ task_id, instance_name, scenario }` desde la skill.
+1. **Selección**:
+   - Para `ca-writer` y `planner`, cargar `handshake-protocol` y obtener
+     `{ task_id, instance_name, scenario }` desde la skill.
+   - Para agentes B-lite, conservar/derivar `instance_name` y consultar el
+     estado/checkpoint solo para trazabilidad; no cargar la skill para decidir
+     reanudación y forzar Escenario A con `task_id = null`.
 2. **Bifurcación de Escenario**:
 
 **Escenario A: Initial Prompt (Nuevo hilo)**
@@ -185,6 +211,11 @@ Después de que un subagente responde, el runner DEBE verificar si la respuesta 
 
 #### Relanzamiento por capacidad
 
+Esta mecánica de `task_id` y reanudación aplica solo a `ca-writer` y `planner`.
+Si el agente es B-lite, conservar el checkpoint como traza y crear siempre un
+hilo fresco con el prompt inicial, sin `task_id`, Resume Prompt, Topic Validation
+ni contexto de sesión anterior.
+
 1. **Recuperar mapa**: `mem_search(query: "flow-state/{CA_ID}/instances")`.
 2. **Contar relanzamientos previos**: leer `relaunch_count` del agente en el mapa. Si no existe, asumir 0.
 3. **Evaluar límite**:
@@ -203,8 +234,14 @@ Después de que un subagente responde, el runner DEBE verificar si la respuesta 
 ### Recuperación ante Fallos (Self-Healing)
 
 Si la herramienta `task` (o `Agent` en Claude) retorna un error indicando que el hilo no existe o ha expirado:
-1. **Limpieza**: Ejecutar `mem_save` para eliminar el `task_id` fallido del mapa de instancias en `flow-state/{CA_ID}/instances`.
-2. **Reintento**: Relanzar la tarea automáticamente usando el flujo del **Escenario A (Initial Prompt)**.
+1. **Limpieza**: Para `ca-writer` y `planner`, ejecutar `mem_save` para
+   eliminar el `task_id` fallido del mapa de instancias en
+   `flow-state/{CA_ID}/instances`. En B-lite no se reutiliza ni se purga un
+   `task_id`; se conserva el registro histórico.
+2. **Reintento**: Para `ca-writer` y `planner`, relanzar automáticamente usando
+   el flujo del **Escenario A (Initial Prompt)**. Para B-lite, crear siempre un
+   hilo fresco; nunca reutilizar ni limpiar un `task_id` como mecanismo de
+   reanudación.
 3. No es necesario pedir confirmación al desarrollador para este reintento técnico.
 
 ### Formato canónico de `task()` (fuente única de verdad)
@@ -379,13 +416,15 @@ mem_search(query: "CA-{ID}", type: "decision", scope: "project")
 
 **Si no existe:** Invoca ca-writer con el prompt del usuario — el ca-writer conduce la conversación:
 
-Invoca ca-writer usando el formato canónico (Escenario A/B según Handshake). Prompt: el texto original del usuario.
+Invoca ca-writer usando el formato canónico y el handshake completo (Escenario
+A/B). Prompt: el texto original del usuario.
 
 ***
 
 ### Paso 2 — Planificación
 
-Invoca planner usando el formato canónico (Escenario A/B según Handshake). Prompt: flow state del CA desde Engram.
+Invoca planner usando el formato canónico y el handshake completo (Escenario
+A/B). Prompt: flow state del CA desde Engram.
 
 ***
 
@@ -403,7 +442,9 @@ Espera respuesta explícita del desarrollador:
 
 ### Paso 4 — Constructor
 
-Invoca constructor usando el formato canónico (Escenario A/B según Handshake). Prompt: flow state del plan desde Engram.
+Invoca constructor usando el formato canónico en B-lite: siempre Escenario A,
+sin `task_id`, Resume Prompt, Topic Validation ni contexto de sesión anterior.
+Prompt: flow state del plan desde Engram y contexto actual del CA.
 
 ### Política de worktrees — obligatorio por CA
 
@@ -416,7 +457,9 @@ Invoca constructor usando el formato canónico (Escenario A/B según Handshake).
 
 ### Paso 5 — Validator
 
-Invoca validator usando el formato canónico (Escenario A/B según Handshake). Prompt: flow state del plan desde Engram.
+Invoca validator usando el formato canónico en B-lite: siempre Escenario A,
+sin `task_id`, Resume Prompt, Topic Validation ni contexto de sesión anterior.
+Prompt: flow state del plan desde Engram y contexto actual del CA.
 
 **APPROVED** → finaliza el flujo.
 **RECHAZADO** → vuelve al Paso 4 (máximo 2 intentos).
@@ -469,7 +512,9 @@ Durante mantenimiento explícito:
 
 ## Flujo: /inspect
 
-Invoca inspector usando el formato canónico (Escenario A/B según Handshake). Prompt: el texto original del usuario.
+Invoca inspector usando el formato canónico en B-lite: siempre Escenario A,
+sin `task_id`, Resume Prompt, Topic Validation ni contexto de sesión anterior.
+Prompt: el texto original del usuario y las fuentes actuales del CA.
 
 El inspector responde al desarrollador. Si el desarrollador solicita una acción posterior (crear CA, evolucionar agente), delega según corresponda. Si no, fin del flujo.
 
@@ -498,7 +543,9 @@ Si el scope no está claro, preguntar al desarrollador antes de invocar.
 
 ### Invocación del review-orchestrator
 
-Invocar review-orchestrator usando el formato canónico (Escenario A/B según Handshake). El prompt delegado debe contener únicamente:
+Invocar review-orchestrator usando el formato canónico en B-lite: siempre
+Escenario A, sin `task_id`, Resume Prompt, Topic Validation ni contexto de
+sesión anterior. El prompt delegado debe contener únicamente:
 
 - `mode`: modo determinado (`pre-commit`, `branch`, `files`, `pr-mr` o `full-4r`);
 - `worktree`: ruta del worktree;
@@ -521,7 +568,8 @@ Y invoca review-orchestrator en modo pre-commit.
 2. Informa al usuario que inicia Evolution Mode.
 3. Backup antes de cualquier modificación: `.flowtask/agents-backup/[agente]-[timestamp].md`
 4. Invoca ca-writer:
-   Invoca ca-writer usando el formato canónico (Escenario A/B según Handshake). Prompt: el texto original del usuario.
+   Invoca ca-writer usando el formato canónico y el handshake completo
+   (Escenario A/B). Prompt: el texto original del usuario.
 5. Invoca planner con el snapshot del CA generado.
 6. **SIEMPRE** invoca plan-auditor.
 7. Espera confirmación del usuario ("ejecutar").
@@ -538,9 +586,12 @@ Al finalizar un flujo (`/run` completado, sesión terminada), el runner debe eje
 ### Protocolo de purga
 
 1. **Recuperar mapa**: `mem_search(query: "flow-state/{CA_ID}/instances")`.
-2. **Verificar cada `task_id`**: Para cada agente en el mapa, invocar al subagente con el `task_id` persistido y un prompt mínimo de verificación.
+2. **Verificar cada `task_id` elegible**: Solo para `ca-writer` y `planner`,
+   invocar al subagente con el `task_id` persistido y un prompt mínimo de
+   verificación. Para agentes B-lite, no verificar ni reutilizar `task_id`:
+   conservar sus registros y checkpoints únicamente como histórico/traza.
 3. **Evaluar resultado**:
-   - **Si la invocación falla con error** (el `task_id` no existe): Eliminar la entrada del agente del mapa vía `mem_save` y registrar: `[PURGE] task_id huérfano eliminado: {instance_name} ({task_id})`.
+    - **Si la invocación elegible falla con error** (el `task_id` no existe): Eliminar la entrada del agente del mapa vía `mem_save` y registrar: `[PURGE] task_id huérfano eliminado: {instance_name} ({task_id})`.
    - **Si la invocación tiene éxito**: El `task_id` es válido. Conservarlo en el mapa.
 4. **Ejecutar `mem_session_summary`** solo después de completar la purga.
 
@@ -553,7 +604,7 @@ La purga de `task_id` y la gestión de worktrees son independientes: un `task_id
 - **GAP #4 — Sesiones zombie**: Si OpenCode recibe un `task_id` huérfano y crea una sesión nueva silenciosamente (en lugar de fallar), este mecanismo NO lo detecta. La entrada se conserva incorrectamente en el mapa. Aceptado como limitación — requiere herramienta externa (`task_status`) para resolverse.
 - **Si Engram no está disponible**: La purga se omite. Los `task_id` huérfanos persisten hasta la próxima sesión con Engram funcional.
 - **Self-Healing reactivo**: El manejo de errores en la invocación normal (línea 196-201) sigue activo y es el mecanismo primario de detección durante la operación.
-- **Relanzamiento por capacidad**: Si el subagente produce un checkpoint y el runner lo relanza, el contador `relaunch_count` persiste en el mapa de instancias. Si el runner falla después de incrementar el contador pero antes de invocar al subagente, el contador queda incrementado incorrectamente. Aceptado como riesgo menor — la probabilidad es baja (fallo en ventana de ~1s entre mem_save y task()).
+- **Relanzamiento por capacidad**: Para `ca-writer` y `planner`, si el subagente produce un checkpoint y el runner lo relanza, el contador `relaunch_count` persiste en el mapa de instancias. En B-lite el checkpoint solo es traza y nunca provoca reanudación ni reutilización de `task_id`. Si el runner falla después de incrementar el contador pero antes de invocar al subagente, el contador queda incrementado incorrectamente. Aceptado como riesgo menor — la probabilidad es baja (fallo en ventana de ~1s entre mem_save y task()).
 
 ## Cierre del CA — Marcar como completado
 
