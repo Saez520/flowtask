@@ -16,6 +16,8 @@ const RUNNER_TASKS = new Set([
   "flowtask-graphify-docs-media",
 ]);
 
+const SESSION_AGENTS = new Map<string, string>();
+
 function isRunner(agent: unknown): boolean {
   return typeof agent === "string" && agent.toLowerCase().replace(/_/g, "-") === "flowtask-runner";
 }
@@ -149,12 +151,19 @@ function buildGateMessage(stats: { lines: number; files: number }): string {
 export default async function (input: PluginInput) {
   const sessionDir = input.directory;
   return {
+    "chat.message": async (hookInput: { sessionID: string; agent?: string }) => {
+      if (hookInput.agent !== undefined) {
+        SESSION_AGENTS.set(hookInput.sessionID, hookInput.agent);
+      }
+    },
     "tool.execute.before": async (
-      hookInput: { tool: string; sessionID: string; callID: string; agent?: string },
+      hookInput: { tool: string; sessionID: string; callID: string },
       hookOutput: { args: any },
     ) => {
       const command = String(hookOutput?.args?.command ?? "");
-      const agent = hookInput.agent ?? (input as PluginInput & { agent?: string }).agent;
+      // OpenCode 1.18.4 does not expose agent on tool.execute.before.
+      // chat.message is the authoritative runtime source for the session.
+      const agent = SESSION_AGENTS.get(hookInput.sessionID);
       if (isRunner(agent) && !runnerToolAllowed(hookInput.tool, hookOutput?.args ?? {})) runnerBlocked();
       if (hookInput.tool !== "bash" || !/\bgit\s+commit\b/.test(command)) return;
       if (command.includes("--no-verify") || command.includes("--no-review")) return;
@@ -186,6 +195,8 @@ export default async function (input: PluginInput) {
       }
       return;
     },
-    dispose: async () => {},
+    dispose: async () => {
+      SESSION_AGENTS.clear();
+    },
   };
 }

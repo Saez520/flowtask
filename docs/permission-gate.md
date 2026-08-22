@@ -1,5 +1,9 @@
 # FlowTask Permission Gate
 
+La migración desde el gate histórico quedó consolidada en un único plugin:
+`flowtask-permission-gate`. El mensaje operativo único es
+`[FlowTask Permission Gate]`.
+
 `flowtask-permission-gate` es el único control runtime de permisos específicos
 de FlowTask. Se carga desde `.opencode/plugins/` después de `flowtask install`
 o `flowtask update` y requiere reiniciar OpenCode. No existe un fallback nativo.
@@ -59,17 +63,14 @@ git log                  # verbo no autorizado
 Los operadores no sirven para evadir el gate: una operación compuesta es
 rechazada si contiene un segmento no autorizado.
 
-### Identidad del agente: limitación conocida
+### Identidad del agente
 
-El runtime de OpenCode no expone oficialmente la identidad del agente en el
-tipo de `tool.execute.before`. El plugin intenta primero `hookInput.agent` y
-usa como fallback el campo opcional `input.agent` mediante un type-cast; no
-infiere la identidad desde el texto del comando ni inventa campos del runtime.
-Si ninguna fuente entrega `flowtask-runner`, la regla específica del Runner se
-degrada sin aplicar y permanece únicamente el gate universal de commits. El
-smoke debe registrar qué fuente de identidad expone la versión instalada y
-tratar la ausencia de identidad como un GAP operativo, no como una autorización
-adicional.
+El runtime de OpenCode 1.18.4 no expone la identidad en
+`tool.execute.before`. El plugin la registra por sesión mediante `chat.message`
+(`agent?: string`) y consulta ese mapa al evaluar cada herramienta. Un mensaje
+sin `agent` conserva el valor previo de la sesión. No se infiere identidad desde
+el texto del comando; si no hay identidad registrada, la regla específica del
+Runner se degrada sin aplicar y permanece el gate universal de commits.
 
 ## Diagnóstico
 
@@ -93,7 +94,7 @@ prueba.
 2. Verificar que exista
    `.opencode/plugins/flowtask-permission-gate/dist/index.js` y que el array
    `plugin` registre ese entrypoint una sola vez. Confirmar que no exista el
-   entrypoint `flowtask-review-gate` ni
+   el entrypoint histórico del gate ni
    `agent.flowtask-runner.permission`.
 3. Cerrar y reiniciar OpenCode por el procedimiento habitual del desarrollador.
    Resultado esperado: el plugin nuevo se carga desde `.opencode/plugins/` y

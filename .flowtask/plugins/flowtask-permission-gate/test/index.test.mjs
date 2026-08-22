@@ -27,8 +27,9 @@ test("rejects malformed and compound commands", () => {
 
 test("Runner receives exact delegation feedback", async () => {
   const hooks = await plugin({ directory: process.cwd() });
+  await hooks["chat.message"]({ sessionID: "s", agent: "flowtask-runner" }, { message: {}, parts: [] });
   await assert.rejects(
-    hooks["tool.execute.before"]({ tool: "bash", agent: "flowtask-runner", sessionID: "s", callID: "c" }, { args: { command: "git diff" } }),
+    hooks["tool.execute.before"]({ tool: "bash", sessionID: "s", callID: "c" }, { args: { command: "git diff" } }),
     (error) => error instanceof Error && error.message === RUNNER_DELEGATION_MESSAGE,
   );
 });

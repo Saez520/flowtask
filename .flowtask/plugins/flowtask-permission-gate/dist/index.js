@@ -9,6 +9,7 @@ const RUNNER_TASKS = new Set([
     "flowtask-review-orchestrator", "flowtask-inspector", "flowtask-onboarder",
     "flowtask-graphify-docs-media",
 ]);
+const SESSION_AGENTS = new Map();
 function isRunner(agent) {
     return typeof agent === "string" && agent.toLowerCase().replace(/_/g, "-") === "flowtask-runner";
 }
@@ -167,9 +168,16 @@ function buildGateMessage(stats) {
 export default async function (input) {
     const sessionDir = input.directory;
     return {
+        "chat.message": async (hookInput) => {
+            if (hookInput.agent !== undefined) {
+                SESSION_AGENTS.set(hookInput.sessionID, hookInput.agent);
+            }
+        },
         "tool.execute.before": async (hookInput, hookOutput) => {
             const command = String(hookOutput?.args?.command ?? "");
-            const agent = hookInput.agent ?? input.agent;
+            // OpenCode 1.18.4 does not expose agent on tool.execute.before.
+            // chat.message is the authoritative runtime source for the session.
+            const agent = SESSION_AGENTS.get(hookInput.sessionID);
             if (isRunner(agent) && !runnerToolAllowed(hookInput.tool, hookOutput?.args ?? {}))
                 runnerBlocked();
             if (hookInput.tool !== "bash" || !/\bgit\s+commit\b/.test(command))
@@ -206,6 +214,8 @@ export default async function (input) {
             }
             return;
         },
-        dispose: async () => { },
+        dispose: async () => {
+            SESSION_AGENTS.clear();
+        },
     };
 }
