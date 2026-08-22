@@ -167,7 +167,10 @@ create_worktree() {
 complete_worktree() {
   local ca_name="$1"
   local base_branch="${2:-$(detect_base_branch)}"
-  local branch path path_abs root
+  local branch path path_abs root status_line worktree_status destination_status
+  local problems="" staged_files="" unstaged_files="" untracked_files=""
+  local destination_staged="" destination_unstaged="" destination_untracked=""
+  local own_commits stash_entries
 
   root="$(repo_root)"
   cd "$root"
@@ -177,11 +180,80 @@ complete_worktree() {
   path="$(worktree_path_for "$ca_name")"
   path_abs="$(worktree_path_abs_for "$ca_name")"
 
-  if ! branch_exists "$branch" && ! worktree_registered_for_branch "$branch" >/dev/null 2>&1; then
-    die "No encontré la rama '$branch' ni un worktree registrado para completar"
+  if ! branch_exists "$branch"; then
+    die "No encontré la rama '$branch' para completar"
   fi
 
-  ensure_clean_base
+  worktree_status="$(git -C "$path_abs" status --porcelain --untracked-files=all)"
+  while IFS= read -r status_line; do
+    [[ -n "$status_line" ]] || continue
+    if [[ "${status_line:0:2}" == "??" ]]; then
+      untracked_files+="${status_line:3}"$'\n'
+    else
+      [[ "${status_line:0:1}" != " " ]] && staged_files+="${status_line:3}"$'\n'
+      [[ "${status_line:1:1}" != " " ]] && unstaged_files+="${status_line:3}"$'\n'
+    fi
+  done <<< "$worktree_status"
+
+  if [[ -n "$staged_files" ]]; then
+    problems+=$'\n- Worktree: cambios staged:\n'
+    problems+="$staged_files"
+    problems+=$'  Acción: crear el commit del worktree antes de reintentar.\n'
+  fi
+  if [[ -n "$unstaged_files" ]]; then
+    problems+=$'\n- Worktree: cambios unstaged:\n'
+    problems+="$unstaged_files"
+    problems+=$'  Acción: crear el commit del worktree antes de reintentar.\n'
+  fi
+  if [[ -n "$untracked_files" ]]; then
+    problems+=$'\n- Worktree: archivos untracked:\n'
+    problems+="$untracked_files"
+    problems+=$'  Acción: agregar y crear el commit del worktree antes de reintentar.\n'
+  fi
+
+  own_commits="$(git rev-list --count "$base_branch..$branch")"
+  if [[ "$own_commits" -eq 0 ]]; then
+    problems+=$'\n- Worktree: falta crear el commit propio antes de completar.\n'
+  fi
+
+  stash_entries="$(git stash list)"
+  if [[ -n "$stash_entries" ]]; then
+    problems+=$'\n- Repositorio: hay stash pendiente:\n'
+    problems+="$stash_entries"$'\n'
+    problems+=$'  Acción: resolver o restaurar los stashes de forma segura antes de reintentar.\n'
+  fi
+
+  destination_status="$(git -C "$root" status --porcelain --untracked-files=all)"
+  while IFS= read -r status_line; do
+    [[ -n "$status_line" ]] || continue
+    if [[ "${status_line:0:2}" == "??" ]]; then
+      destination_untracked+="${status_line:3}"$'\n'
+    else
+      [[ "${status_line:0:1}" != " " ]] && destination_staged+="${status_line:3}"$'\n'
+      [[ "${status_line:1:1}" != " " ]] && destination_unstaged+="${status_line:3}"$'\n'
+    fi
+  done <<< "$destination_status"
+
+  if [[ -n "$destination_staged" ]]; then
+    problems+=$'\n- Destino: cambios staged:\n'
+    problems+="$destination_staged"
+  fi
+  if [[ -n "$destination_unstaged" ]]; then
+    problems+=$'\n- Destino: cambios unstaged:\n'
+    problems+="$destination_unstaged"
+  fi
+  if [[ -n "$destination_untracked" ]]; then
+    problems+=$'\n- Destino: archivos untracked:\n'
+    problems+="$destination_untracked"
+  fi
+  if [[ -n "$destination_staged$destination_unstaged$destination_untracked" ]]; then
+    problems+=$'  Acción: usar stash/pop en el destino para preservar los cambios y recuperarlos después del cierre.\n'
+  fi
+
+  if [[ -n "$problems" ]]; then
+    die "No se puede completar '$ca_name'; se detectaron problemas antes de integrar o limpiar:$problems"
+  fi
+
   git switch "$base_branch"
 
   if git merge --squash "$branch"; then
@@ -318,9 +390,14 @@ main() {
       shift || true
       local base_branch="$(detect_base_branch)"
       if [[ "${1:-}" == "--base" ]]; then
+        [[ $# -ge 2 ]] || die "Falta la rama después de --base"
         base_branch="${2:-}"
+        shift 2
+      elif [[ -n "${1:-}" ]]; then
+        die "Opción o argumento desconocido para complete: ${1}"
       fi
       [[ -n "$ca_name" ]] || die "Falta el nombre del CA"
+      [[ $# -eq 0 ]] || die "Opción o argumento desconocido para complete: ${1}"
       complete_worktree "$ca_name" "$base_branch"
       ;;
     cleanup)

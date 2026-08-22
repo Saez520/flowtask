@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -18,14 +18,33 @@ function git(...args) {
   return execFileSync("git", args, { cwd: tempRepo, encoding: "utf8", stdio: "pipe" });
 }
 
+function runResult(...args) {
+  const result = spawnSync(SCRIPT, args, { cwd: tempRepo, encoding: "utf8" });
+  return { ...result, stderr: result.stderr ?? "", stdout: result.stdout ?? "" };
+}
+
+function worktreeFor(name) {
+  return path.join(tempRepo, ".worktrees", ...name.split("/"));
+}
+
+function createCommittedWorktree(name) {
+  run("create", name, "--base", "main");
+  const worktree = worktreeFor(name);
+  fs.writeFileSync(path.join(worktree, "change.txt"), `${name}\n`);
+  git("-C", worktree, "add", "change.txt");
+  git("-C", worktree, "commit", "-qm", "worktree change");
+  return worktree;
+}
+
 describe("nested hotfix worktrees", () => {
   beforeEach(() => {
     tempRepo = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-worktree-"));
     git("init", "-q", "-b", "main");
     git("config", "user.email", "test@example.invalid");
     git("config", "user.name", "FlowTask Test");
+    fs.writeFileSync(path.join(tempRepo, ".gitignore"), ".worktrees/\n");
     fs.writeFileSync(path.join(tempRepo, "file.txt"), "base\n");
-    git("add", "file.txt");
+    git("add", ".gitignore", "file.txt");
     git("commit", "-qm", "initial");
   });
 
@@ -66,5 +85,92 @@ describe("nested hotfix worktrees", () => {
     assert.ok(fs.existsSync(path.join(tempRepo, ".worktrees", "CA-legacy")));
     run("cleanup", "CA-legacy", "--base", "main");
     assert.equal(fs.existsSync(path.join(tempRepo, ".worktrees", "CA-legacy")), false);
+  });
+
+  for (const name of ["CA-no-commit", "hotfix/no-commit"]) {
+    it(`rejects ${name} without a commit and preserves it`, () => {
+      run("create", name, "--base", "main");
+      const worktree = worktreeFor(name);
+      const before = git("rev-parse", "main");
+      const result = runResult("complete", name, "--base", "main");
+
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /falta.*commit/i);
+      assert.ok(fs.existsSync(worktree));
+      assert.match(git("branch", "--list"), new RegExp(`worktree/${name.replace("/", "\\/")}`));
+      assert.equal(git("rev-parse", "main"), before);
+    });
+  }
+
+  for (const name of ["CA-local-changes", "hotfix/local-changes"]) {
+    it(`reports all local change categories for ${name}`, () => {
+      const worktree = createCommittedWorktree(name);
+      fs.writeFileSync(path.join(worktree, "staged.txt"), "staged\n");
+      git("-C", worktree, "add", "staged.txt");
+      fs.appendFileSync(path.join(worktree, "change.txt"), "unstaged\n");
+      fs.writeFileSync(path.join(worktree, "untracked.txt"), "untracked\n");
+      const before = git("rev-parse", "main");
+      const result = runResult("complete", name, "--base", "main");
+
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /worktree/i);
+      assert.match(result.stderr, /staged/i);
+      assert.match(result.stderr, /unstaged/i);
+      assert.match(result.stderr, /untracked/i);
+      assert.match(result.stderr, /crear.*commit/i);
+      assert.ok(fs.existsSync(worktree));
+      assert.match(git("branch", "--list"), new RegExp(`worktree/${name.replace("/", "\\/")}`));
+      assert.equal(git("rev-parse", "main"), before);
+    });
+  }
+
+  for (const name of ["CA-stash", "hotfix/stash"]) {
+    it(`rejects pending stash for ${name}`, () => {
+      const worktree = createCommittedWorktree(name);
+      fs.writeFileSync(path.join(worktree, "pending.txt"), "pending\n");
+      git("-C", worktree, "stash", "push", "-u", "-m", "pending");
+      const before = git("rev-parse", "main");
+      const result = runResult("complete", name, "--base", "main");
+
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /stash pendiente/i);
+      assert.match(result.stderr, /resolver|restaurar/i);
+      assert.ok(fs.existsSync(worktree));
+      assert.equal(git("rev-parse", "main"), before);
+    });
+  }
+
+  for (const name of ["CA-dirty-destination", "hotfix/dirty-destination"]) {
+    it(`rejects dirty destination for ${name}`, () => {
+      const worktree = createCommittedWorktree(name);
+      fs.writeFileSync(path.join(tempRepo, "destination-staged.txt"), "staged\n");
+      git("add", "destination-staged.txt");
+      fs.appendFileSync(path.join(tempRepo, "file.txt"), "unstaged\n");
+      fs.writeFileSync(path.join(tempRepo, "destination-untracked.txt"), "untracked\n");
+      const before = git("rev-parse", "main");
+      const result = runResult("complete", name, "--base", "main");
+
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /destino/i);
+      assert.match(result.stderr, /staged/i);
+      assert.match(result.stderr, /unstaged/i);
+      assert.match(result.stderr, /untracked/i);
+      assert.match(result.stderr, /stash\/pop/i);
+      assert.ok(fs.existsSync(worktree));
+      assert.equal(git("rev-parse", "main"), before);
+    });
+  }
+
+  it("rejects complete bypass options before changing state", () => {
+    const worktree = createCommittedWorktree("hotfix/no-force");
+    const before = git("rev-parse", "main");
+    for (const option of ["--force", "--unknown"]) {
+      const result = runResult("complete", "hotfix/no-force", "--base", "main", option);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /opción|argumento|desconocido/i);
+    }
+    assert.ok(fs.existsSync(worktree));
+    assert.match(git("branch", "--list"), /worktree\/hotfix\/no-force/);
+    assert.equal(git("rev-parse", "main"), before);
   });
 });
