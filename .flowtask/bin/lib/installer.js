@@ -286,7 +286,8 @@ function configureRunnerScripts(targetDir, targetSubDir) {
   fs.writeFileSync(runnerPath, configureRunnerScriptsContent(content, targetSubDir), "utf8");
 }
 
-function cleanupLegacyScripts(projectDir, targetDir) {
+function cleanupLegacyScripts(projectDir, targetDir, flowtaskDir) {
+  if (flowtaskDir && path.resolve(path.join(projectDir, ".flowtask")) === path.resolve(flowtaskDir)) return;
   const legacyScripts = path.join(projectDir, ".flowtask", "scripts");
   const standaloneMarker = path.join(projectDir, ".flowtask", ".installation-method");
   let standaloneInstalled = false;
@@ -1001,7 +1002,7 @@ ${COLORS.blue}╔═════════════════════
         totalSkipped += stats.skipped;
       }
 
-      if (id !== "standalone") cleanupLegacyScripts(projectDir, TARGET_DIR);
+      if (id !== "standalone") cleanupLegacyScripts(projectDir, TARGET_DIR, flowtaskDir);
 
       // OpenCode: skills delta
       if (id === "opencode") {

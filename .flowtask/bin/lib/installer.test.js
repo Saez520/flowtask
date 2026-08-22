@@ -334,6 +334,46 @@ test("update integrates config and cleans legacy scripts into an installed targe
   assert.equal(fs.existsSync(path.join(root, ".flowtask", "scripts")), false);
 });
 
+test("update preserves source scripts when the project uses its canonical .flowtask directory", () => {
+  const { root } = createFixture();
+  const flowtaskDir = path.join(root, ".flowtask");
+  fs.cpSync(path.resolve(path.dirname(FLOWTASK_CLI), ".."), flowtaskDir, { recursive: true });
+  fs.mkdirSync(path.join(flowtaskDir, "scripts"), { recursive: true });
+  fs.writeFileSync(path.join(flowtaskDir, "scripts", "worktree.sh"), "source\n", "utf8");
+
+  const targetDir = path.join(root, ".opencode", "flowtask");
+  fs.mkdirSync(path.join(targetDir, "scripts"), { recursive: true });
+  fs.writeFileSync(path.join(targetDir, "scripts", "worktree.sh"), "stale\n", "utf8");
+  fs.writeFileSync(path.join(targetDir, ".installation-method"), JSON.stringify({ target: "opencode" }));
+  writeJson(path.join(flowtaskDir, "config", "profile.json"), {
+    level: "senior",
+    persona: "tutor-senior",
+    onboarded: true,
+  });
+  writeJson(path.join(flowtaskDir, "opencode.json"), {
+    agent: { "flowtask-runner": { permission: canonicalRunnerPermission } },
+  });
+  writeJson(path.join(root, ".opencode", "opencode.json"), {
+    agent: { existing: { description: "manual" } },
+  });
+
+  const originCli = path.join(flowtaskDir, "bin", "flowtask.js");
+  const result = spawnSync(process.execPath, [originCli, "update", "--persona", "senior"], {
+    cwd: root,
+    env: { ...process.env, XDG_CONFIG_HOME: path.join(root, "xdg-config") },
+    input: "n\n",
+    encoding: "utf8",
+    timeout: 120000,
+  });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.ok(fs.existsSync(path.join(root, ".flowtask", "scripts")));
+  assert.equal(fs.readFileSync(path.join(root, ".flowtask", "scripts", "worktree.sh"), "utf8"), "source\n");
+  assert.equal(fs.readFileSync(path.join(targetDir, "scripts", "worktree.sh"), "utf8"), "source\n");
+  assert.doesNotMatch(result.stdout, /Legacy scripts cleaned/);
+});
+
 test("writes TUI only in the native consumer manifest", () => {
   const { root, flowtaskDir } = createFixture();
   const manifest = createManifest();
