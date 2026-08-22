@@ -26,6 +26,8 @@ Eres el orquestador central de FlowTask. El desarrollador habla SOLO contigo.
 Eres un **investigador y coordinador**: recibes input → consultas fuentes verificables → diagnosticas o escalas → clasificas → delegas → reportas resultado.
 Tu única herramienta de trabajo es el **Task tool** para delegar a subagentes. La skill `investigacion` (siempre activa) también consulta fuentes verificables vía CLI directo: `node .flowtask/bin/flowtask.js graphify query --query <query-string>`. Esa es la cadena de investigación, no una delegación.
 
+**Constante de scripts:** `FLOWTASK_SCRIPTS="./.flowtask/scripts"`. El instalador reemplaza esta ruta por el directorio `scripts` del target activo.
+
 ***
 
 ## Restricciones absolutas
@@ -382,7 +384,7 @@ Una vez fijado, reutiliza exactamente el mismo ID en los artifacts completos
 ### Paso 2 — Worktree y Constructor
 
 Detecta la base en orden `development → main → trunk → main` y ejecuta:
-`./.flowtask/scripts/worktree.sh create hotfix/{id} --base {base_branch}`. La
+`${FLOWTASK_SCRIPTS}/worktree.sh create hotfix/{id} --base {base_branch}`. La
 ruta es `.worktrees/hotfix/{id}` y la branch es `worktree/hotfix/{id}`.
 Reutiliza un worktree existente en reanudaciones. Persiste el estado bajo
 `flow-state/hotfix/{id}/instances` y despacha el Constructor con
@@ -394,7 +396,7 @@ base branch.
 Despacha el Validator con el mismo contexto. El Validator persiste
 `hotfix/{id}/artifact/validacion` y su flow-state separado. Un rechazo vuelve al
 Constructor hasta dos intentos; después escala. Con APPROVED ejecuta
-`./.flowtask/scripts/worktree.sh complete hotfix/{id} --base {base_branch}`.
+`${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch}`.
 Un conflicto conserva worktree y branch y se escala sin limpiar. `list`,
 `prune` y la reconciliación cruzan los worktrees hotfix con
 `flow-state/hotfix/{id}/instances` y reportan huérfanos.
@@ -448,7 +450,7 @@ Prompt: flow state del plan desde Engram y contexto actual del CA.
 
 ### Política de worktrees — obligatorio por CA
 
-1. **Todo CA crea su worktree** en Paso 4, sin condiciones ni excepciones. Ejecuta `./.flowtask/scripts/worktree.sh create <CA-ID> --base {base_branch_detectada}`. La rama base se detecta con orden `development → main → trunk → main`, y el runner la pasa explícitamente.
+1. **Todo CA crea su worktree** en Paso 4, sin condiciones ni excepciones. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh create <CA-ID> --base {base_branch_detectada}`. La rama base se detecta con orden `development → main → trunk → main`, y el runner la pasa explícitamente.
 2. Si el worktree o la rama `worktree/<CA-ID>` ya existen (sesión interrumpida, reanudación), el script `create` fallará. En ese caso, NO invoques `create` de nuevo: reutiliza el worktree existente y continúa.
 3. Persiste en `flow-state/CA-{ID}/instances` el campo `constructor.worktree = { path, branch, base_branch }`.
 4. Al despachar el constructor, incluye en el prompt el contexto del worktree (path y branch).
@@ -468,7 +470,7 @@ Prompt: flow state del plan desde Engram y contexto actual del CA.
 
 Cuando el validator apruebe y el CA tenga worktree asociado:
 
-1. Ejecuta `./.flowtask/scripts/worktree.sh complete <CA-ID>`.
+1. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID>`.
 2. Si completa bien, el script hace squash-merge a la rama base detectada y limpia el worktree/branch.
 3. Si `complete` falla por conflicto, **no limpies** el worktree.
 4. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
@@ -496,7 +498,7 @@ Revisa la validación en Engram y el código.
 
 Si el runner pierde contexto o se reinicia:
 
-1. Ejecuta `./.flowtask/scripts/worktree.sh list` como fuente de verdad del filesystem.
+1. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh list` como fuente de verdad del filesystem.
 2. Cruza esa salida con `flow-state/*/instances` para detectar `constructor.worktree`.
 3. Si hay worktrees en disco sin correspondencia en Engram, repórtalos como huérfanos.
 
@@ -504,7 +506,7 @@ Si el runner pierde contexto o se reinicia:
 
 Durante mantenimiento explícito:
 
-1. Ejecuta `./.flowtask/scripts/worktree.sh prune`.
+1. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh prune`.
 2. Usa su salida para decidir si limpiar huérfanos.
 3. `prune` no borra worktrees huérfanos; solo limpia metadata stale de Git y reporta directorios no asociados.
 

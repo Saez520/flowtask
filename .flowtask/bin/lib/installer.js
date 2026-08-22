@@ -26,9 +26,11 @@ import { coordinateGraphify } from "./graphify.js";
 export const ASSETS = {
   opencode: [
     { src: "agents",  dest: "agents" },
+    { src: "scripts", dest: "scripts" },
   ],
   claude: [
     { src: "skills",  dest: "skills" },
+    { src: "scripts", dest: "scripts" },
   ],
   standalone: [
     { src: "agents",   dest: "agents" },
@@ -43,6 +45,7 @@ export const ASSETS = {
     { src: "commands", dest: "commands" },
     { src: "skills",   dest: "skills" },
     { src: "plugins",  dest: "plugins" },
+    { src: "scripts",  dest: "scripts" },
   ],
 };
 
@@ -269,6 +272,33 @@ function injectPersonaIntoRunner(targetDir, personaContent) {
   const content = fs.readFileSync(runnerPath, "utf8");
   fs.writeFileSync(runnerPath, injectPersonaIntoRunnerContent(content, personaContent), "utf8");
   logSuccess(`Personalidad inyectada en runner.md de ${targetDir}.`);
+}
+
+function configureRunnerScriptsContent(content, targetSubDir) {
+  const scriptsDir = `${targetSubDir.replace(/\\/g, "/")}/scripts`;
+  return content.replace('FLOWTASK_SCRIPTS="./.flowtask/scripts"', `FLOWTASK_SCRIPTS="./${scriptsDir}"`);
+}
+
+function configureRunnerScripts(targetDir, targetSubDir) {
+  const runnerPath = path.join(targetDir, "agents", "runner.md");
+  if (!fileExists(runnerPath)) return;
+  const content = fs.readFileSync(runnerPath, "utf8");
+  fs.writeFileSync(runnerPath, configureRunnerScriptsContent(content, targetSubDir), "utf8");
+}
+
+function cleanupLegacyScripts(projectDir, targetDir) {
+  const legacyScripts = path.join(projectDir, ".flowtask", "scripts");
+  const standaloneMarker = path.join(projectDir, ".flowtask", ".installation-method");
+  let standaloneInstalled = false;
+  if (fs.existsSync(standaloneMarker)) {
+    try {
+      standaloneInstalled = JSON.parse(fs.readFileSync(standaloneMarker, "utf8")).target === "standalone";
+    } catch (_) {}
+  }
+  if (!standaloneInstalled && fs.existsSync(legacyScripts) && fs.existsSync(path.join(targetDir, "scripts"))) {
+    fs.rmSync(legacyScripts, { recursive: true, force: true });
+    logSuccess(`Legacy scripts cleaned from ${legacyScripts}.`);
+  }
 }
 
 export function targetConfigDir(targetDir) {
@@ -806,15 +836,8 @@ ${COLORS.blue}╔═════════════════════
         copyWithProgress(srcDir, destDir, src, readline);
       }
 
-      // IDE targets also need the worktree script at the canonical project root.
-      if (id !== "standalone") {
-        const srcScripts = path.join(flowtaskDir, "scripts");
-        if (fileExists(srcScripts)) {
-          copyWithProgress(srcScripts, path.join(projectDir, ".flowtask", "scripts"), "scripts (canonical)", readline);
-        }
-      }
-
       // ── Inject persona into runner.md ───────────────────────────────
+      configureRunnerScripts(TARGET_DIR, targetSubDir);
       if (personaContent && id !== "claude") {
         injectPersonaIntoRunner(TARGET_DIR, personaContent);
       }
@@ -841,7 +864,9 @@ ${COLORS.blue}╔═════════════════════
         if (personaContent) {
           const sourceRunnerPath = path.join(flowtaskDir, "agents", "runner.md");
           const sourceRunner = fs.readFileSync(sourceRunnerPath, "utf8");
-          const runnerBody = injectPersonaIntoRunnerContent(sourceRunner, personaContent);
+          const runnerBody = injectPersonaIntoRunnerContent(
+            configureRunnerScriptsContent(sourceRunner, targetSubDir), personaContent,
+          );
           generateClaudeMd(flowtaskDir, projectDir, runnerBody);
         } else {
           generateClaudeMd(flowtaskDir, projectDir);
@@ -976,15 +1001,7 @@ ${COLORS.blue}╔═════════════════════
         totalSkipped += stats.skipped;
       }
 
-      // IDE targets also need the worktree script at the canonical project root.
-      if (id !== "standalone") {
-        const srcScripts = path.join(flowtaskDir, "scripts");
-        if (fileExists(srcScripts)) {
-          const stats = copyDirectoryDelta(srcScripts, path.join(projectDir, ".flowtask", "scripts"), preservePaths);
-          totalCopied += stats.copied;
-          totalSkipped += stats.skipped;
-        }
-      }
+      if (id !== "standalone") cleanupLegacyScripts(projectDir, TARGET_DIR);
 
       // OpenCode: skills delta
       if (id === "opencode") {
@@ -1005,6 +1022,7 @@ ${COLORS.blue}╔═════════════════════
       }
 
       // ── Inject persona into runner.md ───────────────────────────────
+      configureRunnerScripts(TARGET_DIR, subDir);
       if (personaContent && id !== "claude") {
         injectPersonaIntoRunner(TARGET_DIR, personaContent);
       }
@@ -1022,6 +1040,8 @@ ${COLORS.blue}╔═════════════════════
         mergeClaudeSettings(path.join(projectDir, ".claude", "settings.json"), flowtaskDir);
         mergeClaudeMcpConfig(path.join(projectDir, ".mcp.json"), flowtaskDir);
         cleanupOrphanedClaudeAssets(projectDir);
+        const sourceRunner = fs.readFileSync(path.join(flowtaskDir, "agents", "runner.md"), "utf8");
+        generateClaudeMd(flowtaskDir, projectDir, configureRunnerScriptsContent(sourceRunner, subDir));
       }
 
       fs.writeFileSync(

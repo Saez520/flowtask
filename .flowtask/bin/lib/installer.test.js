@@ -275,8 +275,18 @@ test("standalone assets include scripts for the canonical root location", () => 
   });
 });
 
-test("update integrates the canonical OpenCode config into an installed target", () => {
-  const { root } = createFixture();
+test("IDE assets include scripts in their target directories", () => {
+  for (const id of ["opencode", "claude", "vscode"]) {
+    assert.deepEqual(ASSETS[id].find(({ src }) => src === "scripts"), { src: "scripts", dest: "scripts" });
+  }
+});
+
+test("update integrates config and cleans legacy scripts into an installed target", () => {
+  const { root, flowtaskDir } = createFixture();
+  fs.mkdirSync(path.join(flowtaskDir, "scripts"), { recursive: true });
+  fs.writeFileSync(path.join(flowtaskDir, "scripts", "worktree.sh"), "#!/bin/sh\n", "utf8");
+  fs.mkdirSync(path.join(root, ".flowtask", "scripts"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".flowtask", "scripts", "worktree.sh"), "legacy", "utf8");
   const targetDir = path.join(root, ".opencode", "flowtask");
   fs.mkdirSync(targetDir, { recursive: true });
   fs.writeFileSync(path.join(targetDir, ".installation-method"), JSON.stringify({ target: "opencode" }));
@@ -318,9 +328,10 @@ test("update integrates the canonical OpenCode config into an installed target",
   assert.equal(permission.skill, "allow");
   assert.equal(permission["engram_*"], "allow");
   assert.equal(Object.hasOwn(updatedConfig.agent["flowtask-runner"], "task"), false);
-  const installedScript = path.join(root, ".flowtask", "scripts", "worktree.sh");
+  const installedScript = path.join(root, ".opencode", "flowtask", "scripts", "worktree.sh");
   assert.ok(fs.existsSync(installedScript));
   assert.equal(fs.statSync(installedScript).mode & 0o111, 0o111);
+  assert.equal(fs.existsSync(path.join(root, ".flowtask", "scripts")), false);
 });
 
 test("writes TUI only in the native consumer manifest", () => {
@@ -410,7 +421,9 @@ test("fans out legacy profile and preserves it when one target fails", () => {
 });
 
 test("update preserves divergent valid profiles independently across two targets", () => {
-  const { root } = createFixture();
+  const { root, flowtaskDir } = createFixture();
+  fs.mkdirSync(path.join(flowtaskDir, "scripts"), { recursive: true });
+  fs.writeFileSync(path.join(flowtaskDir, "scripts", "worktree.sh"), "#!/bin/sh\n", "utf8");
   const targets = [
     ["opencode", ".opencode/flowtask", { level: "senior", persona: "tutor-senior", onboarded: true }],
     ["claude", ".claude/flowtask", { level: "mid", persona: "tutor-mid", onboarded: true }],
@@ -433,7 +446,7 @@ test("update preserves divergent valid profiles independently across two targets
   assert.deepEqual(readJson(path.join(root, ".opencode/flowtask/config/profile.json")), targets[0][2]);
   assert.deepEqual(readJson(path.join(root, ".claude/flowtask/config/profile.json")), targets[1][2]);
   assert.deepEqual(readJson(path.join(root, ".vscode/flowtask/config/profile.json")), targets[2][2]);
-  const installedScript = path.join(root, ".flowtask", "scripts", "worktree.sh");
+  const installedScript = path.join(root, ".opencode", "flowtask", "scripts", "worktree.sh");
   assert.ok(fs.existsSync(installedScript));
   assert.equal(fs.statSync(installedScript).mode & 0o111, 0o111);
 });

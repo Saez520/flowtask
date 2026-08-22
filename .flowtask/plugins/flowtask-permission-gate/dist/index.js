@@ -65,7 +65,8 @@ export function isAuthorizedRunnerCommand(command) {
         return false;
     if (tokens[0] === "node" && tokens[1] === ".flowtask/bin/flowtask.js" && tokens[2] === "graphify")
         return tokens.length > 3;
-    if (tokens[0] === "./.flowtask/scripts/worktree.sh") {
+    const worktreeScript = tokens[0].replaceAll("\\", "/");
+    if (worktreeScript === "./.flowtask/scripts/worktree.sh" || worktreeScript.endsWith("/flowtask/scripts/worktree.sh")) {
         if (tokens.length === 2 && tokens[1] === "list")
             return true;
         return tokens.length === 5 && ["create", "complete"].includes(tokens[1]) && Boolean(tokens[2]) && tokens[3] === "--base" && Boolean(tokens[4]);

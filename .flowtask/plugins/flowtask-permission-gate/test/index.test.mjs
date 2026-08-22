@@ -11,6 +11,8 @@ afterEach(() => roots.splice(0).forEach((root) => fs.rmSync(root, { recursive: t
 test("matches canonical Runner commands structurally", () => {
   for (const command of [
     "./.flowtask/scripts/worktree.sh create wt-1 --base main",
+    "./.opencode/flowtask/scripts/worktree.sh create wt-1 --base main",
+    "./.claude/flowtask/scripts/worktree.sh complete wt-1 --base main",
     "./.flowtask/scripts/worktree.sh complete wt-1 --base main",
     "./.flowtask/scripts/worktree.sh list", "git status --short", "git add file.ts",
     "git restore --staged file.ts", 'git commit -m "mensaje de prueba"', "git push origin branch",
@@ -19,7 +21,7 @@ test("matches canonical Runner commands structurally", () => {
 });
 
 test("rejects malformed and compound commands", () => {
-  for (const command of ["git log", "git diff", "git status && git diff", "git status; git diff", "./.flowtask/scripts/worktree.sh create wt-1", "jq . file"]) {
+  for (const command of ["git log", "git diff", "git status && git diff", "git status; git diff", "./.opencode/flowtask/scripts/worktree.sh create wt-1", "./.flowtask/scripts/worktree.sh create wt-1", "jq . file"]) {
     assert.equal(isAuthorizedRunnerCommand(command), false, command);
   }
   assert.equal(tokenizeCommand("git status && git diff"), null);

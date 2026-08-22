@@ -217,10 +217,10 @@ The personality is injected into the runner agent definition and persists across
 FlowTask supports **parallel CA execution** using Git worktrees for isolation:
 
 - **First active CA**: Runs in your normal working branch (no worktree).
-- **Second+ parallel CA**: Automatically creates an isolated worktree via `.flowtask/scripts/worktree.sh create <CA-ID> --base development`.
+- **Second+ parallel CA**: Automatically creates an isolated worktree via `${FLOWTASK_SCRIPTS}/worktree.sh create <CA-ID> --base development`.
 
 When a parallel CA completes successfully (Validator APPROVED):
-1. The worktree is merged back via `worktree.sh complete <CA-ID>`.
+1. The worktree is merged back via `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID>`.
 2. Squash-merge to `development`, then worktree and branch are cleaned up.
 3. If a merge conflict occurs, the constructor is re-escalated to resolve it.
 

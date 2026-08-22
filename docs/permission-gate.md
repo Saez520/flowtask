@@ -18,9 +18,9 @@ o `flowtask update` y requiere reiniciar OpenCode. No existe un fallback nativo.
 
 Las operaciones Runner autorizadas, con sus formas canónicas, son:
 
-- `./.flowtask/scripts/worktree.sh list`
-- `./.flowtask/scripts/worktree.sh create <id> --base <branch>`
-- `./.flowtask/scripts/worktree.sh complete <id> --base <branch>`
+- `${FLOWTASK_SCRIPTS}/worktree.sh list`
+- `${FLOWTASK_SCRIPTS}/worktree.sh create <id> --base <branch>`
+- `${FLOWTASK_SCRIPTS}/worktree.sh complete <id> --base <branch>`
 - `git status` y `git status` con flags (por ejemplo, `git status --short`);
   no acepta argumentos que no sean flags.
 - `git add <files>` (uno o más paths).
@@ -57,7 +57,7 @@ git status || git diff   # se bloquea por el segmento git diff
 git status; git diff     # se bloquea por el segmento git diff
 git status | git diff    # se bloquea por el segmento git diff
 git log                  # verbo no autorizado
-./.flowtask/scripts/worktree.sh create id --base  # falta <branch>
+${FLOWTASK_SCRIPTS}/worktree.sh create id --base  # falta <branch>
 ```
 
 Los operadores no sirven para evadir el gate: una operación compuesta es
@@ -99,7 +99,7 @@ prueba.
 3. Cerrar y reiniciar OpenCode por el procedimiento habitual del desarrollador.
    Resultado esperado: el plugin nuevo se carga desde `.opencode/plugins/` y
    el plugin viejo no se carga.
-4. En una sesión del Runner, ejecutar `./.flowtask/scripts/worktree.sh list`,
+4. En una sesión del Runner, ejecutar `${FLOWTASK_SCRIPTS}/worktree.sh list`,
    `git status --short` y `node .flowtask/bin/flowtask.js graphify query --query
    <query>`. Resultado esperado: se permiten y no aparece el feedback de
    delegación.
