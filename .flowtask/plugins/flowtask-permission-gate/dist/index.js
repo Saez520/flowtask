@@ -2,9 +2,100 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, unlinkSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 const CONFIG_PATH = ".opencode/flowtask/config/review.json";
+export const RUNNER_DELEGATION_MESSAGE = "Recordá que debés delegar esta operación al subagente correspondiente.";
+const RUNNER_TASKS = new Set([
+    "flowtask-ca-writer", "flowtask-planner", "flowtask-plan-auditor", "flowtask-constructor",
+    "flowtask-validator", "flowtask-initializer", "flowtask-logger", "flowtask-tester",
+    "flowtask-review-orchestrator", "flowtask-inspector", "flowtask-onboarder",
+    "flowtask-graphify-docs-media",
+]);
+function isRunner(agent) {
+    return typeof agent === "string" && agent.toLowerCase().replace(/_/g, "-") === "flowtask-runner";
+}
+/** Tokenize the small shell grammar used by FlowTask commands. */
+export function tokenizeCommand(command) {
+    if (/[;&|`<>]|\$\(/.test(command))
+        return null;
+    const tokens = [];
+    let token = "";
+    let quote = "";
+    let escaped = false;
+    for (const char of command.trim()) {
+        if (escaped) {
+            token += char;
+            escaped = false;
+            continue;
+        }
+        if (char === "\\") {
+            escaped = true;
+            continue;
+        }
+        if (quote) {
+            if (char === quote)
+                quote = "";
+            else
+                token += char;
+            continue;
+        }
+        if (char === "'" || char === '"') {
+            quote = char;
+            continue;
+        }
+        if (/\s/.test(char)) {
+            if (token) {
+                tokens.push(token);
+                token = "";
+            }
+            continue;
+        }
+        token += char;
+    }
+    if (escaped || quote)
+        return null;
+    if (token)
+        tokens.push(token);
+    return tokens;
+}
+function hasOnlyFlags(tokens) { return tokens.every((token) => token.startsWith("-")); }
+function hasPaths(tokens) { return tokens.length > 0 && tokens.every((token) => !token.startsWith("-")); }
+export function isAuthorizedRunnerCommand(command) {
+    const tokens = tokenizeCommand(command);
+    if (!tokens?.length)
+        return false;
+    if (tokens[0] === "node" && tokens[1] === ".flowtask/bin/flowtask.js" && tokens[2] === "graphify")
+        return tokens.length > 3;
+    if (tokens[0] === "./.flowtask/scripts/worktree.sh") {
+        if (tokens.length === 2 && tokens[1] === "list")
+            return true;
+        return tokens.length === 5 && ["create", "complete"].includes(tokens[1]) && Boolean(tokens[2]) && tokens[3] === "--base" && Boolean(tokens[4]);
+    }
+    if (tokens[0] !== "git")
+        return false;
+    if (tokens[1] === "status")
+        return hasOnlyFlags(tokens.slice(2));
+    if (tokens[1] === "add")
+        return hasPaths(tokens.slice(2));
+    if (tokens[1] === "restore" && tokens[2] === "--staged")
+        return hasPaths(tokens.slice(3));
+    if (tokens[1] === "commit")
+        return tokens.length === 4 && tokens[2] === "-m" && Boolean(tokens[3]);
+    if (tokens[1] === "push" || tokens[1] === "merge")
+        return tokens.length >= 2;
+    return false;
+}
+function runnerToolAllowed(tool, args) {
+    if (tool === "bash")
+        return isAuthorizedRunnerCommand(String(args.command ?? ""));
+    if (tool === "skill" || tool.startsWith("engram_"))
+        return true;
+    if (tool === "task")
+        return RUNNER_TASKS.has(String(args.subagent_type ?? args.agent ?? args.name ?? ""));
+    return false;
+}
+function runnerBlocked() { throw new Error(RUNNER_DELEGATION_MESSAGE); }
 function gateError(operation, cause, action) {
     const detail = cause instanceof Error ? cause.message : String(cause);
-    return new Error(`[FlowTask Review Gate] Commit bloqueado.\n` +
+    return new Error(`[FlowTask Permission Gate] Commit bloqueado.\n` +
         `Operación fallida: ${operation}.\n` +
         `Causa: ${detail}.\n` +
         `Acción recomendada: ${action}`);
@@ -16,7 +107,7 @@ function readConfig(cwd) {
         raw = readFileSync(path, "utf8");
     }
     catch (error) {
-        console.warn(`[FlowTask Review Gate] No se pudo leer ${path}; se continúa sin bloquear.`);
+        console.warn(`[FlowTask Permission Gate] No se pudo leer ${path}; se continúa sin bloquear.`);
         return null;
     }
     let value;
@@ -24,14 +115,14 @@ function readConfig(cwd) {
         value = JSON.parse(raw);
     }
     catch (error) {
-        console.warn(`[FlowTask Review Gate] JSON inválido en ${path}; se continúa sin bloquear.`);
+        console.warn(`[FlowTask Permission Gate] JSON inválido en ${path}; se continúa sin bloquear.`);
         return null;
     }
     if (!value || typeof value !== "object" ||
         typeof value.enabled !== "boolean" ||
         typeof value.stampPath !== "string" ||
         !value.stampPath) {
-        console.warn(`[FlowTask Review Gate] Configuración inválida en ${path}; se continúa sin bloquear.`);
+        console.warn(`[FlowTask Permission Gate] Configuración inválida en ${path}; se continúa sin bloquear.`);
         return null;
     }
     const config = value;
@@ -64,7 +155,7 @@ function getDiffStats(cwd) {
 }
 function buildGateMessage(stats) {
     return [
-        "[FlowTask Review Gate] Commit bloqueado.",
+        "[FlowTask Permission Gate] Commit bloqueado.",
         "",
         `📊 Diff: ${stats.files} archivo(s), ${stats.lines} línea(s).`,
         "",
@@ -77,10 +168,11 @@ export default async function (input) {
     const sessionDir = input.directory;
     return {
         "tool.execute.before": async (hookInput, hookOutput) => {
-            if (hookInput.tool !== "bash")
-                return;
             const command = String(hookOutput?.args?.command ?? "");
-            if (!command.includes("git commit"))
+            const agent = hookInput.agent ?? input.agent;
+            if (isRunner(agent) && !runnerToolAllowed(hookInput.tool, hookOutput?.args ?? {}))
+                runnerBlocked();
+            if (hookInput.tool !== "bash" || !/\bgit\s+commit\b/.test(command))
                 return;
             if (command.includes("--no-verify") || command.includes("--no-review"))
                 return;

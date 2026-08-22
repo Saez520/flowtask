@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, test } from "node:test";
-import { applyManagedRunnerPermission, mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
+import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
 
 const fixtures = [];
 
@@ -24,57 +24,10 @@ function writeJson(file, value) {
   fs.writeFileSync(file, JSON.stringify(value, null, 2));
 }
 
-const canonicalPermission = {
-  "*": "deny",
-  bash: {
-    "*": "deny",
-    "node .flowtask/bin/flowtask.js graphify *": "allow",
-    "git status": "allow",
-    "git add": "allow",
-    "git restore --staged": "allow",
-    "git commit": "allow",
-    "git push": "allow",
-    "git merge": "allow",
-    "./.flowtask/scripts/worktree.sh create": "allow",
-    "./.flowtask/scripts/worktree.sh complete": "allow",
-    "./.flowtask/scripts/worktree.sh list": "allow",
-  },
-  task: {
-    "*": "deny",
-    "flowtask-ca-writer": "allow",
-    "flowtask-planner": "allow",
-    "flowtask-plan-auditor": "allow",
-    "flowtask-constructor": "allow",
-    "flowtask-validator": "allow",
-    "flowtask-initializer": "allow",
-    "flowtask-logger": "allow",
-    "flowtask-tester": "allow",
-    "flowtask-review-orchestrator": "allow",
-    "flowtask-inspector": "allow",
-    "flowtask-onboarder": "allow",
-    "flowtask-graphify-docs-media": "allow",
-    "flowtask-runner": "deny",
-  },
-  skill: "allow",
-  "engram_*": "allow",
-};
-
-test("canonical Runner permission has deny-first ordering and visible allowlist", () => {
-  assert.deepEqual(Object.keys(canonicalPermission), ["*", "bash", "task", "skill", "engram_*"]);
-  assert.equal(Object.keys(canonicalPermission.bash)[0], "*");
-  assert.equal(Object.keys(canonicalPermission.task)[0], "*");
-  assert.equal(Object.keys(canonicalPermission.task).length - 2, 12);
-  assert.equal(Object.keys(canonicalPermission.task).at(-1), "flowtask-runner");
-  assert.notDeepEqual(Object.entries(canonicalPermission.bash).at(-1), ["*", "deny"]);
-  assert.notDeepEqual(Object.entries(canonicalPermission.task).at(-1), ["*", "deny"]);
-  assert.equal(canonicalPermission.skill, "allow");
-  assert.equal(canonicalPermission["engram_*"], "allow");
-});
-
-test("merge replaces the complete managed permission block and preserves unrelated config", () => {
+test("merge removes legacy Runner permission while preserving unrelated config", () => {
   const { root, flowtaskDir } = fixture();
   writeJson(path.join(flowtaskDir, "opencode.json"), {
-    agent: { "flowtask-runner": { permission: canonicalPermission } },
+    agent: { "flowtask-runner": { description: "canonical" } },
   });
   const configPath = path.join(root, ".opencode", "opencode.json");
   writeJson(configPath, {
@@ -98,12 +51,12 @@ test("merge replaces the complete managed permission block and preserves unrelat
     console.log = originalLog;
   }
   const first = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  assert.deepEqual(first.agent["flowtask-runner"].permission, canonicalPermission);
-  assert.equal(Object.hasOwn(first.agent["flowtask-runner"], "task"), false);
+  assert.equal(Object.hasOwn(first.agent["flowtask-runner"], "permission"), false);
+  assert.deepEqual(first.agent["flowtask-runner"].task, { old: "allow" });
   assert.deepEqual(first.agent.unrelated, { model: "manual" });
   assert.deepEqual(first.mcp.external, { enabled: true });
   assert.deepEqual(first.command.custom, { template: "keep" });
-  assert.match(output.join("\n"), /política canónica gestionada/);
+  assert.equal(output.some((line) => line.includes("política canónica gestionada")), false);
   mergeOpencodeConfig(configPath, flowtaskDir, ".opencode");
   assert.deepEqual(JSON.parse(fs.readFileSync(configPath, "utf8")), first);
 });
@@ -142,47 +95,6 @@ test("merge preserves manual values and repairs duplicate plugins idempotently",
   assert.equal(first.command.check.command, "manual");
   assert.equal(first.plugin.filter((entry) => entry.includes("flowtask-plugin")).length, 1);
   assert.ok(first.plugin.some((entry) => entry.includes("external")));
-});
-
-test("managed Runner permissions overwrite legacy customization and preserve unrelated fields", () => {
-  const config = {
-    mcp: { user: { enabled: true } },
-    agent: {
-      existing: { model: "user-model" },
-      "flowtask-runner": {
-        description: "user description",
-        prompt: "user prompt",
-        permission: { bash: "allow", task: "allow" },
-        task: { "old-agent": "allow" },
-      },
-    },
-  };
-  const output = [];
-  const originalLog = console.log;
-  console.log = (message) => output.push(String(message));
-  try {
-    applyManagedRunnerPermission(config, { agent: { "flowtask-runner": { permission: canonicalPermission } } });
-  } finally {
-    console.log = originalLog;
-  }
-
-  assert.deepEqual(config.agent["flowtask-runner"].permission, canonicalPermission);
-  assert.equal(Object.hasOwn(config.agent["flowtask-runner"], "task"), false);
-  assert.equal(config.agent["flowtask-runner"].description, "user description");
-  assert.deepEqual(config.agent.existing, { model: "user-model" });
-  assert.ok(output.join("\n").includes("política canónica gestionada"));
-});
-
-test("managed Runner reconciliation is idempotent for a new project", () => {
-  const canonical = { agent: { "flowtask-runner": { permission: {
-    bash: { "git status": "allow", "*": "deny" },
-    task: { "flowtask-constructor": "allow", "*": "deny" },
-    skill: "allow", "engram_*": "allow", "*": "deny",
-  } } } };
-  const first = applyManagedRunnerPermission({}, canonical);
-  const snapshot = JSON.parse(JSON.stringify(first));
-  const second = applyManagedRunnerPermission(first, canonical);
-  assert.deepEqual(second, snapshot);
 });
 
 test("register replaces FlowTask objects without disturbing third-party entries", () => {

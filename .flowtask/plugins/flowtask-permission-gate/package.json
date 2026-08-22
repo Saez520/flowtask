@@ -1,5 +1,5 @@
 {
-  "name": "flowtask-review-gate",
+  "name": "flowtask-permission-gate",
   "version": "1.0.0",
   "type": "module",
   "main": "./dist/index.js",

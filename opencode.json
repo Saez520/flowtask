@@ -22,41 +22,7 @@
     "flowtask-runner": {
       "description": "Orchestrator of FlowTask workflow. Activates subagents, manages state via Engram. Only agent the user talks to directly.",
       "mode": "primary",
-      "prompt": "{file:.flowtask/agents/runner.md}",
-      "permission": {
-        "*": "deny",
-        "bash": {
-          "*": "deny",
-          "node .flowtask/bin/flowtask.js graphify *": "allow",
-          "git status": "allow",
-          "git add": "allow",
-          "git restore --staged": "allow",
-          "git commit": "allow",
-          "git push": "allow",
-          "git merge": "allow",
-          "./.flowtask/scripts/worktree.sh create": "allow",
-          "./.flowtask/scripts/worktree.sh complete": "allow",
-          "./.flowtask/scripts/worktree.sh list": "allow"
-        },
-        "task": {
-          "*": "deny",
-          "flowtask-ca-writer": "allow",
-          "flowtask-planner": "allow",
-          "flowtask-plan-auditor": "allow",
-          "flowtask-constructor": "allow",
-          "flowtask-validator": "allow",
-          "flowtask-initializer": "allow",
-          "flowtask-logger": "allow",
-          "flowtask-tester": "allow",
-          "flowtask-review-orchestrator": "allow",
-          "flowtask-inspector": "allow",
-          "flowtask-onboarder": "allow",
-          "flowtask-graphify-docs-media": "allow",
-          "flowtask-runner": "deny"
-        },
-        "skill": "allow",
-        "engram_*": "allow"
-      }
+      "prompt": "{file:.flowtask/agents/runner.md}"
     },
     "flowtask-ca-writer": {
       "description": "Guides requirement clarification through conversation. Helps user clarify what they need before formalizing CA. Never writes code or plans.",

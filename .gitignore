@@ -57,7 +57,7 @@ flowtask/
 **/flowtask/config/profile.json
 .flowtask/config/profile.json
 
-# Review stamp (temporal, generado por flowtask-review-gate)
+# Review stamp (temporal, generado por flowtask-permission-gate)
 **/flowtask/config/.review-stamp
 .flowtask/config/.review-stamp
 

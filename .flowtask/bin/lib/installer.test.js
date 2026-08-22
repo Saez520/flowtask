@@ -156,7 +156,7 @@ test("mismatch removes both components and emits the exact deprecation alert onc
   writeJson(path.join(root, ".opencode", "opencode.json"), {
     plugin: [
       "./plugins/flowtask-classifier-hook/dist/index.js",
-      "./plugins/flowtask-review-gate/dist/index.js",
+      "./plugins/flowtask-permission-gate/dist/index.js",
     ],
   });
 
@@ -179,7 +179,7 @@ test("mismatch removes both components and emits the exact deprecation alert onc
     "./.opencode/plugins/flowtask-classifier-tui/dist/tui.js",
   ]);
   assert.deepEqual(installedPluginEntries(path.join(root, ".opencode", "opencode.json")), [
-    "./plugins/flowtask-review-gate/dist/index.js",
+    "./plugins/flowtask-permission-gate/dist/index.js",
   ]);
 });
 
@@ -209,7 +209,7 @@ test("cleanup preserves unrelated plugin directories and config entries", () => 
     "$schema": "https://opencode.ai/config.json",
     plugin: [
       "./plugins/flowtask-classifier-hook/dist/index.js",
-      "./plugins/flowtask-review-gate/dist/index.js",
+      "./plugins/flowtask-permission-gate/dist/index.js",
       "./plugins/flowtask-context-checkpoint/index.ts",
     ],
   });
@@ -229,7 +229,7 @@ test("cleanup preserves unrelated plugin directories and config entries", () => 
   assert.deepEqual(readJson(path.join(root, ".opencode", "tui.json")).keybinds, { input_submit: "tab" });
   assert.equal(readJson(path.join(root, ".opencode", "tui.json")).$schema, "https://custom/tui-schema.json");
   assert.deepEqual(installedPluginEntries(path.join(root, ".opencode", "opencode.json")), [
-    "./plugins/flowtask-review-gate/dist/index.js",
+      "./plugins/flowtask-permission-gate/dist/index.js",
     "./plugins/flowtask-context-checkpoint/index.ts",
   ]);
 });
@@ -286,7 +286,7 @@ test("update integrates the canonical OpenCode config into an installed target",
     onboarded: true,
   });
   writeJson(path.join(root, ".flowtask", "opencode.json"), {
-    agent: { "flowtask-runner": { permission: canonicalRunnerPermission } },
+    agent: { "flowtask-runner": { permission: canonicalRunnerPermission, task: { legacy: "keep" } } },
   });
   writeJson(path.join(root, ".opencode", "opencode.json"), {
     $schema: "https://custom/schema.json",
@@ -307,7 +307,10 @@ test("update integrates the canonical OpenCode config into an installed target",
   assert.ok(updatedConfig.agent["flowtask-validator"], "update must merge the new canonical agent");
   assert.equal(updatedConfig.agent["flowtask-validator"].prompt, "{file:flowtask/agents/validator.md}");
   assert.deepEqual(updatedConfig.agent.existing, { description: "manual" });
-  const permission = updatedConfig.agent["flowtask-runner"].permission;
+  assert.equal(Object.hasOwn(updatedConfig.agent["flowtask-runner"], "permission"), false);
+  assert.ok(updatedConfig.agent["flowtask-runner"]);
+  // The hotfix fixture remains canonical; the CA migration removes it from the installed Runner.
+  const permission = canonicalRunnerPermission;
   assert.deepEqual(Object.keys(permission), ["*", "bash", "task", "skill", "engram_*"]);
   assert.equal(Object.keys(permission.bash)[0], "*");
   assert.equal(Object.keys(permission.task)[0], "*");

@@ -100,32 +100,6 @@ function mergeMissingObjects(target, source) {
   return result;
 }
 
-/**
- * Replace the managed Runner permission block without overwriting Runner metadata.
- * The canonical permission is intentionally not merged: local customizations must
- * not be able to widen the Runner's runtime capabilities after an update.
- */
-export function applyManagedRunnerPermission(config, canonicalConfig) {
-  const canonicalRunner = canonicalConfig?.agent?.["flowtask-runner"];
-  if (!canonicalRunner?.permission) return config;
-
-  const runner = config.agent?.["flowtask-runner"];
-  const hadCustomization = Boolean(
-    runner?.permission && JSON.stringify(runner.permission) !== JSON.stringify(canonicalRunner.permission),
-  );
-  const hadLegacyTask = Boolean(runner && Object.prototype.hasOwnProperty.call(runner, "task"));
-
-  if (!config.agent) config.agent = {};
-  if (!config.agent["flowtask-runner"]) config.agent["flowtask-runner"] = {};
-  config.agent["flowtask-runner"].permission = JSON.parse(JSON.stringify(canonicalRunner.permission));
-  delete config.agent["flowtask-runner"].task;
-
-  if (hadCustomization || hadLegacyTask) {
-    logWarn("La personalización previa de permisos del Runner fue reemplazada por la política canónica gestionada.");
-  }
-  return config;
-}
-
 function normalizePluginEntries(existing, incoming) {
   const result = [];
   const indexes = new Map();
@@ -285,7 +259,11 @@ export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
       }
     }
 
-    applyManagedRunnerPermission(ideConfig, ftConfig);
+    // The permission gate is the sole Runner enforcement. Remove the legacy
+    // managed block from existing targets without touching Runner metadata.
+    if (ideConfig.agent?.["flowtask-runner"]) {
+      delete ideConfig.agent["flowtask-runner"].permission;
+    }
 
     if (!ideConfig.$schema) ideConfig.$schema = "https://opencode.ai/config.json";
 

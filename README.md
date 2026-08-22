@@ -387,7 +387,7 @@ FlowTask/
 │   │   ├── flowtask-classifier-tui/   # OpenCode UI classification plugin
 │   │   │   ├── src/
 │   │   │   └── dist/
-│   │   ├── flowtask-review-gate/      # Review gate plugin
+│   │   ├── flowtask-permission-gate/  # Permission and commit gate plugin
 │   │   ├── flowtask-model-selector/   # Model selection plugin
 │   │   ├── flowtask-context-checkpoint/ # Context checkpoint plugin
 │   │   └── flowtask.js           # Additional plugin
