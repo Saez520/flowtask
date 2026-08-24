@@ -10,8 +10,12 @@ o `flowtask update` y requiere reiniciar OpenCode. No existe un fallback nativo.
 
 ## Políticas
 
-- **Todos los agentes:** el gate de commits conserva el stamp
-  `.flowtask/config/.review-stamp`, sus bypasses y el consumo del stamp válido.
+- **Todos los agentes:** el gate de commits conserva el stamp, sus bypasses y el
+  consumo del stamp válido. La configuración FUENTE usa
+  `.flowtask/config/.review-stamp`; al materializarse en un consumidor, la ruta
+  se adapta al home canónico del target: `{TARGET_DIR}/flowtask/config/.review-stamp`
+  (por ejemplo, `.opencode/flowtask/config/.review-stamp`). La resolución
+  relativa siempre se hace contra el worktree donde ocurre el commit.
 - **Runner:** puede ejecutar únicamente las operaciones de gestión aprobadas.
   El resto se bloquea antes de ejecutar y devuelve exactamente:
   `Recordá que debés delegar esta operación al subagente correspondiente.`

@@ -330,7 +330,13 @@ export function materializeReviewConfig(flowtaskDir, targetDir) {
   const sourcePath = path.join(flowtaskDir, "config", "review.json");
   const config = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
   const configDir = targetConfigDir(targetDir);
-  const materialized = { ...config };
+  const projectDir = path.basename(targetDir) === ".flowtask"
+    ? path.dirname(targetDir)
+    : path.dirname(path.dirname(targetDir));
+  const materialized = {
+    ...config,
+    stampPath: path.relative(projectDir, path.join(configDir, ".review-stamp")) || path.join(configDir, ".review-stamp"),
+  };
   const destination = path.join(configDir, "review.json");
   fs.mkdirSync(configDir, { recursive: true });
   if (!writeJsonVerified(destination, materialized)) throw new Error(`no se pudo verificar ${destination}`);
