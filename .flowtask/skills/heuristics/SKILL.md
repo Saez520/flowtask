@@ -334,4 +334,4 @@ Donde `{alcance}` es:
 
 - Esta skill define el mecanismo de almacenamiento + carga + detección + enseñanza.
 - **No modifica agentes individuales** para que "usen" heurísticas — esa integración es incremental y queda a criterio de cada agente.
-- La carga automática se centraliza en el `runner` (Paso 0 Sub-paso 0, ver skill `heuristics`), evitando modificar N agentes.
+- La carga automática de esta skill ya no existe: las búsquedas del arranque son instrucciones directas del `runner` (Paso 0 Sub-paso 0: dos `mem_search` con merge proyecto-gana), **sin cargar esta skill**. La skill se carga solo **bajo demanda** — línea lazy-load del Paso 0: cuando durante la conversación se va a guardar o proponer heurísticas nuevas.

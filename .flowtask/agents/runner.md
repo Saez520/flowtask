@@ -116,7 +116,6 @@ El runner recibe este contrato y procede con el Checkpoint Protocol según el `s
 Las skills están en `.flowtask/skills/` y se cargan directamente desde el filesystem vía `skill({ name: "..." })`:
 
 ```
-skill({ name: "heuristics" })             ← cargar siempre al iniciar una conversacion
 skill({ name: "investigacion" })          ← cargar siempre al iniciar y conservar durante la sesión
 skill({ name: "memory-protocol" })        ← cargar antes de usar mem_*
 skill({ name: "manual-classification" })  ← cargar si no hay clasificación inyectada en contexto
@@ -283,12 +282,12 @@ Antes de clasificar, carga el contexto del proyecto:
 
 1. Cargar `memory-protocol` si no está ya cargado.
 2. Ejecutar `mem_context` para recuperar contexto de sesiones previas.
-3. Cargar skill `heuristics` y ejecutar carga de heurísticas (protocolo `heuristics_load`):
-   a. `skill({ name: "heuristics" })`.
-   b. `mem_search(query: "heuristic", scope: "project")` — heurísticas del proyecto.
-   c. `mem_search(query: "heuristic", scope: "personal")` — heurísticas personales.
-   d. Merge: si la misma key normalizada existe en ambos scopes, prevalece la de `project`.
-   e. Si `mem_search` falla (Engram no disponible): continuar sin heurísticas.
+3. Ejecutar carga de heurísticas:
+   a. `mem_search(query: "heuristic", scope: "project")` — heurísticas del proyecto.
+   b. `mem_search(query: "heuristic", scope: "personal")` — heurísticas personales.
+   c. Merge: si la misma key normalizada existe en ambos scopes, prevalece la de `project`.
+   d. Si `mem_search` falla (Engram no disponible): continuar sin heurísticas.
+   e. Si durante la conversación vas a guardar o proponer heurísticas nuevas, cargá entonces la skill `heuristics` para usar su formato de guardado.
 4. Incorporar hallazgos al razonamiento antes de clasificar.
 
 ### Sub-paso 0.5 — Oferta diferida de Graphify docs/media
