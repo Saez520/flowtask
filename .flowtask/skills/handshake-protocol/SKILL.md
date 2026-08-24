@@ -33,11 +33,15 @@ El orquestador debe proveer a la skill los siguientes parámetros:
 | `ca_id` | string | ID del CA en curso | `"CA-onboarder-agent"` |
 | `agent_type` | string | Tipo de agente a invocar | `"planner"`, `"constructor"`, `"ca-writer"` |
 | `base_names` | string[] | Lista de nombres base disponibles | `["Aitana", "Kael", "Lyra", ...]` |
-| `topic_signature` | `{ids: string[], keywords: string[]} \| null` | Firma del tema actual extraída del prompt del desarrollador | `{ids: ["CA-topic-validation"], keywords: ["handshake", "sesiones"]}` |
+| `topic_signature` | `{ids: string[], keywords: string[]} \| null` | Firma del tema actual extraída del prompt del desarrollador | `{ids: ["CA-ejemplo-uno"], keywords: ["handshake", "sesiones"]}` |
 
 > El parámetro `topic_signature` es opcional — si el orquestador no lo provee (porque la extracción falló o no está implementada), la skill lo trata como `null`. Ver Paso 5 (Topic Validation) para el comportamiento con `topic_signature` null.
 
 > Los `base_names` NO están hardcodeados en esta skill. El orquestador provee su propia lista, permitiendo que distintos orquestadores usen sus propios nombres.
+
+### Elegibilidad de agentes
+
+Este protocolo aplica únicamente a los agentes de tratamiento completo (`ca-writer` y `planner`), que participan de reanudación (Escenario B) y Topic Validation. Los agentes de tratamiento ligero (`inspector`, `constructor`, `validator`, `tester`, `review-orchestrator`, `logger`, `initializer`) no pasan por este protocolo: su invocación es siempre Escenario A (hilo fresco), su `instance_name` se deriva del mapa de instancias únicamente como traza, y sus checkpoints nunca habilitan continuidad.
 
 ---
 
@@ -52,13 +56,13 @@ mem_search(query: "flow-state/{ca_id}/instances")
 ```
 
 - **Resultado esperado**: una observación en Engram con el mapa de instancias del CA.
-- **Si `mem_search` falla** (Engram no disponible): tratar como **Caso C (Nuevo CA)** y **Escenario A (Initial Prompt)**. No hay mecanismo alternativo de discovery — esta limitación está aceptada.
+- **Si `mem_search` falla** (Engram no disponible): tratar como **Caso C (Nuevo CA)** y **Escenario A (Initial Prompt)**. No hay mecanismo alternativo de discovery.
 
 ### Paso 2 — Determinar BaseName
 
 - **Caso A (Mapa existe con `base_name`)**: Usar el `base_name` persistido en el mapa de instancias.
 - **Caso B (Mapa existe sin `base_name` — Normalización)**: Extraer el prefijo (antes del primer `-`) del `instance_name` del primer agente en el mapa y persistirlo como `base_name`.
-- **Caso C (Nuevo CA)**: Asignar el **siguiente nombre base disponible** de la lista `base_names` provista por el orquestador. Verificar los mapas de instancias de otros CAs en Engram (`mem_search(query: "flow-state/*/instances")`) para detectar `baseNames` en uso. **Excluir** aquellos CAs cuyo contenido contenga `ca_status: "closed"` — solo los CAs sin ese campo (o con valor distinto de `"closed"`) se consideran "activos" y su `baseName` está ocupado. Si Engram no está disponible, asignar por orden secuencial sin verificación de colisiones (limitación preexistente).
+- **Caso C (Nuevo CA)**: Asignar el **siguiente nombre base disponible** de la lista `base_names` provista por el orquestador. Verificar los mapas de instancias de otros CAs en Engram (`mem_search(query: "flow-state/*/instances")`) para detectar `baseNames` en uso. **Excluir** aquellos CAs cuyo contenido contenga `ca_status: "closed"` — solo los CAs sin ese campo (o con valor distinto de `"closed"`) se consideran "activos" y su `baseName` está ocupado. Si Engram no está disponible, asignar por orden secuencial sin verificación de colisiones.
 
 ### Paso 3 — Construir instance_name
 
@@ -167,7 +171,7 @@ Antes de determinar el escenario, la skill valida si el nuevo prompt del desarro
 
 1. **Recuperar último checkpoint**: `cp_get("flow-state/{ca_id}/{agente}")` desde Engram.
 2. **Si no hay checkpoint previo**: Asumir mismo tema → continuar a Escenario B (conservador). Un agente recién creado no tiene historial contra qué comparar.
-3. **Si el checkpoint NO tiene `topic_signature`**: Es un checkpoint antiguo (pre-Topic Validation). Forzar **Escenario A** — no podemos adivinar el tema anterior. El `task_id` se marca como `abandoned` en el mapa de instancias.
+3. **Si el checkpoint NO tiene `topic_signature`**: Forzar **Escenario A** — no podemos adivinar el tema anterior. El `task_id` se marca como `abandoned` en el mapa de instancias.
 4. **Si ambos tienen `topic_signature`**: Comparar `topic_signature` actual (del prompt) vs `topic_signature` del checkpoint:
 
    a. **Matching exacto de IDs**: Si hay al menos un ID coincidente entre `ids_actual` y `ids_checkpoint` → **mismo tema** (Escenario B). Los IDs incluyen: CA-ID, nombres de archivo (sin extensión), nombres de skill.
@@ -185,8 +189,8 @@ Antes de determinar el escenario, la skill valida si el nuevo prompt del desarro
 
 | Prompt actual | Último checkpoint | IDs coincidentes | Keywords overlap | Resultado |
 |---------------|-------------------|-------------------|-------------------|-----------|
-| `CA-topic-validation`, keywords: `handshake, sesiones, validacion` | `CA-topic-validation`, keywords: `handshake, protocolo, identidad` | ✅ `CA-topic-validation` | — | **Mismo tema** → Escenario B |
-| `CA-ferris-validation`, keywords: `ferris, search, agents` | `CA-topic-validation`, keywords: `handshake, sesiones, validacion` | ❌ | 0% | **Tema diferente** → Escenario A |
+| `CA-ejemplo-uno`, keywords: `handshake, sesiones, validacion` | `CA-ejemplo-uno`, keywords: `handshake, protocolo, identidad` | ✅ `CA-ejemplo-uno` | — | **Mismo tema** → Escenario B |
+| `CA-ejemplo-dos`, keywords: `ferris, search, agents` | `CA-ejemplo-uno`, keywords: `handshake, sesiones, validacion` | ❌ | 0% | **Tema diferente** → Escenario A |
 | Sin IDs, keywords: `runner, identidad, nombre` | Sin IDs, keywords: `runner, instancia, base` | ❌ (sin IDs) | `runner` → 1/3 = 33% | **Tema diferente** → Escenario A |
 | Sin IDs, keywords: `runner, checkpoint, estado, flujo` | Sin IDs, keywords: `runner, checkpoint, flujo, persistencia` | ❌ (sin IDs) | `runner, checkpoint, flujo` → 3/4 = 75% | **Mismo tema** → Escenario B |
 
@@ -223,8 +227,7 @@ La skill entrega al orquestador un objeto con exactamente 3 campos:
 
 - **Dependencia de Engram**: Si Engram no está disponible (`mem_search` falla), la skill trata todo como Caso C (Nuevo CA) y Escenario A (Initial Prompt). No existe mecanismo de fallback alternativo. Los `task_id` y `instance_name` no se persisten hasta que Engram vuelva a estar disponible.
 - **Sin cobertura operacional**: Esta skill NO implementa Checkpoint Protocol, Self-Healing ante `task_id` expirados, ni purga de `task_id` huérfanos. Esas responsabilidades son del orquestador.
-- **Colisión potencial de BaseNames entre orquestadores**: La skill recibe `base_names` como parámetro externo. Si dos orquestadores distintos usan la misma skill sobre el mismo Engram, podrían asignar el mismo `BaseName` a CAs diferentes. El caso de uso actual asume un solo orquestador por proyecto.
-- **Sin abstracción de storage**: La skill está acoplada a Engram. Si aparece un orquestador sin Engram, la skill debe versionarse con abstracción de storage.
-- **Carga de heurísticas**: Si Engram no está disponible, las heurísticas no se cargan (degradación graceful). No hay mecanismo de fallback local para heurísticas.
+- **Unicidad de orquestador**: La skill asume un único orquestador por proyecto sobre el mismo Engram.
+- **Acoplamiento a Engram**: La skill usa Engram como storage exclusivo.
 - **Topic Validation con keyword extraction delegada**: La skill no extrae el `topic_signature` del prompt — recibe el valor ya calculado como parámetro desde el orquestador. Si el orquestador no provee `topic_signature` (porque la extracción falló o no está implementada), la skill trata `topic_signature` como `null`. En ese caso, si hay un checkpoint con `topic_signature`, se fuerza Escenario A (no se puede validar). Si el checkpoint tampoco tiene `topic_signature`, se asume mismo tema (degradación graceful, Escenario B).
-- **Falsos positivos/negativos**: El matching por keywords con umbral 50% puede producir falsos positivos (temas distintos con vocabulario similar) o falsos negativos (mismo tema con vocabulario diferente). Aceptado como trade-off del enfoque determinístico sin embeddings.
+- **Matching por keywords**: El matching con umbral 50% puede producir falsos positivos (temas distintos con vocabulario similar) o falsos negativos (mismo tema con vocabulario diferente).
