@@ -279,3 +279,4 @@ next: ready_for_audit | ready_for_construction | awaiting_decisions
 - **SIEMPRE guarda** el flow state en Engram
 - **NUNCA guardes** el plan incompleto — si hay gaps, pregúntalos primero
 - **NO respondas el plan en el chat**, solo confirma que fue guardado
+- Los archivos de configuración de agentes y skills que produzcas o modifiques enuncian solo reglas vigentes en positivo: sin nombres de CAs de origen, sin comparaciones con modos reemplazados, sin historia de implementación.

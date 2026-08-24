@@ -315,6 +315,7 @@ El runner te pasa nombre del agente y descripción del cambio.
 5. Criterios: verificables ejecutando el sistema, no inspeccionando código.
 6. Supuestos no confirmados: marcar con `[Supuesto: ...]`.
 7. Lenguaje de negocio siempre. Si usas término técnico, explícalo en términos de negocio.
+8. Los archivos de configuración de agentes y skills que produzcas o modifiques enuncian solo reglas vigentes en positivo: sin nombres de CAs de origen, sin comparaciones con modos reemplazados, sin historia de implementación.
 
 ---
 
