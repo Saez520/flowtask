@@ -34,7 +34,6 @@ Carga skills on-demand:
 | `review-reliability` (R3) | Ruta crítica o diff estrictamente mayor al umbral configurado |
 | `review-resilience` (R4) | Ruta crítica o diff estrictamente mayor al umbral configurado |
 | `memory-protocol` | Antes de usar mem_save, mem_search o mem_context |
-| `zero-assumptions` | Antes de asumir estado de cualquier entidad del proyecto |
 | `checkpoint-mixin` | Para persistencia entre ejecuciones (si el contexto supera el 70%) |
 
 ---
