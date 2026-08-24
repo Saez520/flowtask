@@ -47,3 +47,17 @@ test("commit gate remains universal and consumes a valid stamp", async () => {
   await hooks["tool.execute.before"]({ tool: "bash", agent: "flowtask-constructor", sessionID: "s", callID: "c" }, { args: { command: 'git commit -m "ok"', workdir: root } });
   assert.equal(fs.existsSync(path.join(root, ".flowtask/config/.review-stamp")), false);
 });
+
+test("resolves a relative stamp against the commit worktree", async () => {
+  const sessionRoot = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-gate-session-")); roots.push(sessionRoot);
+  const worktree = path.join(sessionRoot, "worktree");
+  fs.mkdirSync(path.join(sessionRoot, ".opencode/flowtask/config"), { recursive: true });
+  fs.writeFileSync(path.join(sessionRoot, ".opencode/flowtask/config/review.json"), JSON.stringify({ enabled: true, stampPath: ".flowtask/config/.review-stamp" }));
+  fs.mkdirSync(path.join(worktree, ".flowtask/config"), { recursive: true });
+  fs.writeFileSync(path.join(worktree, ".flowtask/config/.review-stamp"), new Date().toISOString());
+  const hooks = await plugin({ directory: sessionRoot });
+
+  await hooks["tool.execute.before"]({ tool: "bash", sessionID: "s", callID: "c" }, { args: { command: 'git commit -m "ok"', workdir: worktree } });
+
+  assert.equal(fs.existsSync(path.join(worktree, ".flowtask/config/.review-stamp")), false);
+});

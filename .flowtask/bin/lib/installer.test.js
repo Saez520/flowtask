@@ -438,7 +438,7 @@ test("materializes managed config and profile independently for three targets", 
       level, persona: `tutor-${level}`, onboarded: true,
     });
     assert.equal(readJson(path.join(configDir, "review.json")).stampPath,
-      path.relative(root, path.join(configDir, ".review-stamp")));
+      ".flowtask/config/.review-stamp");
     assert.equal(fs.existsSync(path.join(root, ".flowtask", "config", "review.json")), false);
   }
 });

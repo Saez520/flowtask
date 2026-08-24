@@ -40,12 +40,25 @@ function gateError(operation: string, cause: unknown, action: string): Error {
   );
 }
 
-function readConfig(cwd: string): ReviewConfig | null {
-  const path = resolve(cwd, CONFIG_PATH);
-  let raw: string;
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch (error) {
+function readConfig(cwd: string, fallbackCwd?: string): ReviewConfig | null {
+  const directories = [cwd, fallbackCwd].filter(
+    (directory, index, values): directory is string => Boolean(directory) && values.indexOf(directory) === index,
+  );
+  let raw: string | undefined;
+  let path = resolve(cwd, CONFIG_PATH);
+  for (const directory of directories) {
+    path = resolve(directory, CONFIG_PATH);
+    try {
+      raw = readFileSync(path, "utf8");
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        console.warn(`[FlowTask Permission Gate] No se pudo leer ${path}; se continúa sin bloquear.`);
+        return null;
+      }
+    }
+  }
+  if (raw === undefined) {
     console.warn(`[FlowTask Permission Gate] No se pudo leer ${path}; se continúa sin bloquear.`);
     return null;
   }
@@ -128,12 +141,12 @@ export default async function (input: PluginInput) {
       if (command.includes("--no-verify") || command.includes("--no-review")) return;
 
       const workdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
-      const config = readConfig(sessionDir || workdir);
+      const config = readConfig(workdir, sessionDir);
       if (!config) return;
       if (!config.enabled) return;
       const stampPath = isAbsolute(config.stampPath)
         ? config.stampPath
-        : resolve(sessionDir || workdir, config.stampPath);
+        : resolve(workdir, config.stampPath);
 
       let stamp: string;
       try {

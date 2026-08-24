@@ -181,6 +181,8 @@ findings bloqueantes y con stamp escrito cuando corresponde → `APPROVED`.
 Si el modo es pre-commit y no hay findings internos BLOCKER/CRITICAL verificados:
 ```
 Escribir timestamp en `TARGET_DIR/config/.review-stamp` (el `stampPath` obtenido de `review.json`).
+El `stampPath` relativo se resuelve contra la raíz del worktree revisado, no contra
+la raíz de la sesión que inició el plugin.
 ```
 
 Formato del stamp: `{ISO-8601 timestamp}\n`

@@ -30,13 +30,24 @@ function gateError(operation, cause, action) {
         `Causa: ${detail}.\n` +
         `Acción recomendada: ${action}`);
 }
-function readConfig(cwd) {
-    const path = resolve(cwd, CONFIG_PATH);
+function readConfig(cwd, fallbackCwd) {
+    const directories = [cwd, fallbackCwd].filter((directory, index, values) => Boolean(directory) && values.indexOf(directory) === index);
     let raw;
-    try {
-        raw = readFileSync(path, "utf8");
+    let path = resolve(cwd, CONFIG_PATH);
+    for (const directory of directories) {
+        path = resolve(directory, CONFIG_PATH);
+        try {
+            raw = readFileSync(path, "utf8");
+            break;
+        }
+        catch (error) {
+            if (error.code !== "ENOENT") {
+                console.warn(`[FlowTask Permission Gate] No se pudo leer ${path}; se continúa sin bloquear.`);
+                return null;
+            }
+        }
     }
-    catch (error) {
+    if (raw === undefined) {
         console.warn(`[FlowTask Permission Gate] No se pudo leer ${path}; se continúa sin bloquear.`);
         return null;
     }
@@ -114,14 +125,14 @@ export default async function (input) {
             if (command.includes("--no-verify") || command.includes("--no-review"))
                 return;
             const workdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
-            const config = readConfig(sessionDir || workdir);
+            const config = readConfig(workdir, sessionDir);
             if (!config)
                 return;
             if (!config.enabled)
                 return;
             const stampPath = isAbsolute(config.stampPath)
                 ? config.stampPath
-                : resolve(sessionDir || workdir, config.stampPath);
+                : resolve(workdir, config.stampPath);
             let stamp;
             try {
                 stamp = readFileSync(stampPath, "utf8").trim();
