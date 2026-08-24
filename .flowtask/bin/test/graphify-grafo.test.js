@@ -245,7 +245,7 @@ describe("configureMcpForTargets", () => {
       graphPath: "graphify-out/graph.json",
     });
 
-    assert.equal(result.status, "success"); // unsupported is not a failure
+    assert.equal(result.status, "unsupported"); // unsupported is not a failure
     assert.ok(result.details.every((d) => d.status === "unsupported"));
   });
 
@@ -391,7 +391,7 @@ describe("registerGrafoExtensions", () => {
   afterEach(() => { clearExtensions(); });
 
   it("registers extract and query extensions", async () => {
-    registerGrafoExtensions();
+    registerGrafoExtensions({ mcpPreflightFn: () => ({ ok: true, python: "python", error: null }) });
 
     const extractResult = await runExtension("extract", {
       projectDir: "/tmp/test",
@@ -449,7 +449,7 @@ describe("registerGrafoExtensions", () => {
     try {
       fs.mkdirSync(path.join(tempDir, ".opencode"), { recursive: true });
 
-      registerGrafoExtensions();
+      registerGrafoExtensions({ mcpPreflightFn: () => ({ ok: true, python: "python", error: null }) });
 
       const result = await runExtension("query", {
         projectDir: tempDir,
@@ -471,6 +471,29 @@ describe("registerGrafoExtensions", () => {
     }
   });
 
+  it("marks query as degraded when MCP import preflight fails", async () => {
+    const tempDir = makeTempDir();
+    try {
+      fs.mkdirSync(path.join(tempDir, ".opencode"), { recursive: true });
+      registerGrafoExtensions({
+        mcpPreflightFn: () => ({ ok: false, python: "/venv/bin/python", error: "ModuleNotFoundError: mcp" }),
+      });
+
+      const result = await runExtension("query", {
+        projectDir: tempDir,
+        selectedClis: ["opencode"],
+        state: { graphPath: "graphify-out/graph.json" },
+        run: null,
+        logger: { logStep: () => {}, logSuccess: () => {}, logWarn: () => {}, logError: () => {}, logInfo: () => {} },
+      });
+
+      assert.equal(result.status, "degraded");
+      assert.match(result.diagnostic, /ModuleNotFoundError: mcp/);
+    } finally {
+      cleanupDir(tempDir);
+    }
+  });
+
   it("extract precedes query in execution order", async () => {
     const order = [];
     registerGrafoExtensions({
@@ -482,6 +505,7 @@ describe("registerGrafoExtensions", () => {
         order.push("query");
         return { status: "success", warning: null, details: [] };
       },
+      mcpPreflightFn: () => ({ ok: true, python: "python", error: null }),
     });
 
     const ctx = {

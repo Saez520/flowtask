@@ -36,23 +36,28 @@ function logInfo(message) {
   log(`  ${message}`, COLORS.cyan);
 }
 
-function isBinaryInstalled(name) {
+/**
+ * Resolve an executable on PATH. This only checks command availability; it
+ * does not prove that the command's service or runtime is operational.
+ */
+function findExecutable(name) {
   try {
     const cmd = process.platform === "win32" ? "where" : "which";
-    try {
-      execSync(`${cmd} ${name}`, { stdio: "pipe" });
-      return true;
-    } catch (e) {
-      if (process.platform === "win32" && name === "engram") {
-        const userProfile = process.env.USERPROFILE || "";
-        const manualPath = path.join(userProfile, "go", "bin", "engram.exe");
-        return fs.existsSync(manualPath);
-      }
-      throw e;
+    const result = spawnSync(cmd, [name], { stdio: ["ignore", "pipe", "ignore"], encoding: "utf8" });
+    if (result.status === 0) return result.stdout.trim().split(/\r?\n/)[0] || null;
+    if (process.platform === "win32" && name === "engram") {
+      const userProfile = process.env.USERPROFILE || "";
+      const manualPath = path.join(userProfile, "go", "bin", "engram.exe");
+      return fs.existsSync(manualPath) ? manualPath : null;
     }
+    return null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function isBinaryInstalled(name) {
+  return findExecutable(name) !== null;
 }
 
 function getVersion(name) {
@@ -133,6 +138,7 @@ export {
   logError,
   logWarn,
   logInfo,
+  findExecutable,
   isBinaryInstalled,
   getVersion,
   run,

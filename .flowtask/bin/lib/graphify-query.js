@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { logInfo, logWarn, logSuccess, logError, isBinaryInstalled } from "./logger.js";
+import { logInfo, logWarn, logSuccess, logError, findExecutable, isBinaryInstalled } from "./logger.js";
 import { deepMergeObjects } from "./opencode.js";
 
 // ─── Supported MCP targets ────────────────────────────────────────────────────
@@ -15,10 +15,41 @@ const SUPPORTED_MCP_TARGETS = new Set(["opencode", "claude"]);
  * @returns {object} MCP config object
  */
 export function resolveGraphifyLauncher(detectFn = isBinaryInstalled) {
+  // This resolves an executable only. Runtime/import health is checked by the
+  // graphify coordinator before it records query_status=success.
   for (const launcher of ["graphify-mcp", "python", "python3"]) {
     if (detectFn(launcher)) return launcher;
   }
   return "python";
+}
+
+/**
+ * Resolve the Python interpreter behind graphify-mcp when possible. This is
+ * needed to test the package environment selected by pipx/uv, not an
+ * unrelated system Python merely because it is available on PATH.
+ */
+export function resolveGraphifyPython(detectFn = isBinaryInstalled) {
+  const launcher = resolveGraphifyLauncher(detectFn);
+  if (launcher === "graphify-mcp") {
+    const executable = findExecutable("graphify-mcp");
+    if (executable) {
+      try {
+        const firstLine = fs.readFileSync(executable, "utf8").split(/\r?\n/, 1)[0];
+        if (firstLine.startsWith("#!")) {
+          const shebang = firstLine.slice(2).trim().split(/\s+/);
+          if (shebang[0].endsWith("/env") && shebang[1]) return shebang[1];
+          if (shebang[0]) return shebang[0];
+        }
+        const bundledPython = path.join(path.dirname(executable), process.platform === "win32" ? "python.exe" : "python");
+        if (fs.existsSync(bundledPython)) return bundledPython;
+      } catch {
+        // Fall through to the regular Python executable checks.
+      }
+    }
+  }
+  if (detectFn("python")) return "python";
+  if (detectFn("python3")) return "python3";
+  return null;
 }
 
 export function buildOpencodeMcpEntry(graphPath, opts = {}) {
@@ -151,9 +182,10 @@ export function configureMcpForTargets({ projectDir, selectedClis, graphPath, de
     }
   }
 
+  const allUnsupported = details.length > 0 && details.every((d) => d.status === "unsupported");
   const allSuccess = details.every((d) => d.status === "success" || d.status === "unsupported");
   return {
-    status: allSuccess ? "success" : "failed",
+    status: details.length === 0 || allUnsupported ? "unsupported" : allSuccess ? "success" : "failed",
     warning: warnings.length > 0 ? warnings[warnings.length - 1] : null,
     details,
   };

@@ -7,7 +7,7 @@ import {
   isBinaryInstalled, getVersion,
 } from "./logger.js";
 import { extractCodeOnly } from "./graphify-extract.js";
-import { configureMcpForTargets } from "./graphify-query.js";
+import { configureMcpForTargets, resolveGraphifyPython } from "./graphify-query.js";
 
 // ─── Schema v1 ────────────────────────────────────────────────────────────────
 // Single source of truth for the Graphify state shape.
@@ -33,7 +33,7 @@ export function createProjectState() {
     // ── plan-grafo fields (owner: plan-grafo, initialised by plan-habilitar) ──
     extract_status: "pending",        // pending | success | failed | skipped
     extract_last_attempt: null,
-    query_status: "pending",          // pending | success | failed | unsupported | skipped
+    query_status: "pending",          // pending | success | failed | degraded | unsupported | skipped
     query_last_attempt: null,
     query_diagnostic: null,
     // ── plan-docs-media fields (owner: plan-docs-media) ───────────────────────
@@ -276,13 +276,14 @@ export function defaultInstallCommand(opts = {}) {
   if (override && override.trim()) {
     return { method: "override", command: override };
   }
-  if (detect("pipx")) return { method: "pipx", command: "pipx install graphifyy" };
-  if (detect("uv")) return { method: "uv", command: "uv tool install graphifyy" };
+  if (detect("pipx")) return { method: "pipx", command: "pipx install 'graphifyy[mcp]'" };
+  if (detect("uv")) return { method: "uv", command: "uv tool install 'graphifyy[mcp]'" };
   return { method: "none", command: null };
 }
 
 const MAX_INSTALL_STDERR = 2048;
 const NO_INSTALLER_DIAGNOSTIC = "No hay instalador disponible: instala pipx o uv y reintenta con flowtask update o contacta a un administrador.";
+const MCP_PREFLIGHT_TIMEOUT_MS = 5000;
 
 function truncateStderr(stderr) {
   if (stderr == null) return "";
@@ -345,6 +346,41 @@ export function installGraphify(opts = {}) {
       exitCode: null,
       stderr: truncateStderr(err.message),
     };
+  }
+}
+
+/**
+ * Verify the MCP package in the interpreter used by Graphify.
+ * This is an import preflight, not a claim that a long-running MCP server is
+ * currently serving requests.
+ *
+ * @param {object} [opts]
+ * @param {Function} [opts.detectFn] - executable availability override
+ * @param {string} [opts.python] - interpreter override for testing
+ * @returns {{ ok: boolean, python: string|null, error: string|null }}
+ */
+export function verifyGraphifyMcp(opts = {}) {
+  const python = opts.python ?? resolveGraphifyPython(opts.detectFn);
+  if (!python) {
+    return {
+      ok: false,
+      python: null,
+      error: "no se encontró un intérprete Python para el entorno Graphify",
+    };
+  }
+
+  try {
+    const result = spawnSync(python, ["-c", "import mcp"], {
+      timeout: MCP_PREFLIGHT_TIMEOUT_MS,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (result.status === 0) return { ok: true, python, error: null };
+
+    const cause = result.error?.message || truncateStderr(result.stderr) || `exit ${result.status}`;
+    return { ok: false, python, error: cause };
+  } catch (err) {
+    return { ok: false, python, error: err.message };
   }
 }
 
@@ -528,10 +564,12 @@ export function clearExtensions() {
  * @param {object} [opts] - injection for testing
  * @param {Function} [opts.extractFn] - override extractCodeOnly
  * @param {Function} [opts.configureMcpFn] - override configureMcpForTargets
+ * @param {Function} [opts.mcpPreflightFn] - override MCP import preflight
  */
 export function registerGrafoExtensions(opts = {}) {
   const extractFn = opts.extractFn ?? extractCodeOnly;
   const configureMcpFn = opts.configureMcpFn ?? configureMcpForTargets;
+  const mcpPreflightFn = opts.mcpPreflightFn ?? verifyGraphifyMcp;
 
   // Only register if no extension is already registered for the phase
   // (allows tests to pre-register custom handlers)
@@ -578,11 +616,21 @@ export function registerGrafoExtensions(opts = {}) {
         detectFn,
       });
 
-      if (mcpResult.warning) {
+      if (mcpResult.status === "success") {
+        const preflight = mcpPreflightFn({ detectFn });
+        if (!preflight.ok) {
+          const warning = `Graphify MCP: configuración aplicada, pero el entorno no pasó la verificación de importación de mcp (${preflight.error}).`;
+          logger.logWarn(warning);
+          return {
+            status: "degraded",
+            diagnostic: warning,
+            warning,
+          };
+        }
+        logger.logSuccess("Graphify MCP: configuración aplicada; entorno de importación MCP verificado.");
+      } else if (mcpResult.warning) {
         logger.logWarn(mcpResult.warning);
-      } else {
-        logger.logSuccess("Graphify MCP: configuración aplicada para targets seleccionados.");
-      }
+       }
 
       return {
         status: mcpResult.status,

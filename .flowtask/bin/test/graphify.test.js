@@ -374,24 +374,24 @@ describe("installGraphify", () => {
     const result = installGraphify({
       detectFn: (name) => name === "pipx" || name === "uv",
       runFn: (command) => {
-        assert.equal(command, "pipx install graphifyy");
+        assert.equal(command, "pipx install 'graphifyy[mcp]'");
         return { status: 0 };
       },
     });
     assert.equal(result.method, "pipx");
-    assert.equal(result.command, "pipx install graphifyy");
+    assert.equal(result.command, "pipx install 'graphifyy[mcp]'");
   });
 
   it("selecciona uv cuando pipx no está disponible", () => {
     const result = installGraphify({
       detectFn: (name) => name === "uv",
       runFn: (command) => {
-        assert.equal(command, "uv tool install graphifyy");
+        assert.equal(command, "uv tool install 'graphifyy[mcp]'");
         return { status: 0 };
       },
     });
     assert.equal(result.method, "uv");
-    assert.equal(result.command, "uv tool install graphifyy");
+    assert.equal(result.command, "uv tool install 'graphifyy[mcp]'");
   });
 
   it("rechaza sin instalador y no ejecuta el runner", () => {
@@ -860,7 +860,7 @@ describe("coordinateGraphify", () => {
         detectFn: (name) => name === "pipx",
         versionFn: () => "1.0",
         runFn: (command) => {
-          assert.equal(command, "pipx install graphifyy");
+          assert.equal(command, "pipx install 'graphifyy[mcp]'");
           return { status: 0, stderr: "" };
         },
         grafoExtensions: false,
@@ -870,7 +870,7 @@ describe("coordinateGraphify", () => {
     assert.equal(projectState.lastInitializationResult, "skipped");
     assert.equal(globalState.lastInstallResult, "success");
     assert.equal(globalState.lastInstallMethod, "pipx");
-    assert.equal(globalState.lastInstallCommand, "pipx install graphifyy");
+    assert.equal(globalState.lastInstallCommand, "pipx install 'graphifyy[mcp]'");
     assert.equal(globalState.lastInstallExitCode, 0);
     assert.equal(globalState.lastInstallStderr, "");
     assert.deepEqual(loadGlobalState(), globalState);
