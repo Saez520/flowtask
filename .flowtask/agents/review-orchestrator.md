@@ -178,14 +178,26 @@ findings bloqueantes y con stamp escrito cuando corresponde → `APPROVED`.
 
 ### Paso 7 — Stamp en modo pre-commit
 
-Si el modo es pre-commit y no hay findings internos BLOCKER/CRITICAL verificados:
+Si el modo es pre-commit y no hay findings internos BLOCKER/CRITICAL verificados,
+escribir el stamp en el `stampPath` obtenido de `review.json`. El `stampPath`
+relativo se resuelve SIEMPRE contra la raíz del contexto donde correrá el commit:
+el worktree revisado si el commit ocurre allí, o la raíz principal si el commit
+corre desde ella. Nunca contra la raíz de la sesión que inició el plugin.
+
+Formato del stamp (JSON estructurado, una línea):
+
 ```
-Escribir timestamp en `TARGET_DIR/config/.review-stamp` (el `stampPath` obtenido de `review.json`).
-El `stampPath` relativo se resuelve contra la raíz del worktree revisado, no contra
-la raíz de la sesión que inició el plugin.
+{"ts": "<ISO-8601 timestamp>", "branch": "<rama actual del repo objetivo>"}
 ```
 
-Formato del stamp: `{ISO-8601 timestamp}\n`
+Validez gobernada por el permission-gate:
+
+- `ts` dentro del TTL (30 minutos por defecto; overridable con `stampTtlMinutes`
+  en review.json).
+- `branch` debe coincidir exactamente con la rama donde correrá el commit.
+- El stamp NO se consume al validar: si el commit falla por otra causa,
+  reutilizá el mismo stamp mientras no haya expirado ni cambiado la rama.
+- Stamps en formato viejo (ISO plano) son rechazados por el gate.
 
 Si hay findings internos BLOCKER/CRITICAL: NO escribir el stamp. El pre-commit gate bloqueará el commit.
 Si no se puede escribir el stamp, responder `state: BLOCKED` con fallo, motivo y acción recomendada.

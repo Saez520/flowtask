@@ -10,15 +10,55 @@ o `flowtask update` y requiere reiniciar OpenCode. No existe un fallback nativo.
 
 ## Políticas
 
-- **Todos los agentes:** el gate de commits conserva el stamp, sus bypasses y el
-  consumo del stamp válido. La configuración FUENTE usa
-  `.flowtask/config/.review-stamp`; al materializarse en un consumidor, la ruta
-  se adapta al home canónico del target: `{TARGET_DIR}/flowtask/config/.review-stamp`
-  (por ejemplo, `.opencode/flowtask/config/.review-stamp`). La resolución
-  relativa siempre se hace contra el worktree donde ocurre el commit.
+- **Todos los agentes:** el gate universal de commits exige un review-stamp
+  válido salvo bypass explícito (`--no-verify`, `--no-review`).
+  - **Resolución de configuración:** la config se busca primero en el workdir
+    del commit probando las dos rutas conocidas —
+    `.opencode/flowtask/config/review.json` y luego la legacy
+    `.flowtask/config/review.json`; si no existe en ninguna de las dos, se usa
+    como fallback la raíz de sesión/principal SOLO para los demás settings
+    (`enabled`, `stampTtlMinutes`). Esta precedencia es workdir-first.
+  - **Resolución del stamp:** el `stampPath` relativo SIEMPRE se resuelve
+    contra el workdir donde corre el commit. Commits desde la raíz principal
+    usan la ruta canónica de esa raíz; commits desde un worktree usan la ruta
+    del worktree (aislamiento por flujo). El review-orchestrator ya escribe en
+    `<worktree>`, así que ambos lados quedan alineados sin pasos manuales.
+  - **Sin consumo destructivo:** un stamp válido NO se borra al validar; la
+    validez la gobierna el TTL y el branch binding. Un commit fallido por otra
+    causa no obliga a regenerar el stamp mientras no expire ni cambie la rama.
 - **Runner:** puede ejecutar únicamente las operaciones de gestión aprobadas.
-  El resto se bloquea antes de ejecutar y devuelve exactamente:
+  El resto se bloquea antes de ejecutarse y devuelve exactamente:
   `Recordá que debés delegar esta operación al subagente correspondiente.`
+
+### Contrato del review-stamp
+
+Formato estructurado (JSON, una línea):
+
+```json
+{"ts": "<ISO-8601 timestamp>", "branch": "<rama actual del repo objetivo>"}
+```
+
+Validación fail-closed; el commit se permite solo si:
+
+1. El stamp existe en la ruta resuelta y es JSON parseable con `ts` ISO-8601
+   válido y `branch` no vacía.
+2. `ts` está dentro del TTL: 30 minutos por defecto, overridable con
+   `stampTtlMinutes` en review.json.
+3. `branch` coincide exactamente con la rama actual del repositorio donde corre
+   el commit (`git branch --show-current`).
+
+Rechazos explícitos: stamps en formato viejo (ISO plano) se rechazan como
+«formato obsoleto» con indicación del formato nuevo; contenido no JSON se
+rechaza como «formato inválido»; fuera de TTL reporta los minutos transcurridos;
+mismatch de rama reporta esperada vs encontrada.
+
+**Observabilidad:** todo bloqueo por stamp informa la causa precisa, la ruta
+absoluta del stamp buscado, la config aplicada y el diff pendiente real.
+
+**Diff honesto:** el conteo combina `git status --porcelain` (archivos
+pendientes reales: staged + unstaged + untracked) con `git diff HEAD --stat`
+(líneas +/-), de modo que «Diff: N archivo(s)» refleja la realidad incluso con
+el índice vacío.
 
 Las operaciones Runner autorizadas, con sus formas canónicas, son:
 
@@ -134,9 +174,13 @@ prueba.
    `git diff --textconv`. Resultado esperado: todos denegados, sin salida ni
    efecto; `echo '$(safe)'` sigue permitiéndose.
 6. Probar el gate universal con cualquier agente: un `git commit` sin
-   `.flowtask/config/.review-stamp` debe bloquear; repetir con un stamp
-   ISO-8601 válido debe permitir y consumir el stamp; comprobar también los
-   bypasses vigentes `--no-verify` y `--no-review`.
+   `.review-stamp` debe bloquear informando causa, ruta absoluta buscada y diff
+   pendiente real. Con un stamp JSON `{ts, branch}` vigente y de la rama actual
+   debe permitir y PRESERVAR el archivo (sin consumo destructivo). Verificar
+   también: un stamp ISO plano (formato viejo) se rechaza como obsoleto; un
+   stamp de otra rama se rechaza con branch mismatch; un stamp expirado reporta
+   los minutos transcurridos; los bypasses vigentes `--no-verify` y
+   `--no-review` siguen operando.
 7. Registrar en el reporte la identidad observada (`hookInput.agent`,
    `input.agent` o ninguna), las rutas verificadas, los comandos permitidos y
    denegados, el feedback literal y cualquier GAP del runtime.

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +9,54 @@ import { isAuthorizedRunnerCommand, RUNNER_DELEGATION_MESSAGE, tokenizeCommand }
 
 const roots = [];
 afterEach(() => roots.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
+
+// --- helpers de fixtures (deterministas: offsets de tiempo, sin sleeps) ---
+
+function makeTemp(prefix) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  roots.push(root);
+  return root;
+}
+
+function makeRepo(root, branch = "main") {
+  fs.mkdirSync(root, { recursive: true });
+  const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  git("init", "-b", branch);
+  git("config", "user.email", "gate-test@flowtask.local");
+  git("config", "user.name", "FlowTask Gate Tests");
+  // La config/stamp del fixture no son cambios pendientes del dominio bajo prueba.
+  fs.appendFileSync(path.join(root, ".git", "info", "exclude"), "\n.opencode/\n.flowtask/\n");
+  fs.writeFileSync(path.join(root, "seed.txt"), "seed\n");
+  git("add", "seed.txt");
+  git("commit", "-m", "seed");
+  return root;
+}
+
+/** Escribe review.json en el layout indicado y devuelve el stampPath absoluto declarado. */
+function writeConfig(root, layout, extra = {}) {
+  const configDir = path.join(root, layout === "opencode" ? ".opencode/flowtask/config" : ".flowtask/config");
+  fs.mkdirSync(configDir, { recursive: true });
+  const stampPath =
+    layout === "opencode" ? ".opencode/flowtask/config/.review-stamp" : ".flowtask/config/.review-stamp";
+  fs.writeFileSync(path.join(configDir, "review.json"), JSON.stringify({ enabled: true, stampPath, ...extra }));
+  return path.join(root, stampPath);
+}
+
+function writeStamp(stampPath, branch, offsetMinutes = 0) {
+  fs.mkdirSync(path.dirname(stampPath), { recursive: true });
+  const ts = new Date(Date.now() + offsetMinutes * 60000).toISOString();
+  fs.writeFileSync(stampPath, JSON.stringify({ ts, branch }));
+  return stampPath;
+}
+
+async function runGate(hooks, workdir) {
+  return hooks["tool.execute.before"](
+    { tool: "bash", sessionID: "s", callID: `c-${Math.random().toString(36).slice(2)}` },
+    { args: { command: 'git commit -m "ok"', workdir } },
+  );
+}
+
+// --- Autorización Runner (sin cambios de contrato) ---
 
 test("matches canonical Runner commands structurally", () => {
   for (const command of [
@@ -90,27 +139,133 @@ test("Runner receives exact delegation feedback and read-only tools are allowed"
   );
 });
 
-test("commit gate remains universal and consumes a valid stamp", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-gate-")); roots.push(root);
-  fs.mkdirSync(path.join(root, ".opencode/flowtask/config"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".opencode/flowtask/config/review.json"), JSON.stringify({ enabled: true, stampPath: ".flowtask/config/.review-stamp" }));
-  fs.mkdirSync(path.join(root, ".flowtask/config"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".flowtask/config/.review-stamp"), new Date().toISOString());
+// --- Gate universal de commits: stamp estructurado ---
+
+test("commit with a fresh structured stamp passes and the stamp is NOT consumed", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-"));
+  const stampPath = writeConfig(root, "opencode");
+  writeStamp(stampPath, "main");
   const hooks = await plugin({ directory: root });
-  await hooks["tool.execute.before"]({ tool: "bash", agent: "flowtask-constructor", sessionID: "s", callID: "c" }, { args: { command: 'git commit -m "ok"', workdir: root } });
-  assert.equal(fs.existsSync(path.join(root, ".flowtask/config/.review-stamp")), false);
+
+  await runGate(hooks, root);
+
+  assert.equal(fs.existsSync(stampPath), true, "el stamp válido no debe borrarse al validar");
 });
 
-test("resolves a relative stamp against the commit worktree", async () => {
-  const sessionRoot = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-gate-session-")); roots.push(sessionRoot);
+test("resolves the stamp against the commit workdir when only the session root has config (GAP #4018)", async () => {
+  const sessionRoot = makeTemp("flowtask-gate-session-");
   const worktree = path.join(sessionRoot, "worktree");
-  fs.mkdirSync(path.join(sessionRoot, ".opencode/flowtask/config"), { recursive: true });
-  fs.writeFileSync(path.join(sessionRoot, ".opencode/flowtask/config/review.json"), JSON.stringify({ enabled: true, stampPath: ".flowtask/config/.review-stamp" }));
-  fs.mkdirSync(path.join(worktree, ".flowtask/config"), { recursive: true });
-  fs.writeFileSync(path.join(worktree, ".flowtask/config/.review-stamp"), new Date().toISOString());
+  makeRepo(worktree);
+  writeConfig(sessionRoot, "opencode"); // config SOLO en la raíz de sesión (layout principal)
+  const stampPath = writeStamp(path.join(worktree, ".opencode/flowtask/config/.review-stamp"), "main");
   const hooks = await plugin({ directory: sessionRoot });
 
-  await hooks["tool.execute.before"]({ tool: "bash", sessionID: "s", callID: "c" }, { args: { command: 'git commit -m "ok"', workdir: worktree } });
+  await runGate(hooks, worktree);
 
-  assert.equal(fs.existsSync(path.join(worktree, ".flowtask/config/.review-stamp")), false);
+  assert.equal(fs.existsSync(stampPath), true);
+});
+
+test("accepts a stamp within the default TTL and rejects an expired one with elapsed minutes", async () => {
+  const freshRoot = makeRepo(makeTemp("flowtask-gate-fresh-"));
+  const freshStamp = writeConfig(freshRoot, "opencode");
+  writeStamp(freshStamp, "main", -1); // 1 minuto atrás: vigente (TTL default 30)
+  const freshHooks = await plugin({ directory: freshRoot });
+  await runGate(freshHooks, freshRoot);
+
+  const expiredRoot = makeRepo(makeTemp("flowtask-gate-expired-"));
+  const expiredStamp = writeConfig(expiredRoot, "opencode");
+  writeStamp(expiredStamp, "main", -31); // 31 minutos atrás: expirado
+  const expiredHooks = await plugin({ directory: expiredRoot });
+  await assert.rejects(runGate(expiredHooks, expiredRoot), (error) =>
+    error instanceof Error && /expirado hace \d+ min \(TTL vigente: 30 min\)/.test(error.message),
+  );
+});
+
+test("honours stampTtlMinutes override from review.json", async () => {
+  const strictRoot = makeRepo(makeTemp("flowtask-gate-ttl5-"));
+  const strictStamp = writeConfig(strictRoot, "opencode", { stampTtlMinutes: 5 });
+  writeStamp(strictStamp, "main", -10); // fuera del TTL corto
+  const strictHooks = await plugin({ directory: strictRoot });
+  await assert.rejects(runGate(strictHooks, strictRoot), (error) =>
+    error instanceof Error && error.message.includes("(TTL vigente: 5 min)"),
+  );
+
+  const laxRoot = makeRepo(makeTemp("flowtask-gate-ttl120-"));
+  const laxStamp = writeConfig(laxRoot, "opencode", { stampTtlMinutes: 120 });
+  writeStamp(laxStamp, "main", -100); // dentro del TTL extendido
+  const laxHooks = await plugin({ directory: laxRoot });
+  await runGate(laxHooks, laxRoot);
+});
+
+test("binds the stamp to the current branch of the commit repository", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-branch-"), "main");
+  const stampPath = writeConfig(root, "opencode");
+  writeStamp(stampPath, "feature/otra-rama");
+  const hooks = await plugin({ directory: root });
+
+  await assert.rejects(runGate(hooks, root), (error) =>
+    error instanceof Error &&
+    /branch mismatch \(esperada 'feature\/otra-rama', encontrada 'main'\)/.test(error.message),
+  );
+  assert.equal(fs.existsSync(stampPath), true);
+});
+
+test("rejects legacy flat ISO stamps with an explicit obsolete-format cause", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-legacy-"));
+  const stampPath = writeConfig(root, "opencode");
+  fs.mkdirSync(path.dirname(stampPath), { recursive: true });
+  fs.writeFileSync(stampPath, new Date().toISOString()); // formato viejo: ISO plano
+  const hooks = await plugin({ directory: root });
+
+  await assert.rejects(runGate(hooks, root), (error) =>
+    error instanceof Error && /formato obsoleto \(ISO-8601 plano\)/.test(error.message),
+  );
+});
+
+test("rejects unparseable stamps as invalid format", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-broken-"));
+  const stampPath = writeConfig(root, "opencode");
+  fs.mkdirSync(path.dirname(stampPath), { recursive: true });
+  fs.writeFileSync(stampPath, "esto-no-es-json{{{");
+  const hooks = await plugin({ directory: root });
+
+  await assert.rejects(runGate(hooks, root), (error) =>
+    error instanceof Error && error.message.includes("formato inválido"),
+  );
+});
+
+test("missing stamp blocks reporting the exact absolute path searched", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-missing-"));
+  const stampPath = writeConfig(root, "opencode"); // review.json existe pero no hay stamp
+  const hooks = await plugin({ directory: root });
+
+  await assert.rejects(runGate(hooks, root), (error) => {
+    assert.ok(error instanceof Error);
+    assert.ok(error.message.includes("Causa: stamp inexistente"), error.message);
+    assert.ok(error.message.includes(`Stamp buscado en: ${stampPath}`), error.message);
+    assert.ok(/Config aplicada: .+review\.json/.test(error.message), error.message);
+    return true;
+  });
+});
+
+test("diff stats reflect real pending changes with an empty index (unstaged edits)", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-diff-"));
+  writeConfig(root, "opencode");
+  fs.writeFileSync(path.join(root, "seed.txt"), "cambiado sin add\n"); // unstaged
+  const hooks = await plugin({ directory: root });
+
+  await assert.rejects(runGate(hooks, root), (error) =>
+    error instanceof Error && error.message.includes("📊 Diff: 1 archivo(s), 2 línea(s) pendientes."),
+  );
+});
+
+test("diff stats count untracked pending files even when HEAD diff is empty", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-untracked-"));
+  writeConfig(root, "opencode");
+  fs.writeFileSync(path.join(root, "nuevo.txt"), "untracked\n"); // sin add, sin tracking
+  const hooks = await plugin({ directory: root });
+
+  await assert.rejects(runGate(hooks, root), (error) =>
+    error instanceof Error && error.message.includes("📊 Diff: 1 archivo(s), 0 línea(s) pendientes."),
+  );
 });

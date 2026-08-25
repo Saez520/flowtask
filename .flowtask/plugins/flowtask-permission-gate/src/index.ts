@@ -1,12 +1,32 @@
 import type { PluginInput } from "@opencode-ai/plugin";
 import { execFileSync } from "node:child_process";
-import { readFileSync, unlinkSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand } from "./authorizer.js";
 
-const CONFIG_PATH = ".opencode/flowtask/config/review.json";
+/**
+ * Rutas candidatas de configuración, probadas en orden dentro de cada directorio.
+ * Precedencia: workdir del commit primero; sessionDir solo como fallback para
+ * los demás settings. El `stampPath` SIEMPRE se resuelve contra el workdir.
+ */
+const CONFIG_CANDIDATES = [
+  ".opencode/flowtask/config/review.json",
+  ".flowtask/config/review.json",
+] as const;
 
-type ReviewConfig = { enabled: boolean; stampPath: string };
+/** TTL por defecto del review-stamp; overridable con `stampTtlMinutes` en review.json. */
+const DEFAULT_STAMP_TTL_MINUTES = 30;
+
+type ReviewConfig = {
+  enabled: boolean;
+  stampPath: string;
+  stampTtlMinutes: number;
+  sourcePath: string;
+};
+
+type StampPayload = { ts: number; branch: string };
+
+type ParsedStamp = { ok: true; payload: StampPayload } | { ok: false; reason: string };
 
 const RUNNER_TASKS = new Set([
   "flowtask-ca-writer", "flowtask-planner", "flowtask-plan-auditor", "flowtask-constructor",
@@ -40,33 +60,11 @@ function gateError(operation: string, cause: unknown, action: string): Error {
   );
 }
 
-function readConfig(cwd: string, fallbackCwd?: string): ReviewConfig | null {
-  const directories = [cwd, fallbackCwd].filter(
-    (directory, index, values): directory is string => Boolean(directory) && values.indexOf(directory) === index,
-  );
-  let raw: string | undefined;
-  let path = resolve(cwd, CONFIG_PATH);
-  for (const directory of directories) {
-    path = resolve(directory, CONFIG_PATH);
-    try {
-      raw = readFileSync(path, "utf8");
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        console.warn(`[FlowTask Permission Gate] No se pudo leer ${path}; se continúa sin bloquear.`);
-        return null;
-      }
-    }
-  }
-  if (raw === undefined) {
-    console.warn(`[FlowTask Permission Gate] No se pudo leer ${path}; se continúa sin bloquear.`);
-    return null;
-  }
-
+function parseReviewConfig(raw: string, path: string): ReviewConfig | null {
   let value: unknown;
   try {
     value = JSON.parse(raw);
-  } catch (error) {
+  } catch {
     console.warn(`[FlowTask Permission Gate] JSON inválido en ${path}; se continúa sin bloquear.`);
     return null;
   }
@@ -80,32 +78,160 @@ function readConfig(cwd: string, fallbackCwd?: string): ReviewConfig | null {
     console.warn(`[FlowTask Permission Gate] Configuración inválida en ${path}; se continúa sin bloquear.`);
     return null;
   }
-  const config = value as ReviewConfig;
-  return { enabled: config.enabled, stampPath: config.stampPath };
+
+  const config = value as Record<string, unknown>;
+  let stampTtlMinutes = DEFAULT_STAMP_TTL_MINUTES;
+  if (config.stampTtlMinutes !== undefined) {
+    if (typeof config.stampTtlMinutes === "number" && Number.isFinite(config.stampTtlMinutes) && config.stampTtlMinutes > 0) {
+      stampTtlMinutes = config.stampTtlMinutes;
+    } else {
+      console.warn(
+        `[FlowTask Permission Gate] stampTtlMinutes inválido en ${path}; se usa el default (${DEFAULT_STAMP_TTL_MINUTES} min).`,
+      );
+    }
+  }
+  return {
+    enabled: config.enabled as boolean,
+    stampPath: config.stampPath as string,
+    stampTtlMinutes,
+    sourcePath: path,
+  };
 }
 
-function getDiffStats(cwd: string): { lines: number; files: number } {
-  let lastError: unknown;
-  for (const args of [["diff", "--cached", "--stat"], ["diff", "--stat"]]) {
+/**
+ * Busca review.json en `directory` probando las rutas canónicas en orden.
+ * Devuelve `undefined` si ninguna candidata existe (permite seguir al siguiente
+ * directorio) y `null` si existe pero es ilegible o inválida (fail-open observable).
+ */
+function findConfigIn(directory: string): ReviewConfig | null | undefined {
+  for (const candidate of CONFIG_CANDIDATES) {
+    const path = resolve(directory, candidate);
+    let raw: string;
     try {
-      const output = execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
-      if (!output) return { lines: 0, files: 0 };
-      const summary = output.split("\n").pop() ?? "";
+      raw = readFileSync(path, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      console.warn(`[FlowTask Permission Gate] No se pudo leer ${path}; se continúa sin bloquear.`);
+      return null;
+    }
+    return parseReviewConfig(raw, path);
+  }
+  return undefined;
+}
+
+/**
+ * Precedencia documentada: workdir-first (las dos rutas conocidas); el fallback
+ * a sessionDir/main aporta únicamente los demás settings (enabled, TTL). El
+ * `stampPath` resultante SIEMPRE se resuelve contra el workdir del commit.
+ */
+function readConfig(workdir: string, fallbackCwd?: string): ReviewConfig | null {
+  const directories = [workdir, fallbackCwd].filter(
+    (directory, index, values): directory is string => Boolean(directory) && values.indexOf(directory) === index,
+  );
+  for (const directory of directories) {
+    const found = findConfigIn(directory);
+    if (found !== undefined) return found;
+  }
+  console.warn(
+    `[FlowTask Permission Gate] No se encontró review.json en ${directories.join(" ni ")}; se continúa sin bloquear.`,
+  );
+  return null;
+}
+
+function getCurrentBranch(cwd: string): string {
+  try {
+    return execFileSync("git", ["branch", "--show-current"], { cwd, encoding: "utf8" }).trim();
+  } catch (error) {
+    throw gateError(
+      "determinar la rama actual",
+      error,
+      "verificá que el workdir sea un repositorio git válido y reintentá",
+    );
+  }
+}
+
+/**
+ * Formato estructurado: {"ts":"<ISO-8601>","branch":"<rama>"}. Stamps en ISO
+ * plano (formato obsoleto) se rechazan con causa explícita. Fail-closed.
+ */
+function parseStamp(raw: string): ParsedStamp {
+  const trimmed = raw.trim();
+  let value: unknown;
+  try {
+    value = JSON.parse(trimmed);
+  } catch {
+    if (!Number.isNaN(Date.parse(trimmed))) {
+      return {
+        ok: false,
+        reason:
+          'formato obsoleto (ISO-8601 plano): generá un stamp nuevo con el formato {"ts":"<ISO-8601>","branch":"<rama>"}',
+      };
+    }
+    return { ok: false, reason: "formato inválido: el contenido no es JSON parseable" };
+  }
+  if (!value || typeof value !== "object") {
+    return { ok: false, reason: "formato inválido: el stamp debe ser un objeto JSON {ts, branch}" };
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.ts !== "string" || !record.ts || Number.isNaN(Date.parse(record.ts))) {
+    return { ok: false, reason: "formato inválido: falta o es inválido el campo \"ts\" (ISO-8601)" };
+  }
+  if (typeof record.branch !== "string" || !record.branch) {
+    return { ok: false, reason: "formato inválido: falta o es inválido el campo \"branch\"" };
+  }
+  return { ok: true, payload: { ts: Date.parse(record.ts), branch: record.branch } };
+}
+
+/** Valida TTL y branch binding. Devuelve la causa de rechazo o null si es válido. */
+function stampIssue(
+  payload: StampPayload,
+  now: number,
+  currentBranch: string,
+  ttlMinutes: number,
+): string | null {
+  const ageMinutes = Math.floor((now - payload.ts) / 60000);
+  if (now - payload.ts > ttlMinutes * 60000) {
+    return `expirado hace ${ageMinutes} min (TTL vigente: ${ttlMinutes} min)`;
+  }
+  if (payload.branch !== currentBranch) {
+    return `branch mismatch (esperada '${payload.branch}', encontrada '${currentBranch || "detached/sin rama"}')`;
+  }
+  return null;
+}
+
+/**
+ * Diff honesto: `git status --porcelain` cuenta archivos pendientes reales
+ * (staged + unstaged); `git diff HEAD --stat` aporta las líneas +/-.
+ */
+function getDiffStats(cwd: string): { lines: number; files: number } {
+  let pendingFiles = 0;
+  let lines = 0;
+  let lastError: unknown;
+  try {
+    const statusOutput = execFileSync("git", ["status", "--porcelain"], { cwd, encoding: "utf8" }).trim();
+    pendingFiles = statusOutput ? statusOutput.split("\n").length : 0;
+  } catch (error) {
+    lastError = error;
+  }
+  try {
+    const diffOutput = execFileSync("git", ["diff", "HEAD", "--stat"], { cwd, encoding: "utf8" }).trim();
+    if (diffOutput) {
+      const summary = diffOutput.split("\n").pop() ?? "";
       const insertions = summary.match(/(\d+)\s+insertions?\(\+\)/);
       const deletions = summary.match(/(\d+)\s+deletions?\(-\)/);
       const files = summary.match(/(\d+)\s+files? changed/);
       if (!insertions && !deletions && !files) {
         throw new Error(`salida de git diff no reconocida: ${summary}`);
       }
-      return {
-        lines: (insertions ? Number(insertions[1]) : 0) + (deletions ? Number(deletions[1]) : 0),
-        files: files ? Number(files[1]) : 0,
-      };
-    } catch (error) {
-      lastError = error;
+      lines = (insertions ? Number(insertions[1]) : 0) + (deletions ? Number(deletions[1]) : 0);
     }
+  } catch (error) {
+    lastError = lastError ?? error;
   }
-  throw gateError("analizar diff", lastError ?? "sin estadísticas", "verificá el repositorio y reintentá");
+  if (lastError) {
+    throw gateError("analizar diff", lastError, "verificá el repositorio y reintentá");
+  }
+  return { lines, files: pendingFiles };
 }
 
 function buildGateMessage(stats: { lines: number; files: number }): string {
@@ -117,6 +243,26 @@ function buildGateMessage(stats: { lines: number; files: number }): string {
     "→ Runner: evaluá si este cambio requiere revisión pre-commit.",
     "  - Si es trivial (gitignore, docs, chore ≤ 5 líneas): re-ejecutá el commit con --no-verify.",
     "  - Si no: invocá flowtask-review-orchestrator y generá el stamp antes de reintentar.",
+  ].join("\n");
+}
+
+function buildStampBlockMessage(
+  cause: string,
+  stampPath: string,
+  configPath: string,
+  stats: { lines: number; files: number },
+): string {
+  return [
+    "[FlowTask Permission Gate] Commit bloqueado por review-stamp inválido.",
+    "",
+    `Causa: ${cause}.`,
+    `Stamp buscado en: ${stampPath}`,
+    `Config aplicada: ${configPath}`,
+    "",
+    `📊 Diff: ${stats.files} archivo(s), ${stats.lines} línea(s) pendientes.`,
+    "",
+    "→ Invocá flowtask-review-orchestrator y generá un stamp nuevo en la ruta indicada:",
+    '  {"ts":"<ISO-8601>","branch":"<rama actual del repo objetivo>"}',
   ].join("\n");
 }
 
@@ -144,27 +290,44 @@ export default async function (input: PluginInput) {
       const config = readConfig(workdir, sessionDir);
       if (!config) return;
       if (!config.enabled) return;
-      const stampPath = isAbsolute(config.stampPath)
+      // Resolución unificada: el stampPath relativo SIEMPRE se resuelve contra
+      // el workdir del commit (aislamiento por flujo: worktrees leen/escriben
+      // sus propios stamps).
+      const stampAbsolutePath = isAbsolute(config.stampPath)
         ? config.stampPath
         : resolve(workdir, config.stampPath);
 
-      let stamp: string;
+      let raw: string;
       try {
-        stamp = readFileSync(stampPath, "utf8").trim();
+        raw = readFileSync(stampAbsolutePath, "utf8");
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          throw new Error(buildGateMessage(getDiffStats(workdir)));
+          throw new Error(
+            buildStampBlockMessage(
+              "stamp inexistente",
+              stampAbsolutePath,
+              config.sourcePath,
+              getDiffStats(workdir),
+            ),
+          );
         }
-        throw gateError("leer stamp", error, "ejecutá la revisión pre-commit y generá un stamp válido");
+        throw gateError("leer stamp", error, "verificá permisos y reintentá");
       }
-      if (!stamp || Number.isNaN(Date.parse(stamp))) {
-        throw gateError("validar stamp", "timestamp ISO-8601 inválido", "regenerá el stamp mediante la revisión");
+
+      const parsed = parseStamp(raw);
+      if (!parsed.ok) {
+        throw new Error(
+          buildStampBlockMessage(parsed.reason, stampAbsolutePath, config.sourcePath, getDiffStats(workdir)),
+        );
       }
-      try {
-        unlinkSync(stampPath);
-      } catch (error) {
-        throw gateError("consumir stamp", error, "verificá permisos y reintentá");
+      const issue = stampIssue(parsed.payload, Date.now(), getCurrentBranch(workdir), config.stampTtlMinutes);
+      if (issue) {
+        throw new Error(
+          buildStampBlockMessage(issue, stampAbsolutePath, config.sourcePath, getDiffStats(workdir)),
+        );
       }
+      // Stamp válido: NO se consume. La validez la gobierna el TTL y el branch
+      // binding; un commit fallido posterior no obliga a regenerar el stamp.
       return;
     },
     dispose: async () => {
