@@ -23,7 +23,7 @@ function isRunner(agent: unknown): boolean {
 
 function runnerToolAllowed(tool: string, args: Record<string, unknown>): boolean {
   if (tool === "bash") return isAuthorizedRunnerCommand(String(args.command ?? ""));
-  if (tool === "skill" || tool.startsWith("engram_")) return true;
+  if (tool === "read" || tool === "glob" || tool === "grep" || tool === "skill" || tool.startsWith("engram_")) return true;
   if (tool === "task") return RUNNER_TASKS.has(String(args.subagent_type ?? args.agent ?? args.name ?? ""));
   return false;
 }
