@@ -405,7 +405,10 @@ Despacha el Validator con el mismo contexto. El Validator persiste
 `hotfix/{id}/artifact/validacion` y su flow-state separado. Un rechazo vuelve al
 Constructor hasta dos intentos; después escala. Con APPROVED ejecuta
 `${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch}`.
-Un conflicto conserva worktree y branch y se escala sin limpiar. `list`,
+Un conflicto conserva worktree y branch y se escala sin limpiar; un rechazo por
+destino con cambios sin commitear también conserva todo intacto, se escala al
+desarrollador y solo procede con `--preserve-dirty` si hay consentimiento
+humano explícito. `list`,
 `prune` y la reconciliación cruzan los worktrees hotfix con
 `flow-state/hotfix/{id}/instances` y reportan huérfanos.
 
@@ -489,7 +492,10 @@ Cuando el validator apruebe y el CA tenga worktree asociado:
 1. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID>`.
 2. Si completa bien, el script hace squash-merge a la rama base detectada y limpia el worktree/branch.
 3. Si `complete` falla por conflicto, **no limpies** el worktree.
-4. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
+4. Si `complete` rechaza porque **el destino tiene cambios sin commitear**, no intentes limpiar el destino ni crear stashes: el rechazo es seguro y dejó todo intacto. Escala al desarrollador mostrando el motivo genérico del script; solo si el desarrollador consiente explícitamente, reinvoca `complete` con `--preserve-dirty`.
+5. `--preserve-dirty` es una transacción opt-in: captura los cambios elegibles del destino en refs privadas (`refs/flowtask/backups/<tx-id>`, jamás en la lista pública de stashes), registra cada fase en `.flowtask/backups/<tx-id>/journal` y restaura el estado fino al final. Ofrecélo **SOLO ante instrucción humana explícita** — jamás por defecto ni en flujos automáticos. La config persistida (`.flowtask/config/worktree.json` con `"preserveDirty": true`) cuenta como consentimiento humano explícito y el script nunca la escribe.
+6. Si un cierre con preservación se interrumpe, reanudalo con `worktree.sh recover [<tx-id>]` (sin argumento toma la pendiente más reciente); repetirlo es seguro e idempotente. Si la restauración quedó pendiente-manual, mostrale al desarrollador las instrucciones seguras impresas por el script: la resolución manual nunca se automatiza.
+7. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
 
 ***
 

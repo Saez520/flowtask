@@ -50,6 +50,9 @@ flowtask/
 # FlowTask exports
 .flowtask/exports/
 
+# FlowTask transaction backups (runtime state of --preserve-dirty)
+.flowtask/backups/
+
 # Heap snapshots (debugging)
 *.heapsnapshot
 

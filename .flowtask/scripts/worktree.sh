@@ -135,6 +135,356 @@ ensure_clean_base() {
   fi
 }
 
+# ─── Transacción de preservación (opt-in --preserve-dirty) ──────────────────
+# Backups en refs privadas refs/flowtask/backups/<tx-id>; JAMÁS refs/stash.
+# Journal por fases: captured → merge_started → merged → restored|pending_manual.
+BACKUPS_DIR=".flowtask/backups"
+TMP_STATE_DIR=""
+
+cleanup_tmp_state() {
+  if [[ -n "$TMP_STATE_DIR" && -d "$TMP_STATE_DIR" ]]; then
+    rm -rf "$TMP_STATE_DIR"
+  fi
+  return 0
+}
+
+tx_id_generate() {
+  printf '%s-%s' "$(date -u +%Y%m%dT%H%M%SZ)" "$(od -An -N4 -tx4 /dev/urandom | tr -d ' ')"
+}
+
+tx_dir_for() {
+  printf '%s/%s' "$BACKUPS_DIR" "$1"
+}
+
+# Escritura atómica del journal (tmp + mv). Seam determinista de tests (D-N):
+# con FLOWTASK_TEST_MODE=1 y FLOWTASK_TEST_CRASH_AFTER=<fase>, sale 99 justo
+# después de persistir esa fase. Jamás activo sin las dos variables.
+journal_write() {
+  local tx_dir="$1" phase="$2" tmp
+  tmp="$tx_dir/.journal.tmp"
+  printf '%s\n' "$phase" > "$tmp"
+  mv -f "$tmp" "$tx_dir/journal"
+  if [[ "${FLOWTASK_TEST_MODE:-0}" == "1" && "${FLOWTASK_TEST_CRASH_AFTER:-}" == "$phase" ]]; then
+    exit 99
+  fi
+}
+
+journal_read() {
+  local tx_dir="$1"
+  if [[ -f "$tx_dir/journal" ]]; then
+    cat "$tx_dir/journal"
+  fi
+}
+
+# Consentimiento D-C: flag CLI > config persistida > OFF (fail-safe default-off).
+# El script JAMÁS escribe worktree.json; el archivo lo crea el desarrollador.
+consent_preserve_dirty() {
+  if [[ "${1:-0}" == "1" ]]; then
+    return 0
+  fi
+  local cfg=".flowtask/config/worktree.json"
+  [[ -f "$cfg" ]] || return 1
+  grep -Eq '"preserveDirty"[[:space:]]*:[[:space:]]*true' "$cfg"
+}
+
+# D-K: bloquea el re-cierre mientras exista una transacción no terminada.
+# Solo interpola tx-ids (generados por el sistema) y fases (enum propio).
+assert_no_pending_transaction() {
+  local j dir tx_id phase
+  [[ -d "$BACKUPS_DIR" ]] || return 0
+  while IFS= read -r -d '' j; do
+    dir="$(dirname "$j")"
+    tx_id="$(basename "$dir")"
+    phase="$(cat "$j")"
+    case "$phase" in
+      restored|pending_manual|"") continue ;;
+      *)
+        die "Existe una transacción de preservación pendiente ($tx_id, fase $phase).
+Ejecutá 'worktree.sh recover $tx_id' antes de reintentar el cierre."
+        ;;
+    esac
+  done < <(find "$BACKUPS_DIR" -mindepth 2 -maxdepth 2 -name journal -print0)
+}
+
+# D-M (Opción B cerrada): no-soporte duro = submodules / sparse-checkout / filters.
+# La categoría ignored NUNCA bloquea: queda fuera de captura por construcción,
+# jamás es tocada (no hay git clean en ningún camino) y solo recibe aviso fijo.
+detect_unsupported() {
+  local tracked_list="$1" path fields value unsupported="" ignored_out
+
+  if [[ -n "$(git submodule status --recursive 2>/dev/null)" ]]; then
+    unsupported+="submodules "
+  fi
+
+  if [[ "$(git config --bool core.sparsecheckout 2>/dev/null || true)" == "true" ]] \
+     || git sparse-checkout list >/dev/null 2>&1; then
+    unsupported+="sparse-checkout "
+  fi
+
+  if [[ -s "$tracked_list" ]]; then
+    while IFS= read -r -d '' path; do
+      fields=()
+      while IFS= read -r -d '' field; do
+        fields+=("$field")
+      done < <(git check-attr -z filter -- "./$path")
+      value="${fields[2]:-}"
+      if [[ -n "$value" && "$value" != "unspecified" ]]; then
+        unsupported+="filters "
+        break
+      fi
+    done < <(cat "$tracked_list")
+  fi
+
+  if [[ -n "$unsupported" ]]; then
+    printf 'Aviso: setup no soportado para preservar cambios: %s\n' "${unsupported% }" >&2
+    return 1
+  fi
+
+  ignored_out="$(git ls-files --others --ignored --exclude-standard --directory \
+    | grep -v -e '^\.flowtask/backups/\?$' || true)"
+  if [[ -n "$ignored_out" ]]; then
+    printf '%s\n' "Aviso: hay archivos ignorados en el destino; quedan fuera de la captura y no serán tocados." >&2
+  fi
+  return 0
+}
+
+write_meta() {
+  local tx_dir="$1" ca_name="$2" base_branch="$3" tmp
+  tmp="$tx_dir/.meta.tmp"
+  {
+    printf 'ca_name: %s\n' "$ca_name"
+    printf 'base_branch: %s\n' "$base_branch"
+    printf 'head_destino: %s\n' "$(git rev-parse HEAD)"
+    printf 'created_at: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  } > "$tmp"
+  mv -f "$tmp" "$tx_dir/meta"
+}
+
+# Remueve refs y dir recién creados tras un fallo de captura; destino intocado.
+abort_capture_cleanup() {
+  local tx_id="$1"
+  git update-ref -d "refs/flowtask/backups/$tx_id" >/dev/null 2>&1 || true
+  git update-ref -d "refs/flowtask/backups/$tx_id-untracked" >/dev/null 2>&1 || true
+  rm -rf "$BACKUPS_DIR/$tx_id"
+}
+
+# D-E/D-F: crea las refs privadas y verifica que cada path elegible existe en
+# su árbol ANTES de mutar nada. Setea TX_TRACKED_SHA / TX_UNTRACKED_SHA.
+capture_transaction() {
+  local tx_id="$1" tx_dir="$2" path tree_sha tmp_index
+  TX_TRACKED_SHA=""
+  TX_UNTRACKED_SHA=""
+
+  if [[ -s "$tx_dir/tracked.paths" ]]; then
+    TX_TRACKED_SHA="$(git stash create "flowtask-backup $tx_id")"
+    if [[ -z "$TX_TRACKED_SHA" ]]; then
+      abort_capture_cleanup "$tx_id"
+      die "La captura del estado del destino falló; el cierre fue cancelado y no se modificó nada."
+    fi
+    git update-ref "refs/flowtask/backups/$tx_id" "$TX_TRACKED_SHA"
+  fi
+
+  if [[ -s "$tx_dir/untracked.paths" ]]; then
+    tmp_index="$(mktemp "${TMPDIR:-/tmp}/flowtask-index.XXXXXX")"
+    GIT_INDEX_FILE="$tmp_index" git read-tree --empty
+    GIT_INDEX_FILE="$tmp_index" git update-index --add -z --stdin < "$tx_dir/untracked.paths"
+    tree_sha="$(GIT_INDEX_FILE="$tmp_index" git write-tree)"
+    rm -f "$tmp_index"
+    TX_UNTRACKED_SHA="$(git commit-tree "$tree_sha" -m "flowtask-backup-untracked $tx_id")"
+    git update-ref "refs/flowtask/backups/$tx_id-untracked" "$TX_UNTRACKED_SHA"
+  fi
+
+  if [[ -n "$TX_TRACKED_SHA" ]]; then
+    while IFS= read -r -d '' path; do
+      if ! git cat-file -e "$TX_TRACKED_SHA:$path" >/dev/null 2>&1; then
+        abort_capture_cleanup "$tx_id"
+        die "La verificación de la captura falló; el cierre fue cancelado y no se modificó nada."
+      fi
+    done < <(cat "$tx_dir/tracked.paths")
+  fi
+
+  if [[ -n "$TX_UNTRACKED_SHA" ]]; then
+    while IFS= read -r -d '' path; do
+      if ! git cat-file -e "$TX_UNTRACKED_SHA:$path" >/dev/null 2>&1; then
+        abort_capture_cleanup "$tx_id"
+        die "La verificación de la captura falló; el cierre fue cancelado y no se modificó nada."
+      fi
+    done < <(cat "$tx_dir/untracked.paths")
+  fi
+}
+
+# D-G: limpieza idempotente del destino dentro de la ventana captured.
+clean_destination() {
+  local tx_id="$1" tx_dir="$2" path
+  if [[ -s "$tx_dir/tracked.paths" ]]; then
+    if ! git restore --source=HEAD --staged --worktree -- ./ >/dev/null 2>&1; then
+      journal_write "$tx_dir" captured
+      die "La limpieza del destino falló; la transacción $tx_id quedó en fase captured. Ejecutá 'worktree.sh recover $tx_id'."
+    fi
+  fi
+  if [[ -s "$tx_dir/untracked.paths" ]]; then
+    while IFS= read -r -d '' path; do
+      if [[ -e "$path" || -L "$path" ]]; then
+        rm -- "$path"
+      fi
+    done < <(cat "$tx_dir/untracked.paths")
+  fi
+}
+
+merge_squash_branch() {
+  local base_branch="$1" branch="$2"
+  git switch "$base_branch"
+  if git merge --squash "$branch"; then
+    if ! git diff --cached --quiet; then
+      git commit -m "squash merge $branch into $base_branch"
+    fi
+    return 0
+  fi
+  return 1
+}
+
+print_pending_manual_instructions() {
+  local tx_id="$1"
+  cat >&2 <<EOF
+La restauración automática falló; la transacción $tx_id quedó pendiente-manual.
+La fusión quedó aplicada y el backup permanece intacto; nada fue descartado.
+Pasos seguros para resolverlo vos mismo (reemplazá solo el identificador):
+  git stash apply --index refs/flowtask/backups/$tx_id
+  git restore --source=refs/flowtask/backups/$tx_id-untracked --worktree -- .
+Inspeccioná el resultado con 'git status' antes de seguir.
+EOF
+}
+
+mark_pending_manual() {
+  local tx_dir="$1" tx_id="$2"
+  journal_write "$tx_dir" pending_manual
+  print_pending_manual_instructions "$tx_id"
+}
+
+# D-J: restauración con estado fino. Conflicto → pending_manual conservador:
+# fusión conservada, backup intacto, exit 1. Untracked all-or-nothing.
+restore_transaction() {
+  local tx_id="$1" tx_dir="$2" path collision=0
+
+  if [[ -n "$TX_TRACKED_SHA" ]]; then
+    if ! git stash apply --index "refs/flowtask/backups/$tx_id" >/dev/null 2>&1; then
+      mark_pending_manual "$tx_dir" "$tx_id"
+      return 1
+    fi
+  fi
+
+  if [[ -n "$TX_UNTRACKED_SHA" ]]; then
+    while IFS= read -r -d '' path; do
+      if [[ -e "$path" || -L "$path" ]]; then
+        collision=1
+        break
+      fi
+    done < <(git ls-tree -r -z --name-only "refs/flowtask/backups/$tx_id-untracked")
+    if [[ "$collision" -eq 1 ]]; then
+      mark_pending_manual "$tx_dir" "$tx_id"
+      return 1
+    fi
+    while IFS= read -r -d '' path; do
+      if ! git restore --source="refs/flowtask/backups/$tx_id-untracked" --worktree -- "./$path" >/dev/null 2>&1; then
+        mark_pending_manual "$tx_dir" "$tx_id"
+        return 1
+      fi
+    done < <(git ls-tree -r -z --name-only "refs/flowtask/backups/$tx_id-untracked")
+  fi
+
+  return 0
+}
+
+# Transacción pendiente más reciente (el tx-id ordena cronológico lexicográfico);
+# fase ∉ {restored, ""}. Devuelve 1 si no hay ninguna.
+latest_pending_tx_id() {
+  local d base phase found=()
+  [[ -d "$BACKUPS_DIR" ]] || return 1
+  for d in "$BACKUPS_DIR"/*/; do
+    [[ -d "$d" ]] && found+=("$d")
+  done
+  local i
+  for ((i=${#found[@]}-1; i>=0; i--)); do
+    d="${found[i]}"
+    base="$(basename "$d")"
+    phase="$(cat "$d/journal" 2>/dev/null || true)"
+    case "$phase" in
+      restored|"") continue ;;
+      *) printf '%s' "$base"; return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# D-L: recuperación idempotente desde la última fase anotada.
+recover_transaction() {
+  local tx_id_arg="${1:-}" tx_dir phase ca_name base_branch branch
+
+  if [[ -z "$tx_id_arg" ]]; then
+    tx_id_arg="$(latest_pending_tx_id)" || {
+      printf '%s\n' "No hay transacciones de preservación pendientes."
+      exit 0
+    }
+  fi
+
+  case "$tx_id_arg" in
+    ""|*/*|.*|..*) die "Identificador de transacción inválido" ;;
+  esac
+  tx_dir="$BACKUPS_DIR/$tx_id_arg"
+  [[ -d "$tx_dir" ]] || die "No existe la transacción '$tx_id_arg'"
+  phase="$(journal_read "$tx_dir")"
+  case "$phase" in
+    captured|merge_started|merged|pending_manual|restored) ;;
+    *) die "La transacción '$tx_id_arg' no tiene un journal válido" ;;
+  esac
+
+  ca_name="$(sed -n 's/^ca_name: //p' "$tx_dir/meta")"
+  base_branch="$(sed -n 's/^base_branch: //p' "$tx_dir/meta")"
+  [[ -n "$ca_name" && -n "$base_branch" ]] || die "La transacción '$tx_id_arg' tiene meta incompleto"
+
+  if [[ "$phase" == "pending_manual" ]]; then
+    print_pending_manual_instructions "$tx_id_arg"
+    exit 1
+  fi
+
+  if [[ "$phase" == "restored" ]]; then
+    printf 'La transacción %s ya fue restaurada; no hay nada pendiente.\n' "$tx_id_arg"
+    exit 0
+  fi
+
+  normalize_base_branch "$base_branch"
+  TX_TRACKED_SHA="$(git rev-parse --verify --quiet "refs/flowtask/backups/$tx_id_arg" || true)"
+  TX_UNTRACKED_SHA="$(git rev-parse --verify --quiet "refs/flowtask/backups/$tx_id_arg-untracked" || true)"
+
+  if [[ "$phase" == "merge_started" ]]; then
+    git merge --abort >/dev/null 2>&1 || git reset --hard HEAD >/dev/null 2>&1 || true
+  fi
+
+  if [[ "$phase" == "captured" ]]; then
+    clean_destination "$tx_id_arg" "$tx_dir"
+  fi
+
+  if [[ "$phase" == "captured" || "$phase" == "merge_started" ]]; then
+    branch="$(worktree_branch_for "$ca_name")"
+    if ! branch_exists "$branch"; then
+      die "La rama '$branch' ya no existe; no puedo completar la recuperación de '$tx_id_arg'"
+    fi
+    if ! merge_squash_branch "$base_branch" "$branch"; then
+      git merge --abort >/dev/null 2>&1 || git reset --hard HEAD >/dev/null 2>&1 || true
+      journal_write "$tx_dir" merge_started
+      die "Conflicto al reintentar la fusión para '$tx_id_arg'; la transacción sigue en fase merge_started."
+    fi
+    journal_write "$tx_dir" merged
+  fi
+
+  if restore_transaction "$tx_id_arg" "$tx_dir"; then
+    journal_write "$tx_dir" restored
+    printf 'recovered: %s\n' "$tx_id_arg"
+  else
+    exit 1
+  fi
+}
+
 create_worktree() {
   local ca_name="$1"
   local base_branch="${2:-$(detect_base_branch)}"
@@ -167,9 +517,10 @@ create_worktree() {
 complete_worktree() {
   local ca_name="$1"
   local base_branch="${2:-$(detect_base_branch)}"
-  local branch path path_abs root status_line worktree_status destination_status
+  local preserve_flag="${3:-0}"
+  local branch path path_abs root status_line worktree_status
   local problems="" staged_files="" unstaged_files="" untracked_files=""
-  local destination_staged="" destination_unstaged="" destination_untracked=""
+  local dest_staged=0 dest_unstaged=0 dest_untracked=0 dest_rec dest_code dest_path
   local own_commits stash_entries
 
   root="$(repo_root)"
@@ -183,6 +534,9 @@ complete_worktree() {
   if ! branch_exists "$branch"; then
     die "No encontré la rama '$branch' para completar"
   fi
+
+  # D-K: jamás mutar con una transacción de preservación sin terminar.
+  assert_no_pending_transaction
 
   worktree_status="$(git -C "$path_abs" status --porcelain --untracked-files=all)"
   while IFS= read -r status_line; do
@@ -223,44 +577,97 @@ complete_worktree() {
     problems+=$'  Acción: resolver o restaurar los stashes de forma segura antes de reintentar.\n'
   fi
 
-  destination_status="$(git -C "$root" status --porcelain --untracked-files=all)"
-  while IFS= read -r status_line; do
-    [[ -n "$status_line" ]] || continue
-    if [[ "${status_line:0:2}" == "??" ]]; then
-      destination_untracked+="${status_line:3}"$'\n'
-    else
-      [[ "${status_line:0:1}" != " " ]] && destination_staged+="${status_line:3}"$'\n'
-      [[ "${status_line:1:1}" != " " ]] && destination_unstaged+="${status_line:3}"$'\n'
-    fi
-  done <<< "$destination_status"
+  # Estado del destino: parser NUL-delimitado (a prueba de nombres hostiles).
+  # Registros "XY <path>NUL"; renames/copies emiten un segundo campo NUL (origen).
+  # Paths bajo .flowtask/backups/ son infraestructura propia, no suciedad (D-H).
+  # Las listas elegibles quedan en $TMP_STATE_DIR (NUL) para la transacción.
+  : > "$TMP_STATE_DIR/dest.tracked"
+  : > "$TMP_STATE_DIR/dest.untracked"
+  while IFS= read -r -d '' dest_rec; do
+    dest_code="${dest_rec:0:2}"
+    dest_path="${dest_rec:3}"
+    case "$dest_code" in
+      R?|C?)
+        IFS= read -r -d '' dest_rec || true
+        ;;
+    esac
+    case "$dest_path" in
+      .flowtask/backups/*) continue ;;
+    esac
+    case "$dest_code" in
+      '??')
+        dest_untracked=1
+        printf '%s\0' "$dest_path" >> "$TMP_STATE_DIR/dest.untracked"
+        ;;
+      *)
+        [[ "${dest_code:0:1}" != " " ]] && dest_staged=1
+        [[ "${dest_code:1:1}" != " " ]] && dest_unstaged=1
+        printf '%s\0' "$dest_path" >> "$TMP_STATE_DIR/dest.tracked"
+        ;;
+    esac
+  done < <(git -C "$root" status --porcelain -z --untracked-files=all)
 
-  if [[ -n "$destination_staged" ]]; then
-    problems+=$'\n- Destino: cambios staged:\n'
-    problems+="$destination_staged"
-  fi
-  if [[ -n "$destination_unstaged" ]]; then
-    problems+=$'\n- Destino: cambios unstaged:\n'
-    problems+="$destination_unstaged"
-  fi
-  if [[ -n "$destination_untracked" ]]; then
-    problems+=$'\n- Destino: archivos untracked:\n'
-    problems+="$destination_untracked"
-  fi
-  if [[ -n "$destination_staged$destination_unstaged$destination_untracked" ]]; then
-    problems+=$'  Acción: usar stash/pop en el destino para preservar los cambios y recuperarlos después del cierre.\n'
+  if (( dest_staged || dest_unstaged || dest_untracked )); then
+    if ! consent_preserve_dirty "${preserve_flag:-0}"; then
+      die "No se puede completar '$ca_name': el destino tiene cambios sin commitear.
+Inspeccionalo vos mismo con 'git status' antes de reintentar.
+El cierre fue cancelado; no se modificó nada."
+    fi
+
+    # Camino transaccional opt-in: no-soporte → rechazo; problems → die;
+    # captura verificada ANTES de mutar; journal por fases.
+    if ! detect_unsupported "$TMP_STATE_DIR/dest.tracked"; then
+      die "No se puede completar '$ca_name': el destino tiene cambios sin commitear.
+Inspeccionalo vos mismo con 'git status' antes de reintentar.
+El cierre fue cancelado; no se modificó nada."
+    fi
+
+    if [[ -n "$problems" ]]; then
+      die "No se puede completar '$ca_name'; se detectaron problemas antes de integrar o limpiar:$problems"
+    fi
+
+    local tx_id tx_dir
+    tx_id="$(tx_id_generate)"
+    tx_dir="$(tx_dir_for "$tx_id")"
+    mkdir -p "$tx_dir"
+    cp "$TMP_STATE_DIR/dest.tracked" "$tx_dir/tracked.paths"
+    cp "$TMP_STATE_DIR/dest.untracked" "$tx_dir/untracked.paths"
+    write_meta "$tx_dir" "$ca_name" "$base_branch"
+
+    capture_transaction "$tx_id" "$tx_dir"
+
+    journal_write "$tx_dir" captured
+    clean_destination "$tx_id" "$tx_dir"
+
+    journal_write "$tx_dir" merge_started
+    if ! merge_squash_branch "$base_branch" "$branch"; then
+      git merge --abort >/dev/null 2>&1 || git reset --hard HEAD >/dev/null 2>&1 || true
+      die "Conflicto al hacer squash-merge de '$branch' en '$base_branch'; el worktree se conserva.
+La transacción $tx_id quedó en fase merge_started; ejecutá 'worktree.sh recover $tx_id'."
+    fi
+    journal_write "$tx_dir" merged
+
+    if ! restore_transaction "$tx_id" "$tx_dir"; then
+      exit 1
+    fi
+    journal_write "$tx_dir" restored
+
+    printf 'preserve: %s\n' "$tx_id"
+    printf 'merge: success\n'
+    cleanup_worktree "$ca_name" "$base_branch"
+    git worktree prune >/dev/null 2>&1 || true
+    printf 'completed: %s\n' "$ca_name"
+    printf 'branch: %s\n' "$branch"
+    printf 'base_branch: %s\n' "$base_branch"
+    printf 'worktree: %s\n' "$path/"
+    return 0
   fi
 
   if [[ -n "$problems" ]]; then
     die "No se puede completar '$ca_name'; se detectaron problemas antes de integrar o limpiar:$problems"
   fi
 
-  git switch "$base_branch"
-
-  if git merge --squash "$branch"; then
-    if ! git diff --cached --quiet; then
-      git commit -m "squash merge $branch into $base_branch"
-    fi
-  else
+  if ! merge_squash_branch "$base_branch" "$branch"; then
     git merge --abort >/dev/null 2>&1 || git reset --hard HEAD >/dev/null 2>&1 || true
     die "Conflicto al hacer squash-merge de '$branch' en '$base_branch'; el worktree se conserva"
   fi
@@ -361,10 +768,17 @@ usage() {
   cat <<'EOF'
 Uso:
   worktree.sh create <execution-name> [--base <branch>]
-  worktree.sh complete <execution-name> [--base <branch>]
+  worktree.sh complete <execution-name> [--base <branch>] [--preserve-dirty]
   worktree.sh cleanup <execution-name> [--base <branch>]
+  worktree.sh recover [<transaction-id>]
   worktree.sh prune
   worktree.sh list
+
+--preserve-dirty: preservación transaccional opt-in de los cambios sin
+  commitear del destino; requiere consentimiento explícito (flag o la clave
+  "preserveDirty": true en .flowtask/config/worktree.json).
+recover: reanuda una transacción interrumpida desde su última fase; sin
+  argumento elige la pendiente más reciente.
 EOF
 }
 
@@ -373,6 +787,11 @@ main() {
 
   local command="${1:-}"
   shift || true
+
+  if [[ "$command" == "complete" ]]; then
+    TMP_STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/flowtask-wt.XXXXXX")"
+    trap cleanup_tmp_state EXIT
+  fi
 
   case "$command" in
     create)
@@ -389,16 +808,32 @@ main() {
       local ca_name="${1:-}"
       shift || true
       local base_branch="$(detect_base_branch)"
-      if [[ "${1:-}" == "--base" ]]; then
-        [[ $# -ge 2 ]] || die "Falta la rama después de --base"
-        base_branch="${2:-}"
-        shift 2
-      elif [[ -n "${1:-}" ]]; then
-        die "Opción o argumento desconocido para complete: ${1}"
-      fi
+      local preserve_flag=0
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --base)
+            [[ $# -ge 2 ]] || die "Falta la rama después de --base"
+            base_branch="${2:-}"
+            shift 2
+            ;;
+          --preserve-dirty)
+            preserve_flag=1
+            shift
+            ;;
+          *)
+            die "Opción o argumento desconocido para complete: ${1}"
+            ;;
+        esac
+      done
       [[ -n "$ca_name" ]] || die "Falta el nombre del CA"
-      [[ $# -eq 0 ]] || die "Opción o argumento desconocido para complete: ${1}"
-      complete_worktree "$ca_name" "$base_branch"
+      complete_worktree "$ca_name" "$base_branch" "$preserve_flag"
+      ;;
+    recover)
+      local tx_id="${1:-}"
+      if [[ $# -gt 1 ]]; then
+        die "Argumentos desconocidos para recover: ${*:2}"
+      fi
+      recover_transaction "$tx_id"
       ;;
     cleanup)
       local ca_name="${1:-}"
