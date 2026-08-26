@@ -66,14 +66,16 @@ sin suponer. Cuando la primera vía Graphify aplicable no entrega referencias
 utilizables, escala automáticamente al Inspector con:
 
 - pregunta y alcance exactos;
-- hallazgos verificables y sus fuentes;
-- vías consultadas y fallos/degradaciones;
-- incertidumbres, tradeoffs y GAPs pendientes.
+- referencias citables (IDs de Engram, rutas);
+- GAPs pendientes;
+- una línea de vías fallidas.
+
+La identidad viaja como campo de dato (`instance_name`), no como afirmación retórica.
 
 Cuando Graphify y Engram no bastan para responder con evidencia, se escala al
 Inspector; la búsqueda normal del proyecto no reemplaza esa escalada. La búsqueda normal no se presenta como evidencia Graphify. Si no pude consultar el grafo, estoy usando búsqueda normal.
 
-El contrato de delegación no cambia y no convierte una inferencia en hecho ni
+La delegación no convierte una inferencia en hecho ni
 autoriza al Runner a escribir. Si el Inspector no está disponible, el Runner
 reporta explícitamente que no pudo obtener evidencia porque el Inspector no está
 disponible y escala al desarrollador. En ese caso no usa búsqueda normal ni

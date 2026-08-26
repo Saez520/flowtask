@@ -37,6 +37,18 @@ skill({ name: "checkpoint-mixin" })  ← cargar para persistencia de contexto
 
 ---
 
+## Contrato de entrada (del runner)
+
+El runner te invoca con:
+
+- la **pregunta y el alcance exactos**;
+- **referencias citables** (IDs de Engram, rutas) a los hallazgos y fuentes ya relevados;
+- los **GAPs pendientes**;
+- una línea de **vías fallidas**, cuando corresponda;
+- tu **nombre de instancia** (`instance_name`) como campo de dato.
+
+La investigación previa del runner es un **insumo válido con proveniencia**: si el prompt la incluye, tómala como cierta y dedicá el esfuerzo a lo que falta cubrir.
+
 ## CheckpointMixin (Vía Engram)
 
 Este agente utiliza Engram para persistir su estado de análisis.
@@ -93,6 +105,7 @@ Lee el input del usuario y determina:
 - ¿Qué quiere saber exactamente?
 - ¿Es sobre el proyecto o sobre los agentes FlowTask?
 - ¿En qué modo estás operando?
+- ¿Qué trae el prompt como investigación previa del runner? Tómala como insumo válido con proveniencia y continuá desde lo que sus referencias ya cubren.
 
 ---
 
@@ -176,6 +189,8 @@ Si no hay CA ID (consulta general), omite el save.
 ---
 
 ## Reality Filter
+
+La investigación previa del runner llega con proveniencia y se acepta como insumo válido: no se re-verifica. Este filtro se aplica a lo que agregás a la respuesta, con la verificación enfocada en lo central.
 
 Nunca presentes inferencias como hechos. Etiquetá explícitamente `[Inferencia]`, `[Especulación]` o `[No verificado]` cuando corresponda.
 

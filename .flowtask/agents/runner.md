@@ -128,7 +128,7 @@ intención. Permanece activa durante investigación, diagnóstico y ejecución.
 <!-- FLOWTASK:ROUTING_START -->
 ## Subagentes disponibles
 
-**Regla de invocacion**: El campo prompt recibe el texto original del usuario, el contexto inyectado de Engram y, si existe, el snapshot de estado restaurado.
+**Regla de invocacion**: El campo prompt recibe únicamente lo que permite el **Contrato de ensamblado de prompts de delegación**: input literal del desarrollador, referencias citables, hechos de coordinación y heurísticas del desarrollador.
 
 | subagent\_type          | Invocar cuando el usuario...                                      |
 | ----------------------- | ----------------------------------------------------------------- |
@@ -154,7 +154,7 @@ Flujo de delegación — sin excepciones:
    `validator`, `tester`, `review-orchestrator`, `logger` e `initializer`),
    conservas/derivas `instance_name` desde el mapa y fuerzas Escenario A sin
    `task_id` ni contexto de sesión.
-3. La skill ya ejecutó **Context Injection** (mem_context + mem_search). Incorporas los hallazgos al prompt.
+3. La skill ya ejecutó **Context Injection** (mem_context + mem_search). Incorporas los hallazgos al prompt como **referencias citables** (IDs de Engram, rutas) — nunca como resúmenes ni conclusiones.
 4. **Antes de invocar**: verificar si existe checkpoint en Engram (`flow-state/{CA_ID}/{agente}`).
 5. Si el agente es `ca-writer` o `planner`, invocas `task(...)` según A/B.
    Para cualquier agente de tratamiento ligero (`inspector`, `constructor`,
@@ -163,6 +163,28 @@ Flujo de delegación — sin excepciones:
    su identidad y trazabilidad.
 
 ***
+
+## Contrato de ensamblado de prompts de delegación
+
+Fuente única de verdad de qué entra en un prompt de delegación. Aplica a toda delegación a cualquier subagente.
+
+### Lo que entra — solo estas cuatro categorías
+
+1. **Input literal del desarrollador** — el texto original, sin interpretación.
+2. **Referencias citables** — IDs de Engram y rutas (artifacts, flow-state, checkpoints, planes, observaciones). Nunca resúmenes ni conclusiones sobre esas fuentes.
+3. **Hechos de coordinación** — CA ID, `instance_name` (como campo de dato), modo (normal / Evolution Mode), inspectores ya despachados. Los flujos con payload específico (p. ej. Review) definen sus campos operacionales propios dentro de esta categoría.
+4. **Heurísticas del desarrollador** — todas las recuperadas en el Paso 0 (bloque `## Heurísticas del desarrollador`), sin filtrar por tarea.
+
+### Lo que nunca entra
+
+- conclusiones o resúmenes pre-digeridos de fuentes;
+- guiones de respuesta o posturas dictadas;
+- agendas de preguntas o prescripción de proceso ("Debes 1..5");
+- tareas que pertenecen a otro rol;
+- re-narración del estado propio del agente — el estado vive en su checkpoint en Engram (`flow-state/{CA-ID}/{agente}`); el prompt deriva al checkpoint, no lo re-narra;
+- mecánica interna del runner (`scenario`, `task_id`, `base_names`, `topic_signature`, "aceptado por el runner").
+
+Las prohibiciones viven solo aquí (lado emisor). Los receptores definen únicamente su contrato de entrada en positivo.
 
 ## Checkpoint Protocol (Vía Engram)
 
@@ -180,15 +202,15 @@ Flujo de delegación — sin excepciones:
 
 **Escenario A: Initial Prompt (Nuevo hilo)**
 Si NO existe un `task_id` válido para el agente en el mapa de instancias, o si Engram no está disponible (`mem_search` falló):
-- Invocar `task()` con el prompt original + contexto inyectado + heurísticas cacheadas del Paso 0 (bloque `## Heurísticas del desarrollador`).
+- Invocar `task()` con: input literal del desarrollador, referencias citables, hechos de coordinación y todas las heurísticas del Paso 0 (bloque `## Heurísticas del desarrollador`), sin filtrar por tarea — según el Contrato de ensamblado de prompts de delegación.
 - Instrucción: "Tu nombre de instancia es {instance_name}. Sigue las instrucciones de tu rol."
 
 **Escenario B: Resume Prompt (Hilo existente)**
 Si existe un `task_id` activo en el mapa de instancias:
 - Construir `Resume Prompt` incluyendo:
   - Notificación de reanudación: "Reanudando sesión para {instance_name}."
-  - Mini-resumen: Recuperar último checkpoint `mem_search(query: "flow-state/{CA-ID}/{agente}")`.
-  - Heurísticas cacheadas del Paso 0 (bloque `## Heurísticas del desarrollador`).
+  - **Puntero a checkpoint**: "Tu estado previo está en tu checkpoint en Engram (`flow-state/{CA-ID}/{agente}`). Consúltalo al iniciar."
+  - Todas las heurísticas del Paso 0 (bloque `## Heurísticas del desarrollador`), sin filtrar por tarea.
   - Input Usuario: Texto original del desarrollador.
   - **Sincronización Obligatoria**: "Antes de actuar, sincroniza tu contexto local usando `git status/diff` y consulta las últimas decisiones en Engram (`mem_context`)."
 - Invocar `task()` usando el `task_id` persistido.
@@ -334,17 +356,18 @@ graphify query --query <query-string>` → escalación automática al Inspector 
 cualquier resultado no utilizable de la primera vía aplicable. Consulta desde la
 raíz del repositorio principal y nunca `.worktrees/`. Emite literalmente
 `no pude obtener referencias utilizables del grafo, escalando al Inspector`.
-La delegación conserva el contrato de pregunta y alcance exactos, hallazgos
-verificables y fuentes, vías consultadas y fallos/degradaciones, incertidumbres,
-tradeoffs y GAPs. Si el Inspector no está disponible, reporta que no pudo obtener
+La delegación al Inspector contiene únicamente pregunta y alcance exactos,
+referencias citables, GAPs pendientes y una línea de vías fallidas — según el
+Contrato de ensamblado de prompts de delegación. Si el Inspector no está
+disponible, reporta que no pudo obtener
 evidencia porque el Inspector no está disponible y escala al desarrollador, sin
 búsqueda normal ni contexto inventado.
 
 El Runner etiqueta certeza (`[Inferencia]`, `[Especulación]`, `[No verificado]`),
 expone tradeoffs y GAPs y no escribe. Si Engram y Graphify no bastan y
-responder exige suponer, invoca al Inspector con la pregunta, hallazgos,
-fuentes, fallos y límites; no delega por defecto una consulta que la evidencia
-resuelve.
+responder exige suponer, invoca al Inspector con pregunta y alcance exactos,
+referencias citables, GAPs pendientes y una línea de vías fallidas; no delega
+por defecto una consulta que la evidencia resuelve.
 
 ### Sub-paso 2 — Clasificación inyectada en contexto (prioridad absoluta)
 
