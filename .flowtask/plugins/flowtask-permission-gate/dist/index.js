@@ -28,8 +28,29 @@ const SESSION_AGENTS = new Map();
  */
 const TURN_STATE = new Map();
 const TURN_SEQ = new Map();
+/**
+ * Normaliza una identidad de agente/modelo a forma canónica comparable:
+ * trim + lowercase, y `_` o whitespace colapsados a `-`. Cubre variantes
+ * case-insensitive como "FlowTask-Runner", "FLOWTASK_RUNNER", " flowtask-runner ".
+ */
+function normalizeAgent(agent) {
+    return agent.trim().toLowerCase().replace(/_/g, "-").replace(/\s+/g, "-");
+}
+/**
+ * ¿Este agente es el runner de FlowTask? El gate valida la PERSONALIDAD
+ * (flowtask-runner), no el modelo (p. ej. muse-spark-1.2-contributor u
+ * opencode): si la identidad normalizada contiene un modelo conocido, nunca
+ * califica como runner, aunque el runtime la reporte en hooks de agente.
+ */
 function isRunner(agent) {
-    return typeof agent === "string" && agent.toLowerCase().replace(/_/g, "-") === "flowtask-runner";
+    if (typeof agent !== "string")
+        return false;
+    const normalized = normalizeAgent(agent);
+    if (!normalized)
+        return false;
+    if (normalized.includes("muse-spark") || normalized.includes("opencode"))
+        return false;
+    return normalized === "flowtask-runner";
 }
 function runnerToolAllowed(tool, args) {
     if (tool === "bash")
@@ -248,7 +269,11 @@ export default async function (input) {
     const sessionDir = input.directory;
     return {
         "chat.message": async (hookInput) => {
-            if (hookInput.agent !== undefined) {
+            // GATE: SESSION_AGENTS solo registra la personalidad flowtask-runner. Si
+            // el runtime expone el modelo (p. ej. muse-spark) como `agent`, se ignora:
+            // el gate valida agente, no modelo, y un registro de modelo contaminaría la
+            // identidad de la sesión — no sobrescribir un runner ya validado.
+            if (hookInput.agent !== undefined && isRunner(hookInput.agent)) {
                 SESSION_AGENTS.set(hookInput.sessionID, hookInput.agent);
             }
             // Cada mensaje nuevo abre un turno: se numera y se resetea el acumulado.
@@ -258,9 +283,12 @@ export default async function (input) {
         },
         "tool.execute.before": async (hookInput, hookOutput) => {
             const command = String(hookOutput?.args?.command ?? "");
-            // OpenCode 1.18.4 does not expose agent on tool.execute.before.
-            // chat.message is the authoritative runtime source for the session.
-            const agent = SESSION_AGENTS.get(hookInput.sessionID);
+            // OpenCode 1.18.4 no expone agent en tool.execute.before; chat.message es
+            // la fuente autoritativa de la sesión. Fallback defensivo: si 1.18.15+
+            // expone el agent en el hook de tool y califica como runner, se usa esa
+            // identidad; si no califica (o está ausente), se cae a la sesión.
+            const hookAgent = hookInput.agent;
+            const agent = hookAgent !== undefined && isRunner(hookAgent) ? hookAgent : SESSION_AGENTS.get(hookInput.sessionID);
             if (isRunner(agent) && !runnerToolAllowed(hookInput.tool, hookOutput?.args ?? {}))
                 runnerBlocked();
             // --- context budget: pre-gate barato (runner, lista cerrada, sin recorrer árbol) ---

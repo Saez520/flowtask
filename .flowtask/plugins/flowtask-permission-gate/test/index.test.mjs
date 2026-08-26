@@ -154,6 +154,54 @@ test("Runner receives exact delegation feedback and read-only tools are allowed"
   );
 });
 
+// --- Identidad runner: case-insensitive robusto y sin confusión con modelo (HF-gate-runner-identidad) ---
+
+test("identidad: variantes case/separador del runner califican como runner", async () => {
+  let i = 0;
+  for (const agent of [
+    "flowtask-runner",
+    "Flowtask-Runner",
+    "FLOWTASK_RUNNER",
+    "FLOWTASK-RUNNER",
+    " flowtask-runner ",
+    "FlowTask-Runner ",
+  ]) {
+    // SessionID único por caso: la identidad es compartida a nivel módulo.
+    const sessionID = `s-var-${i++}`;
+    const hooks = await plugin({ directory: process.cwd() });
+    await hooks["chat.message"]({ sessionID, agent }, { message: {}, parts: [] });
+    await assert.rejects(
+      hooks["tool.execute.before"]({ tool: "glob", sessionID, callID: "c" }, { args: { pattern: "**/*" } }),
+      (error) => error instanceof Error && error.message === buildFallback("glob", 8001, 8000),
+      `agent ${JSON.stringify(agent)} debe calificar como runner`,
+    );
+  }
+});
+
+test("identidad: el modelo muse-spark/opencode nunca califica como runner", async () => {
+  let i = 0;
+  for (const agent of ["muse-spark-1.2-contributor", "MUSE-SPARK-1.2-CONTRIBUTOR", "musE-Spark-1.2", "opencode", "opencode-codex"]) {
+    // SessionID único por caso: nunca registra flowtask-runner.
+    const sessionID = `s-model-${i++}`;
+    const hooks = await plugin({ directory: process.cwd() });
+    await hooks["chat.message"]({ sessionID, agent }, { message: {}, parts: [] });
+    // No-runner: el pre-gate no debe lanzar aunque la llamada sea amplia.
+    await hooks["tool.execute.before"]({ tool: "glob", sessionID, callID: "c" }, { args: { pattern: "**/*" } });
+  }
+});
+
+test("identidad: modelo reportado en chat.message no sobrescribe identidad runner de la sesión", async () => {
+  const hooks = await plugin({ directory: process.cwd() });
+  await hooks["chat.message"]({ sessionID: "s", agent: "flowtask-runner" }, { message: {}, parts: [] });
+  // El runtime expone el modelo en chat.message.agent: no debe reemplazar la
+  // identidad runner ya registrada (la sesión sigue siendo runner, no modelo).
+  await hooks["chat.message"]({ sessionID: "s", agent: "muse-spark-1.2-contributor" }, { message: {}, parts: [] });
+  await assert.rejects(
+    hooks["tool.execute.before"]({ tool: "glob", sessionID: "s", callID: "c" }, { args: { pattern: "**/*" } }),
+    (error) => error instanceof Error && error.message === buildFallback("glob", 8001, 8000),
+  );
+});
+
 // --- Gate universal de commits: stamp estructurado ---
 
 test("commit with a fresh structured stamp passes and the stamp is NOT consumed", async () => {
@@ -287,19 +335,19 @@ test("diff stats count untracked pending files even when HEAD diff is empty", as
 
 // --- context-budget: presupuesto de contexto read/glob/grep del runner ---
 
-async function mockPluginSession(runner = true, directory = process.cwd()) {
+async function mockPluginSession(runner = true, directory = process.cwd(), sessionID = "s") {
   const hooks = await plugin({ directory });
   await hooks["chat.message"](
-    { sessionID: "s", agent: runner ? "flowtask-runner" : "other-agent" },
+    { sessionID, agent: runner ? "flowtask-runner" : "other-agent" },
     { message: {}, parts: [] },
   );
   return hooks;
 }
 
 /** Invoca tool.execute.after y devuelve el objeto output mutado (contrato mutable). */
-async function callAfter(hooks, tool, outputStr, metadata = {}) {
+async function callAfter(hooks, tool, outputStr, metadata = {}, sessionID = "s") {
   const output = { title: tool, output: outputStr, metadata };
-  await hooks["tool.execute.after"]({ tool, sessionID: "s", callID: `c-${tool}` }, output);
+  await hooks["tool.execute.after"]({ tool, sessionID, callID: `c-${tool}` }, output);
   return output;
 }
 
@@ -403,10 +451,15 @@ test("context-budget: runner no ve umbrales — el error preventivo solo expone 
 });
 
 test("context-budget: non-runner no es afectado por before ni after", async () => {
-  const hooks = await mockPluginSession(false);
-  const output = await callAfter(hooks, "read", "x".repeat(60000));
+  // SessionID propio: el estado de identidad es compartido a nivel módulo
+  // (SESSION_AGENTS) y una sesión nueva nunca fue runner.
+  const hooks = await mockPluginSession(false, process.cwd(), "s-nonrunner");
+  const output = await callAfter(hooks, "read", "x".repeat(60000), {}, "s-nonrunner");
   assert.equal(output.output.length, 60000, "output grande intacto para no-runner");
-  await hooks["tool.execute.before"]({ tool: "glob", sessionID: "s", callID: "c" }, { args: { pattern: "**/*" } });
+  await hooks["tool.execute.before"](
+    { tool: "glob", sessionID: "s-nonrunner", callID: "c" },
+    { args: { pattern: "**/*" } },
+  );
 });
 
 test("context-budget: loadContextBudgetConfig usa defaults sin config file", async () => {

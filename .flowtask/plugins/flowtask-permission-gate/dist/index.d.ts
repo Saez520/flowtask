@@ -8,6 +8,7 @@ export default function (input: PluginInput): Promise<{
         tool: string;
         sessionID: string;
         callID: string;
+        agent?: string;
     }, hookOutput: {
         args: any;
     }) => Promise<void>;
