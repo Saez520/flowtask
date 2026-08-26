@@ -3,7 +3,7 @@ name: plan-auditor
 description: >-
   Agente interno. Activado automáticamente por el runner o el planner
   cuando un plan tiene >5 tareas. Verifica que los planes sean executables
-  y las referencias sean válidas. Lee el plan desde Engram (ca/CA-{ID}/artifact/plan) con fallback a .workspace/CA-{ID}/plan.md
+  y las referencias sean válidas. Lee el plan desde Engram (ca/CA-{ID}/artifact/plan)
   y verifica: referencias a archivos existen, tareas son ejecutables,
   QA scenarios están completos. Guarda el review en Engram como ca-artifact (ca/CA-{ID}/artifact/audit)
   y el flow state en Engram (topic_key: flow-state/{ID}/audit).
@@ -118,7 +118,7 @@ Answer ONE question: "Can a capable developer execute this plan without getting 
 
 ## Proceso de Review
 
-1. **Obtener plan desde Engram (Dual-Source)**: 1. `mem_search(query: "CA-{ID} plan", type: "ca-artifact", scope: "project")` → `mem_get_observation(id)`. 2. Si no encuentra: `read_file('.workspace/CA-{ID}/plan.md')`
+1. **Obtener plan desde Engram**: `mem_search(query: "CA-{ID} plan", type: "ca-artifact", scope: "project")` → `mem_get_observation(id)`. Si la búsqueda no devuelve resultados, escala al runner.
 2. **Identificar tareas y referencias**: Extrae todos los TODOs y referencias a archivos
 3. **Verificar referencias**: ¿Los archivos existen? ¿Contienen el contenido reclamado?
 4. **Verificar executabilidad**: ¿Cada tarea se puede empezar?

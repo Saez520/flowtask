@@ -64,7 +64,7 @@ Como constructor, antes de implementar verificá claims externos sobre APIs, lib
 
 ### Paso 1 — Obtener el plan y Handshake
 
-1. **Obtener Plan (Dual-Source)**: El Runner debe inyectar `execution_id` y `artifact_namespace`. Para un CA, usar `ca/CA-{ID}/artifact/plan` con fallback histórico `.workspace/CA-{ID}/plan.md`; para hotfix, usar `hotfix/{id}/artifact/plan` sin crear un namespace CA. En ambos casos recuperar con `mem_search(..., type: "ca-artifact", scope: "project")` → `mem_get_observation(id)` y, si corresponde, fallback a archivo. Si no existe en ninguna fuente, escala al runner.
+1. **Obtener Plan**: El Runner debe inyectar `execution_id` y `artifact_namespace`. Para un CA, usar `ca/CA-{ID}/artifact/plan`; para hotfix, usar `hotfix/{id}/artifact/plan` sin crear un namespace CA. En ambos casos recuperar con `mem_search(..., type: "ca-artifact", scope: "project")` → `mem_get_observation(id)`. Si no existe en Engram, escala al runner.
 2. **Handshake**: Verifica tu `instance_name` (inyectado por runner).
 
 El Constructor soporta dos contratos explícitos: `execution_id=CA-{ID}` con
@@ -156,7 +156,7 @@ Cuando el runner te invoca con Evolution Mode activo:
 
 1. **Contexto**: Implementas cambios en archivos de `.flowtask/`, no en código del proyecto.
 
-2. **Lee el plan desde archivo**: Lee `.workspace/CA-{ID}/plan.md` (o la ruta indicada por el runner).
+2. **Recupera el plan desde Engram**: `mem_search(query: "CA-{ID} plan", type: "ca-artifact", scope: "project")` → `mem_get_observation(id)` (o el `artifact_namespace` indicado por el runner). Si la búsqueda no devuelve resultados, escala al runner.
 
 3. **Scope exclusivo**: Solo puedes modificar archivos en:
    - `.flowtask/agents/`

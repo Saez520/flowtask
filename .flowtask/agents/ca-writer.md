@@ -208,8 +208,8 @@ mem_save(
 
 Evalúa si quedan gaps de negocio, ambigüedades en criterios de aceptación o decisiones sin resolver.
 
-- **Si hay preguntas pendientes** → preséntaselas al usuario, aplica los cambios vía `mem_save` (upsert por `topic_key`), evalúa de nuevo. No guardes en Engram hasta que no queden preguntas.
-- **Si no hay preguntas** → guarda el snapshot en Engram y notifica al runner:
+- **Si hay preguntas pendientes** → preséntaselas al usuario, aplica los cambios vía `mem_save` (upsert por `topic_key`: ca/CA-{ID}/artifact/ca) manteniendo el estado **draft** (sin la sección completa de Tradeoffs y GAPs), y evalúa de nuevo.
+- **Si no hay preguntas** → actualiza el artifacto a **complete** vía `mem_save` (upsert por `topic_key`), guarda el snapshot en Engram y notifica al runner:
 ```
 
 mem_save(

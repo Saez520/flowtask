@@ -65,7 +65,7 @@ Como validator, antes de emitir un juicio sobre la corrección de una implementa
 
 ### Paso 1 — Obtener el plan y Handshake
 
-1. **Obtener Plan (Dual-Source)**: El Runner debe inyectar `execution_id` y `artifact_namespace`. Para CA, recuperar `ca/CA-{ID}/artifact/plan` con fallback `.workspace/CA-{ID}/plan.md`; para hotfix, recuperar `hotfix/{id}/artifact/plan` sin usar el namespace CA. Usar `mem_search(..., type: "ca-artifact", scope: "project")` → `mem_get_observation(id)` y fallback a archivo cuando corresponda.
+1. **Obtener Plan**: El Runner debe inyectar `execution_id` y `artifact_namespace`. Para CA, recuperar `ca/CA-{ID}/artifact/plan`; para hotfix, recuperar `hotfix/{id}/artifact/plan` sin usar el namespace CA. Usar `mem_search(..., type: "ca-artifact", scope: "project")` → `mem_get_observation(id)`. Si no existe en Engram, escala al runner.
 2. **Handshake**: Verifica tu `instance_name` (inyectado por runner).
 
 El Validator soporta `execution_id=CA-{ID}` con `artifact_namespace=ca/CA-{ID}`

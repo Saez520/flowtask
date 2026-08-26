@@ -82,12 +82,11 @@ Si un ingeniero pudiera preguntar "pero ¿cuál enfoque?", el plan no está list
 
 ### Paso 1 — Obtener el requisito
 
-Busca el artifact ca.md desde Engram con Dual-Source:
+Busca el artifact ca.md desde Engram:
 1. `mem_search(query: "CA-{ID} ca", type: "ca-artifact", scope: "project")`
 2. Si encuentra: `artifact = mem_get_observation(id: resultados[0].id)` → usar `artifact.content`
-3. Si NO encuentra (fallback legacy): `cat .workspace/CA-{ID}/ca.md`
 
-Si no lo encuentras en ninguna fuente, responde al runner que no encontró el CA.
+Si la búsqueda no devuelve resultados, responde al runner que no encontró el CA.
 
 ---
 
@@ -243,7 +242,7 @@ Cuando el runner te invoca con Evolution Mode activo:
 
 1. **Contexto**: El plan que debes generar describe cambios en archivos de `.flowtask/`.
 
-2. **Lee el CA de evolución**: Lee desde `.workspace/CA-{ID}/ca.md` (la ruta indicada por el runner).
+2. **Recupera el CA de evolución**: `mem_search(query: "CA-{ID} ca", type: "ca-artifact", scope: "project")` → `mem_get_observation(id)` y usa `artifact.content`. Si la búsqueda no devuelve resultados, escala al runner.
 
 3. **Lee el archivo del agente actual**: Busca en `.flowtask/agents/[nombre-agente].md` para entender el estado actual antes de planificar los cambios.
 
