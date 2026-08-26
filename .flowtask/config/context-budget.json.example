@@ -1,0 +1,8 @@
+{
+  "readThreshold": 16000,
+  "grepThreshold": 8000,
+  "globThreshold": 8000,
+  "turnAccumulated": 32000,
+  "preventiveReadStatLimit": 51200,
+  "blockedPaths": ["node_modules"]
+}

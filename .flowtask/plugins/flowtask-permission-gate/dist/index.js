@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand } from "./authorizer.js";
+import { buildFallback, isImageOrPdfOutput, loadContextBudgetConfig, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
 /**
  * Rutas candidatas de configuración, probadas en orden dentro de cada directorio.
  * Precedencia: workdir del commit primero; sessionDir solo como fallback para
@@ -20,6 +21,13 @@ const RUNNER_TASKS = new Set([
     "flowtask-graphify-docs-media",
 ]);
 const SESSION_AGENTS = new Map();
+/**
+ * Acumulado por turno del runner (GAP-002): turno = ciclo entre `chat.message`
+ * consecutivos del mismo sessionID. `TURN_STATE` guarda la suma de chars
+ * entregados (no omitidos) y el número de turno; `TURN_SEQ` numera los turnos.
+ */
+const TURN_STATE = new Map();
+const TURN_SEQ = new Map();
 function isRunner(agent) {
     return typeof agent === "string" && agent.toLowerCase().replace(/_/g, "-") === "flowtask-runner";
 }
@@ -221,6 +229,21 @@ function buildStampBlockMessage(cause, stampPath, configPath, stats) {
         '  {"ts":"<ISO-8601>","branch":"<rama actual del repo objetivo>"}',
     ].join("\n");
 }
+/**
+ * `stat.size` del archivo de read si existe y es un string. Devuelve undefined
+ * si falla (GAP híbrido: pre-gate es ahorro barato, el post-gate decide).
+ */
+function readStatSizeSafe(args) {
+    const file = args?.file;
+    if (typeof file !== "string" || !file)
+        return undefined;
+    try {
+        return statSync(file).size;
+    }
+    catch {
+        return undefined;
+    }
+}
 export default async function (input) {
     const sessionDir = input.directory;
     return {
@@ -228,6 +251,10 @@ export default async function (input) {
             if (hookInput.agent !== undefined) {
                 SESSION_AGENTS.set(hookInput.sessionID, hookInput.agent);
             }
+            // Cada mensaje nuevo abre un turno: se numera y se resetea el acumulado.
+            const turn = (TURN_SEQ.get(hookInput.sessionID) ?? 0) + 1;
+            TURN_SEQ.set(hookInput.sessionID, turn);
+            TURN_STATE.set(hookInput.sessionID, { sum: 0, turn });
         },
         "tool.execute.before": async (hookInput, hookOutput) => {
             const command = String(hookOutput?.args?.command ?? "");
@@ -236,6 +263,29 @@ export default async function (input) {
             const agent = SESSION_AGENTS.get(hookInput.sessionID);
             if (isRunner(agent) && !runnerToolAllowed(hookInput.tool, hookOutput?.args ?? {}))
                 runnerBlocked();
+            // --- context budget: pre-gate barato (runner, lista cerrada, sin recorrer árbol) ---
+            if (isRunner(agent) && (hookInput.tool === "read" || hookInput.tool === "glob" || hookInput.tool === "grep")) {
+                const budgetWorkdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
+                const budget = loadContextBudgetConfig(budgetWorkdir, sessionDir);
+                if (hookInput.tool === "read") {
+                    const statSize = readStatSizeSafe(hookOutput?.args ?? {});
+                    if (shouldPreventiveBlockRead(hookOutput?.args ?? {}, statSize)) {
+                        const actual = statSize ?? budget.preventiveReadStatLimit + 1;
+                        throw new Error(buildFallback("read", actual, budget.readThreshold));
+                    }
+                }
+                else if (hookInput.tool === "glob") {
+                    if (shouldPreventiveBlockGlob(hookOutput?.args ?? {})) {
+                        // Pre-gate sin tamaño real: N=threshold+1 expresa exceso potencial.
+                        throw new Error(buildFallback("glob", budget.globThreshold + 1, budget.globThreshold));
+                    }
+                }
+                else if (hookInput.tool === "grep") {
+                    if (shouldPreventiveBlockGrep(hookOutput?.args ?? {})) {
+                        throw new Error(buildFallback("grep", budget.grepThreshold + 1, budget.grepThreshold));
+                    }
+                }
+            }
             if (hookInput.tool !== "bash" || !/\bgit\s+commit\b/.test(command))
                 return;
             if (command.includes("--no-verify") || command.includes("--no-review"))
@@ -274,8 +324,52 @@ export default async function (input) {
             // binding; un commit fallido posterior no obliga a regenerar el stamp.
             return;
         },
+        "tool.execute.after": async (hookInput, hookOutput) => {
+            const agent = SESSION_AGENTS.get(hookInput.sessionID);
+            if (!isRunner(agent))
+                return;
+            if (hookInput.tool !== "read" && hookInput.tool !== "glob" && hookInput.tool !== "grep")
+                return;
+            if (hookOutput == null || typeof hookOutput.output !== "string") {
+                // GAP-003: si no se puede medir, nunca entregar silencioso sin control:
+                // se observa con traza. Un smoke de integración revalida la mutación.
+                console.warn(`[FlowTask Context Budget] no se pudo medir output de ${hookInput.tool} (session ${hookInput.sessionID}); se entrega sin presupuestar.`);
+                return;
+            }
+            const budget = loadContextBudgetConfig(sessionDir || process.cwd(), sessionDir);
+            const threshold = hookInput.tool === "read" ? budget.readThreshold : hookInput.tool === "grep" ? budget.grepThreshold : budget.globThreshold;
+            const actual = hookOutput.output.length;
+            // Attachments imagen/PDF: el texto corto miente sobre el costo real; el
+            // runner no recibe attachments (v1) y se delega al Inspector.
+            if (isImageOrPdfOutput(hookOutput)) {
+                hookOutput.output =
+                    buildFallback(hookInput.tool, actual, threshold) +
+                        " (imagen/PDF — delegá al Inspector)";
+                if (hookOutput.metadata)
+                    hookOutput.metadata.attachment = undefined;
+                return;
+            }
+            // Umbral individual: se omite (no se suma al acumulado) y se marca.
+            if (actual > threshold) {
+                hookOutput.output = buildFallback(hookInput.tool, actual, threshold);
+                hookOutput.metadata = { ...(hookOutput.metadata ?? {}), truncated: true };
+                return;
+            }
+            // Umbral acumulado por turno: aunque esté bajo el individual, la suma
+            // entregada del turno no puede superar el presupuesto del turno.
+            const state = TURN_STATE.get(hookInput.sessionID) ?? { sum: 0, turn: TURN_SEQ.get(hookInput.sessionID) ?? 0 };
+            if (state.sum + actual > budget.turnAccumulated) {
+                hookOutput.output = buildFallback(hookInput.tool, actual, budget.turnAccumulated);
+                hookOutput.metadata = { ...(hookOutput.metadata ?? {}), truncated: true };
+                return;
+            }
+            state.sum += actual;
+            TURN_STATE.set(hookInput.sessionID, state);
+        },
         dispose: async () => {
             SESSION_AGENTS.clear();
+            TURN_STATE.clear();
+            TURN_SEQ.clear();
         },
     };
 }

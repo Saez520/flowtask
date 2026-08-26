@@ -6,6 +6,14 @@ import path from "node:path";
 import { afterEach, test } from "node:test";
 import plugin from "../dist/index.js";
 import { isAuthorizedRunnerCommand, RUNNER_DELEGATION_MESSAGE, tokenizeCommand } from "../dist/authorizer.js";
+import {
+  buildFallback,
+  isImageOrPdfOutput,
+  loadContextBudgetConfig,
+  shouldPreventiveBlockGlob,
+  shouldPreventiveBlockGrep,
+  shouldPreventiveBlockRead,
+} from "../dist/context-budget.js";
 
 const roots = [];
 afterEach(() => roots.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
@@ -130,8 +138,15 @@ test("inert single-quoted substitutions keep passing", () => {
 test("Runner receives exact delegation feedback and read-only tools are allowed", async () => {
   const hooks = await plugin({ directory: process.cwd() });
   await hooks["chat.message"]({ sessionID: "s", agent: "flowtask-runner" }, { message: {}, parts: [] });
+  // args acotados: el pre-gate de context-budget no debe bloquear herramientas
+  // read-only autorizadas cuando la llamada está acotada.
+  const cases = {
+    read: { file: "package.json", limit: 10 },
+    glob: { pattern: "*.json", path: "." },
+    grep: { pattern: "TODO", path: ".", include: "*.md" },
+  };
   for (const tool of ["read", "glob", "grep"]) {
-    await hooks["tool.execute.before"]({ tool, sessionID: "s", callID: `c-${tool}` }, { args: {} });
+    await hooks["tool.execute.before"]({ tool, sessionID: "s", callID: `c-${tool}` }, { args: cases[tool] });
   }
   await assert.rejects(
     hooks["tool.execute.before"]({ tool: "bash", sessionID: "s", callID: "c" }, { args: { command: "git log" } }),
@@ -268,4 +283,191 @@ test("diff stats count untracked pending files even when HEAD diff is empty", as
   await assert.rejects(runGate(hooks, root), (error) =>
     error instanceof Error && error.message.includes("📊 Diff: 1 archivo(s), 0 línea(s) pendientes."),
   );
+});
+
+// --- context-budget: presupuesto de contexto read/glob/grep del runner ---
+
+async function mockPluginSession(runner = true, directory = process.cwd()) {
+  const hooks = await plugin({ directory });
+  await hooks["chat.message"](
+    { sessionID: "s", agent: runner ? "flowtask-runner" : "other-agent" },
+    { message: {}, parts: [] },
+  );
+  return hooks;
+}
+
+/** Invoca tool.execute.after y devuelve el objeto output mutado (contrato mutable). */
+async function callAfter(hooks, tool, outputStr, metadata = {}) {
+  const output = { title: tool, output: outputStr, metadata };
+  await hooks["tool.execute.after"]({ tool, sessionID: "s", callID: `c-${tool}` }, output);
+  return output;
+}
+
+test("context-budget: read pequeño (14_485) pasa intacto y suma al acumulado", async () => {
+  const hooks = await mockPluginSession();
+  const output = await callAfter(hooks, "read", "a".repeat(14485));
+  assert.equal(output.output.length, 14485, "contenido intacto bajo umbral individual");
+  assert.equal(output.metadata.truncated, undefined);
+  // Una segunda llamada chica también pasa (acumulado 14485 + 6000 < 32K).
+  const second = await callAfter(hooks, "grep", "b".repeat(6000));
+  assert.equal(second.output.length, 6000);
+});
+
+test("context-budget: read 60_383 bloquea con fallback 16K sin preview (R3)", async () => {
+  const hooks = await mockPluginSession();
+  const output = await callAfter(hooks, "read", "a".repeat(60383));
+  assert.equal(output.output, buildFallback("read", 60383, 16000));
+  assert.equal(output.metadata.truncated, true);
+});
+
+test("context-budget: grep 11_787 bloquea con fallback 8K (G4)", async () => {
+  const hooks = await mockPluginSession();
+  const output = await callAfter(hooks, "grep", "a".repeat(11787));
+  assert.equal(output.output, buildFallback("grep", 11787, 8000));
+  assert.equal(output.metadata.truncated, true);
+});
+
+test("context-budget: glob 12_000 bloquea con fallback 8K (L3)", async () => {
+  const hooks = await mockPluginSession();
+  const output = await callAfter(hooks, "glob", "a".repeat(12000));
+  assert.equal(output.output, buildFallback("glob", 12000, 8000));
+  assert.equal(output.metadata.truncated, true);
+});
+
+test("context-budget: acumulado 32K por turno bloquea aunque el individual de 6K pase", async () => {
+  const hooks = await mockPluginSession();
+  await callAfter(hooks, "read", "a".repeat(14485)); // sum = 14485
+  await callAfter(hooks, "grep", "b".repeat(6000)); // sum = 20485
+  await callAfter(hooks, "grep", "c".repeat(6000)); // sum = 26485
+  const blocked = await callAfter(hooks, "grep", "d".repeat(6000)); // 26485 + 6000 > 32000
+  assert.equal(blocked.output, buildFallback("grep", 6000, 32000));
+  assert.equal(blocked.metadata.truncated, true);
+});
+
+test("context-budget: imagen PNG (Image read successfully) bloquea y no entrega attachment", async () => {
+  const hooks = await mockPluginSession();
+  const output = await callAfter(hooks, "read", "Image read successfully", {
+    attachment: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
+  });
+  assert.equal(output.output, `${buildFallback("read", 23, 16000)} (imagen/PDF — delegá al Inspector)`);
+  assert.equal(output.metadata.attachment, undefined, "attachment no entregado al modelo");
+});
+
+test("context-budget: glob **/* sin path acotado bloquea preventivo en before", async () => {
+  const hooks = await mockPluginSession();
+  await assert.rejects(
+    hooks["tool.execute.before"]({ tool: "glob", sessionID: "s", callID: "c" }, { args: { pattern: "**/*" } }),
+    (error) => error instanceof Error && error.message === buildFallback("glob", 8001, 8000),
+  );
+  // Path acotado a node_modules también se bloquea (lista cerrada).
+  await assert.rejects(
+    hooks["tool.execute.before"](
+      { tool: "glob", sessionID: "s", callID: "c" },
+      { args: { pattern: "**/*", path: "node_modules/pkg" } },
+    ),
+    (error) => error instanceof Error && error.message === buildFallback("glob", 8001, 8000),
+  );
+});
+
+test("context-budget: read de archivo >50KiB sin limit bloquea preventivo en before", async () => {
+  const root = makeTemp("flowtask-budget-read-");
+  const bigFile = path.join(root, "big.txt");
+  fs.writeFileSync(bigFile, Buffer.alloc(60 * 1024, 0x61)); // 61_440 bytes > 51_200
+  const hooks = await mockPluginSession();
+  await assert.rejects(
+    hooks["tool.execute.before"]({ tool: "read", sessionID: "s", callID: "c" }, { args: { file: bigFile } }),
+    (error) => error instanceof Error && error.message === buildFallback("read", 60 * 1024, 16000),
+  );
+});
+
+test("context-budget: grep sin include en la raíz bloquea preventivo en before", async () => {
+  const hooks = await mockPluginSession();
+  await assert.rejects(
+    hooks["tool.execute.before"]({ tool: "grep", sessionID: "s", callID: "c" }, { args: { pattern: "TODO" } }),
+    (error) => error instanceof Error && error.message === buildFallback("grep", 8001, 8000),
+  );
+});
+
+test("context-budget: runner no ve umbrales — el error preventivo solo expone el fallback", async () => {
+  const hooks = await mockPluginSession();
+  let error;
+  try {
+    await hooks["tool.execute.before"]({ tool: "glob", sessionID: "s", callID: "c" }, { args: { pattern: "**/*" } });
+  } catch (caught) {
+    error = caught;
+  }
+  assert.ok(error instanceof Error, "el pre-gate debe lanzar");
+  for (const key of ["readThreshold", "grepThreshold", "globThreshold", "turnAccumulated", "blockedPaths", "DEFAULT_"]) {
+    assert.equal(error.message.includes(key), false, `no expone "${key}" al runner`);
+  }
+});
+
+test("context-budget: non-runner no es afectado por before ni after", async () => {
+  const hooks = await mockPluginSession(false);
+  const output = await callAfter(hooks, "read", "x".repeat(60000));
+  assert.equal(output.output.length, 60000, "output grande intacto para no-runner");
+  await hooks["tool.execute.before"]({ tool: "glob", sessionID: "s", callID: "c" }, { args: { pattern: "**/*" } });
+});
+
+test("context-budget: loadContextBudgetConfig usa defaults sin config file", async () => {
+  const config = loadContextBudgetConfig(makeTemp("flowtask-budget-nocfg-"));
+  assert.equal(config.readThreshold, 16000);
+  assert.equal(config.grepThreshold, 8000);
+  assert.equal(config.globThreshold, 8000);
+  assert.equal(config.turnAccumulated, 32000);
+  assert.equal(config.preventiveReadStatLimit, 50 * 1024);
+  assert.deepEqual(config.preventiveGlobPatterns, ["**/*", "**"]);
+});
+
+test("context-budget: loadContextBudgetConfig fail-open con JSON inválido (warn + defaults)", async () => {
+  const root = makeTemp("flowtask-budget-badjson-");
+  fs.mkdirSync(path.join(root, ".flowtask", "config"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".flowtask", "config", "context-budget.json"), "{invalid", "utf8");
+  const config = loadContextBudgetConfig(root);
+  assert.equal(config.readThreshold, 16000, "defaults tras JSON inválido sin throw");
+});
+
+test("context-budget: loadContextBudgetConfig aplica override válido en workdir", async () => {
+  const root = makeTemp("flowtask-budget-override-");
+  fs.mkdirSync(path.join(root, ".flowtask", "config"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".flowtask", "config", "context-budget.json"),
+    JSON.stringify({ readThreshold: 999, blockedPaths: ["node_modules", "vendor"] }),
+    "utf8",
+  );
+  const config = loadContextBudgetConfig(root);
+  assert.equal(config.readThreshold, 999);
+  assert.equal(config.grepThreshold, 8000, "campos no overrides conservan defaults");
+  assert.deepEqual(config.blockedPaths, ["node_modules", "vendor"]);
+});
+
+test("context-budget: buildFallback retorna el template exacto sin preview", () => {
+  assert.equal(
+    buildFallback("read", 60383, 16000),
+    "Resultado de `read` omitido: `60383` chars exceden el presupuesto `16000`. Acotá path/pattern/limit/include o delegá al Inspector.",
+  );
+  assert.equal(
+    buildFallback("glob", 12000, 8000),
+    "Resultado de `glob` omitido: `12000` chars exceden el presupuesto `8000`. Acotá path/pattern/limit/include o delegá al Inspector.",
+  );
+});
+
+test("context-budget: helpers preventivos puros (edge cases)", () => {
+  assert.equal(shouldPreventiveBlockRead({ file: "x.txt", limit: 10 }, 60000), false, "limit acota");
+  assert.equal(shouldPreventiveBlockRead({ file: "x.txt" }, 40000), false, "bajo 50KiB pasa");
+  assert.equal(shouldPreventiveBlockRead({ file: "x.txt" }, 60000), true, "sin limit y >50KiB bloquea");
+  assert.equal(shouldPreventiveBlockRead({ file: "x.txt" }, undefined), false, "stat fallido no bloquea");
+
+  assert.equal(shouldPreventiveBlockGlob({ pattern: "**/*" }), true, "pattern amplio sin path");
+  assert.equal(shouldPreventiveBlockGlob({ pattern: "**/*", path: "src" }), false, "path acotado pasa");
+  assert.equal(shouldPreventiveBlockGlob({ pattern: "**/*", path: "a/node_modules/b" }), true, "node_modules bloquea");
+  assert.equal(shouldPreventiveBlockGlob({ pattern: "*.ts", path: "." }), false, "pattern angosto pasa");
+
+  assert.equal(shouldPreventiveBlockGrep({ pattern: "x" }), true, "sin include y sin path");
+  assert.equal(shouldPreventiveBlockGrep({ pattern: "x", path: "src" }), false, "path acotado pasa");
+  assert.equal(shouldPreventiveBlockGrep({ pattern: "x", include: "*.ts" }), false, "include acota");
+
+  assert.equal(isImageOrPdfOutput({ output: "Image read successfully" }), true, "imagen textual");
+  assert.equal(isImageOrPdfOutput({ output: "lines", metadata: { attachment: "data:application/pdf;base64,xx" } }), true);
+  assert.equal(isImageOrPdfOutput({ output: "lines", metadata: {} }), false, "sin attachment no bloquea");
 });
