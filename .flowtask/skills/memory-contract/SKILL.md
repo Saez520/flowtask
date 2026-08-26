@@ -177,19 +177,15 @@ Los artifactos con `type: "ca-artifact"` no se cargan en contexto operativo norm
 
 ---
 
-## Dual-Source Period
+## Fuente Única
 
-Durante la migración coexistieron dos fuentes:
+Los artifactos de CAs se recuperan exclusivamente desde Engram:
 
-| Fuente | Estado | Uso |
-|--------|--------|-----|
-| CAs nuevos | Engram | Fuente principal |
-| CAs viejos (~19 en `.workspace/`) | Archivo | Fallback histórico |
+1. `mem_search(query: "CA-{ID} {tipo}", type: "ca-artifact")`
+2. `mem_get_observation(id: N)` para el contenido completo
+3. Si no aparece, reportar no encontrado al runner
 
-**Regla de 3 pasos**:
-1. Buscar en Engram
-2. Fallback a archivo
-3. Reportar no encontrado si no aparece en ninguno
+Los hotfixes y CAs previos se buscan bajo el ID original con el que fueron creados; los IDs históricos no se renombran.
 
 ---
 
