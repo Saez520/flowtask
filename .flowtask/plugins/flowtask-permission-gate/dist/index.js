@@ -29,28 +29,20 @@ const SESSION_AGENTS = new Map();
 const TURN_STATE = new Map();
 const TURN_SEQ = new Map();
 /**
- * Normaliza una identidad de agente/modelo a forma canónica comparable:
+ * Normaliza una identidad de agente a forma canónica comparable:
  * trim + lowercase, y `_` o whitespace colapsados a `-`. Cubre variantes
  * case-insensitive como "FlowTask-Runner", "FLOWTASK_RUNNER", " flowtask-runner ".
  */
 function normalizeAgent(agent) {
-    return agent.trim().toLowerCase().replace(/_/g, "-").replace(/\s+/g, "-");
+    return String(agent).trim().toLowerCase().replace(/_/g, "-").replace(/\s+/g, "-");
 }
 /**
  * ¿Este agente es el runner de FlowTask? El gate valida la PERSONALIDAD
- * (flowtask-runner), no el modelo (p. ej. muse-spark-1.2-contributor u
- * opencode): si la identidad normalizada contiene un modelo conocido, nunca
- * califica como runner, aunque el runtime la reporte en hooks de agente.
+ * (flowtask-runner), no el modelo: solo califica un match case-insensitive
+ * exacto de la identidad normalizada.
  */
 function isRunner(agent) {
-    if (typeof agent !== "string")
-        return false;
-    const normalized = normalizeAgent(agent);
-    if (!normalized)
-        return false;
-    if (normalized.includes("muse-spark") || normalized.includes("opencode"))
-        return false;
-    return normalized === "flowtask-runner";
+    return typeof agent === "string" && normalizeAgent(agent) === "flowtask-runner";
 }
 function runnerToolAllowed(tool, args) {
     if (tool === "bash")
@@ -269,10 +261,9 @@ export default async function (input) {
     const sessionDir = input.directory;
     return {
         "chat.message": async (hookInput) => {
-            // GATE: SESSION_AGENTS solo registra la personalidad flowtask-runner. Si
-            // el runtime expone el modelo (p. ej. muse-spark) como `agent`, se ignora:
-            // el gate valida agente, no modelo, y un registro de modelo contaminaría la
-            // identidad de la sesión — no sobrescribir un runner ya validado.
+            // GATE: SESSION_AGENTS solo registra la personalidad flowtask-runner;
+            // cualquier otra identidad expuesta como `agent` se ignora para no
+            // contaminar la identidad de la sesión ni sobrescribir un runner validado.
             if (hookInput.agent !== undefined && isRunner(hookInput.agent)) {
                 SESSION_AGENTS.set(hookInput.sessionID, hookInput.agent);
             }
