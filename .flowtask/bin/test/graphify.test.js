@@ -24,6 +24,9 @@ import {
   registerExtension,
   runExtension,
   clearExtensions,
+  registerOpencodeSkill,
+  resolveGraphifyPackageDir,
+  OPENCODE_SKILL_REFERENCE_FILES,
   coordinateGraphify,
 } from "../lib/graphify.js";
 
@@ -35,6 +38,31 @@ function makeTempDir() {
 
 function cleanupDir(dir) {
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+}
+
+/** Fake installed graphify package: skill-opencode.md + the 8-reference bundle. */
+function makeFakeGraphifyPackage(baseDir) {
+  const pkgDir = path.join(baseDir, "site-packages", "graphify");
+  fs.mkdirSync(path.join(pkgDir, "skills", "opencode", "references"), { recursive: true });
+  fs.writeFileSync(path.join(pkgDir, "skill-opencode.md"), "# Graphify Skill (fixture)\n", "utf8");
+  for (const name of OPENCODE_SKILL_REFERENCE_FILES) {
+    fs.writeFileSync(path.join(pkgDir, "skills", "opencode", "references", name), `referencia: ${name}\n`, "utf8");
+  }
+  return pkgDir;
+}
+
+/** Recursive file listing (sorted) used to assert nothing leaks outside a scope. */
+function listAllFiles(rootDir) {
+  const found = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else found.push(full);
+    }
+  };
+  walk(rootDir);
+  return found.sort();
 }
 
 // ─── Schema v1 ────────────────────────────────────────────────────────────────
@@ -57,6 +85,8 @@ describe("Schema v1", () => {
     assert.equal(state.query_status, "pending");
     assert.equal(state.query_last_attempt, null);
     assert.equal(state.query_diagnostic, null);
+    // skill-registration fields
+    assert.equal(state.opencodeSkillRegistered, "pending");
     // plan-docs-media fields
     assert.equal(state.docs_media_status, "pending");
     assert.equal(state.docs_media_last_attempt, null);
@@ -602,6 +632,7 @@ describe("coordinateGraphify", () => {
         versionFn: () => "2.0.0",
         runFn: () => ({ status: 0 }),
         grafoExtensions: false,
+        skillRegistration: false,
       },
     });
 
@@ -626,7 +657,7 @@ describe("coordinateGraphify", () => {
         flowtaskDir: path.join(tempDir, "cli-source"),
         selectedClis: [index === 0 ? "opencode" : "claude"],
         readline: rl,
-        opts: { detectFn: () => true, versionFn: () => "2.0.0", grafoExtensions: false },
+        opts: { detectFn: () => true, versionFn: () => "2.0.0", grafoExtensions: false, skillRegistration: false },
       });
       assert.equal(result.projectState.selectedClis[0], index === 0 ? "opencode" : "claude");
       assert.ok(fs.existsSync(projectStatePath(tempDir, targetDir)));
@@ -656,7 +687,7 @@ describe("coordinateGraphify", () => {
       projectDir: tempDir,
       selectedClis: ["opencode"],
       readline: rl,
-      opts: { detectFn: () => true, versionFn: () => "1.0", grafoExtensions: false },
+        opts: { detectFn: () => true, versionFn: () => "1.0", grafoExtensions: false, skillRegistration: false },
     });
 
     assert.equal(projectState.enabled, true);
@@ -679,7 +710,7 @@ describe("coordinateGraphify", () => {
       projectDir: tempDir,
       selectedClis: ["opencode"],
       readline: rl,
-      opts: { detectFn: () => true, versionFn: () => "1.0", grafoExtensions: false },
+        opts: { detectFn: () => true, versionFn: () => "1.0", grafoExtensions: false, skillRegistration: false },
     });
 
     assert.equal(projectState.hooksInstalled, true);
@@ -708,6 +739,7 @@ describe("coordinateGraphify", () => {
         detectFn: () => true,
         versionFn: () => "1.0",
         runFnPreflight: () => ({ status: 1 }),
+        skillRegistration: false,
       },
     });
 
@@ -741,6 +773,7 @@ describe("coordinateGraphify", () => {
         detectFn: () => true,
         versionFn: () => "1.0",
         runFnPreflight: () => ({ status: 0 }),
+        skillRegistration: false,
       },
     });
 
@@ -776,6 +809,7 @@ describe("coordinateGraphify", () => {
         detectFn: () => true,
         versionFn: () => "1.0",
         runFn: () => ({ status: 0 }),
+        skillRegistration: false,
       },
     });
 
@@ -824,6 +858,7 @@ describe("coordinateGraphify", () => {
           if (cmd.includes("graphify hook install")) return { status: 1 };
           return { status: 0 };
         },
+        skillRegistration: false,
       },
     });
 
@@ -896,6 +931,7 @@ describe("coordinateGraphify", () => {
         versionFn: () => "1.0",
         runFn: () => ({ status: 0 }),
         grafoExtensions: false,
+        skillRegistration: false,
       },
     });
 
@@ -937,7 +973,7 @@ describe("coordinateGraphify", () => {
         projectDir: tempDir,
         selectedClis: ["opencode"],
         readline: mockReadline({ install: "y", enable: "y", hooks: "n" }),
-        opts: { detectFn: () => true, versionFn: () => "1.0", runFn: () => ({ status: 0 }), grafoExtensions: false },
+        opts: { detectFn: () => true, versionFn: () => "1.0", runFn: () => ({ status: 0 }), grafoExtensions: false, skillRegistration: false },
       });
       assert.equal(projectState.query_status, result.status);
       assert.equal(projectState.query_diagnostic, result.diagnostic);
@@ -955,6 +991,7 @@ describe("coordinateGraphify", () => {
         versionFn: () => "1.0",
         runFn: () => ({ status: 0 }),
         grafoExtensions: false,
+        skillRegistration: false,
       },
     });
 
@@ -972,6 +1009,7 @@ describe("coordinateGraphify", () => {
         detectFn: () => true,
         versionFn: () => "1.0",
         runFn: () => ({ status: 0 }),
+        skillRegistration: false,
       },
     });
 
@@ -997,6 +1035,7 @@ describe("coordinateGraphify", () => {
         detectFn: () => true,
         versionFn: () => "1.0",
         runFn: () => ({ status: 0 }),
+        skillRegistration: false,
       },
     });
 
@@ -1014,6 +1053,7 @@ describe("coordinateGraphify", () => {
         detectFn: () => true,
         versionFn: () => "1.0",
         runFn: () => ({ status: 0 }),
+        skillRegistration: false,
       },
     });
 
@@ -1021,5 +1061,320 @@ describe("coordinateGraphify", () => {
     assert.ok(fs.existsSync(gitignorePath));
     const content = fs.readFileSync(gitignorePath, "utf8");
     assert.ok(content.includes("graphify-out/"));
+  });
+});
+
+// ─── OpenCode skill registration: package dir resolution ──────────────────────
+
+describe("resolveGraphifyPackageDir", () => {
+  const ENV_KEY = "FLOWTASK_GRAPHIFY_PACKAGE_DIR";
+  let tempDir;
+  let originalEnv;
+
+  beforeEach(() => {
+    tempDir = makeTempDir();
+    originalEnv = process.env[ENV_KEY];
+  });
+
+  afterEach(() => {
+    cleanupDir(tempDir);
+    if (originalEnv !== undefined) process.env[ENV_KEY] = originalEnv;
+    else delete process.env[ENV_KEY];
+  });
+
+  it("resuelve por override de entorno sin consultar intérprete", () => {
+    process.env[ENV_KEY] = tempDir;
+    let detectCalled = false;
+    const resolution = resolveGraphifyPackageDir({
+      detectFn: () => { detectCalled = true; return true; },
+      runFn: () => { throw new Error("no debe invocar el intérprete con override"); },
+    });
+    assert.equal(detectCalled, false);
+    assert.equal(resolution.source, "override");
+    assert.equal(resolution.packageDir, path.resolve(tempDir));
+    assert.equal(resolution.error, null);
+  });
+
+  it("resuelve vía el intérprete inyectado cuando no hay override", () => {
+    delete process.env[ENV_KEY];
+    const pkgDir = makeFakeGraphifyPackage(tempDir);
+    const moduleFile = path.join(pkgDir, "__init__.py");
+    fs.writeFileSync(moduleFile, "", "utf8");
+    const resolution = resolveGraphifyPackageDir({
+      detectFn: () => true,
+      runFn: (python, opts) => {
+        assert.ok(typeof python === "string" && python.length > 0);
+        assert.equal(opts.args[0], "-c");
+        assert.ok(opts.args[1].includes("import graphify"));
+        return { status: 0, stdout: `${moduleFile}\n` };
+      },
+    });
+    assert.equal(resolution.source, "interpreter");
+    assert.equal(resolution.packageDir, pkgDir);
+    assert.equal(resolution.error, null);
+  });
+
+  it("falla accionablemente sin override y sin intérprete disponible", () => {
+    delete process.env[ENV_KEY];
+    const resolution = resolveGraphifyPackageDir({ detectFn: () => false });
+    assert.equal(resolution.packageDir, null);
+    assert.equal(resolution.source, null);
+    assert.ok(resolution.error.includes("intérprete"));
+  });
+
+  it("falla cuando el intérprete no puede importar graphify", () => {
+    delete process.env[ENV_KEY];
+    const resolution = resolveGraphifyPackageDir({
+      detectFn: () => true,
+      runFn: () => ({ status: 1, stdout: "", stderr: "ModuleNotFoundError" }),
+    });
+    assert.equal(resolution.packageDir, null);
+    assert.ok(resolution.error.includes("no se pudo resolver el paquete graphify"));
+  });
+});
+
+// ─── OpenCode skill registration: registerOpencodeSkill ───────────────────────
+
+describe("registerOpencodeSkill", () => {
+  const ENV_KEY = "FLOWTASK_GRAPHIFY_PACKAGE_DIR";
+  let baseDir;
+  let projectDir;
+  let packageDir;
+  let originalEnv;
+
+  beforeEach(() => {
+    baseDir = makeTempDir();
+    packageDir = makeFakeGraphifyPackage(baseDir);
+    projectDir = path.join(baseDir, "project");
+    fs.mkdirSync(projectDir, { recursive: true });
+    originalEnv = process.env[ENV_KEY];
+    process.env[ENV_KEY] = packageDir;
+  });
+
+  afterEach(() => {
+    cleanupDir(baseDir);
+    if (originalEnv !== undefined) process.env[ENV_KEY] = originalEnv;
+    else delete process.env[ENV_KEY];
+  });
+
+  const skillRoot = () => path.join(projectDir, ".opencode", "skills", "graphify");
+
+  it("happy path: crea SKILL.md y las 8 referencias dentro de .opencode/skills/graphify", () => {
+    const result = registerOpencodeSkill({ projectDir });
+    assert.equal(result.status, "success");
+    assert.equal(result.warning, null);
+    assert.equal(result.copied.length, 1 + OPENCODE_SKILL_REFERENCE_FILES.length);
+    assert.ok(fs.existsSync(path.join(skillRoot(), "SKILL.md")));
+    for (const name of OPENCODE_SKILL_REFERENCE_FILES) {
+      assert.ok(fs.existsSync(path.join(skillRoot(), "references", name)), `falta ${name}`);
+    }
+  });
+
+  it("es idempotente en doble corrida: sin re-copias, duplicados ni residuos", () => {
+    registerOpencodeSkill({ projectDir });
+    const filesFirstRun = listAllFiles(skillRoot());
+    const second = registerOpencodeSkill({ projectDir });
+    assert.equal(second.status, "success");
+    assert.equal(second.warning, null);
+    assert.equal(second.copied.length, 0);
+    assert.equal(second.skipped.length, 1 + OPENCODE_SKILL_REFERENCE_FILES.length);
+    assert.deepEqual(listAllFiles(skillRoot()), filesFirstRun);
+    const tmpResidue = listAllFiles(skillRoot()).filter((file) => file.includes(".tmp"));
+    assert.equal(tmpResidue.length, 0);
+  });
+
+  it("re-copia un destino cuando el origen es más nuevo (update)", () => {
+    registerOpencodeSkill({ projectDir });
+    const future = new Date(Date.now() + 10_000);
+    fs.utimesSync(path.join(packageDir, "skill-opencode.md"), future, future);
+    const second = registerOpencodeSkill({ projectDir });
+    assert.equal(second.status, "success");
+    assert.deepEqual(second.copied, ["SKILL.md"]);
+    assert.equal(second.skipped.length, OPENCODE_SKILL_REFERENCE_FILES.length);
+  });
+
+  it("fallo simulado del runner de copia: resultado estructurado y nunca lanza al caller", () => {
+    // Un directorio ocupando el destino de SKILL.md hace fallar el rename (EISDIR).
+    fs.mkdirSync(path.join(skillRoot()), { recursive: true });
+    fs.mkdirSync(path.join(skillRoot(), "SKILL.md"));
+    const result = registerOpencodeSkill({ projectDir });
+    assert.equal(result.status, "failed");
+    assert.ok(result.warning.startsWith("Graphify skill-registration:"));
+    assert.ok(result.warning.includes("Reintenta con flowtask update"));
+    assert.ok(result.warning.includes("SKILL.md"));
+    // El resto del bundle se copió; el fallo no bloquea ni deja residuos.
+    assert.ok(fs.existsSync(path.join(skillRoot(), "references", "extraction-spec.md")));
+    const tmpResidue = listAllFiles(skillRoot()).filter((file) => file.includes(".tmp"));
+    assert.equal(tmpResidue.length, 0);
+  });
+
+  it("falla cuando falta un archivo del bundle en el paquete origen y no copia nada", () => {
+    fs.rmSync(path.join(packageDir, "skills", "opencode", "references", "query.md"));
+    const result = registerOpencodeSkill({ projectDir });
+    assert.equal(result.status, "failed");
+    assert.ok(result.warning.startsWith("Graphify skill-registration:"));
+    assert.ok(result.warning.includes("query.md"));
+    assert.equal(fs.existsSync(skillRoot()), false);
+  });
+
+  it("ningún archivo aparece en la raíz del proyecto ni fuera de .opencode/skills/graphify", () => {
+    registerOpencodeSkill({ projectDir });
+    const createdFiles = listAllFiles(projectDir);
+    assert.ok(createdFiles.length >= 9);
+    const expectedPrefix = path.join(".opencode", "skills", "graphify");
+    for (const filePath of createdFiles) {
+      const relative = path.relative(projectDir, filePath);
+      assert.ok(
+        relative.split(path.sep).slice(0, 3).join(path.sep) === expectedPrefix,
+        `archivo fuera de alcance: ${relative}`,
+      );
+    }
+    assert.equal(fs.existsSync(path.join(projectDir, "AGENTS.md")), false);
+  });
+
+  it("falla accionablemente cuando la resolución del paquete no es posible", () => {
+    delete process.env[ENV_KEY];
+    const result = registerOpencodeSkill({ projectDir, detectFn: () => false });
+    assert.equal(result.status, "failed");
+    assert.ok(result.warning.startsWith("Graphify skill-registration:"));
+    assert.ok(result.warning.includes("Reintenta con flowtask update"));
+    assert.equal(fs.existsSync(skillRoot()), false);
+  });
+});
+
+// ─── OpenCode skill registration: coordinator integration ────────────────────
+
+describe("coordinateGraphify — fase de registro de skill opencode", () => {
+  const ENV_KEY = "FLOWTASK_GRAPHIFY_PACKAGE_DIR";
+  let baseDir;
+  let projectDir;
+  let targetDir;
+  let packageDir;
+  let origXdg;
+  let originalEnv;
+
+  function mockReadline(answers = {}) {
+    return {
+      createInterface: () => ({
+        question: (prompt, cb) => {
+          if (prompt.includes("Instalarlo")) cb(answers.install ?? "y");
+          else if (prompt.includes("Habilitar")) cb(answers.enable ?? "y");
+          else if (prompt.includes("hooks")) cb(answers.hooks ?? "n");
+          else cb("y");
+        },
+        close: () => {},
+      }),
+    };
+  }
+
+  function coordinatorOptions(extra = {}) {
+    return {
+      detectFn: () => true,
+      versionFn: () => "1.0",
+      runFn: () => ({ status: 0 }),
+      grafoExtensions: false,
+      ...extra,
+    };
+  }
+
+  beforeEach(() => {
+    baseDir = makeTempDir();
+    packageDir = makeFakeGraphifyPackage(baseDir);
+    projectDir = path.join(baseDir, "project");
+    targetDir = path.join(projectDir, ".opencode", "flowtask");
+    fs.mkdirSync(projectDir, { recursive: true });
+    origXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = path.join(baseDir, "xdg");
+    originalEnv = process.env[ENV_KEY];
+    process.env[ENV_KEY] = packageDir;
+    clearExtensions();
+  });
+
+  afterEach(() => {
+    cleanupDir(baseDir);
+    if (origXdg !== undefined) process.env.XDG_CONFIG_HOME = origXdg;
+    else delete process.env.XDG_CONFIG_HOME;
+    if (originalEnv !== undefined) process.env[ENV_KEY] = originalEnv;
+    else delete process.env[ENV_KEY];
+    clearExtensions();
+  });
+
+  it("target opencode aceptado: success, cero warnings y estado persistido", async () => {
+    const { projectState, warnings } = await coordinateGraphify({
+      projectDir,
+      targetDir,
+      flowtaskDir: path.join(projectDir, ".flowtask"),
+      selectedClis: ["opencode"],
+      readline: mockReadline(),
+      opts: coordinatorOptions(),
+    });
+
+    assert.equal(projectState.enabled, true);
+    assert.equal(projectState.opencodeSkillRegistered, "success");
+    assert.equal(warnings.length, 0);
+    assert.ok(fs.existsSync(path.join(projectDir, ".opencode", "skills", "graphify", "SKILL.md")));
+
+    const persisted = JSON.parse(fs.readFileSync(projectStatePath(projectDir, targetDir), "utf8"));
+    assert.equal(persisted.opencodeSkillRegistered, "success");
+  });
+
+  it("sin target opencode: skipped y sin llamadas de copia", async () => {
+    const { projectState } = await coordinateGraphify({
+      projectDir,
+      targetDir: path.join(projectDir, ".claude", "flowtask"),
+      flowtaskDir: path.join(projectDir, ".flowtask"),
+      selectedClis: ["claude"],
+      readline: mockReadline(),
+      opts: coordinatorOptions(),
+    });
+
+    assert.equal(projectState.opencodeSkillRegistered, "skipped");
+    assert.equal(fs.existsSync(path.join(projectDir, ".opencode", "skills")), false);
+  });
+
+  it("sin consentimiento (habilitación rechazada): skipped y sin llamadas de copia", async () => {
+    const { projectState } = await coordinateGraphify({
+      projectDir,
+      targetDir,
+      flowtaskDir: path.join(projectDir, ".flowtask"),
+      selectedClis: ["opencode"],
+      readline: mockReadline({ enable: "n" }),
+      opts: coordinatorOptions(),
+    });
+
+    assert.equal(projectState.enabled, false);
+    assert.equal(projectState.lastInitializationResult, "skipped");
+    assert.equal(projectState.opencodeSkillRegistered, "skipped");
+    assert.equal(fs.existsSync(path.join(projectDir, ".opencode", "skills", "graphify")), false);
+
+    const persisted = JSON.parse(fs.readFileSync(projectStatePath(projectDir, targetDir), "utf8"));
+    assert.equal(persisted.opencodeSkillRegistered, "skipped");
+  });
+
+  it("fallo de registro: failed con warning accionable y flujo principal intacto", async () => {
+    // Paquete inválido: existe pero no contiene los archivos del bundle.
+    const brokenPkgDir = path.join(baseDir, "broken-package");
+    fs.mkdirSync(brokenPkgDir, { recursive: true });
+    process.env[ENV_KEY] = brokenPkgDir;
+
+    const { projectState, warnings } = await coordinateGraphify({
+      projectDir,
+      targetDir,
+      flowtaskDir: path.join(projectDir, ".flowtask"),
+      selectedClis: ["opencode"],
+      readline: mockReadline(),
+      opts: coordinatorOptions(),
+    });
+
+    assert.equal(projectState.enabled, true);
+    assert.equal(projectState.initialized, true); // el flujo principal concluye
+    assert.equal(projectState.opencodeSkillRegistered, "failed");
+    assert.ok(warnings.some((warning) =>
+      warning.startsWith("Graphify skill-registration:") && warning.includes("Reintenta con flowtask update")
+    ));
+    assert.equal(fs.existsSync(path.join(projectDir, ".opencode", "skills", "graphify")), false);
+
+    const persisted = JSON.parse(fs.readFileSync(projectStatePath(projectDir, targetDir), "utf8"));
+    assert.equal(persisted.opencodeSkillRegistered, "failed");
   });
 });

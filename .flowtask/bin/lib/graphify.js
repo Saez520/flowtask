@@ -36,6 +36,8 @@ export function createProjectState() {
     query_status: "pending",          // pending | success | failed | degraded | unsupported | skipped
     query_last_attempt: null,
     query_diagnostic: null,
+    // ── skill-registration fields (owner: HF-graphify-opencode-skill-installer) ─
+    opencodeSkillRegistered: "pending",  // pending | success | failed | skipped
     // ── plan-docs-media fields (owner: plan-docs-media) ───────────────────────
     docs_media_status: "pending",     // pending | success | failed
     docs_media_last_attempt: null,
@@ -151,7 +153,11 @@ export function saveGlobalState(state) {
  */
 export function loadProjectState(projectDir, targetDir) {
   const existing = readJsonSafe(projectStatePath(projectDir, targetDir));
-  if (existing && existing.schema === 1) return existing;
+  if (existing && existing.schema === 1) {
+    // States persisted before the skill-registration phase lack the field.
+    if (existing.opencodeSkillRegistered == null) existing.opencodeSkillRegistered = "pending";
+    return existing;
+  }
   return createProjectState();
 }
 
@@ -381,6 +387,242 @@ export function verifyGraphifyMcp(opts = {}) {
     return { ok: false, python, error: cause };
   } catch (err) {
     return { ok: false, python, error: err.message };
+  }
+}
+
+// ─── OpenCode skill registration ──────────────────────────────────────────────
+// Registers the keyless Graphify skill bundled with the installed package so
+// the host agent can run semantic extraction without an external LLM backend.
+// Every write stays inside <projectDir>/.opencode/skills/graphify/.
+
+const OPENCODE_SKILL_DIR_SEGMENTS = [".opencode", "skills", "graphify"];
+
+/** Reference bundle shipped by graphify under skills/opencode/references/. */
+export const OPENCODE_SKILL_REFERENCE_FILES = [
+  "add-watch.md",
+  "exports.md",
+  "extraction-spec.md",
+  "github-and-merge.md",
+  "hooks.md",
+  "query.md",
+  "transcribe.md",
+  "update.md",
+];
+
+const PACKAGE_DIR_OVERRIDE_ENV = "FLOWTASK_GRAPHIFY_PACKAGE_DIR";
+const SKILL_RESOLVE_TIMEOUT_MS = 10000;
+
+function isFile(filePath) {
+  try {
+    return fs.existsSync(filePath) && fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Copy a single file atomically: temp file in the destination directory, then
+ * rename over the target. On failure the target is untouched and no orphan
+ * temp file is left behind.
+ *
+ * @returns {boolean} true on success
+ */
+function atomicCopyFile(srcPath, destPath) {
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
+  const tmp = `${destPath}.${process.pid}.tmp`;
+  try {
+    fs.copyFileSync(srcPath, tmp);
+    fs.renameSync(tmp, destPath);
+    return true;
+  } catch {
+    try { fs.unlinkSync(tmp); } catch { /* already gone */ }
+    return false;
+  }
+}
+
+/**
+ * Idempotency rule for `update`: re-copy when the destination is missing or
+ * the source is newer than the destination.
+ */
+function destinationIsUpToDate(srcPath, destPath) {
+  if (!isFile(destPath)) return false;
+  try {
+    return fs.statSync(srcPath).mtimeMs <= fs.statSync(destPath).mtimeMs;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the directory of the installed graphify package.
+ * Honours FLOWTASK_GRAPHIFY_PACKAGE_DIR first; otherwise resolves the Python
+ * interpreter behind the detected binary and asks it for the package location.
+ *
+ * @param {object} [opts]
+ * @param {Function} [opts.detectFn] - executable availability override
+ * @param {Function} [opts.runFn]    - override runner (testing)
+ * @returns {{ packageDir: string|null, source: "override"|"interpreter"|null, error: string|null }}
+ */
+export function resolveGraphifyPackageDir(opts = {}) {
+  const override = process.env[PACKAGE_DIR_OVERRIDE_ENV];
+  if (override && override.trim()) {
+    return { packageDir: path.resolve(override.trim()), source: "override", error: null };
+  }
+
+  const python = resolveGraphifyPython(opts.detectFn);
+  if (!python) {
+    return {
+      packageDir: null,
+      source: null,
+      error: "no se encontró un intérprete Python para el entorno Graphify",
+    };
+  }
+
+  const printPackageFile = "import graphify; print(graphify.__file__)";
+  try {
+    const result = opts.runFn
+      ? opts.runFn(python, { args: ["-c", printPackageFile], shell: false, stdio: "pipe", encoding: "utf8" })
+      : spawnSync(python, ["-c", printPackageFile], {
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+        encoding: "utf8",
+        timeout: SKILL_RESOLVE_TIMEOUT_MS,
+      });
+
+    const moduleFile = String(result.stdout ?? "").trim().split(/\r?\n/).filter(Boolean).pop();
+    if (result.status !== 0 || !moduleFile) {
+      const cause = result.error?.message || truncateStderr(result.stderr) || `exit ${result.status}`;
+      return {
+        packageDir: null,
+        source: null,
+        error: `no se pudo resolver el paquete graphify desde ${python} (${cause})`,
+      };
+    }
+    return { packageDir: path.dirname(moduleFile), source: "interpreter", error: null };
+  } catch (err) {
+    return {
+      packageDir: null,
+      source: null,
+      error: `no se pudo resolver el paquete graphify desde ${python} (${err.message})`,
+    };
+  }
+}
+
+/**
+ * Register the Graphify opencode skill into the consuming project:
+ *   skill-opencode.md                    → .opencode/skills/graphify/SKILL.md
+ *   skills/opencode/references/{8 files} → .opencode/skills/graphify/references/
+ *
+ * Never throws and never blocks install/update: all failures are returned as a
+ * structured result with an actionable warning.
+ *
+ * @param {object} [params]
+ * @param {string} params.projectDir - consuming project root
+ * @param {Function} [params.run]    - override runner for interpreter resolution
+ * @param {Function} [params.detectFn] - executable availability override
+ * @returns {{ status: "success"|"failed", warning: string|null, diagnostic: string|null,
+ *            packageDir: string|null, copied: string[], skipped: string[] }}
+ */
+export function registerOpencodeSkill({ projectDir, run, detectFn } = {}) {
+  try {
+    if (!projectDir) {
+      const error = "projectDir requerido";
+      return {
+        status: "failed",
+        warning: `Graphify skill-registration: ${error}. Reintenta con flowtask update.`,
+        diagnostic: error,
+        packageDir: null,
+        copied: [],
+        skipped: [],
+      };
+    }
+
+    const resolution = resolveGraphifyPackageDir({ runFn: run, detectFn });
+    if (resolution.error || !resolution.packageDir) {
+      const error = resolution.error || "no se pudo resolver el directorio del paquete graphify";
+      return {
+        status: "failed",
+        warning: `Graphify skill-registration: ${error}. Reintenta con flowtask update.`,
+        diagnostic: error,
+        packageDir: null,
+        copied: [],
+        skipped: [],
+      };
+    }
+
+    // ── Validate every expected source before copying anything ───────────────
+    const skillSource = path.join(resolution.packageDir, "skill-opencode.md");
+    const refsSourceDir = path.join(resolution.packageDir, "skills", "opencode", "references");
+    const missingSources = [];
+    if (!isFile(skillSource)) missingSources.push("skill-opencode.md");
+    for (const name of OPENCODE_SKILL_REFERENCE_FILES) {
+      if (!isFile(path.join(refsSourceDir, name))) missingSources.push(`skills/opencode/references/${name}`);
+    }
+    if (missingSources.length > 0) {
+      const error = `el paquete Graphify no contiene archivos de la skill (${missingSources.join(", ")})`;
+      return {
+        status: "failed",
+        warning: `Graphify skill-registration: ${error}. Reintenta con flowtask update.`,
+        diagnostic: error,
+        packageDir: resolution.packageDir,
+        copied: [],
+        skipped: [],
+      };
+    }
+
+    // ── Atomic copy, always inside .opencode/skills/graphify/ ────────────────
+    const skillRoot = path.join(projectDir, ...OPENCODE_SKILL_DIR_SEGMENTS);
+    const pairs = [
+      { src: skillSource, dest: path.join(skillRoot, "SKILL.md"), label: "SKILL.md" },
+      ...OPENCODE_SKILL_REFERENCE_FILES.map((name) => ({
+        src: path.join(refsSourceDir, name),
+        dest: path.join(skillRoot, "references", name),
+        label: `references/${name}`,
+      })),
+    ];
+
+    const copied = [];
+    const skipped = [];
+    const failures = [];
+    for (const pair of pairs) {
+      if (destinationIsUpToDate(pair.src, pair.dest)) {
+        skipped.push(pair.label);
+        continue;
+      }
+      if (atomicCopyFile(pair.src, pair.dest)) copied.push(pair.label);
+      else failures.push(pair.label);
+    }
+
+    if (failures.length > 0) {
+      const error = `no se pudieron copiar ${failures.length} archivo(s) de la skill (${failures.join(", ")})`;
+      return {
+        status: "failed",
+        warning: `Graphify skill-registration: ${error}. Reintenta con flowtask update.`,
+        diagnostic: error,
+        packageDir: resolution.packageDir,
+        copied,
+        skipped,
+      };
+    }
+
+    return {
+      status: "success",
+      warning: null,
+      diagnostic: null,
+      packageDir: resolution.packageDir,
+      copied,
+      skipped,
+    };
+  } catch (err) {
+    const error = `fallo inesperado (${err.message})`;
+    return {
+      status: "failed",
+      warning: `Graphify skill-registration: ${error}. Reintenta con flowtask update.`,
+      diagnostic: error,
+      packageDir: null,
+      copied: [],
+      skipped: [],
+    };
   }
 }
 
@@ -683,6 +925,7 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
     if (!wantsInstall) {
       projectState.enabled = false;
       projectState.lastInitializationResult = "skipped";
+      projectState.opencodeSkillRegistered = "skipped";
       projectState.selectedClis = selectedClis;
       projectState.updatedAt = new Date().toISOString();
       saveProjectState(projectDir, projectState, targetDir);
@@ -731,6 +974,7 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
     if (!wantsEnable) {
       projectState.enabled = false;
       projectState.lastInitializationResult = "skipped";
+      projectState.opencodeSkillRegistered = "skipped";
       projectState.selectedClis = selectedClis;
       projectState.updatedAt = new Date().toISOString();
       saveProjectState(projectDir, projectState, targetDir);
@@ -742,13 +986,38 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
 
   projectState.selectedClis = selectedClis;
 
-  // ── 4. Warn about later phases ──────────────────────────────────────────
+  // ── 4. Register the opencode Graphify skill (keyless docs/media path) ───
+  // Single call per install/update run: only when the opencode target was
+  // selected and Graphify enablement was accepted. Never blocks the flow.
+  if (
+    Array.isArray(selectedClis) && selectedClis.includes("opencode") &&
+    projectState.enabled === true &&
+    opts.skillRegistration !== false
+  ) {
+    logStep("+", "Graphify skill registration (opencode)…");
+    const skillResult = registerOpencodeSkill({
+      projectDir,
+      run: opts.runFn,
+      detectFn: opts.detectFn,
+    });
+    projectState.opencodeSkillRegistered = skillResult.status;
+    if (skillResult.warning) {
+      logWarn(skillResult.warning);
+      warnings.push(skillResult.warning);
+    } else if (skillResult.status === "success") {
+      logSuccess(`Graphify skill opencode registrada en .opencode/skills/graphify (${skillResult.copied.length} copiado(s), ${skillResult.skipped.length} al día).`);
+    }
+  } else {
+    projectState.opencodeSkillRegistered = "skipped";
+  }
+
+  // ── 5. Warn about later phases ──────────────────────────────────────────
   logInfo("Graphify: la extracción code-only, consulta MCP y docs/media son fases posteriores (plan-grafo / plan-docs-media). Este coordinador no ejecuta --code-only.");
 
-  // ── 5. .gitignore ───────────────────────────────────────────────────────
+  // ── 6. .gitignore ───────────────────────────────────────────────────────
   ensureGitignoreEntries(projectDir);
 
-  // ── 6. Hooks ────────────────────────────────────────────────────────────
+  // ── 7. Hooks ────────────────────────────────────────────────────────────
   if (projectState.hooksInstalled === true) {
     projectState.hooksInstalled = true;
   } else {
@@ -777,7 +1046,7 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
     }
   }
 
-  // ── 7. Run registered extensions (plan-grafo extract/query) ─────────────
+  // ── 8. Run registered extensions (plan-grafo extract/query) ─────────────
   if (opts.grafoExtensions !== false) {
     registerGrafoExtensions(opts);
   }
@@ -807,7 +1076,7 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
     if (queryResult.warning) warnings.push(queryResult.warning);
   }
 
-  // ── 8. Finalise ─────────────────────────────────────────────────────────
+  // ── 9. Finalise ─────────────────────────────────────────────────────────
   projectState.initialized = true;
   projectState.lastInitializationResult = warnings.length > 0 ? "failed" : "success";
   projectState.lastWarning = warnings.length > 0 ? warnings[warnings.length - 1] : null;
