@@ -171,10 +171,12 @@ export function isAuthorizedRunnerCommand(command: string): boolean {
     const worktreeScript = tokens[0].replaceAll("\\", "/");
     if (worktreeScript === "./.flowtask/scripts/worktree.sh" || worktreeScript.endsWith("/flowtask/scripts/worktree.sh")) {
       if (tokens.length === 2 && ["list", "prune"].includes(tokens[1])) return true;
+      if (tokens[1] === "recover" && tokens.length <= 3) return true; // recover | recover <tx-id>
       if (tokens[1] === "complete" && tokens.length === 3 && Boolean(tokens[2])) return true;
       return tokens.length === 5 && ["create", "complete"].includes(tokens[1]) && Boolean(tokens[2]) && tokens[3] === "--base" && Boolean(tokens[4]);
     }
     if (tokens[0] === "ls") return hasFlagsAndPaths(tokens.slice(1));
+    if (tokens[0] === "cat") return tokens.length >= 2; // read-only file access for runner diagnostics
     if (tokens[0] === "echo") return true;
     if (tokens[0] !== "git") return false;
     if (tokens[1] === "worktree" && tokens[2] === "list") return hasOnlyFlags(tokens.slice(3));
@@ -187,6 +189,11 @@ export function isAuthorizedRunnerCommand(command: string): boolean {
     if (tokens[1] === "restore" && tokens[2] === "--staged") return hasPaths(tokens.slice(3));
     if (tokens[1] === "commit") return tokens.length === 4 && tokens[2] === "-m" && Boolean(tokens[3]);
     if (tokens[1] === "push" || tokens[1] === "merge") return tokens.length >= 2;
+    // Git read-only commands for runner coordination and diagnostics
+    if (tokens[1] === "branch") return tokens.length >= 2 && hasOnlyFlags(tokens.slice(2));
+    if (tokens[1] === "log") return hasFlagsAndPaths(tokens.slice(2));
+    if (tokens[1] === "show") return tokens.length >= 2;
+    if (tokens[1] === "rev-parse") return hasFlagsAndPaths(tokens.slice(2));
     return false;
   });
 }

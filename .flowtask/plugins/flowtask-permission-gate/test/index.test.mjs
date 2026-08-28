@@ -86,12 +86,13 @@ test("authorizes all-safe compounds, including the original management command",
     "git status && git diff",
     'git worktree list && echo "---" && ls -la .worktrees/ 2>/dev/null || echo "no .worktrees dir"',
     'echo "a && b" || git diff --stat',
+    "git status && git log",
   ]) assert.equal(isAuthorizedRunnerCommand(command), true, command);
 });
 
 test("rejects malformed, mixed and dangerous commands", () => {
   for (const command of [
-    "git log", "git status && git log", "git status; git diff", "git status | git diff",
+    "git status; git diff", "git status | git diff",
     "git status && git diff > output.txt", "git status `git diff`", "git status $(git diff)",
     "git status (git diff)", "git status << heredoc", "echo ok >>/dev/null", "echo ok < /dev/null",
     "./.opencode/flowtask/scripts/worktree.sh create wt-1",
@@ -149,7 +150,7 @@ test("Runner receives exact delegation feedback and read-only tools are allowed"
     await hooks["tool.execute.before"]({ tool, sessionID: "s", callID: `c-${tool}` }, { args: cases[tool] });
   }
   await assert.rejects(
-    hooks["tool.execute.before"]({ tool: "bash", sessionID: "s", callID: "c" }, { args: { command: "git log" } }),
+    hooks["tool.execute.before"]({ tool: "bash", sessionID: "s", callID: "c" }, { args: { command: "git checkout ." } }),
     (error) => error instanceof Error && error.message === RUNNER_DELEGATION_MESSAGE,
   );
 });

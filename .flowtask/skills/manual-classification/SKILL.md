@@ -22,8 +22,10 @@ Carga este skill cuando el Sub-paso 1 del Paso 0 no encontró `FLOWTASK_CLASSIFI
 **Mención de CA existente** ("CA-search-integration", "continúa con el CA", "el CA de X")
 → Flujo `/run CA-{ID}`.
 
-**Pregunta o solicitud analítica sobre el proyecto** — incluyendo cualquier instrucción dirigida al runner en segunda persona ("¿cómo funciona X?", "verifica Y", "analiza Z", "¿qué convenciones usamos?", "revisa el comportamiento de X")
-→ Delegar al inspector. Nunca investigues tú mismo.
+**Pregunta o solicitud analítica sobre el proyecto** — preguntas sobre arquitectura, código, patrones, convenciones del proyecto ("¿cómo funciona X?", "¿qué convenciones usamos?", "¿dónde está definido Y?")
+→ Delegar al inspector. El runner no explora el código directamente para responder estas preguntas.
+
+**Nota**: instrucciones dirigidas al runner en segunda persona que pertenecen a su dominio (routing, clasificación, diagnóstico de orquestación, coordinación de CAs, mantenimiento de flujos) NO se delegan — el runner las resuelve directamente. Ver la sección "Dominio del runner" en runner.md.
 
 **Solicitud de cambio sin CA** ("agrega logging a X", "cambia el nombre de Y", "necesito que el sistema haga X")
 → "Para implementar este cambio necesito un CA. ¿Creo uno?"
