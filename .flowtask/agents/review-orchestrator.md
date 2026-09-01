@@ -59,13 +59,10 @@ Los patrones se obtienen de la configuración y no de una lista paralela en este
 
 ## Proceso
 
-### Paso 1 — Recuperar checkpoint y evaluar scope
+### Paso 1 — Evaluar scope y restaurar estado previo
 
-1. Ejecutar `cp_get("flow-state/{CA-ID}/review")` antes de analizar el scope.
-2. Si existe un checkpoint `active` o `paused` con el mismo scope, recuperar `scope`,
-   `mode`, configuración efectiva, lentes completados y ledger parcial. Reanudar en
-   el primer lente pendiente; nunca repetir lentes ya completados. Si no existe o
-   está `completed`, comenzar desde cero.
+1. Crear hilo nuevo. Si existe checkpoint previo (`mem_search(query: "flow-state/{CA-ID}/review")`), restaurar explícitamente el estado (scope, mode, configuración efectiva, lentes completados, ledger parcial) para retomar; la nueva ejecución NO es continuación técnica de la anterior. No repetir lentes ya completados.
+2. Si no existe checkpoint o está `completed`, comenzar desde cero.
 3. Leer el payload operacional mínimo recibido del runner: `mode`, `worktree`,
    `branch`, `base_branch` y `error`, más la lista de rutas para `files` o el
    identificador PR/MR para `pr-mr`. El runner nunca envía contenido de diff.
@@ -117,8 +114,56 @@ skill({ name: "review-resilience" })
 Para cada lens activo, ejecutar exactamente el presupuesto de sweeps definido en la skill:
 - Sweep exhaustivo del diff aplicando las reglas del lens.
 - Construir ledger de findings del lens.
-- Después de cada lente, ejecutar `cp_save("flow-state/{CA-ID}/review", ...)` con
-  `scope`, `mode`, configuración efectiva, lentes, `completedLenses` y ledger parcial.
+- Después de cada lente, ejecutar `mem_save` con el schema definido por `.flowtask/skills/checkpoint-mixin/SKILL.md`:
+
+**Con CA:**
+```
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: "flow-state/{CA-ID}/review",
+  title: "Checkpoint review: {instance_name}",
+  content: {
+    version: "2.0",
+    treatment_class: "light",
+    state: "active",
+    updated_at: now(),
+    sequence: N,
+    flow_state: {
+      ca_id: "CA-{ID}",
+      agente: "review",
+      instance_name: "{Name}",
+      scope, mode, effective_config,
+      completedLenses, partial_ledger
+    }
+  }
+)
+```
+
+**Sin CA:**
+```
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: "flow-state/no-ca/review/{operation-id}",
+  title: "Checkpoint review: {instance_name}",
+  content: {
+    version: "2.0",
+    treatment_class: "light",
+    state: "active",
+    updated_at: now(),
+    sequence: N,
+    fresh_thread_marker: true,
+    flow_state: {
+      operation_id: "{operation-id}",
+      agente: "review",
+      instance_name: "{Name}",
+      scope, mode, effective_config,
+      completedLenses, partial_ledger
+    }
+  }
+)
+```
 
 ### Paso 4 — Merge del ledger
 
@@ -204,9 +249,54 @@ Si no se puede escribir el stamp, responder `state: BLOCKED` con fallo, motivo y
 
 ### Paso 8 — Cerrar checkpoint
 
-Al terminar correctamente, ejecutar `cp_delete("flow-state/{CA-ID}/review")` para
-marcarlo como `completed`, conservando scope, modo, lentes y ledger final en el
-estado de cierre.
+Al terminar correctamente, cerrar el checkpoint con `state: "completed"` (conserva la observación como traza — no se elimina):
+
+**Con CA:**
+```
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: "flow-state/{CA-ID}/review",
+  title: "Checkpoint review: {instance_name}",
+  content: {
+    version: "2.0",
+    treatment_class: "light",
+    state: "completed",
+    updated_at: now(),
+    sequence: N,
+    flow_state: {
+      ca_id: "CA-{ID}",
+      agente: "review",
+      instance_name: "{Name}",
+      scope, mode, completedLenses, final_ledger
+    }
+  }
+)
+```
+
+**Sin CA:**
+```
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: "flow-state/no-ca/review/{operation-id}",
+  title: "Checkpoint review: {instance_name}",
+  content: {
+    version: "2.0",
+    treatment_class: "light",
+    state: "completed",
+    updated_at: now(),
+    sequence: N,
+    fresh_thread_marker: true,
+    flow_state: {
+      operation_id: "{operation-id}",
+      agente: "review",
+      instance_name: "{Name}",
+      scope, mode, completedLenses, final_ledger
+    }
+  }
+)
+```
 
 ### Paso 9 — Persistir en Engram (opcional)
 

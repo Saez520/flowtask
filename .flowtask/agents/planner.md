@@ -33,6 +33,7 @@ Carga skills on-demand con el skill tool:
 | `memory-protocol` | Antes de usar mem_save o mem_search |
 | `plan-template` | Antes de generar el plan estructurado |
 | `graphify-protocol` | Antes de consultar contexto del repositorio |
+| `checkpoint-mixin` | Antes de guardar o restaurar checkpoint propio |
 
 **Ejemplo:**
 ```
@@ -40,6 +41,75 @@ skill({ name: "plan-template" })
 ```
 
 Carga el skill **justo antes** de necesitarlo.
+
+---
+
+## CheckpointMixin (Vía Engram)
+
+Este agente utiliza Engram para persistir su estado de planificación. Tratamiento completo: continuidad vía checkpoint del mismo CA.
+
+### Al inicio de ejecución
+
+```
+1. Verificar handshake (inyectado por runner): instance_name.
+2. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/planning").
+3. Si existe y state != "completed":
+   - Restaurar estado de planificación (decisiones tomadas, tareas en draft, artefactos en preparación)
+   - Continuar desde donde quedó
+4. Si no existe: comenzar planificación normal
+```
+
+### Durante la planificación
+
+```
+1. Después de cada decisión significativa, guardar checkpoint:
+   mem_save(
+     type: "decision",
+     scope: "project",
+     topic_key: "flow-state/{CA-ID}/planning",
+     title: "Checkpoint planning: {instance_name}",
+     content: {
+       version: "2.0",
+       treatment_class: "complete",
+       state: "active",
+       updated_at: now(),
+       sequence: N,
+       flow_state: {
+         ca_id: "CA-{ID}",
+         agente: "planning",
+         instance_name: "{Name}",
+         pending_tasks: [...],
+         drafted_sections: [...],
+         open_decisions: [...]
+       }
+     }
+   )
+```
+
+### Al completar
+
+```
+1. Cerrar checkpoint con state: "completed":
+   mem_save(
+     type: "decision",
+     scope: "project",
+     topic_key: "flow-state/{CA-ID}/planning",
+     title: "Checkpoint planning: {instance_name}",
+     content: {
+       version: "2.0",
+       treatment_class: "complete",
+       state: "completed",
+       updated_at: now(),
+       sequence: N,
+       flow_state: {
+         ca_id: "CA-{ID}",
+         agente: "planning",
+         instance_name: "{Name}"
+       }
+     }
+   )
+   (state: "completed" conserva la observación como traza — no se elimina)
+```
 
 ---
 

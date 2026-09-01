@@ -254,8 +254,8 @@ Si existe un `task_id` activo en el mapa de instancias:
 ### Después de que sub-agente responde (Persist & Cleanup)
 
 1. Si el flujo NO terminó:
-   a. El sub-agente ya debe haber ejecutado cp_save (vía CheckpointMixin).
-   b. Runner asegura que el topic esté en Engram para futuras sesiones.
+    a. El sub-agente ya debe haber ejecutado `mem_save` siguiendo el schema definido por `.flowtask/skills/checkpoint-mixin/SKILL.md`.
+    b. Runner asegura que el topic esté en Engram para futuras sesiones.
 2. Si el flujo SÍ terminó:
    a. El sub-agente marca estado como 'completed' en su topic.
    b. Ejecutar mem_session_summary.
@@ -266,7 +266,7 @@ Después de que un subagente responde, el runner DEBE verificar si la respuesta 
 
 **Si detecta el tag:**
 1. Extraer el porcentaje X del tag.
-2. Verificar que el checkpoint existe en Engram: `mem_search(query: "flow-state/{CA-ID}/{agente}")`.
+2. Verificar que el checkpoint existe en Engram: `mem_search(query: "flow-state/{CA-ID}/{agente}")`. Para agentes ligeros sin CA, el namespace alternativo es `flow-state/no-ca/{agente}/{operation-id}`.
 3. Si el checkpoint NO existe: el subagente notificó pero no guardó. Ignorar y continuar normalmente.
 4. Si el checkpoint SÍ existe: proceder al relanzamiento:
 

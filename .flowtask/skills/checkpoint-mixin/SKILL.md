@@ -2,175 +2,262 @@
 name: checkpoint-mixin
 description: >-
   Persistencia de contexto entre ejecuciones de subagentes. Cargar cuando
-  el agente necesita restaurar estado previo o guardar checkpoint para
-  continuar después. Define protocolo de checkpoint y funciones cp_save/cp_get.
+  el agente necesita restaurar estado previo o guardar checkpoint. Define el
+  contrato normativo de mem_save para checkpoints con schema enriquecido,
+  bifurcación por clase de tratamiento y namespaces con/sin CA.
 ---
 
 # CheckpointMixin — Persistencia de Contexto
 
 ## Propósito
 
-Permite que un subagente persista su estado entre ejecuciones separadas usando Engram.
-Un usuario puede interrumpir una conversación y continuarla después, o un
-agente puede recibir múltiples mensajes que deben mantener contexto.
+Define el contrato único de persistencia de estado para subagentes usando Engram.
+Cada agente guarda y restaura su estado mediante `mem_save` y `mem_search` directos,
+con un schema normativo y namespaces que distinguen operaciones con CA de operaciones sin CA.
 
-## Estructura de Checkpoint (en Engram)
+## Clase de tratamiento
+
+El comportamiento de continuidad depende de la clase de tratamiento del agente:
+
+| Clase | Agentes | Comportamiento |
+|-------|---------|----------------|
+| **Completo** | `ca-writer`, `planner` | Continuidad vía checkpoint del mismo CA. Si existe checkpoint activo y `state != "completed"`, se reanuda la sesión previa (Escenario B). |
+| **Ligero** | `inspector`, `constructor`, `validator`, `tester`, `review-orchestrator`, `logger`, `initializer` | Hilo nuevo siempre. Si existe checkpoint previo, se restaura explícitamente el estado como insumo, pero la ejecución NO es continuación técnica de la anterior. Nunca se reutiliza `task_id` ni identidad previa. |
+
+## Schema normativo del checkpoint
+
+Toda observación de checkpoint en Engram usa este schema:
 
 ```json
 {
+  "version": "2.0",
   "topic_key": "flow-state/{CA-ID}/{agente}",
-  "ca_id": "CA-{ID}",
-  "agente": "{agente}",
-  "estado": "active|paused|completed",
-  "instance_name": "{Name}",
+  "type": "decision",
+  "scope": "project",
+  "title": "Checkpoint {agente}: {instance_name}",
+  "treatment_class": "complete | light",
+  "state": "active | paused | completed",
   "updated_at": "timestamp",
+  "sequence": 1,
   "topic_signature": {
-    "ids": ["CA-topic-validation", "handshake-protocol", "checkpoint-mixin"],
-    "keywords": ["validación", "tema", "reanudar", "sesiones"]
+    "ids": ["CA-topic-validation", "handshake-protocol"],
+    "keywords": ["validación", "tema"]
   },
   "flow_state": {
-    // Estado específico del agente
+    "estado": "activo",
+    "ca_id": "CA-{ID}",
+    "agente": "{agente}",
+    "instance_name": "{Name}"
   }
 }
 ```
 
-El campo `topic_signature` registra la firma del tema que el desarrollador estaba tratando cuando se guardó el checkpoint. Se usa en Topic Validation (ver handshake-protocol) para detectar cambios de tema entre invocaciones y evitar reanudar sesiones con contexto incorrecto.
+### Campos del schema
 
-- **`ids`** — array de identificadores extraídos del prompt: CA-ID, nombres de archivo (sin extensión), nombres de skill.
-- **`keywords`** — array de términos significativos extraídos del prompt (verbos, conceptos del dominio).
-- **`topic_signature` es opcional**: los checkpoints antiguos (sin este campo) son backward-compatibles. Si no está presente, se fuerza Escenario A al reanudar.
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `version` | string | Versión del contrato (`"2.0"`). |
+| `treatment_class` | `"complete"` \| `"light"` | Clase de tratamiento. Determina la bifurcación de continuidad. |
+| `state` | `"active"` \| `"paused"` \| `"completed"` | Estado del checkpoint. `"completed"` marca de cierre — conserva la observación como traza (no se borra). |
+| `sequence` | entero | Contador monotónico incremental por agente. |
+| `topic_signature` | objeto \| ausente | Firma del tema (opcional, backward-compatible). Si el checkpoint no lo trae, se asume mismo tema (degradación explícita). |
+| `flow_state` | objeto | Estado específico del agente. |
 
-## Funciones de Checkpoint
+### Campos adicionales por tratamiento
 
-### cp_save(topic_key, ca_id, agente, flow_state, instance_name, topic_signature?)
+- **Completo**: `flow_state.ca_id` (obligatorio) + `flow_state.resume_ref` (referencia de reanudación).
+- **Ligero sin CA**: `flow_state.operation_id` (obligatorio) + `flow_state.fresh_thread_marker: true`.
 
-Guarda el estado actual del agente en Engram con fallback local.
+## Protocolo de uso
 
-```
-try {
-  mem_save(
-    type: "decision",
-    scope: "project",
-    topic_key: topic_key,
-    title: `Checkpoint ${agente}: ${instance_name}`,
-    content: {
-      ca_id, agente, instance_name,
-      estado: 'active',
-      updated_at: now(),
-      topic_signature,    // incluido solo si se provee (opcional, backward-compatible)
-      flow_state
-    }
-  )
-} catch (error) {
-  // Fallback local CA-005
-  const timestamp = Date.now();
-  const filePath = `.flowtask/.temp/operation-checkpoint-${timestamp}.json`;
-  write(filePath, JSON.stringify({
-    type: "decision",
-    topic_key,
-    title: `Checkpoint ${agente}: ${instance_name} (BUFFERED)`,
-    content: { ca_id, agente, flow_state, buffered: true }
-  }));
-}
-```
+### Tratamiento completo (ca-writer, planner)
 
-### cp_get(topic_key)
-
-Recupera el estado guardado desde Engram.
-
-```
-observation = mem_search(query: topic_key, limit: 1)
-if observation:
-  return observation.content
-return null
-```
-
-### cp_delete(topic_key)
-
-Marca el checkpoint como completado o lo elimina lógicamente.
-
-```
-mem_save(
-  type: "decision",
-  scope: "project",
-  topic_key: topic_key,
-  title: `Checkpoint ${agente}: Completed`,
-  content: { estado: 'completed', updated_at: now() }
-)
-```
-
-## Protocolo de Uso
-
-### Al inicio de ejecución
+**Al inicio:**
 
 ```
 1. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/{agente}")
-2. Si existe y estado != 'completed':
-   - Leer flow_state del contenido de la observación
-   - Continuar desde donde quedó
-3. Si no existe o está 'completed': comenzar desde cero
+2. Si existe y state != "completed":
+   - Restaurar flow_state (tradeoffs, gaps, decisiones pendientes)
+   - Continuar desde donde quedó (Escenario B)
+3. Si no existe o está "completed": comenzar desde cero (Escenario A)
 ```
 
-### Durante ejecución
+**Durante ejecución — guardar checkpoint:**
+
+```javascript
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: "flow-state/{CA-ID}/{agente}",
+  title: "Checkpoint {agente}: {instance_name}",
+  content: {
+    version: "2.0",
+    treatment_class: "complete",
+    state: "active",
+    updated_at: now(),
+    sequence: N,
+    topic_signature: { ids: [...], keywords: [...] },  // opcional
+    flow_state: {
+      ca_id: "CA-{ID}",
+      agente: "{agente}",
+      instance_name: "{Name}",
+      resume_ref: "{task_id}",
+      // estado específico del agente
+    }
+  }
+)
+```
+
+**Al completar — cerrar checkpoint:**
+
+```javascript
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: "flow-state/{CA-ID}/{agente}",
+  title: "Checkpoint {agente}: {instance_name}",
+  content: {
+    version: "2.0",
+    treatment_class: "complete",
+    state: "completed",
+    updated_at: now(),
+    sequence: N,
+    flow_state: {
+      ca_id: "CA-{ID}",
+      agente: "{agente}",
+      instance_name: "{Name}"
+    }
+  }
+)
+```
+
+> `state: "completed"` marca el cierre y conserva la observación como traza consultable. No se elimina.
+
+### Tratamiento ligero (inspector, constructor, validator, tester, review-orchestrator, logger, initializer)
+
+**Al inicio:**
 
 ```
-1. Después de cada interacción significativa, guardar checkpoint:
-   cp_save(topic_key, ca_id, agente, {
-     // estado actual del agente
-   }, instance_name)
+1. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/{agente}")
+   (o flow-state/no-ca/{agente}/{operation-id} si no hay CA)
+2. Si existe checkpoint previo:
+   - Restaurar explícitamente el estado como insumo (temas explorados, tradeoffs, gaps)
+   - La nueva ejecución NO es continuación técnica de la anterior
+3. Siempre crear hilo nuevo (Escenario A, task_id = null)
 ```
 
-### Al completar
+**Durante ejecución — guardar checkpoint (con CA):**
 
+```javascript
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: "flow-state/{CA-ID}/{agente}",
+  title: "Checkpoint {agente}: {instance_name}",
+  content: {
+    version: "2.0",
+    treatment_class: "light",
+    state: "active",
+    updated_at: now(),
+    sequence: N,
+    flow_state: {
+      ca_id: "CA-{ID}",
+      agente: "{agente}",
+      instance_name: "{Name}",
+      // estado específico del agente
+    }
+  }
+)
 ```
-1. Marcar checkpoint como completed: cp_delete(topic_key)
+
+**Durante ejecución — guardar checkpoint (sin CA):**
+
+```javascript
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: "flow-state/no-ca/{agente}/{operation-id}",
+  title: "Checkpoint {agente}: {instance_name}",
+  content: {
+    version: "2.0",
+    treatment_class: "light",
+    state: "active",
+    updated_at: now(),
+    sequence: N,
+    fresh_thread_marker: true,
+    flow_state: {
+      operation_id: "{operation-id}",
+      agente: "{agente}",
+      instance_name: "{Name}",
+      // estado específico del agente
+    }
+  }
+)
 ```
 
-## topic_key
+**Al completar — cerrar checkpoint:**
 
-El topic_key sigue el patrón: `flow-state/{CA-ID}/{agente}`
+```javascript
+mem_save(
+  type: "decision",
+  scope: "project",
+  topic_key: "flow-state/{CA-ID}/{agente}",
+  title: "Checkpoint {agente}: {instance_name}",
+  content: {
+    version: "2.0",
+    treatment_class: "light",
+    state: "completed",
+    updated_at: now(),
+    sequence: N,
+    flow_state: {
+      ca_id: "CA-{ID}",
+      agente: "{agente}",
+      instance_name: "{Name}"
+    }
+  }
+)
+```
 
-| Agente | topic_key ejemplo |
-|--------|-------------------|
-| ca-writer | `flow-state/CA-onboarder-agent/ca` |
-| planner | `flow-state/CA-onboarder-agent/planning` |
-| constructor | `flow-state/CA-onboarder-agent/construct` |
-| inspector | `flow-state/CA-onboarder-agent/inspect` |
-| logger | `flow-state/CA-onboarder-agent/logging` |
-| tester | `flow-state/CA-onboarder-agent/tests` |
-| plan-auditor | `flow-state/CA-onboarder-agent/audit` |
+## Namespaces de topic_key
+
+El `topic_key` sigue uno de dos patrones según el contexto operacional:
+
+| Contexto | Patrón | Ejemplo |
+|----------|--------|---------|
+| Con CA | `flow-state/{CA-ID}/{agente}` | `flow-state/CA-onboarder-agent/ca` |
+| Sin CA | `flow-state/no-ca/{agente}/{operation-id}` | `flow-state/no-ca/inspect/query-auth-flow` |
+
+### Mapeo de sufijos por agente
+
+| Agente | Sufijo |
+|--------|--------|
+| ca-writer | `ca` |
+| planner | `planning` |
+| constructor | `construct` |
+| inspector | `inspect` |
+| validator | `validate` |
+| tester | `tests` |
+| review-orchestrator | `review` |
+| logger | `logging` |
+| initializer | `initialize` |
+
+> Nunca se exige un `{CA-ID}` inexistente. Nunca se mezclan operaciones sin CA en el namespace de un CA.
 
 ## Prioridades
 
 | Prioridad | Agente | Razón |
 |-----------|--------|-------|
-| **ALTA** | ca-writer | Conversación multi-mensaje |
-| **ALTA** | inspector | Preguntas secuenciales del usuario |
-| **MEDIA** | planner | Decisiones pendientes antes de finalizar |
-| **BAJA** | logger, tester, plan-auditor | Típicamente una sola ejecución |
+| **ALTA** | ca-writer | Conversación multi-mensaje, tratamiento completo |
+| **ALTA** | planner | Decisiones pendientes antes de finalizar, tratamiento completo |
+| **MEDIA** | inspector | Preguntas secuenciales, tratamiento ligero |
+| **BAJA** | constructor, validator, tester, review-orchestrator, logger, initializer | Típicamente una sola ejecución, tratamiento ligero |
 
-## Integración con TopicManager del Runner
+## Integración con el Runner
 
-El runner mantiene un TopicManager que sincroniza con los checkpoints:
+El runner es responsable de:
+- Mantener el mapa de instancias en `flow-state/{CA-ID}/instances`.
+- Ejecutar el handshake (solo para agentes de tratamiento completo).
+- Detectar el tag `[FLOWTASK_CHECKPOINT_CAPACITY: X%]` y gestionar el relevo.
+- Purgar `task_id` huérfanos (solo tratamiento completo).
 
-```
-topicManager = {
-  topics: Map<topic_key, {
-    ca_id: string,
-    agente: string,
-    estado: 'active' | 'paused' | 'completed',
-    checkpoint_file: string
-  }>
-}
-```
-
-El checkpointMixin trabaja en conjunto con TopicManager:
-- Al guardar checkpoint → actualizar TopicManager
-- Al cargar checkpoint → verificar estado en TopicManager
-- Al completar → limpiar ambos
-
-## Archivos de Checkpoint
-
-Los archivos de checkpoint se guardan en: `.flowtask/checkpoints/`
-
-No deben commitearse al repositorio — agregar a .gitignore si existe.
+El agente solo ejecuta `mem_save` con el schema definido en esta skill. No gestiona el mapa de instancias ni la lógica de reanudación.

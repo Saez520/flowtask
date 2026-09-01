@@ -51,36 +51,71 @@ La investigación previa del runner es un **insumo válido con proveniencia**: s
 
 ## CheckpointMixin (Vía Engram)
 
-Este agente utiliza Engram para persistir su estado de análisis.
+Este agente utiliza Engram para persistir su estado de análisis. Tratamiento ligero: hilo nuevo siempre, con restauración explícita del estado previo como insumo.
 
 ### Al inicio de ejecución
 
 ```
 1. Verificar handshake (inyectado por runner): instance_name.
 2. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/inspect").
-3. Si existe y estado != 'completed':
-   - Restaurar estado de análisis (temas explorados, tradeoffs pendientes)
-   - Continuar desde donde quedó
-4. Si no existe: comenzar análisis normal
+3. Si existe checkpoint previo:
+   - Restaurar explícitamente el estado de análisis (temas explorados, tradeoffs pendientes, gaps)
+   - La nueva ejecución NO es continuación técnica de la anterior
+4. Crear siempre hilo nuevo (Escenario A, task_id = null)
 ```
 
 ### Durante análisis
 
 ```
 1. Después de cada interacción, guardar checkpoint:
-   cp_save(topic_key: "flow-state/{CA-ID}/inspect", ca_id, 'inspector', {
-     analysis_state: 'initial' | 'exploring' | 'finalizing',
-     explored_topics: [...],
-     pending_questions: [...],
-     identified_tradeoffs: [...],
-     identified_gaps: [...]
-   }, instance_name)
+   mem_save(
+     type: "decision",
+     scope: "project",
+     topic_key: "flow-state/{CA-ID}/inspect",
+     title: "Checkpoint inspect: {instance_name}",
+     content: {
+       version: "2.0",
+       treatment_class: "light",
+       state: "active",
+       updated_at: now(),
+       sequence: N,
+       flow_state: {
+         ca_id: "CA-{ID}",
+         agente: "inspect",
+         instance_name: "{Name}",
+         analysis_state: 'initial' | 'exploring' | 'finalizing',
+         explored_topics: [...],
+         pending_questions: [...],
+         identified_tradeoffs: [...],
+         identified_gaps: [...]
+       }
+     }
+   )
 ```
 
 ### Al finalizar
 
 ```
-1. Marcar checkpoint como completed vía cp_delete()
+1. Cerrar checkpoint con state: "completed":
+   mem_save(
+     type: "decision",
+     scope: "project",
+     topic_key: "flow-state/{CA-ID}/inspect",
+     title: "Checkpoint inspect: {instance_name}",
+     content: {
+       version: "2.0",
+       treatment_class: "light",
+       state: "completed",
+       updated_at: now(),
+       sequence: N,
+       flow_state: {
+         ca_id: "CA-{ID}",
+         agente: "inspect",
+         instance_name: "{Name}"
+       }
+     }
+   )
+   (state: "completed" conserva la observación como traza — no se elimina)
 ```
 
 ---
@@ -165,14 +200,16 @@ La respuesta directa siempre debe estar presente. Las secciones adicionales son 
 
 ---
 
-### Paso 5 — Guardar flow state (si hay CA ID)
+### Paso 5 — Guardar flow state
 
-Si el runner proveyó un CA ID, guarda el flow state al finalizar:
+Guarda el flow state al finalizar, bifurcando por presencia de CA:
+
+**Con CA:**
 ```
 mem_save(
   type: "discovery",
   scope: "project",
-  topic_key: "flow-state/{ID}/inspect",
+  topic_key: "flow-state/{CA-ID}/inspect",
   title: "Inspector CA-{ID}: análisis completado",
   content:
     What: Análisis de {tema} para CA-{ID}
@@ -182,7 +219,20 @@ mem_save(
 )
 ```
 
-Si no hay CA ID (consulta general), omite el save.
+**Sin CA (operación independiente):**
+```
+mem_save(
+  type: "discovery",
+  scope: "project",
+  topic_key: "flow-state/no-ca/inspect/{operation-id}",
+  title: "Inspector: análisis completado",
+  content:
+    What: Análisis de {tema}
+    Why: {motivación de la pregunta}
+    Where: (análisis presentado en chat — sin archivo)
+    Learned: {hallazgos relevantes si aplica — omitir si no}
+)
+```
 
 ---
 

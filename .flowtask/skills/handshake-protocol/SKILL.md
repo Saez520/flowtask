@@ -41,7 +41,7 @@ El orquestador debe proveer a la skill los siguientes parámetros:
 
 ### Elegibilidad de agentes
 
-Este protocolo aplica únicamente a los agentes de tratamiento completo (`ca-writer` y `planner`), que participan de reanudación (Escenario B) y Topic Validation. Los agentes de tratamiento ligero (`inspector`, `constructor`, `validator`, `tester`, `review-orchestrator`, `logger`, `initializer`) no pasan por este protocolo: su invocación es siempre Escenario A (hilo fresco), su `instance_name` se deriva del mapa de instancias únicamente como traza, y sus checkpoints nunca habilitan continuidad.
+Este protocolo aplica únicamente a los agentes de tratamiento completo (`ca-writer` y `planner`), que participan de reanudación (Escenario B) y Topic Validation. El contrato de checkpoint que estos agentes usan está definido en `.flowtask/skills/checkpoint-mixin/SKILL.md`. Los agentes de tratamiento ligero (`inspector`, `constructor`, `validator`, `tester`, `review-orchestrator`, `logger`, `initializer`) no pasan por este protocolo: su invocación es siempre Escenario A (hilo fresco), su `instance_name` se deriva del mapa de instancias únicamente como traza, y sus checkpoints nunca habilitan continuidad.
 
 ---
 
@@ -169,10 +169,10 @@ Antes de determinar el escenario, la skill valida si el nuevo prompt del desarro
 
 ### Algoritmo
 
-1. **Recuperar último checkpoint**: `cp_get("flow-state/{ca_id}/{agente}")` desde Engram.
+1. **Recuperar último checkpoint**: `mem_search(query: "flow-state/{ca_id}/{agente}")` desde Engram. Si el agente es de tratamiento ligero y no hay CA, el namespace alternativo es `flow-state/no-ca/{agente}/{operation-id}`.
 2. **Si no hay checkpoint previo**: Asumir mismo tema → continuar a Escenario B (conservador). Un agente recién creado no tiene historial contra qué comparar.
 3. **Si el checkpoint NO tiene `topic_signature`**: Forzar **Escenario A** — no podemos adivinar el tema anterior. El `task_id` se marca como `abandoned` en el mapa de instancias.
-4. **Si ambos tienen `topic_signature`**: Comparar `topic_signature` actual (del prompt) vs `topic_signature` del checkpoint:
+4. **Si ambos tienen `topic_signature`**: Comparar `topic_signature` actual (del prompt) vs `topic_signature` del checkpoint (según el schema definido en `.flowtask/skills/checkpoint-mixin/SKILL.md`):
 
    a. **Matching exacto de IDs**: Si hay al menos un ID coincidente entre `ids_actual` y `ids_checkpoint` → **mismo tema** (Escenario B). Los IDs incluyen: CA-ID, nombres de archivo (sin extensión), nombres de skill.
 
@@ -220,6 +220,8 @@ La skill entrega al orquestador un objeto con exactamente 3 campos:
 | `scenario` | `string` | `"A"` para nuevo hilo (Initial Prompt), `"B"` para reanudación (Resume Prompt) |
 
 > **La skill NO dicta cómo invocar al subagente.** El orquestador recibe este contrato y decide el formato de llamada (`task()`, API REST, CLI, etc.).
+
+> **Agentes de tratamiento ligero**: el handshake no se ejecuta para ellos. Reciben `instance_name` por derivación del mapa de instancias del runner, con `task_id = null` y `scenario = "A"` por construcción.
 
 ---
 

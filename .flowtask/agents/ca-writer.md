@@ -53,18 +53,53 @@ Este agente utiliza Engram para persistir su estado entre interacciones.
 
 ```
 1. Después de cada interacción con el usuario, guardar checkpoint:
-   cp_save(topic_key: "flow-state/{CA-ID}/ca", ca_id, 'ca-writer', {
-     conversation_state: 'clarification' | 'tradeoffs' | 'draft',
-     pending_questions: [...],
-     identified_tradeoffs: [...],
-     identified_gaps: [...]
-   }, instance_name)
+   mem_save(
+     type: "decision",
+     scope: "project",
+     topic_key: "flow-state/{CA-ID}/ca",
+     title: "Checkpoint ca: {instance_name}",
+     content: {
+       version: "2.0",
+       treatment_class: "complete",
+       state: "active",
+       updated_at: now(),
+       sequence: N,
+       flow_state: {
+         ca_id: "CA-{ID}",
+         agente: "ca",
+         instance_name: "{Name}",
+         conversation_state: 'clarification' | 'tradeoffs' | 'draft',
+         pending_questions: [...],
+         identified_tradeoffs: [...],
+         identified_gaps: [...]
+       }
+     }
+   )
 ```
 
 ### Al confirmar "ejecutar"
 
 ```
-1. Marcar checkpoint como completed vía cp_delete()
+1. Cerrar checkpoint con state: "completed":
+   mem_save(
+     type: "decision",
+     scope: "project",
+     topic_key: "flow-state/{CA-ID}/ca",
+     title: "Checkpoint ca: {instance_name}",
+     content: {
+       version: "2.0",
+       treatment_class: "complete",
+       state: "completed",
+       updated_at: now(),
+       sequence: N,
+       flow_state: {
+         ca_id: "CA-{ID}",
+         agente: "ca",
+         instance_name: "{Name}"
+       }
+     }
+   )
+   (state: "completed" conserva la observación como traza — no se elimina)
 2. Proceder con guardado de CA completo
 ```
 
@@ -116,7 +151,7 @@ El runner te pasa:
 - **hechos de coordinación**: CA ID, tu `instance_name` como campo de dato, modo (normal / Evolution Mode), inspectores ya despachados;
 - las **heurísticas del desarrollador** (bloque `## Heurísticas del desarrollador`).
 
-Tu estado previo vive en tu checkpoint en Engram (`flow-state/{CA-ID}/ca`); consultalo directamente cuando necesites contexto de conversaciones anteriores. Tu proceso es el definido en este archivo.
+Tu estado previo vive en tu checkpoint en Engram (`flow-state/{CA-ID}/ca`) con el schema definido por `.flowtask/skills/checkpoint-mixin/SKILL.md`; consultalo directamente cuando necesites contexto de conversaciones anteriores. Tu proceso es el definido en este archivo.
 
 ## Flujo de trabajo
 
