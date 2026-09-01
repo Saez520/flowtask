@@ -14,6 +14,8 @@ const CONFIG_CANDIDATES = [
 ];
 /** TTL por defecto del review-stamp; overridable con `stampTtlMinutes` en review.json. */
 const DEFAULT_STAMP_TTL_MINUTES = 30;
+/** Criterio de trivialidad para el bypass --no-verify: cambios con ≤ TRIVIAL_CHANGE_LINES líneas. */
+const TRIVIAL_CHANGE_LINES = 5;
 const RUNNER_TASKS = new Set([
     "flowtask-ca-writer", "flowtask-planner", "flowtask-plan-auditor", "flowtask-constructor",
     "flowtask-validator", "flowtask-initializer", "flowtask-logger", "flowtask-tester",
@@ -311,8 +313,15 @@ export default async function (input) {
             }
             if (hookInput.tool !== "bash" || !/\bgit\s+commit\b/.test(command))
                 return;
-            if (command.includes("--no-verify") || command.includes("--no-review"))
-                return;
+            if (command.includes("--no-verify") || command.includes("--no-review")) {
+                // El bypass solo es legítimo para cambios triviales (≤ TRIVIAL_CHANGE_LINES).
+                // Si no se puede medir el diff (getDiffStats lanza), el error se propaga y el commit se bloquea (deny-by-default).
+                const workdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
+                const stats = getDiffStats(workdir);
+                if (stats.lines <= TRIVIAL_CHANGE_LINES)
+                    return; // trivial → bypass legítimo
+                throw new Error(buildGateMessage(stats)); // no trivial → bypass denegado, review obligatorio
+            }
             const workdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
             const config = readConfig(workdir, sessionDir);
             if (!config)

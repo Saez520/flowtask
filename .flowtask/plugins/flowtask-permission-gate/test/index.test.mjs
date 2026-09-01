@@ -64,6 +64,13 @@ async function runGate(hooks, workdir) {
   );
 }
 
+async function runGateWith(hooks, workdir, command, sessionID = "s-bypass") {
+  return hooks["tool.execute.before"](
+    { tool: "bash", sessionID, callID: `c-${Math.random().toString(36).slice(2)}` },
+    { args: { command, workdir } },
+  );
+}
+
 // --- Autorización Runner (sin cambios de contrato) ---
 
 test("matches canonical Runner commands structurally", () => {
@@ -379,6 +386,39 @@ test("diff stats count untracked pending files even when HEAD diff is empty", as
   await assert.rejects(runGate(hooks, root), (error) =>
     error instanceof Error && error.message.includes("📊 Diff: 1 archivo(s), 0 línea(s) pendientes."),
   );
+});
+
+// --- Bypass --no-verify: solo cambios triviales (HF-cerrar-bypass-review) ---
+
+test("bypass --no-verify permitido para cambio trivial (≤ 5 líneas)", async () => {
+  const root = makeRepo(makeTemp("flowtask-bypass-trivial-"));
+  fs.writeFileSync(path.join(root, "seed.txt"), "seed\nedit\n"); // 1 línea modificada
+  const hooks = await plugin({ directory: root });
+  // No debe lanzar: el bypass es legítimo para cambios triviales
+  await runGateWith(hooks, root, 'git commit --no-verify -m "trivial"');
+});
+
+test("bypass --no-verify denegado para cambio > 5 líneas (review obligatorio)", async () => {
+  const root = makeRepo(makeTemp("flowtask-bypass-nontrivial-"));
+  fs.writeFileSync(path.join(root, "big.txt"), "line\n".repeat(10)); // 10 líneas
+  execFileSync("git", ["add", "big.txt"], { cwd: root, encoding: "utf8" });
+  const hooks = await plugin({ directory: root });
+  await assert.rejects(
+    runGateWith(hooks, root, 'git commit --no-verify -m "big"'),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes("Commit bloqueado") &&
+      error.message.includes("flowtask-review-orchestrator"),
+  );
+});
+
+test("commit sin bandera --no-verify: flujo normal intacto (sin regresión)", async () => {
+  const root = makeRepo(makeTemp("flowtask-bypass-normal-"));
+  const stampPath = writeConfig(root, "opencode");
+  writeStamp(stampPath, "main");
+  const hooks = await plugin({ directory: root });
+  // Flujo normal con stamp válido: no debe lanzar
+  await runGateWith(hooks, root, 'git commit -m "normal"');
 });
 
 // --- context-budget: presupuesto de contexto read/glob/grep del runner ---
