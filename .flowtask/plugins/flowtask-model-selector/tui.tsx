@@ -21,7 +21,6 @@ type SelectorState = {
   idx: number;
   query: string;
   popMode: () => void;
-  layerUnregister: (() => void) | null;
   agentName?: string;
 } | null;
 
@@ -44,19 +43,67 @@ const tui = async (api: TuiPluginApi) => {
       );
     };
 
-    const moveSection = (state: SelectorState, delta: number, renderFn: () => any) => {
+    let navLayerUnregister: (() => void) | null = null;
+
+    const moveSection = (state: SelectorState, delta: number, renderFn: () => any, onClose?: () => void) => {
       if (!state) return;
       const next = Math.max(0, Math.min(state.sections.length - 1, state.idx + delta));
       if (next === state.idx) return;
       state.idx = next;
-      api.ui.dialog.replace(renderFn);
+      api.ui.dialog.replace(renderFn, onClose);
     };
 
     const cleanupSelector = (state: SelectorState) => {
       if (!state) return;
       api.ui.dialog.clear();
       state.popMode();
-      if (state.layerUnregister) state.layerUnregister();
+      if (navLayerUnregister) {
+        navLayerUnregister();
+        navLayerUnregister = null;
+      }
+    };
+
+    const registerNavLayer = () => {
+      if (navLayerUnregister) return;
+      const activeState = agentSelectorState ?? modelSelectorState;
+      const layerResult = api.keymap.registerLayer({
+        mode: "flowtask-model-selector",
+        commands: [
+          {
+            name: "flowtask.section.prev",
+            title: "Sección anterior",
+            category: "FlowTask",
+            namespace: "flowtask",
+            run: () => {
+              const s = agentSelectorState ?? modelSelectorState;
+              moveSection(s, -1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => cleanupSelector(s));
+            },
+          },
+          {
+            name: "flowtask.section.next",
+            title: "Sección siguiente",
+            category: "FlowTask",
+            namespace: "flowtask",
+            run: () => {
+              const s = agentSelectorState ?? modelSelectorState;
+              moveSection(s, +1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => cleanupSelector(s));
+            },
+          },
+        ],
+        bindings: [
+          {
+            key: "left",
+            cmd: "flowtask.section.prev",
+            desc: "Sección anterior",
+          },
+          {
+            key: "right",
+            cmd: "flowtask.section.next",
+            desc: "Sección siguiente",
+          },
+        ],
+      });
+      navLayerUnregister = typeof layerResult === "function" ? layerResult : (layerResult && typeof (layerResult as any).unregister === "function" ? (layerResult as any).unregister : null);
     };
 
     // Render function for agent dialog
@@ -68,22 +115,26 @@ const tui = async (api: TuiPluginApi) => {
 
       return (
         <box flexDirection="column">
-          <input
-            value={state.query}
-            placeholder="Buscar..."
-            onInput={(value: string) => {
-              state.query = value;
-              api.ui.dialog.replace(renderAgentDialog);
-            }}
-          />
-          <box>
-            <text>
-              {`${section.label} (${state.idx + 1}/${state.sections.length})`}
-            </text>
-          </box>
-          {filteredItems.length > 0 ? (
-            <api.ui.DialogSelect
-              title="FlowTask — Agente"
+           <input
+             value={state.query}
+             placeholder="Buscar..."
+             onInput={(value: string) => {
+               state.query = value;
+               api.ui.dialog.replace(renderAgentDialog, () => cleanupSelector(agentSelectorState));
+             }}
+           />
+            <box>
+             {state.sections.map((s, i) => (
+               <text
+                 fg={i === state.idx ? api.theme.current.accent : api.theme.current.textMuted}
+               >
+                 {s.label}{i < state.sections.length - 1 ? " · " : ""}
+               </text>
+             ))}
+           </box>
+           {filteredItems.length > 0 ? (
+             <api.ui.DialogSelect
+               title="FlowTask — Agente"
               options={filteredItems}
               skipFilter={true}
               onSelect={(item) => {
@@ -111,22 +162,26 @@ const tui = async (api: TuiPluginApi) => {
 
       return (
         <box flexDirection="column">
-          <input
-            value={state.query}
-            placeholder="Buscar..."
-            onInput={(value: string) => {
-              state.query = value;
-              api.ui.dialog.replace(renderModelDialog);
-            }}
-          />
-          <box>
-            <text>
-              {`${section.label} (${state.idx + 1}/${state.sections.length})`}
-            </text>
-          </box>
-          {filteredItems.length > 0 ? (
-            <api.ui.DialogSelect
-              title={`Modelo para ${state.agentName}`}
+           <input
+             value={state.query}
+             placeholder="Buscar..."
+             onInput={(value: string) => {
+               state.query = value;
+               api.ui.dialog.replace(renderModelDialog, () => cleanupSelector(modelSelectorState));
+             }}
+           />
+            <box>
+             {state.sections.map((s, i) => (
+               <text
+                 fg={i === state.idx ? api.theme.current.accent : api.theme.current.textMuted}
+               >
+                 {s.label}{i < state.sections.length - 1 ? " · " : ""}
+               </text>
+             ))}
+           </box>
+           {filteredItems.length > 0 ? (
+             <api.ui.DialogSelect
+               title={`Modelo para ${state.agentName}`}
               options={filteredItems}
               skipFilter={true}
               onSelect={(item) => {
@@ -155,7 +210,7 @@ const tui = async (api: TuiPluginApi) => {
                       applySelection(agentName, selectedValue, variant.value);
                     }}
                   />
-                ));
+                ), () => cleanupSelector(modelSelectorState));
               }}
             />
           ) : (
@@ -194,47 +249,16 @@ const tui = async (api: TuiPluginApi) => {
 
         // Push custom mode and register keymap layer for section navigation
         const popMode = api.mode.push("flowtask-model-selector");
-        const layerResult = api.keymap.registerLayer({
-          mode: "flowtask-model-selector",
-          commands: [
-            {
-              name: "flowtask.section.prev",
-              title: "Sección anterior",
-              category: "FlowTask",
-              namespace: "flowtask",
-              run: () => moveSection(agentSelectorState, -1, renderAgentDialog),
-            },
-            {
-              name: "flowtask.section.next",
-              title: "Sección siguiente",
-              category: "FlowTask",
-              namespace: "flowtask",
-              run: () => moveSection(agentSelectorState, +1, renderAgentDialog),
-            },
-          ],
-          bindings: [
-            {
-              key: "left",
-              cmd: "flowtask.section.prev",
-              desc: "Sección anterior",
-            },
-            {
-              key: "right",
-              cmd: "flowtask.section.next",
-              desc: "Sección siguiente",
-            },
-          ],
-        });
+        registerNavLayer();
 
         agentSelectorState = {
           sections,
           idx: 0,
           query: "",
           popMode,
-          layerUnregister: typeof layerResult === "function" ? layerResult : null,
         };
 
-        api.ui.dialog.replace(renderAgentDialog);
+        api.ui.dialog.replace(renderAgentDialog, () => cleanupSelector(agentSelectorState));
       } catch (error) {
         api.ui.toast({
           title: "FlowTask Model",
@@ -251,48 +275,17 @@ const tui = async (api: TuiPluginApi) => {
 
         // Push custom mode and register keymap layer for section navigation
         const popMode = api.mode.push("flowtask-model-selector");
-        const layerResult = api.keymap.registerLayer({
-          mode: "flowtask-model-selector",
-          commands: [
-            {
-              name: "flowtask.section.prev",
-              title: "Sección anterior",
-              category: "FlowTask",
-              namespace: "flowtask",
-              run: () => moveSection(modelSelectorState, -1, renderModelDialog),
-            },
-            {
-              name: "flowtask.section.next",
-              title: "Sección siguiente",
-              category: "FlowTask",
-              namespace: "flowtask",
-              run: () => moveSection(modelSelectorState, +1, renderModelDialog),
-            },
-          ],
-          bindings: [
-            {
-              key: "left",
-              cmd: "flowtask.section.prev",
-              desc: "Sección anterior",
-            },
-            {
-              key: "right",
-              cmd: "flowtask.section.next",
-              desc: "Sección siguiente",
-            },
-          ],
-        });
+        registerNavLayer();
 
         modelSelectorState = {
           sections,
           idx: 0,
           query: "",
           popMode,
-          layerUnregister: typeof layerResult === "function" ? layerResult : null,
           agentName,
         };
 
-        api.ui.dialog.replace(renderModelDialog);
+        api.ui.dialog.replace(renderModelDialog, () => cleanupSelector(modelSelectorState));
       } catch (error) {
         api.ui.toast({
           title: "FlowTask Model",

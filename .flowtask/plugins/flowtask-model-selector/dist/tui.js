@@ -2,8 +2,8 @@
 import { createTextNode as _$createTextNode } from "@opentui/solid";
 import { createComponent as _$createComponent } from "@opentui/solid";
 import { effect as _$effect } from "@opentui/solid";
-import { memo as _$memo } from "@opentui/solid";
 import { insertNode as _$insertNode } from "@opentui/solid";
+import { memo as _$memo } from "@opentui/solid";
 import { insert as _$insert } from "@opentui/solid";
 import { setProp as _$setProp } from "@opentui/solid";
 import { createElement as _$createElement } from "@opentui/solid";
@@ -244,18 +244,58 @@ var tui = async (api) => {
       const q = query.toLowerCase();
       return items.filter((item) => item.title.toLowerCase().includes(q) || item.description && item.description.toLowerCase().includes(q));
     };
-    const moveSection = (state, delta, renderFn) => {
+    let navLayerUnregister = null;
+    const moveSection = (state, delta, renderFn, onClose) => {
       if (!state) return;
       const next = Math.max(0, Math.min(state.sections.length - 1, state.idx + delta));
       if (next === state.idx) return;
       state.idx = next;
-      api.ui.dialog.replace(renderFn);
+      api.ui.dialog.replace(renderFn, onClose);
     };
     const cleanupSelector = (state) => {
       if (!state) return;
       api.ui.dialog.clear();
       state.popMode();
-      if (state.layerUnregister) state.layerUnregister();
+      if (navLayerUnregister) {
+        navLayerUnregister();
+        navLayerUnregister = null;
+      }
+    };
+    const registerNavLayer = () => {
+      if (navLayerUnregister) return;
+      const activeState = agentSelectorState ?? modelSelectorState;
+      const layerResult = api.keymap.registerLayer({
+        mode: "flowtask-model-selector",
+        commands: [{
+          name: "flowtask.section.prev",
+          title: "Secci\xF3n anterior",
+          category: "FlowTask",
+          namespace: "flowtask",
+          run: () => {
+            const s = agentSelectorState ?? modelSelectorState;
+            moveSection(s, -1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => cleanupSelector(s));
+          }
+        }, {
+          name: "flowtask.section.next",
+          title: "Secci\xF3n siguiente",
+          category: "FlowTask",
+          namespace: "flowtask",
+          run: () => {
+            const s = agentSelectorState ?? modelSelectorState;
+            moveSection(s, 1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => cleanupSelector(s));
+          }
+        }],
+        bindings: [{
+          key: "left",
+          cmd: "flowtask.section.prev",
+          desc: "Secci\xF3n anterior"
+        }, {
+          key: "right",
+          cmd: "flowtask.section.next",
+          desc: "Secci\xF3n siguiente"
+        }]
+      });
+      navLayerUnregister = typeof layerResult === "function" ? layerResult : layerResult && typeof layerResult.unregister === "function" ? layerResult.unregister : null;
     };
     const renderAgentDialog = () => {
       const state = agentSelectorState;
@@ -263,17 +303,22 @@ var tui = async (api) => {
       const section = state.sections[state.idx];
       const filteredItems = filterItems(section.items, state.query);
       return (() => {
-        var _el$ = _$createElement("box"), _el$2 = _$createElement("input"), _el$3 = _$createElement("box"), _el$4 = _$createElement("text");
+        var _el$ = _$createElement("box"), _el$2 = _$createElement("input"), _el$3 = _$createElement("box");
         _$insertNode(_el$, _el$2);
         _$insertNode(_el$, _el$3);
         _$setProp(_el$, "flexDirection", "column");
         _$setProp(_el$2, "placeholder", "Buscar...");
         _$setProp(_el$2, "onInput", (value) => {
           state.query = value;
-          api.ui.dialog.replace(renderAgentDialog);
+          api.ui.dialog.replace(renderAgentDialog, () => cleanupSelector(agentSelectorState));
         });
-        _$insertNode(_el$3, _el$4);
-        _$insert(_el$4, () => `${section.label} (${state.idx + 1}/${state.sections.length})`);
+        _$insert(_el$3, () => state.sections.map((s, i) => (() => {
+          var _el$4 = _$createElement("text");
+          _$insert(_el$4, () => s.label, null);
+          _$insert(_el$4, () => i < state.sections.length - 1 ? " \xB7 " : "", null);
+          _$effect((_$p) => _$setProp(_el$4, "fg", i === state.idx ? api.theme.current.accent : api.theme.current.textMuted, _$p));
+          return _el$4;
+        })()));
         _$insert(_el$, (() => {
           var _c$ = _$memo(() => filteredItems.length > 0);
           return () => _c$() ? _$createComponent(api.ui.DialogSelect, {
@@ -303,17 +348,22 @@ var tui = async (api) => {
       const section = state.sections[state.idx];
       const filteredItems = filterItems(section.items, state.query);
       return (() => {
-        var _el$8 = _$createElement("box"), _el$9 = _$createElement("input"), _el$0 = _$createElement("box"), _el$1 = _$createElement("text");
+        var _el$8 = _$createElement("box"), _el$9 = _$createElement("input"), _el$0 = _$createElement("box");
         _$insertNode(_el$8, _el$9);
         _$insertNode(_el$8, _el$0);
         _$setProp(_el$8, "flexDirection", "column");
         _$setProp(_el$9, "placeholder", "Buscar...");
         _$setProp(_el$9, "onInput", (value) => {
           state.query = value;
-          api.ui.dialog.replace(renderModelDialog);
+          api.ui.dialog.replace(renderModelDialog, () => cleanupSelector(modelSelectorState));
         });
-        _$insertNode(_el$0, _el$1);
-        _$insert(_el$1, () => `${section.label} (${state.idx + 1}/${state.sections.length})`);
+        _$insert(_el$0, () => state.sections.map((s, i) => (() => {
+          var _el$1 = _$createElement("text");
+          _$insert(_el$1, () => s.label, null);
+          _$insert(_el$1, () => i < state.sections.length - 1 ? " \xB7 " : "", null);
+          _$effect((_$p) => _$setProp(_el$1, "fg", i === state.idx ? api.theme.current.accent : api.theme.current.textMuted, _$p));
+          return _el$1;
+        })()));
         _$insert(_el$8, (() => {
           var _c$2 = _$memo(() => filteredItems.length > 0);
           return () => _c$2() ? _$createComponent(api.ui.DialogSelect, {
@@ -343,7 +393,7 @@ var tui = async (api) => {
                 onSelect: (variant) => {
                   applySelection(agentName, selectedValue, variant.value);
                 }
-              }));
+              }), () => cleanupSelector(modelSelectorState));
             }
           }) : (() => {
             var _el$10 = _$createElement("box"), _el$11 = _$createElement("text");
@@ -377,39 +427,14 @@ var tui = async (api) => {
           return;
         }
         const popMode = api.mode.push("flowtask-model-selector");
-        const layerResult = api.keymap.registerLayer({
-          mode: "flowtask-model-selector",
-          commands: [{
-            name: "flowtask.section.prev",
-            title: "Secci\xF3n anterior",
-            category: "FlowTask",
-            namespace: "flowtask",
-            run: () => moveSection(agentSelectorState, -1, renderAgentDialog)
-          }, {
-            name: "flowtask.section.next",
-            title: "Secci\xF3n siguiente",
-            category: "FlowTask",
-            namespace: "flowtask",
-            run: () => moveSection(agentSelectorState, 1, renderAgentDialog)
-          }],
-          bindings: [{
-            key: "left",
-            cmd: "flowtask.section.prev",
-            desc: "Secci\xF3n anterior"
-          }, {
-            key: "right",
-            cmd: "flowtask.section.next",
-            desc: "Secci\xF3n siguiente"
-          }]
-        });
+        registerNavLayer();
         agentSelectorState = {
           sections,
           idx: 0,
           query: "",
-          popMode,
-          layerUnregister: typeof layerResult === "function" ? layerResult : null
+          popMode
         };
-        api.ui.dialog.replace(renderAgentDialog);
+        api.ui.dialog.replace(renderAgentDialog, () => cleanupSelector(agentSelectorState));
       } catch (error) {
         api.ui.toast({
           title: "FlowTask Model",
@@ -423,40 +448,15 @@ var tui = async (api) => {
         const providers = api.state.provider ?? [];
         const sections = buildModelSections(providers);
         const popMode = api.mode.push("flowtask-model-selector");
-        const layerResult = api.keymap.registerLayer({
-          mode: "flowtask-model-selector",
-          commands: [{
-            name: "flowtask.section.prev",
-            title: "Secci\xF3n anterior",
-            category: "FlowTask",
-            namespace: "flowtask",
-            run: () => moveSection(modelSelectorState, -1, renderModelDialog)
-          }, {
-            name: "flowtask.section.next",
-            title: "Secci\xF3n siguiente",
-            category: "FlowTask",
-            namespace: "flowtask",
-            run: () => moveSection(modelSelectorState, 1, renderModelDialog)
-          }],
-          bindings: [{
-            key: "left",
-            cmd: "flowtask.section.prev",
-            desc: "Secci\xF3n anterior"
-          }, {
-            key: "right",
-            cmd: "flowtask.section.next",
-            desc: "Secci\xF3n siguiente"
-          }]
-        });
+        registerNavLayer();
         modelSelectorState = {
           sections,
           idx: 0,
           query: "",
           popMode,
-          layerUnregister: typeof layerResult === "function" ? layerResult : null,
           agentName
         };
-        api.ui.dialog.replace(renderModelDialog);
+        api.ui.dialog.replace(renderModelDialog, () => cleanupSelector(modelSelectorState));
       } catch (error) {
         api.ui.toast({
           title: "FlowTask Model",
