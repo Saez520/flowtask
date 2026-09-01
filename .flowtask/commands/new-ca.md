@@ -1,6 +1,6 @@
 ---
 description: Create a new Acceptance Criteria (CA) with guided clarification
-agent: flowtask-ca-writer
+agent: flowtask-runner
 subtask: true
 ---
 Create a new Acceptance Criteria (CA) with guided clarification:
@@ -11,7 +11,7 @@ Create a new Acceptance Criteria (CA) with guided clarification:
 2. If the user provided a brief description along with the ID, note it.
    If not, ask what they need to implement.
 
-3. Activate @flowtask-ca-writer with the CA-ID and description.
+3. Route through the runner: the runner performs the handshake and then activates @flowtask-ca-writer.
 
 4. The ca-writer will:
    - Guide a conversation to clarify business requirements

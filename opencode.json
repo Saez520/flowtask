@@ -206,7 +206,7 @@
     "new-ca": {
       "description": "Create a new Acceptance Criteria (CA) with guided clarification",
       "template": "Create a new Acceptance Criteria (CA) with guided clarification.\nExtract the CA-ID from the user's message (format: CA-{CA-name}).\n$ARGUMENTS",
-      "agent": "flowtask-ca-writer",
+      "agent": "flowtask-runner",
       "subtask": true
     },
     "status": {
