@@ -1,5 +1,12 @@
 // tui.tsx
+import { createTextNode as _$createTextNode } from "@opentui/solid";
 import { createComponent as _$createComponent } from "@opentui/solid";
+import { effect as _$effect } from "@opentui/solid";
+import { memo as _$memo } from "@opentui/solid";
+import { insertNode as _$insertNode } from "@opentui/solid";
+import { insert as _$insert } from "@opentui/solid";
+import { setProp as _$setProp } from "@opentui/solid";
+import { createElement as _$createElement } from "@opentui/solid";
 
 // lib/selector-core.ts
 import * as fs from "fs";
@@ -43,6 +50,80 @@ function buildModelOptions(providers) {
     }
   }
   return options;
+}
+function detectAgentFamily(name) {
+  const dashIdx = name.indexOf("-");
+  if (dashIdx <= 0) return null;
+  const prefix = name.slice(0, dashIdx).trim();
+  if (prefix === "") return null;
+  return prefix;
+}
+function buildAgentSections(config) {
+  const allOptions = buildAgentOptions(config);
+  const allSection = {
+    id: "all",
+    label: "All",
+    kind: "all",
+    items: allOptions
+  };
+  const familyMap = /* @__PURE__ */ new Map();
+  for (const option of allOptions) {
+    const family = detectAgentFamily(option.value);
+    if (family === null) continue;
+    const key = family.toLowerCase();
+    const entry = familyMap.get(key);
+    if (entry) {
+      entry.items.push(option);
+    } else {
+      familyMap.set(key, { label: family, items: [option] });
+    }
+  }
+  const familySections = [];
+  for (const [, entry] of familyMap) {
+    if (entry.items.length >= 2) {
+      familySections.push({
+        id: `family:${entry.label}`,
+        label: entry.label,
+        kind: "family",
+        items: entry.items
+      });
+    }
+  }
+  familySections.sort((a, b) => a.label.localeCompare(b.label));
+  return [allSection, ...familySections];
+}
+function buildModelSections(providers) {
+  const allOptions = buildModelOptions(providers);
+  const allSection = {
+    id: "all",
+    label: "All",
+    kind: "all",
+    items: allOptions
+  };
+  const providerSections = [];
+  for (const provider of providers) {
+    const models = provider.models ?? {};
+    const modelKeys = Object.keys(models);
+    if (modelKeys.length === 0) continue;
+    const providerName = provider.name ?? provider.id;
+    const items = modelKeys.map((modelId) => {
+      const model = models[modelId];
+      const modelName = model.name ?? modelId;
+      return {
+        title: modelName,
+        value: `${provider.id}/${modelId}`,
+        description: providerName
+      };
+    });
+    providerSections.push({
+      id: `provider:${provider.id}`,
+      label: providerName,
+      kind: "provider",
+      items
+    });
+  }
+  providerSections.sort((a, b) => a.label.localeCompare(b.label));
+  return [allSection, ...providerSections];
 }
 function buildVariantOptions(modelRef, providers) {
   const separator = modelRef.indexOf("/");
@@ -156,11 +237,130 @@ function buildAgentModelPatch(agentName, modelRef, variant) {
 import * as fs2 from "fs";
 var tui = async (api) => {
   try {
+    let agentSelectorState = null;
+    let modelSelectorState = null;
+    const filterItems = (items, query) => {
+      if (!query) return items;
+      const q = query.toLowerCase();
+      return items.filter((item) => item.title.toLowerCase().includes(q) || item.description && item.description.toLowerCase().includes(q));
+    };
+    const moveSection = (state, delta, renderFn) => {
+      if (!state) return;
+      const next = Math.max(0, Math.min(state.sections.length - 1, state.idx + delta));
+      if (next === state.idx) return;
+      state.idx = next;
+      api.ui.dialog.replace(renderFn);
+    };
+    const cleanupSelector = (state) => {
+      if (!state) return;
+      api.ui.dialog.clear();
+      state.popMode();
+      if (state.layerUnregister) state.layerUnregister();
+    };
+    const renderAgentDialog = () => {
+      const state = agentSelectorState;
+      if (!state) return null;
+      const section = state.sections[state.idx];
+      const filteredItems = filterItems(section.items, state.query);
+      return (() => {
+        var _el$ = _$createElement("box"), _el$2 = _$createElement("input"), _el$3 = _$createElement("box"), _el$4 = _$createElement("text");
+        _$insertNode(_el$, _el$2);
+        _$insertNode(_el$, _el$3);
+        _$setProp(_el$, "flexDirection", "column");
+        _$setProp(_el$2, "placeholder", "Buscar...");
+        _$setProp(_el$2, "onInput", (value) => {
+          state.query = value;
+          api.ui.dialog.replace(renderAgentDialog);
+        });
+        _$insertNode(_el$3, _el$4);
+        _$insert(_el$4, () => `${section.label} (${state.idx + 1}/${state.sections.length})`);
+        _$insert(_el$, (() => {
+          var _c$ = _$memo(() => filteredItems.length > 0);
+          return () => _c$() ? _$createComponent(api.ui.DialogSelect, {
+            title: "FlowTask \u2014 Agente",
+            options: filteredItems,
+            skipFilter: true,
+            onSelect: (item) => {
+              const selectedValue = item.value;
+              cleanupSelector(agentSelectorState);
+              agentSelectorState = null;
+              showModelDialog(selectedValue);
+            }
+          }) : (() => {
+            var _el$5 = _$createElement("box"), _el$6 = _$createElement("text");
+            _$insertNode(_el$5, _el$6);
+            _$insertNode(_el$6, _$createTextNode(`Sin opciones`));
+            return _el$5;
+          })();
+        })(), null);
+        _$effect((_$p) => _$setProp(_el$2, "value", state.query, _$p));
+        return _el$;
+      })();
+    };
+    const renderModelDialog = () => {
+      const state = modelSelectorState;
+      if (!state) return null;
+      const section = state.sections[state.idx];
+      const filteredItems = filterItems(section.items, state.query);
+      return (() => {
+        var _el$8 = _$createElement("box"), _el$9 = _$createElement("input"), _el$0 = _$createElement("box"), _el$1 = _$createElement("text");
+        _$insertNode(_el$8, _el$9);
+        _$insertNode(_el$8, _el$0);
+        _$setProp(_el$8, "flexDirection", "column");
+        _$setProp(_el$9, "placeholder", "Buscar...");
+        _$setProp(_el$9, "onInput", (value) => {
+          state.query = value;
+          api.ui.dialog.replace(renderModelDialog);
+        });
+        _$insertNode(_el$0, _el$1);
+        _$insert(_el$1, () => `${section.label} (${state.idx + 1}/${state.sections.length})`);
+        _$insert(_el$8, (() => {
+          var _c$2 = _$memo(() => filteredItems.length > 0);
+          return () => _c$2() ? _$createComponent(api.ui.DialogSelect, {
+            get title() {
+              return `Modelo para ${state.agentName}`;
+            },
+            options: filteredItems,
+            skipFilter: true,
+            onSelect: (item) => {
+              const selectedValue = item.value;
+              const agentName = state.agentName;
+              cleanupSelector(modelSelectorState);
+              modelSelectorState = null;
+              if (selectedValue === CLEAR_SENTINEL) {
+                applySelection(agentName, selectedValue);
+                return;
+              }
+              const providers = api.state.provider ?? [];
+              const variants = buildVariantOptions(selectedValue, providers);
+              if (variants.length === 0) {
+                applySelection(agentName, selectedValue);
+                return;
+              }
+              api.ui.dialog.replace(() => _$createComponent(api.ui.DialogSelect, {
+                title: `Variant para ${agentName}`,
+                options: variants,
+                onSelect: (variant) => {
+                  applySelection(agentName, selectedValue, variant.value);
+                }
+              }));
+            }
+          }) : (() => {
+            var _el$10 = _$createElement("box"), _el$11 = _$createElement("text");
+            _$insertNode(_el$10, _el$11);
+            _$insertNode(_el$11, _$createTextNode(`Sin opciones`));
+            return _el$10;
+          })();
+        })(), null);
+        _$effect((_$p) => _$setProp(_el$9, "value", state.query, _$p));
+        return _el$8;
+      })();
+    };
     const openSelector = async () => {
       try {
-        const agents = buildAgentOptions(api.state.config);
+        const sections = buildAgentSections(api.state.config);
         const providers = api.state.provider ?? [];
-        if (agents.length === 0) {
+        if (sections[0].items.length === 0) {
           api.ui.toast({
             title: "FlowTask Model",
             message: "No hay agentes definidos en opencode.json",
@@ -176,13 +376,40 @@ var tui = async (api) => {
           });
           return;
         }
-        api.ui.dialog.replace(() => _$createComponent(api.ui.DialogSelect, {
-          title: "FlowTask \u2014 Agente",
-          options: agents,
-          onSelect: (item) => {
-            showModelDialog(item.value);
-          }
-        }));
+        const popMode = api.mode.push("flowtask-model-selector");
+        const layerResult = api.keymap.registerLayer({
+          mode: "flowtask-model-selector",
+          commands: [{
+            name: "flowtask.section.prev",
+            title: "Secci\xF3n anterior",
+            category: "FlowTask",
+            namespace: "flowtask",
+            run: () => moveSection(agentSelectorState, -1, renderAgentDialog)
+          }, {
+            name: "flowtask.section.next",
+            title: "Secci\xF3n siguiente",
+            category: "FlowTask",
+            namespace: "flowtask",
+            run: () => moveSection(agentSelectorState, 1, renderAgentDialog)
+          }],
+          bindings: [{
+            key: "left",
+            cmd: "flowtask.section.prev",
+            desc: "Secci\xF3n anterior"
+          }, {
+            key: "right",
+            cmd: "flowtask.section.next",
+            desc: "Secci\xF3n siguiente"
+          }]
+        });
+        agentSelectorState = {
+          sections,
+          idx: 0,
+          query: "",
+          popMode,
+          layerUnregister: typeof layerResult === "function" ? layerResult : null
+        };
+        api.ui.dialog.replace(renderAgentDialog);
       } catch (error) {
         api.ui.toast({
           title: "FlowTask Model",
@@ -194,29 +421,42 @@ var tui = async (api) => {
     const showModelDialog = (agentName) => {
       try {
         const providers = api.state.provider ?? [];
-        const models = buildModelOptions(providers);
-        api.ui.dialog.replace(() => _$createComponent(api.ui.DialogSelect, {
-          title: `Modelo para ${agentName}`,
-          options: models,
-          onSelect: (item) => {
-            if (item.value === CLEAR_SENTINEL) {
-              applySelection(agentName, item.value);
-              return;
-            }
-            const variants = buildVariantOptions(item.value, providers);
-            if (variants.length === 0) {
-              applySelection(agentName, item.value);
-              return;
-            }
-            api.ui.dialog.replace(() => _$createComponent(api.ui.DialogSelect, {
-              title: `Variant para ${agentName}`,
-              options: variants,
-              onSelect: (variant) => {
-                applySelection(agentName, item.value, variant.value);
-              }
-            }));
-          }
-        }));
+        const sections = buildModelSections(providers);
+        const popMode = api.mode.push("flowtask-model-selector");
+        const layerResult = api.keymap.registerLayer({
+          mode: "flowtask-model-selector",
+          commands: [{
+            name: "flowtask.section.prev",
+            title: "Secci\xF3n anterior",
+            category: "FlowTask",
+            namespace: "flowtask",
+            run: () => moveSection(modelSelectorState, -1, renderModelDialog)
+          }, {
+            name: "flowtask.section.next",
+            title: "Secci\xF3n siguiente",
+            category: "FlowTask",
+            namespace: "flowtask",
+            run: () => moveSection(modelSelectorState, 1, renderModelDialog)
+          }],
+          bindings: [{
+            key: "left",
+            cmd: "flowtask.section.prev",
+            desc: "Secci\xF3n anterior"
+          }, {
+            key: "right",
+            cmd: "flowtask.section.next",
+            desc: "Secci\xF3n siguiente"
+          }]
+        });
+        modelSelectorState = {
+          sections,
+          idx: 0,
+          query: "",
+          popMode,
+          layerUnregister: typeof layerResult === "function" ? layerResult : null,
+          agentName
+        };
+        api.ui.dialog.replace(renderModelDialog);
       } catch (error) {
         api.ui.toast({
           title: "FlowTask Model",

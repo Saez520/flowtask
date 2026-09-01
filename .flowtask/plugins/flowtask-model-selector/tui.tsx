@@ -2,7 +2,9 @@
 import type { TuiPluginApi } from "@opencode-ai/plugin";
 import {
   buildAgentOptions,
+  buildAgentSections,
   buildModelOptions,
+  buildModelSections,
   buildVariantOptions,
   CLEAR_SENTINEL,
   resolveGlobalConfigFile,
@@ -11,17 +13,167 @@ import {
   atomicWriteFile,
   buildAgentModelPatch,
 } from "./lib/selector-core";
+import type { Section } from "./lib/selector-core";
 import * as fs from "fs";
+
+type SelectorState = {
+  sections: Section<string>[];
+  idx: number;
+  query: string;
+  popMode: () => void;
+  layerUnregister: (() => void) | null;
+  agentName?: string;
+} | null;
 
 const tui = async (api: TuiPluginApi) => {
   try {
+    // Closure state for selectors (survives api.ui.dialog.replace re-renders)
+    let agentSelectorState: SelectorState = null;
+    let modelSelectorState: SelectorState = null;
+
+    const filterItems = (
+      items: { title: string; value: string; description?: string }[],
+      query: string
+    ) => {
+      if (!query) return items;
+      const q = query.toLowerCase();
+      return items.filter(
+        (item) =>
+          item.title.toLowerCase().includes(q) ||
+          (item.description && item.description.toLowerCase().includes(q))
+      );
+    };
+
+    const moveSection = (state: SelectorState, delta: number, renderFn: () => any) => {
+      if (!state) return;
+      const next = Math.max(0, Math.min(state.sections.length - 1, state.idx + delta));
+      if (next === state.idx) return;
+      state.idx = next;
+      api.ui.dialog.replace(renderFn);
+    };
+
+    const cleanupSelector = (state: SelectorState) => {
+      if (!state) return;
+      api.ui.dialog.clear();
+      state.popMode();
+      if (state.layerUnregister) state.layerUnregister();
+    };
+
+    // Render function for agent dialog
+    const renderAgentDialog = () => {
+      const state = agentSelectorState;
+      if (!state) return null;
+      const section = state.sections[state.idx];
+      const filteredItems = filterItems(section.items, state.query);
+
+      return (
+        <box flexDirection="column">
+          <input
+            value={state.query}
+            placeholder="Buscar..."
+            onInput={(value: string) => {
+              state.query = value;
+              api.ui.dialog.replace(renderAgentDialog);
+            }}
+          />
+          <box>
+            <text>
+              {`${section.label} (${state.idx + 1}/${state.sections.length})`}
+            </text>
+          </box>
+          {filteredItems.length > 0 ? (
+            <api.ui.DialogSelect
+              title="FlowTask — Agente"
+              options={filteredItems}
+              skipFilter={true}
+              onSelect={(item) => {
+                const selectedValue = item.value;
+                cleanupSelector(agentSelectorState);
+                agentSelectorState = null;
+                showModelDialog(selectedValue);
+              }}
+            />
+          ) : (
+            <box>
+              <text>Sin opciones</text>
+            </box>
+          )}
+        </box>
+      );
+    };
+
+    // Render function for model dialog
+    const renderModelDialog = () => {
+      const state = modelSelectorState;
+      if (!state) return null;
+      const section = state.sections[state.idx];
+      const filteredItems = filterItems(section.items, state.query);
+
+      return (
+        <box flexDirection="column">
+          <input
+            value={state.query}
+            placeholder="Buscar..."
+            onInput={(value: string) => {
+              state.query = value;
+              api.ui.dialog.replace(renderModelDialog);
+            }}
+          />
+          <box>
+            <text>
+              {`${section.label} (${state.idx + 1}/${state.sections.length})`}
+            </text>
+          </box>
+          {filteredItems.length > 0 ? (
+            <api.ui.DialogSelect
+              title={`Modelo para ${state.agentName}`}
+              options={filteredItems}
+              skipFilter={true}
+              onSelect={(item) => {
+                const selectedValue = item.value;
+                const agentName = state.agentName!;
+                cleanupSelector(modelSelectorState);
+                modelSelectorState = null;
+
+                if (selectedValue === CLEAR_SENTINEL) {
+                  applySelection(agentName, selectedValue);
+                  return;
+                }
+
+                const providers = api.state.provider ?? [];
+                const variants = buildVariantOptions(selectedValue, providers);
+                if (variants.length === 0) {
+                  applySelection(agentName, selectedValue);
+                  return;
+                }
+
+                api.ui.dialog.replace(() => (
+                  <api.ui.DialogSelect
+                    title={`Variant para ${agentName}`}
+                    options={variants}
+                    onSelect={(variant) => {
+                      applySelection(agentName, selectedValue, variant.value);
+                    }}
+                  />
+                ));
+              }}
+            />
+          ) : (
+            <box>
+              <text>Sin opciones</text>
+            </box>
+          )}
+        </box>
+      );
+    };
+
     const openSelector = async () => {
       try {
-        const agents = buildAgentOptions(api.state.config);
+        const sections = buildAgentSections(api.state.config);
         const providers = api.state.provider ?? [];
 
         // Guard: no agents
-        if (agents.length === 0) {
+        if (sections[0].items.length === 0) {
           api.ui.toast({
             title: "FlowTask Model",
             message: "No hay agentes definidos en opencode.json",
@@ -34,23 +186,55 @@ const tui = async (api: TuiPluginApi) => {
         if (providers.length === 0) {
           api.ui.toast({
             title: "FlowTask Model",
-            message:
-              "OpenCode no expone providers (¿instancia no conectada?)",
+            message: "OpenCode no expone providers (¿instancia no conectada?)",
             variant: "error",
           });
           return;
         }
 
-        // Step 1: Select agent
-        api.ui.dialog.replace(() => (
-          <api.ui.DialogSelect
-            title="FlowTask — Agente"
-            options={agents}
-            onSelect={(item) => {
-              showModelDialog(item.value);
-            }}
-          />
-        ));
+        // Push custom mode and register keymap layer for section navigation
+        const popMode = api.mode.push("flowtask-model-selector");
+        const layerResult = api.keymap.registerLayer({
+          mode: "flowtask-model-selector",
+          commands: [
+            {
+              name: "flowtask.section.prev",
+              title: "Sección anterior",
+              category: "FlowTask",
+              namespace: "flowtask",
+              run: () => moveSection(agentSelectorState, -1, renderAgentDialog),
+            },
+            {
+              name: "flowtask.section.next",
+              title: "Sección siguiente",
+              category: "FlowTask",
+              namespace: "flowtask",
+              run: () => moveSection(agentSelectorState, +1, renderAgentDialog),
+            },
+          ],
+          bindings: [
+            {
+              key: "left",
+              cmd: "flowtask.section.prev",
+              desc: "Sección anterior",
+            },
+            {
+              key: "right",
+              cmd: "flowtask.section.next",
+              desc: "Sección siguiente",
+            },
+          ],
+        });
+
+        agentSelectorState = {
+          sections,
+          idx: 0,
+          query: "",
+          popMode,
+          layerUnregister: typeof layerResult === "function" ? layerResult : null,
+        };
+
+        api.ui.dialog.replace(renderAgentDialog);
       } catch (error) {
         api.ui.toast({
           title: "FlowTask Model",
@@ -63,36 +247,52 @@ const tui = async (api: TuiPluginApi) => {
     const showModelDialog = (agentName: string) => {
       try {
         const providers = api.state.provider ?? [];
-        const models = buildModelOptions(providers);
+        const sections = buildModelSections(providers);
 
-        api.ui.dialog.replace(() => (
-          <api.ui.DialogSelect
-            title={`Modelo para ${agentName}`}
-            options={models}
-            onSelect={(item) => {
-              if (item.value === CLEAR_SENTINEL) {
-                applySelection(agentName, item.value);
-                return;
-              }
+        // Push custom mode and register keymap layer for section navigation
+        const popMode = api.mode.push("flowtask-model-selector");
+        const layerResult = api.keymap.registerLayer({
+          mode: "flowtask-model-selector",
+          commands: [
+            {
+              name: "flowtask.section.prev",
+              title: "Sección anterior",
+              category: "FlowTask",
+              namespace: "flowtask",
+              run: () => moveSection(modelSelectorState, -1, renderModelDialog),
+            },
+            {
+              name: "flowtask.section.next",
+              title: "Sección siguiente",
+              category: "FlowTask",
+              namespace: "flowtask",
+              run: () => moveSection(modelSelectorState, +1, renderModelDialog),
+            },
+          ],
+          bindings: [
+            {
+              key: "left",
+              cmd: "flowtask.section.prev",
+              desc: "Sección anterior",
+            },
+            {
+              key: "right",
+              cmd: "flowtask.section.next",
+              desc: "Sección siguiente",
+            },
+          ],
+        });
 
-              const variants = buildVariantOptions(item.value, providers);
-              if (variants.length === 0) {
-                applySelection(agentName, item.value);
-                return;
-              }
+        modelSelectorState = {
+          sections,
+          idx: 0,
+          query: "",
+          popMode,
+          layerUnregister: typeof layerResult === "function" ? layerResult : null,
+          agentName,
+        };
 
-              api.ui.dialog.replace(() => (
-                <api.ui.DialogSelect
-                  title={`Variant para ${agentName}`}
-                  options={variants}
-                  onSelect={(variant) => {
-                    applySelection(agentName, item.value, variant.value);
-                  }}
-                />
-              ));
-            }}
-          />
-        ));
+        api.ui.dialog.replace(renderModelDialog);
       } catch (error) {
         api.ui.toast({
           title: "FlowTask Model",
@@ -172,8 +372,7 @@ const tui = async (api: TuiPluginApi) => {
           if (!api.client?.global?.config?.update) {
             api.ui.toast({
               title: "FlowTask Model",
-              message:
-                "OpenCode no soporta config update (versión incompatible)",
+              message: "OpenCode no soporta config update (versión incompatible)",
               variant: "error",
             });
             return;

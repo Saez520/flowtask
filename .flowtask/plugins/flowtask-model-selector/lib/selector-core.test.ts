@@ -5,7 +5,9 @@ import * as os from "os";
 import {
   CLEAR_SENTINEL,
   buildAgentOptions,
+  buildAgentSections,
   buildModelOptions,
+  buildModelSections,
   buildVariantOptions,
   readAgentModel,
   resolveGlobalConfigFile,
@@ -298,4 +300,111 @@ test("buildAgentModelPatch: includes variant only when provided", () => {
   expect(buildAgentModelPatch("build", "anthropic/opus")).toEqual({
     agent: { build: { model: "anthropic/opus" } },
   });
+});
+
+// --- buildAgentSections tests ---
+
+test("buildAgentSections: All is first and contains all agents", () => {
+  const config = { agent: { "flowtask-a": {}, "flowtask-b": {}, "other": {} } };
+  const sections = buildAgentSections(config);
+  expect(sections[0].id).toBe("all");
+  expect(sections[0].label).toBe("All");
+  expect(sections[0].items.length).toBe(3);
+});
+
+test("buildAgentSections: family with >= 2 agents creates section with original-case label", () => {
+  const config = { agent: { "Flowtask-Runner": {}, "flowtask-planner": {} } };
+  const sections = buildAgentSections(config);
+  expect(sections.length).toBe(2);
+  expect(sections[1].id).toBe("family:Flowtask");
+  expect(sections[1].label).toBe("Flowtask");
+  expect(sections[1].kind).toBe("family");
+  expect(sections[1].items.length).toBe(2);
+});
+
+test("buildAgentSections: family is case-insensitive", () => {
+  const config = { agent: { "flowtask-alpha": {}, "Flowtask-beta": {}, "FLOWTASK-gamma": {} } };
+  const sections = buildAgentSections(config);
+  // All three belong to the same family (case-insensitive) → 1 family section
+  const familySections = sections.filter((s) => s.kind === "family");
+  expect(familySections.length).toBe(1);
+  expect(familySections[0].items.length).toBe(3);
+});
+
+test("buildAgentSections: agent without dash stays only in All", () => {
+  const config = { agent: { lone: {}, "flowtask-a": {}, "flowtask-b": {} } };
+  const sections = buildAgentSections(config);
+  const familySections = sections.filter((s) => s.kind === "family");
+  expect(familySections.length).toBe(1);
+  expect(familySections[0].items.length).toBe(2);
+  // "lone" is only in All
+  const loneInAll = sections[0].items.find((i) => i.value === "lone");
+  expect(loneInAll).toBeDefined();
+});
+
+test("buildAgentSections: family with exactly 1 agent does not create section", () => {
+  const config = { agent: { "flowtask-a": {}, "other-x": {} } };
+  const sections = buildAgentSections(config);
+  // Both families have only 1 member → no family sections
+  expect(sections.length).toBe(1);
+  expect(sections[0].id).toBe("all");
+});
+
+test("buildAgentSections: empty config → only All with empty items", () => {
+  const sections = buildAgentSections({});
+  expect(sections.length).toBe(1);
+  expect(sections[0].id).toBe("all");
+  expect(sections[0].items).toEqual([]);
+});
+
+test("buildAgentSections: family sections sorted alphabetically", () => {
+  const config = { agent: { "zebra-a": {}, "zebra-b": {}, "alpha-a": {}, "alpha-b": {} } };
+  const sections = buildAgentSections(config);
+  expect(sections.length).toBe(3);
+  expect(sections[1].label).toBe("alpha");
+  expect(sections[2].label).toBe("zebra");
+});
+
+// --- buildModelSections tests ---
+
+test("buildModelSections: All includes CLEAR_SENTINEL, provider sections do not", () => {
+  const providers = [
+    { id: "anthropic", name: "Anthropic", models: { opus: {} } },
+    { id: "openai", name: "OpenAI", models: { gpt4: {} } },
+  ];
+  const sections = buildModelSections(providers);
+  expect(sections[0].id).toBe("all");
+  expect(sections[0].items[0].value).toBe(CLEAR_SENTINEL);
+
+  const anthropicSection = sections.find((s) => s.id === "provider:anthropic");
+  expect(anthropicSection).toBeDefined();
+  expect(anthropicSection!.items.every((i) => i.value !== CLEAR_SENTINEL)).toBe(true);
+});
+
+test("buildModelSections: providers sorted alphabetically", () => {
+  const providers = [
+    { id: "openai", name: "OpenAI", models: { gpt4: {} } },
+    { id: "anthropic", name: "Anthropic", models: { opus: {} } },
+  ];
+  const sections = buildModelSections(providers);
+  expect(sections[1].label).toBe("Anthropic");
+  expect(sections[2].label).toBe("OpenAI");
+});
+
+test("buildModelSections: empty providers → only All with CLEAR_SENTINEL", () => {
+  const sections = buildModelSections([]);
+  expect(sections.length).toBe(1);
+  expect(sections[0].id).toBe("all");
+  expect(sections[0].items.length).toBe(1);
+  expect(sections[0].items[0].value).toBe(CLEAR_SENTINEL);
+});
+
+test("buildModelSections: provider without models does not create section", () => {
+  const providers = [
+    { id: "anthropic", name: "Anthropic", models: { opus: {} } },
+    { id: "empty", name: "Empty", models: {} },
+  ];
+  const sections = buildModelSections(providers);
+  expect(sections.length).toBe(2); // All + anthropic
+  expect(sections.find((s) => s.id === "provider:empty")).toBeUndefined();
 });

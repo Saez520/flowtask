@@ -5,6 +5,22 @@ import * as os from "os";
 export const CLEAR_SENTINEL = "__flowtask_clear__";
 
 /**
+ * Kind of section in a grouped selector.
+ */
+export type SectionKind = "all" | "family" | "provider";
+
+/**
+ * A section of options for the grouped selector.
+ * `V` is the value type of the options (string for agents, string for models).
+ */
+export interface Section<V = unknown> {
+  id: string;
+  label: string;
+  kind: SectionKind;
+  items: { title: string; value: V; description?: string }[];
+}
+
+/**
  * Build agent options sorted alphabetically with current model description.
  */
 export function buildAgentOptions(
@@ -62,6 +78,117 @@ export function buildModelOptions(
   }
 
   return options;
+}
+
+/**
+ * Detect the family prefix of an agent name (segment before the first dash).
+ * Returns null if the name has no dash or the prefix is empty/whitespace.
+ * Case-preserving: returns the prefix exactly as it appears.
+ */
+function detectAgentFamily(name: string): string | null {
+  const dashIdx = name.indexOf("-");
+  if (dashIdx <= 0) return null;
+  const prefix = name.slice(0, dashIdx).trim();
+  if (prefix === "") return null;
+  return prefix;
+}
+
+/**
+ * Build grouped sections for agent selection.
+ * Always returns an "all" section first, followed by family sections
+ * (only families with >= 2 agents), sorted alphabetically by label.
+ */
+export function buildAgentSections(config: any): Section<string>[] {
+  const allOptions = buildAgentOptions(config);
+
+  const allSection: Section<string> = {
+    id: "all",
+    label: "All",
+    kind: "all",
+    items: allOptions,
+  };
+
+  // Group agents by family (case-insensitive key, preserve original label)
+  const familyMap = new Map<
+    string,
+    { label: string; items: { title: string; value: string; description?: string }[] }
+  >();
+
+  for (const option of allOptions) {
+    const family = detectAgentFamily(option.value);
+    if (family === null) continue;
+
+    const key = family.toLowerCase();
+    const entry = familyMap.get(key);
+    if (entry) {
+      entry.items.push(option);
+    } else {
+      familyMap.set(key, { label: family, items: [option] });
+    }
+  }
+
+  // Build family sections (only families with >= 2 members), sorted by label
+  const familySections: Section<string>[] = [];
+  for (const [, entry] of familyMap) {
+    if (entry.items.length >= 2) {
+      familySections.push({
+        id: `family:${entry.label}`,
+        label: entry.label,
+        kind: "family",
+        items: entry.items,
+      });
+    }
+  }
+
+  familySections.sort((a, b) => a.label.localeCompare(b.label));
+
+  return [allSection, ...familySections];
+}
+
+/**
+ * Build grouped sections for model selection.
+ * Always returns an "all" section first (includes CLEAR_SENTINEL),
+ * followed by provider sections sorted alphabetically by provider name.
+ */
+export function buildModelSections(providers: any[]): Section<string>[] {
+  const allOptions = buildModelOptions(providers);
+
+  const allSection: Section<string> = {
+    id: "all",
+    label: "All",
+    kind: "all",
+    items: allOptions,
+  };
+
+  const providerSections: Section<string>[] = [];
+
+  for (const provider of providers) {
+    const models = provider.models ?? {};
+    const modelKeys = Object.keys(models);
+    if (modelKeys.length === 0) continue;
+
+    const providerName = provider.name ?? provider.id;
+    const items = modelKeys.map((modelId) => {
+      const model = models[modelId];
+      const modelName = model.name ?? modelId;
+      return {
+        title: modelName,
+        value: `${provider.id}/${modelId}`,
+        description: providerName,
+      };
+    });
+
+    providerSections.push({
+      id: `provider:${provider.id}`,
+      label: providerName,
+      kind: "provider",
+      items,
+    });
+  }
+
+  providerSections.sort((a, b) => a.label.localeCompare(b.label));
+
+  return [allSection, ...providerSections];
 }
 
 /**
