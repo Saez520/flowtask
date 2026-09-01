@@ -7,8 +7,23 @@ description: >-
 mode: subagent
 hidden: true
 permission:
-  edit: allow
-  bash: allow
+  edit:
+    "*": "deny"
+    ".flowtask/config/.review-stamp": "allow"
+    "*/.flowtask/config/.review-stamp": "allow"
+    ".opencode/flowtask/config/.review-stamp": "allow"
+    "*/.opencode/flowtask/config/.review-stamp": "allow"
+  bash:
+    "*": "deny"
+    "git diff *": "allow"
+    "git status *": "allow"
+    "git branch *": "allow"
+    "git log *": "allow"
+    "git rev-parse *": "allow"
+    "git show *": "allow"
+    "gh pr diff *": "allow"
+    "gh pr view *": "allow"
+  webfetch: "deny"
 ---
 
 # FlowTask Review Orchestrator — Revisor 4R

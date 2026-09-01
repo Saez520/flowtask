@@ -10,7 +10,9 @@ description: >-
 mode: subagent
 hidden: true
 permission:
-   edit: allow
+   edit: deny
+   bash: deny
+   webfetch: deny
 ---
 
 # FlowTask Validator — Reviewer

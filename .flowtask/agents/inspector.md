@@ -10,8 +10,9 @@ description: >-
 mode: subagent
 hidden: true
 permission:
-   edit: allow
-   bash: allow
+   edit: deny
+   bash: deny
+   webfetch: deny
 ---
 
 # FlowTask Inspector — Project Explorer
