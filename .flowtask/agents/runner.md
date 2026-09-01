@@ -460,7 +460,7 @@ base branch.
 
 Despacha el Validator con el mismo contexto. El Validator persiste
 `hotfix/{id}/artifact/validacion` y su flow-state separado. Un rechazo vuelve al
-Constructor hasta dos intentos; después escala. Con APPROVED ejecuta
+Constructor hasta dos intentos; después escala. Con APPROVED hacé el commit antes de
 `${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch}`.
 Un conflicto conserva worktree y branch y se escala sin limpiar; un rechazo por
 destino con cambios sin commitear también conserva todo intacto, se escala al
@@ -546,13 +546,14 @@ Prompt: flow state del plan desde Engram y contexto actual del CA.
 
 Cuando el validator apruebe y el CA tenga worktree asociado:
 
-1. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID>`.
-2. Si completa bien, el script hace squash-merge a la rama base detectada y limpia el worktree/branch.
-3. Si `complete` falla por conflicto, **no limpies** el worktree.
-4. Si `complete` rechaza porque **el destino tiene cambios sin commitear**, no intentes limpiar el destino ni crear stashes: el rechazo es seguro y dejó todo intacto. Escala al desarrollador mostrando el motivo genérico del script; solo si el desarrollador consiente explícitamente, reinvoca `complete` con `--preserve-dirty`.
-5. `--preserve-dirty` es una transacción opt-in: captura los cambios elegibles del destino en refs privadas (`refs/flowtask/backups/<tx-id>`, jamás en la lista pública de stashes), registra cada fase en `.flowtask/backups/<tx-id>/journal` y restaura el estado fino al final. Ofrecélo **SOLO ante instrucción humana explícita** — jamás por defecto ni en flujos automáticos. La config persistida (`.flowtask/config/worktree.json` con `"preserveDirty": true`) cuenta como consentimiento humano explícito y el script nunca la escribe.
-6. Si un cierre con preservación se interrumpe, reanudalo con `worktree.sh recover [<tx-id>]` (sin argumento toma la pendiente más reciente); repetirlo es seguro e idempotente. Si la restauración quedó pendiente-manual, mostrale al desarrollador las instrucciones seguras impresas por el script: la resolución manual nunca se automatiza.
-7. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
+1. Hacé el commit antes de `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID>`.
+2. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID>`.
+3. Si completa bien, el script hace squash-merge a la rama base detectada y limpia el worktree/branch.
+4. Si `complete` falla por conflicto, **no limpies** el worktree.
+5. Si `complete` rechaza porque **el destino tiene cambios sin commitear**, no intentes limpiar el destino ni crear stashes: el rechazo es seguro y dejó todo intacto. Escala al desarrollador mostrando el motivo genérico del script; solo si el desarrollador consiente explícitamente, reinvoca `complete` con `--preserve-dirty`.
+6. `--preserve-dirty` es una transacción opt-in: captura los cambios elegibles del destino en refs privadas (`refs/flowtask/backups/<tx-id>`, jamás en la lista pública de stashes), registra cada fase en `.flowtask/backups/<tx-id>/journal` y restaura el estado fino al final. Ofrecélo **SOLO ante instrucción humana explícita** — jamás por defecto ni en flujos automáticos. La config persistida (`.flowtask/config/worktree.json` con `"preserveDirty": true`) cuenta como consentimiento humano explícito y el script nunca la escribe.
+7. Si un cierre con preservación se interrumpe, reanudalo con `worktree.sh recover [<tx-id>]` (sin argumento toma la pendiente más reciente); repetirlo es seguro e idempotente. Si la restauración quedó pendiente-manual, mostrale al desarrollador las instrucciones seguras impresas por el script: la resolución manual nunca se automatiza.
+8. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
 
 ***
 
@@ -641,9 +642,9 @@ de sesión anterior. El prompt delegado debe contener únicamente:
 
 Para las variantes `files` y `pr-mr`, incluir además únicamente la lista de rutas o el identificador PR/MR que permite al review-orchestrator recuperar el scope. Nunca adjuntar ni serializar el diff, ni prescribir lentes, skills o marcos de revisión. Conservar el contrato de findings con estado `APPROVED | BLOCKED | CHANGES_REQUIRED`, severidad, archivo/línea, evidencia, justificación y recomendación.
 
-### Flujo pre-commit
+### Flujo commit
 
-Si ejecutas un `git commit` y el mismo es bloqueado por el gate, seguí las instrucciones del mensaje de error e invocá review-orchestrator en modo pre-commit. Tras la aprobación (con stamp vigente), el RUNNER reintenta el commit directamente con `git commit -m "..."` verificando antes `git status` y `git diff` para derivar el mensaje del reporte del constructor o del plan. NO re-invoces al constructor solo para commitear.
+Si ejecutas un `git commit` y el gate lo bloquea, seguí las instrucciones del mensaje de error. Tras la aprobación, el RUNNER reintenta el commit directamente con `git commit -m "..."` usando el mensaje del trabajo realizado (CA/HF en curso). NO re-invoces al constructor solo para commitear.
 
 ***
 
