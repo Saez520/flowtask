@@ -567,13 +567,6 @@ Revisa la validación en Engram y el código.
 ```
 
 ***
-
-## Flujos parciales
-
-- `solo planificación` → Pasos 1 → 2 → checkpoint
-- `solo ejecución` → Paso 4 (incluye creación del worktree si no existe) → Paso 5
-- `solo validación` → Paso 5
-
 ## Reconciliación post-compaction
 
 Si el runner pierde contexto o se reinicia:

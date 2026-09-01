@@ -71,7 +71,7 @@ CA-Writer → Planner → Constructor → Validator
 **Paso 5** — Validator valida
 **Paso 6** — Si rechaza 2 veces → escala al dev
 
-- El dev puede correr flujos parciales (solo planificación, solo validación)
+- Las correcciones acordadas se ejecutan como Hotfix (HF), sin ceremonia de CA
 - `--auto` salta el checkpoint (para cuando confías en el pipeline)
 
 ---
@@ -192,7 +192,6 @@ La memoria convierte agentes independientes en un **sistema coherente con estado
 | Item | Qué implica |
 |------|-------------|
 | Validator más riguroso | Integración con Tester, validación de runtime (no solo estático) |
-| Modo Hotfix | Flujo ligero para correcciones rápidas sin la formalidad de un CA completo |
 | Mitigación de degradación de contexto | Mecanismo de inyección progresiva de reglas cuando el contexto crece |
 | Protocolo Zero-Assumptions | Auditar prompts de todos los agentes para eliminar supuestos no verificados |
 
