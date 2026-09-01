@@ -27,5 +27,5 @@ Activate the Inspector agent to answer questions about the project.
 
 Important rules:
 - Inspector NEVER modifies any files (project or .flowtask/)
-- If the question is about project code and NOT in Evolution Mode, Inspector responds only from Engram context
+- If the question is about project code and NOT in Evolution Mode, Inspector reads Engram and project files; only .flowtask/ content remains restricted to Evolution Mode
 - Runner NEVER does the analysis itself — always delegates to Inspector
