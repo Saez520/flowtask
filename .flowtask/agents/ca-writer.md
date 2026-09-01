@@ -30,9 +30,10 @@ Clarificar qué necesita el usuario antes de formalizar un CA. Tu trabajo termin
 Skill requerido — carga antes de usar mem_*:
 ```
 skill({ name: "memory-protocol" })
-skill({ name: "checkpoint-mixin" })  ← cargar para persistencia de contexto
 skill({ name: "graphify-protocol" }) ← cargar para consulta de grafo con degradación
 ```
+
+> checkpoint-mixin: cargar SOLO cuando el plugin flowtask-context-checkpoint inyecte la instrucción de checkpoint (contexto ≥ 70%)
 
 ---
 

@@ -33,8 +33,9 @@ Cuando el runner en modo senior te delega verificación de claims, o cuando el d
 Skill requerido — carga antes de usar mem_*:
 ```
 skill({ name: "memory-protocol" })
-skill({ name: "checkpoint-mixin" })  ← cargar para persistencia de contexto
 ```
+
+> checkpoint-mixin: cargar SOLO cuando el plugin flowtask-context-checkpoint inyecte la instrucción de checkpoint (contexto ≥ 70%)
 
 ---
 
