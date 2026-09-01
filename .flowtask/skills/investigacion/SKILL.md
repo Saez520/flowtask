@@ -37,19 +37,20 @@ Para cada necesidad de contexto del repositorio se sigue, sin saltos, la cadena
 de `graphify-protocol`:
 
 ```
-1. integración de consulta configurada para el CLI actual
-   ↓ si no está disponible o no devuelve resultado utilizable
-2. node .flowtask/bin/flowtask.js graphify query --query <query-string>
-   ↓ si no está disponible, devuelve ok:false, está vacío o no produce
-     referencias utilizables
+1. graphify_query_graph (MCP) — herramienta de integración concreta del grafo
+    ↓ si el MCP no está disponible o no devuelve resultado utilizable
+2. node .flowtask/bin/flowtask.js graphify query --query <query-string> (CLI local)
+    ↓ si no está disponible, devuelve ok:false, está vacío o no produce
+      referencias utilizables
 3. escalar automáticamente al Inspector
 ```
 
 La consulta se ejecuta desde la raíz del repositorio principal y nunca consulta
 `.worktrees/`. Ante cualquier resultado no utilizable de la primera vía Graphify
-aplicable —incluidos resultado vacío, integración o CLI no disponibles, `ok:false`,
-exit code `1` o ausencia de referencias utilizables— se detiene la cadena y se
-emite exactamente:
+aplicable —incluidos resultado vacío, MCP no disponible, integración o CLI no
+disponibles, `ok:false`, exit code `1` o ausencia de referencias utilizables— se
+avanza a la siguiente vía. Si ninguna vía Graphify entregó referencias utilizables,
+se detiene la cadena y se emite exactamente:
 
 ```
 no pude obtener referencias utilizables del grafo, escalando al Inspector

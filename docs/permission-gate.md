@@ -79,6 +79,11 @@ Las operaciones Runner autorizadas, con sus formas canónicas, son:
   sigue aplicando sus reglas de revisión y bypasses.
 - `git push` con sus argumentos canónicos.
 - `git merge` con sus argumentos canónicos.
+- `git branch` con flags opcionales (por ejemplo, `git branch --show-current`).
+- `git show` con argumentos (por ejemplo, `git show HEAD`).
+- `git rev-parse` con flags y paths.
+- `git log` con límite máximo de 10 commits: acepta `-n <N>`, `--max-count=<N>` y forma corta `-<N>` (entero 1..10); permite flags read-only adicionales (`--oneline`, `--format=…`, `--stat`, `--name-only`, `--no-merges`, `--first-parent`, `--all`, `--` con paths). Se rechaza sin límite o con límite > 10.
+- Graphify mediante MCP `graphify_query_graph` (vía 1 de la cadena de investigación del runner).
 - Graphify mediante `node .flowtask/bin/flowtask.js graphify *`, incluyendo la
   forma local `node .flowtask/bin/flowtask.js graphify query --query <query>`.
 - Engram usando herramientas con prefijo MCP `engram_` (por ejemplo,
@@ -112,11 +117,12 @@ Cada ejemplo siguiente se bloquea antes de ejecutar cualquier segmento y
 devuelve el feedback exacto indicado arriba:
 
 ```text
-git status && git log    # se bloquea por el segmento git log
-git status || git log    # se bloquea por el segmento git log
+git status && git log --oneline    # se bloquea: git log sin límite
+git status && git log -n 100       # se bloquea: límite > 10
+git status && git log --max-count=11  # se bloquea: límite > 10
 git status; git diff     # ; no es un separador autorizado
 git status | git diff    # pipe no es un separador autorizado
-git log                  # verbo no autorizado
+git log                  # se bloquea: sin límite
 ${FLOWTASK_SCRIPTS}/worktree.sh create id --base  # falta <branch>
 echo ok > output.txt     # redirect a archivo real
 ```

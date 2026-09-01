@@ -31,16 +31,16 @@ Antes de consultar el grafo, el agente debe:
 La cadena para cada necesidad de contexto del repositorio es **secuencial y no salteable**:
 
 ```
-1. integración de consulta configurada para el CLI actual
-   ↓ (si no está disponible o no devuelve resultado utilizable)
+1. graphify_query_graph (MCP) — herramienta de integración concreta del grafo
+    ↓ (si el MCP no está disponible o no devuelve resultado utilizable)
 2. herramienta local: node .flowtask/bin/flowtask.js graphify query --query <query-string>
-   ↓ (si no está disponible, devuelve ok:false o no produce resultado utilizable)
+    ↓ (si no está disponible, devuelve ok:false o no produce resultado utilizable)
 3. búsqueda normal del proyecto
 ```
 
 **Regla de terminación**: La cadena se detiene en la primera vía que devuelve un resultado utilizable.
 
-**Regla de no-skip**: Ninguna vía puede omitirse. Si integración falla pero la CLI local funciona, se informa degradación parcial. Si ambas fallan, se usa búsqueda normal.
+**Regla de no-skip**: Ninguna vía puede omitirse. Si el MCP falla pero la CLI local funciona, se informa degradación parcial. Si ambas fallan, se usa búsqueda normal.
 
 ## Contrato de la herramienta local
 
@@ -100,17 +100,17 @@ Cada intento de consulta se clasifica como:
 
 Los mensajes de degradación son **observables, breves y no bloqueantes**. No se imprime la salida completa de herramientas ni secretos; se registra solo fase, causa resumida y vía elegida.
 
-### Degradación parcial (integración falla, CLI local funciona)
+### Degradación parcial (MCP falla, CLI local funciona)
 
-Cuando solo falla la integración pero la herramienta local concreta funciona, el agente informa:
+Cuando el MCP `graphify_query_graph` no produce contexto Graphify **y** la herramienta local concreta funciona, el agente informa:
 
 ```
-[Graphify] Integración no disponible — usando herramienta local: node .flowtask/bin/flowtask.js graphify query --query <query-string>
+[Graphify] MCP no disponible — usando herramienta local: node .flowtask/bin/flowtask.js graphify query --query <query-string>
 ```
 
-### Degradación completa (integración y CLI local fallan)
+### Degradación completa (MCP y CLI local fallan)
 
-Cuando la integración no produce contexto Graphify **y** la herramienta local concreta devuelve `ok:false` (incluido exit code `1`), se usa búsqueda normal y se emite **literalmente**:
+Cuando el MCP no produce contexto Graphify **y** la herramienta local concreta devuelve `ok:false` (incluido exit code `1`), se usa búsqueda normal y se emite **literalmente**:
 
 ```
 no pude consultar el grafo, estoy usando búsqueda normal

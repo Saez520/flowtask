@@ -82,12 +82,59 @@ test("matches canonical Runner commands structurally", () => {
 });
 
 test("authorizes all-safe compounds, including the original management command", () => {
-  for (const command of [
-    "git status && git diff",
-    'git worktree list && echo "---" && ls -la .worktrees/ 2>/dev/null || echo "no .worktrees dir"',
-    'echo "a && b" || git diff --stat',
-    "git status && git log",
-  ]) assert.equal(isAuthorizedRunnerCommand(command), true, command);
+   for (const command of [
+     "git status && git diff",
+     'git worktree list && echo "---" && ls -la .worktrees/ 2>/dev/null || echo "no .worktrees dir"',
+     'echo "a && b" || git diff --stat',
+     "git status && git log --oneline -n 10",
+   ]) assert.equal(isAuthorizedRunnerCommand(command), true, command);
+});
+
+test("authorizes git log con límite ≤ 10 (formas canónicas)", () => {
+   for (const command of [
+     "git log --oneline -n 10",
+     "git log -n 5",
+     "git log --max-count=10",
+     "git log --max-count=1 --stat",
+     "git log -10",
+     "git log -1",
+     "git log --oneline --no-merges -n 10",
+     "git log --format='%h %s' -n 5",
+     "git log --stat --name-only -n 10",
+     "git log --first-parent -n 10",
+     "git log --all --oneline -n 10",
+     "git log -n 10 -- src/index.ts",
+   ]) assert.equal(isAuthorizedRunnerCommand(command), true, command);
+});
+
+test("rejects git log sin límite o con límite > 10", () => {
+   for (const command of [
+     "git log",
+     "git log --oneline",
+     "git log -n 100",
+     "git log --max-count=11",
+     "git log -n 11",
+     "git log --max-count=100",
+     "git status && git log -n 100",
+     "git log --stat",
+     "git log --oneline --graph --all",
+   ]) assert.equal(isAuthorizedRunnerCommand(command), false, command);
+});
+
+test("runner permite MCP graphify_query_graph y bloquea tools graphify distintos", async () => {
+   const hooks = await plugin({ directory: process.cwd() });
+   await hooks["chat.message"]({ sessionID: "s-mcp", agent: "flowtask-runner" }, { message: {}, parts: [] });
+   // graphify_query_graph debe permitirse (vía 1 MCP)
+   await hooks["tool.execute.before"]({ tool: "graphify_query_graph", sessionID: "s-mcp", callID: "c-mcp" }, { args: { question: "test" } });
+   // Cualquier otro tool graphify o desconocido debe bloquearse
+   await assert.rejects(
+     hooks["tool.execute.before"]({ tool: "graphify_get_neighbors", sessionID: "s-mcp", callID: "c-block" }, { args: {} }),
+     (error) => error instanceof Error && error.message === RUNNER_DELEGATION_MESSAGE,
+   );
+   await assert.rejects(
+     hooks["tool.execute.before"]({ tool: "graphify_shortest_path", sessionID: "s-mcp", callID: "c-block2" }, { args: {} }),
+     (error) => error instanceof Error && error.message === RUNNER_DELEGATION_MESSAGE,
+   );
 });
 
 test("rejects malformed, mixed and dangerous commands", () => {

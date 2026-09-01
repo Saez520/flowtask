@@ -72,10 +72,13 @@ function isRunner(agent: unknown): boolean {
 }
 
 function runnerToolAllowed(tool: string, args: Record<string, unknown>): boolean {
-  if (tool === "bash") return isAuthorizedRunnerCommand(String(args.command ?? ""));
-  if (tool === "read" || tool === "glob" || tool === "grep" || tool === "skill" || tool.startsWith("engram_")) return true;
-  if (tool === "task") return RUNNER_TASKS.has(String(args.subagent_type ?? args.agent ?? args.name ?? ""));
-  return false;
+   if (tool === "bash") return isAuthorizedRunnerCommand(String(args.command ?? ""));
+   if (tool === "read" || tool === "glob" || tool === "grep" || tool === "skill" || tool.startsWith("engram_")) return true;
+   // MCP Graphify: única herramienta MCP autorizada para el runner (vía 1 de la cadena de investigación).
+   // No ampliar a otros tools graphify — solo el tool enumerado exacto.
+   if (tool === "graphify_query_graph") return true;
+   if (tool === "task") return RUNNER_TASKS.has(String(args.subagent_type ?? args.agent ?? args.name ?? ""));
+   return false;
 }
 
 function runnerBlocked(): never { throw new Error(RUNNER_DELEGATION_MESSAGE); }

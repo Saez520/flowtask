@@ -70,11 +70,11 @@ describe("graphify-protocol skill contract", () => {
     assert.ok(content !== null, `${skillPath} should exist`);
   });
 
-  it("defines exact query chain: integration → local CLI → normal", () => {
-    assert.ok(content.includes("integración de consulta configurada para el CLI actual"));
-    assert.ok(content.includes("node .flowtask/bin/flowtask.js graphify query --query"));
-    assert.ok(content.includes("búsqueda normal del proyecto"));
-  });
+   it("defines exact query chain: MCP → local CLI → normal", () => {
+     assert.ok(content.includes("graphify_query_graph"));
+     assert.ok(content.includes("node .flowtask/bin/flowtask.js graphify query --query"));
+     assert.ok(content.includes("búsqueda normal del proyecto"));
+   });
 
   it("contains the exact local CLI command", () => {
     assert.ok(

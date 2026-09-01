@@ -21,7 +21,7 @@ describe("investigacion skill contract", () => {
   });
 
   it("defines the Graphify chain and exact degradation", () => {
-    assert.ok(content.includes("integración de consulta configurada para el CLI actual"));
+    assert.ok(content.includes("graphify_query_graph"));
     assert.ok(content.includes("node .flowtask/bin/flowtask.js graphify query --query <query-string>"));
     assert.ok(content.includes("búsqueda normal del proyecto"));
     assert.ok(content.includes("no pude consultar el grafo, estoy usando búsqueda normal"));

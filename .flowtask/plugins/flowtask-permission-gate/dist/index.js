@@ -49,6 +49,10 @@ function runnerToolAllowed(tool, args) {
         return isAuthorizedRunnerCommand(String(args.command ?? ""));
     if (tool === "read" || tool === "glob" || tool === "grep" || tool === "skill" || tool.startsWith("engram_"))
         return true;
+    // MCP Graphify: única herramienta MCP autorizada para el runner (vía 1 de la cadena de investigación).
+    // No ampliar a otros tools graphify — solo el tool enumerado exacto.
+    if (tool === "graphify_query_graph")
+        return true;
     if (tool === "task")
         return RUNNER_TASKS.has(String(args.subagent_type ?? args.agent ?? args.name ?? ""));
     return false;

@@ -160,6 +160,68 @@ function hasEffectFlags(tokens: string[]): boolean {
   return tokens.some((token) => GIT_DIFF_EFFECT_FLAGS.has(token.split("=", 1)[0]));
 }
 
+/** Flags read-only adicionales permitidos en git log (no cuentan como límite). */
+const GIT_LOG_READONLY_FLAGS = new Set([
+  "--oneline", "--format", "--stat", "--name-only", "--no-merges",
+  "--first-parent", "--all", "--no-patch", "--decorate", "--graph",
+  "--abbrev-commit", "--no-abbrev-commit", "--oneline", "--raw",
+]);
+
+/**
+ * Valida argumentos de git log: exige límite máximo 10 commits.
+ * Acepta -n <N>, --max-count=<N> y forma corta -<N> con entero 1..10.
+ * Permite flags read-only adicionales y paths tras --.
+ * Rechaza git log sin límite, con límite > 10 o con argumentos no reconocidos.
+ */
+function isAuthorizedGitLog(args: string[]): boolean {
+  let hasLimit = false;
+  let index = 0;
+  while (index < args.length) {
+    const token = args[index];
+    // Paths tras --
+    if (token === "--") return hasLimit;
+    // Forma corta -<N> (ej. -5, -10)
+    if (/^-[1-9]\d*$/.test(token)) {
+      const n = Number(token.slice(1));
+      if (n < 1 || n > 10) return false;
+      hasLimit = true;
+      index += 1;
+      continue;
+    }
+    // -n <N> o --max-count=<N>
+    if (token === "-n" || token === "--max-count") {
+      const next = args[index + 1];
+      if (!next || !/^\d+$/.test(next)) return false;
+      const n = Number(next);
+      if (n < 1 || n > 10) return false;
+      hasLimit = true;
+      index += 2;
+      continue;
+    }
+    if (token.startsWith("--max-count=")) {
+      const n = Number(token.slice("--max-count=".length));
+      if (!Number.isInteger(n) || n < 1 || n > 10) return false;
+      hasLimit = true;
+      index += 1;
+      continue;
+    }
+    // --format=<val> o --format <val> (consumir valor si existe)
+    if (token.startsWith("--format=") || token === "--format") {
+      if (token === "--format") index += 1; // saltar el valor
+      index += 1;
+      continue;
+    }
+    // Flags read-only conocidos (sin valor)
+    if (GIT_LOG_READONLY_FLAGS.has(token)) {
+      index += 1;
+      continue;
+    }
+    // Cualquier otro token no reconocido → rechazar
+    return false;
+  }
+  return hasLimit;
+}
+
 export function isAuthorizedRunnerCommand(command: string): boolean {
   const segments = splitCommandSegments(command);
   if (!segments) return false;
@@ -191,7 +253,7 @@ export function isAuthorizedRunnerCommand(command: string): boolean {
     if (tokens[1] === "push" || tokens[1] === "merge") return tokens.length >= 2;
     // Git read-only commands for runner coordination and diagnostics
     if (tokens[1] === "branch") return tokens.length >= 2 && hasOnlyFlags(tokens.slice(2));
-    if (tokens[1] === "log") return hasFlagsAndPaths(tokens.slice(2));
+     if (tokens[1] === "log") return isAuthorizedGitLog(tokens.slice(2));
     if (tokens[1] === "show") return tokens.length >= 2;
     if (tokens[1] === "rev-parse") return hasFlagsAndPaths(tokens.slice(2));
     return false;
