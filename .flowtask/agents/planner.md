@@ -274,6 +274,22 @@ mem_save(
 
 ```
 
+El cuerpo del plan (`ca/CA-{ID}/artifact/plan`) incluye al final un bloque `gate_status`:
+
+```
+gate_status:
+  blockers: NONE | ["B-1: descripción"]
+  pending_decisions: [] | ["D-X: pregunta concreta"]
+  audit_required: true | false
+  audit_verdict: OKAY | REJECT | N/A
+```
+
+Reglas de emisión:
+- `blockers: NONE` solo cuando NO hay bloqueos. Si los hay, lista explícita con prefijo `B-` y descripción.
+- `pending_decisions: []` cuando no hay decisiones para el implementador. Si las hay, lista explícita con prefijo `D-` y pregunta concreta.
+- `audit_required: true` cuando (a) el flujo es Evolution Mode o (b) el plan tiene >5 tareas; `false` en otro caso.
+- `audit_verdict: N/A` cuando `audit_required: true` y el plan-auditor aún no revisó.
+
 Confirma al runner:
 ```
 ✓ Plan CA-{ID} guardado en Engram (ca/CA-{ID}/artifact/plan)

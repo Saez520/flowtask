@@ -11,8 +11,8 @@ If no CA-ID is provided, ask the user to specify which case they want to work on
 Follow the FlowTask workflow:
 1. Verify or create the CA in Engram
 2. Generate a plan with the planner subagent
-3. Wait for user confirmation ("ejecutar")
-4. Execute with the constructor subagent
+3. Aplicar Gate de Ejecución (validar plan final, sin decisiones pendientes, auditoría aprobada cuando aplique)
+4. Execute with the constructor subagent (tras Gate PASS y confirmación humana)
 5. Validate with the validator subagent
 6. Handle retries (max 2) if rejected
 

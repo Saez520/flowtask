@@ -25,9 +25,10 @@ Activate Evolution Mode to evolve a FlowTask agent.
    - Plan-Auditor reviews the plan of .flowtask/ changes
    - Reports blockers if any
 
-5. Present the plan to the user and wait for confirmation ("ejecutar").
+5. Present the plan to the user.
+5a. Aplicar Gate de Ejecución sobre el plan; abortar si falla.
 
-6. Once confirmed, activate @flowtask-constructor in Evolution Mode:
+6. Once Gate PASS and user confirmation ("ejecutar"), activate @flowtask-constructor in Evolution Mode:
    - Constructor modifies files in .flowtask/agents/, .flowtask/commands/, or .flowtask/skills/
    - Constructor reports what was changed
 

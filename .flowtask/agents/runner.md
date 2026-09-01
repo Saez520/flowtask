@@ -220,6 +220,33 @@ Fuente única de verdad de qué entra en un prompt de delegación. Aplica a toda
 
 Las prohibiciones viven solo aquí (lado emisor). Los receptores definen únicamente su contrato de entrada en positivo.
 
+## Gate de Ejecución
+
+El Gate de Ejecución bloquea al Constructor cuando el plan no está listo. Se aplica a toda ruta administrada que inicia construcción: `/run CA-{ID}` y `/evolve-agent`.
+
+### Criterios verificables
+
+Todos deben cumplirse:
+
+1. **Plan final existe**: `mem_search(query: "CA-{ID} plan", type: "ca-artifact", scope: "project")` devuelve al menos una observación con `topic_key = ca/CA-{ID}/artifact/plan`.
+2. **El cuerpo del plan incluye `gate_status`** con `blockers: NONE` y `pending_decisions: []`. Si el bloque no existe, el Gate falla.
+3. **Si `audit_required: true`** en el `gate_status`, existe `ca/CA-{ID}/artifact/audit` con `verdict: OKAY` y `blockers: NONE`.
+
+### Procedimiento
+
+1. Leer `gate_status` del plan (`ca/CA-{ID}/artifact/plan`).
+2. Si `audit_required: true`, leer audit (`ca/CA-{ID}/artifact/audit`).
+3. Devolver `PASS` o `FAIL[razón]`.
+
+### Respuesta al operador
+
+- **FAIL**: una sola línea iniciando con `⛔ Gate rechazado: {razón concreta}` indicando la condición a resolver (decisión pendiente, blocker, auditoría faltante o rechazada, o `gate_status` ausente). No se invoca el Constructor ni se crea worktree.
+- **PASS**: continuar al paso siguiente del flujo.
+
+### Modo `--auto`
+
+El Gate se invoca igual que en modo interactivo. `--auto` solo exime la espera de confirmación humana explícita; las comprobaciones del Gate son obligatorias en cualquier modo.
+
 ## Checkpoint Protocol (Vía Engram)
 
 ### Antes de invocar sub-agente (Handshake & Context)
@@ -500,15 +527,12 @@ Topic Validation. Prompt: flow state del CA desde Engram.
 
 ***
 
-### Paso 3 — Checkpoint
+### Paso 3 — Gate de Ejecución
 
-Espera respuesta explícita del desarrollador:
+Invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/CA-{ID}/artifact/plan`.
 
-- `"ejecutar"` → Paso 4
-- Correcciones → vuelve al Paso 2
-- `--auto` activo → salta automáticamente
-
-**Nunca saltes este paso sin** **`--auto`.**
+- Si FAIL: imprime `⛔ Gate rechazado: {razón}` y termina el flujo (sin worktree, sin Constructor, sin Validator). NO continúa aunque haya confirmación humana o `--auto`.
+- Si PASS: continúa con el sub-paso de confirmación humana (espera `ejecutar`; o salto por `--auto`) hacia Paso 4.
 
 ***
 
@@ -652,6 +676,7 @@ Si ejecutas un `git commit` y el gate lo bloquea, seguí las instrucciones del m
    Topic Validation. Prompt: el texto original del usuario.
 5. Invoca planner con el snapshot del CA generado.
 6. **SIEMPRE** invoca plan-auditor.
+6a. **Gate de Ejecución**: invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/evolve-{agente}-{timestamp}/artifact/plan`. Si FAIL: imprime `⛔ Gate rechazado: {razón}` y termina. Si PASS: continúa con espera de confirmación humana explícita (`ejecutar`).
 7. Espera confirmación del usuario ("ejecutar").
 8. Invoca constructor.
 9. Confirma al usuario que la evolución fue completada.
