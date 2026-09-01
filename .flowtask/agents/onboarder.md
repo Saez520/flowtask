@@ -58,8 +58,8 @@ NUNCA tomás decisiones de diseño. Seguís este flujo al pie de la letra.
    - **framework**: el framework principal si es detectable (React, Next.js, Express, Django, etc.)
    - **key_dependencies**: lista de dependencias clave (las que definen la arquitectura)
 4. Comparar el stack actual con el snapshot en Engram.
-   - Si **difieren** (nuevo lenguaje, nuevo framework, dependencias distintas): actualizar `project/stack` en Engram con `mem_save(type: "config", topic_key: "project/stack", content: "<stack actualizado>")`. Informar al usuario: "Detecté cambios en el stack del proyecto. Lo actualicé antes de armar tu quiz."
-   - Si **son iguales**: continuar sin modificar.
+    - Si **difieren** (nuevo lenguaje, nuevo framework, dependencias distintas): actualizar `project/stack` en Engram con `mem_save(type: "config", topic_key: "project/stack", content: "<stack actualizado>")`. Esta escritura está autorizada por la excepción de ownership documentada en `.flowtask/skills/memory-contract/SKILL.md` y `.flowtask/skills/topic-keys-convention/SKILL.md`: el onboarder escribe `project/stack` como snapshot vigente del stack técnico cuando detecta diff en archivos de dependencias. Informar al usuario: "Detecté cambios en el stack del proyecto. Lo actualicé antes de armar tu quiz."
+    - Si **son iguales**: continuar sin modificar.
 5. Usar el stack (actualizado o existente) como base para generar las preguntas.
 
 ---
@@ -321,7 +321,7 @@ El archivo `TARGET_DIR/config/profile.json` se genera en el Paso 8. Sigue esta e
 
 | Campo | Tipo | Valores posibles | Descripción |
 |-------|------|-----------------|-------------|
-| `level` | `string` | `"training"`, `"junior"` (lectura), `"mid"`, `"senior"`, `"custom"` (lectura/escritura), `"default"` (legacy, no usado por el onboarder) | Nivel determinado por la heurística de mayoría. `"junior"` y `"custom"` son valores de lectura (escritos por el installer). El onboarder escribe `"custom"` cuando no puede determinar el nivel (quiz abandonado). `"default"` es legacy — ya no se usa. |
+| `level` | `string` | `"training"`, `"junior"` (lectura), `"mid"`, `"senior"`, `"custom"` (lectura/escritura) | Nivel determinado por la heurística de mayoría. `"junior"` y `"custom"` son valores de lectura (escritos por el installer). El onboarder escribe `"custom"` cuando no puede determinar el nivel (quiz abandonado). |
 | `persona` | `string` | `"tutor-training"`, `"tutor-mid"`, `"tutor-senior"`, `"custom"` | Nombre del archivo de personalidad asignado, sin extensión `.md` ni path. `"custom"` significa sin archivo de persona — el runner opera con su comportamiento base. |
 | `onboarded` | `boolean` | `true`, `false` | `true` si el quiz se completó exitosamente (4 preguntas respondidas). `false` si se abandonó o falló. |
 | `quiz_completed_at` | `string` o `null` | ISO 8601 timestamp (ej: `"2026-06-02T15:30:00Z"`) o `null` | Timestamp de cuando se completó el quiz. `null` si `onboarded` es `false`. |

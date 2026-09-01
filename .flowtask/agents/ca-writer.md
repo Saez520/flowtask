@@ -45,10 +45,10 @@ Este agente utiliza Engram para persistir su estado entre interacciones.
 
 ```
 1. Verificar handshake (inyectado por runner): instance_name.
-2. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/ca").
+2. Verificar checkpoint: mem_search(query: "flow-state/CA-{ID}/create").
 3. Si existe y estado != 'completed':
-   - Restaurar estado de conversación (tradeoffs pendientes, gaps identificados)
-   - Continuar desde donde quedó
+    - Restaurar estado de conversación (tradeoffs pendientes, gaps identificados)
+    - Continuar desde donde quedó
 4. Si no existe: comenzar conversación normal
 ```
 
@@ -56,53 +56,54 @@ Este agente utiliza Engram para persistir su estado entre interacciones.
 
 ```
 1. Después de cada interacción con el usuario, guardar checkpoint:
-   mem_save(
-     type: "decision",
-     scope: "project",
-     topic_key: "flow-state/{CA-ID}/ca",
-     title: "Checkpoint ca: {instance_name}",
-     content: {
-       version: "2.0",
-       treatment_class: "complete",
-       state: "active",
-       updated_at: now(),
-       sequence: N,
-       flow_state: {
-         ca_id: "CA-{ID}",
-         agente: "ca",
-         instance_name: "{Name}",
-         conversation_state: 'clarification' | 'tradeoffs' | 'draft',
-         pending_questions: [...],
-         identified_tradeoffs: [...],
-         identified_gaps: [...]
-       }
-     }
-   )
+    mem_save(
+      type: "decision",
+      scope: "project",
+      topic_key: "flow-state/CA-{ID}/create",
+      title: "Checkpoint ca: {instance_name}",
+      content: {
+        version: "2.0",
+        treatment_class: "complete",
+        state: "active",
+        updated_at: now(),
+        sequence: N,
+        flow_state: {
+          ca_id: "CA-{ID}",
+          agente: "ca",
+          instance_name: "{Name}",
+          resume_ref: "{task_id}",
+          conversation_state: 'clarification' | 'tradeoffs' | 'draft',
+          pending_questions: [...],
+          identified_tradeoffs: [...],
+          identified_gaps: [...]
+        }
+      }
+    )
 ```
 
 ### Al confirmar "ejecutar"
 
 ```
 1. Cerrar checkpoint con state: "completed":
-   mem_save(
-     type: "decision",
-     scope: "project",
-     topic_key: "flow-state/{CA-ID}/ca",
-     title: "Checkpoint ca: {instance_name}",
-     content: {
-       version: "2.0",
-       treatment_class: "complete",
-       state: "completed",
-       updated_at: now(),
-       sequence: N,
-       flow_state: {
-         ca_id: "CA-{ID}",
-         agente: "ca",
-         instance_name: "{Name}"
-       }
-     }
-   )
-   (state: "completed" conserva la observación como traza — no se elimina)
+    mem_save(
+      type: "decision",
+      scope: "project",
+      topic_key: "flow-state/CA-{ID}/create",
+      title: "Checkpoint ca: {instance_name}",
+      content: {
+        version: "2.0",
+        treatment_class: "complete",
+        state: "completed",
+        updated_at: now(),
+        sequence: N,
+        flow_state: {
+          ca_id: "CA-{ID}",
+          agente: "ca",
+          instance_name: "{Name}"
+        }
+      }
+    )
+    (state: "completed" conserva la observación como traza — no se elimina)
 2. Proceder con guardado de CA completo
 ```
 
@@ -154,7 +155,7 @@ El runner te pasa:
 - **hechos de coordinación**: CA ID, tu `instance_name` como campo de dato, modo (normal / Evolution Mode), inspectores ya despachados;
 - las **heurísticas del desarrollador** (bloque `## Heurísticas del desarrollador`).
 
-Tu estado previo vive en tu checkpoint en Engram (`flow-state/{CA-ID}/ca`) con el schema definido por `.flowtask/skills/checkpoint-mixin/SKILL.md`; consultalo directamente cuando necesites contexto de conversaciones anteriores. Tu proceso es el definido en este archivo.
+Tu estado previo vive en tu checkpoint en Engram (`flow-state/CA-{ID}/create`) con el schema `CheckpointPayload` definido en `.flowtask/skills/memory-contract/SKILL.md` (sección "Excepciones Tipadas") y el protocolo de uso en `.flowtask/skills/checkpoint-mixin/SKILL.md`; consultalo directamente cuando necesites contexto de conversaciones anteriores. Tu proceso es el definido en este archivo.
 
 ## Flujo de trabajo
 
@@ -295,7 +296,7 @@ Evalúa si quedan gaps de negocio, ambigüedades en criterios de aceptación o d
 mem_save(
   type: "decision",
   scope: "project",
-  topic_key: "ca/{ID}",
+  topic_key: "flow-state/CA-{ID}/create",
   title: "CA-{ID}: {título del requisito}",
   content:
     What: CA creado para {título}
@@ -381,7 +382,7 @@ El runner te pasa nombre del agente y descripción del cambio.
 1. Lee el agente actual en `.flowtask/agents/[nombre-agente].md`.
 2. Conduce la conversación igual que cualquier CA (Pasos 2–4).
 3. La SPEC describe en lenguaje de negocio: comportamiento nuevo, qué cambia o se elimina, restricciones operativas.
-4. Guarda el artifact en Engram con topic_key: ca/CA-{ID}/artifact/ca y el flow state con `topic_key: flow-state/{ID}/ca`.
+4. Guarda el artifact en Engram con topic_key: ca/CA-{ID}/artifact/ca y el flow state con `topic_key: flow-state/CA-{ID}/create`.
 5. NUNCA modifiques la definición del agente — eso es trabajo del constructor.
 
 ---
@@ -395,7 +396,7 @@ El runner te pasa nombre del agente y descripción del cambio.
 5. Criterios: verificables ejecutando el sistema, no inspeccionando código.
 6. Supuestos no confirmados: marcar con `[Supuesto: ...]`.
 7. Lenguaje de negocio siempre. Si usas término técnico, explícalo en términos de negocio.
-8. Los archivos de configuración de agentes y skills que produzcas o modifiques enuncian solo reglas vigentes en positivo: sin nombres de CAs de origen, sin comparaciones con modos reemplazados, sin historia de implementación.
+8. Los archivos de configuración de agentes y skills que produzcas o modifiques enuncian solo reglas vigentes en positivo. Este deber está codificado en el Invariante Central de Configuración Vigente (`.flowtask/skills/memory-contract/SKILL.md`); aplicás la regla, no la redefinís.
 
 ---
 

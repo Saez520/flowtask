@@ -189,7 +189,7 @@ Flujo de delegación — sin excepciones:
    conservas/derivas `instance_name` desde el mapa y fuerzas Escenario A sin
    `task_id` ni contexto de sesión.
 3. La skill ya ejecutó **Context Injection** (mem_context + mem_search). Incorporas los hallazgos al prompt como **referencias citables** (IDs de Engram, rutas) — nunca como resúmenes ni conclusiones.
-4. **Antes de invocar**: verificar si existe checkpoint en Engram (`flow-state/{CA_ID}/{agente}`).
+4. **Antes de invocar**: verificar si existe checkpoint en Engram (`flow-state/{CA-ID}/{agente}`).
 5. Si el agente es `ca-writer` o `planner`, invocas `task(...)` según A/B.
    Para cualquier agente de tratamiento ligero (`inspector`, `constructor`,
    `validator`, `tester`, `review-orchestrator`, `logger` e `initializer`),
@@ -278,7 +278,7 @@ Si el agente es de tratamiento ligero (`inspector`, `constructor`, `validator`,
 checkpoint como traza y crear siempre un hilo fresco con el prompt inicial, sin
 `task_id`, Resume Prompt, Topic Validation ni contexto de sesión anterior.
 
-1. **Recuperar mapa**: `mem_search(query: "flow-state/{CA_ID}/instances")`.
+1. **Recuperar mapa**: `mem_search(query: "flow-state/{CA-ID}/instances")`.
 2. **Contar relanzamientos previos**: leer `relaunch_count` del agente en el mapa. Si no existe, asumir 0.
 3. **Evaluar límite**:
    - **0-2 relanzamientos previos**:
@@ -298,7 +298,7 @@ checkpoint como traza y crear siempre un hilo fresco con el prompt inicial, sin
 Si la herramienta `task` (o `Agent` en Claude) retorna un error indicando que el hilo no existe o ha expirado:
 1. **Limpieza**: Para `ca-writer` y `planner`, ejecutar `mem_save` para
    eliminar el `task_id` fallido del mapa de instancias en
-   `flow-state/{CA_ID}/instances`. En el tratamiento ligero (`inspector`,
+    `flow-state/{CA-ID}/instances`. En el tratamiento ligero (`inspector`,
    `constructor`, `validator`, `tester`, `review-orchestrator`, `logger` e
    `initializer`) no se reutiliza ni se purga un `task_id`; se conserva el
    registro histórico.
@@ -665,7 +665,7 @@ Al finalizar un flujo (`/run` completado, sesión terminada), el runner debe eje
 
 ### Protocolo de purga
 
-1. **Recuperar mapa**: `mem_search(query: "flow-state/{CA_ID}/instances")`.
+1. **Recuperar mapa**: `mem_search(query: "flow-state/{CA-ID}/instances")`.
 2. **Verificar cada `task_id` elegible**: Solo para `ca-writer` y `planner`,
    invocar al subagente con el `task_id` persistido y un prompt mínimo de
    verificación. Para agentes de tratamiento ligero (`inspector`,
@@ -693,9 +693,9 @@ Al finalizar un flujo (`/run` completado), después de la purga de `task_id` hu�
 
 ### Protocolo de cierre
 
-1. **Recuperar mapa**: `mem_search(query: "flow-state/{CA_ID}/instances")` para obtener el mapa de instancias actual. Si se conoce el observation ID, usar `mem_get_observation`.
+1. **Recuperar mapa**: `mem_search(query: "flow-state/{CA-ID}/instances")` para obtener el mapa de instancias actual. Si se conoce el observation ID, usar `mem_get_observation`.
 2. **Agregar `ca_status`**: Incorporar el campo `ca_status: "closed"` al contenido del mapa de instancias.
-3. **Persistir**: `mem_save()` usando el mismo `topic_key` del handshake (`flow-state/{ca_id}/instances`) para hacer upsert. Conservar todos los campos existentes (`base_name`, `agents`, task_ids, etc.).
+3. **Persistir**: `mem_save()` usando el mismo `topic_key` del handshake (`flow-state/{CA-ID}/instances`) para hacer upsert. Conservar todos los campos existentes (`base_name`, `agents`, task_ids, etc.).
 4. **Si Engram no está disponible**: Omitir silenciosamente. El `baseName` queda bloqueado hasta la próxima sesión con Engram funcional — misma limitación que la purga de `task_id` huérfanos.
 5. **Ejecutar `mem_session_summary`** solo después de completar el cierre (o de omitirlo si Engram no disponible).
 
@@ -711,7 +711,8 @@ Si el CA tenía `constructor.worktree`, el cierre exitoso debe invocar primero `
 
 ## Session Summary — OBLIGATORIO
 
-Después de cada flujo completado, guarda el contexto de sesión:
+Después de cada flujo completado, guarda el contexto de sesión. El contrato del payload
+`SessionSummary` vive en `.flowtask/skills/memory-contract/SKILL.md` (sección "Excepciones Tipadas").
 
 ```
 mem_session_summary(

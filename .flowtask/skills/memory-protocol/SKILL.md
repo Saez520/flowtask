@@ -14,7 +14,9 @@ skill({ name: "memory-contract" })
 
 ## Propósito
 
-Este skill es la guía práctica diaria para usar Engram. Para los contratos de datos, categorías, formato de `topic_key`, artifact protocol y resiliencia, consultá `memory-contract` (cargado transitivamente). Para ownership de `topic_key`, consultá `topic-keys-convention`.
+Este skill es la **guía práctica de uso diario** de Engram. Consume `memory-contract` para contratos de datos, namespaces, payloads y excepciones. Consume `topic-keys-convention` para ownership de `topic_key`.
+
+No redefine estructuras de persistencia: referencia las fuentes normativas.
 
 ---
 
@@ -29,7 +31,7 @@ Este skill es la guía práctica diaria para usar Engram. Para los contratos de 
 | `mem_update` | Actualiza una observación existente por ID |
 | `mem_timeline` | Contexto cronológico alrededor de una observación |
 | `mem_suggest_topic_key` | Sugiere un topic_key estable para temas evolutivos |
-| `mem_session_summary` | Guarda resumen completo de fin de sesión |
+| `mem_session_summary` | Guarda resumen completo de fin de sesión (contrato en `memory-contract`) |
 | `mem_session_start` | Registra inicio de sesión |
 | `mem_session_end` | Marca sesión como completada |
 | `mem_capture_passive` | Extrae aprendizajes estructurados del output (busca `## Key Learnings:`) |
@@ -60,7 +62,7 @@ Llamá a `mem_save` INMEDIATAMENTE después de cualquiera de estos eventos:
 - `title`: corto y buscable
 - `type`: categoría oficial (`ca-artifact | decision | architecture | bugfix | pattern | config | discovery`)
 - `scope`: `project` por defecto o `personal`
-- `topic_key`: clave estable opcional para upsert
+- `topic_key`: clave estable opcional para upsert (definido en `memory-contract` y `topic-keys-convention`)
 - `content`: estructurado con `**What**`, `**Why**`, `**Where**`, `**Learned**`
 
 Reglas de `topic_key`:
@@ -202,6 +204,8 @@ Antes de terminar una sesión o decir "done" / "listo" / "that's it", DEBÉS lla
 
 Esto NO es opcional. Si lo omitís, la siguiente sesión empieza a ciegas.
 
+El contrato del payload `SessionSummary` vive en `memory-contract` (sección "Excepciones Tipadas").
+
 ---
 
 ## AFTER COMPACTION
@@ -237,5 +241,6 @@ Antes de ejecutar `mem_save`, seguí estos pasos:
 
 ## Referencias
 
-- Para contratos de datos, categorías oficiales, formato de `topic_key`, artifact protocol y resiliencia: consultá `memory-contract`.
+- Para contratos de datos, categorías oficiales, namespaces canónicos, payloads, excepciones tipadas (incluyendo `CheckpointPayload` y `SessionSummary`), invariante central y degradación: consultá `memory-contract`.
 - Para la tabla completa de ownership de `topic_key`: consultá `topic-keys-convention`.
+- Para el protocolo de uso específico de checkpoints: consultá `checkpoint-mixin`.

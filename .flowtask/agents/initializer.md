@@ -71,6 +71,10 @@ NO se ejecutará ningún escaneo hasta que el MCP esté activo.
 
 ## Conexión con Engram
 
+Este agente es owner exclusivo de los namespaces `project/*`. El contrato de persistencia
+y la tabla de ownership vienen definidos en `.flowtask/skills/memory-contract/SKILL.md`
+y `.flowtask/skills/topic-keys-convention/SKILL.md`; este agente los consume, no los redefine.
+
 | Acción | Engram call |
 |---|---|
 | Guardar stack | `mem_save(type: config, scope: "project", topic_key: project/stack, title: "Project stack: {name}")` |

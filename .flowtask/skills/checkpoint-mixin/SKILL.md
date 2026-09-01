@@ -11,6 +11,10 @@ description: >-
 
 ## Propósito
 
+Este skill consume `memory-contract` como autoridad normativa para namespaces, ownership,
+types, scopes, payloads y excepciones. El contenido propio de este skill es únicamente
+el protocolo de uso específico de checkpoints.
+
 Define el contrato único de persistencia de estado para subagentes usando Engram.
 Cada agente guarda y restaura su estado mediante `mem_save` y `mem_search` directos,
 con un schema normativo y namespaces que distinguen operaciones con CA de operaciones sin CA.
@@ -26,33 +30,8 @@ El comportamiento de continuidad depende de la clase de tratamiento del agente:
 
 ## Schema normativo del checkpoint
 
-Toda observación de checkpoint en Engram usa este schema:
-
-```json
-{
-  "version": "2.0",
-  "topic_key": "flow-state/{CA-ID}/{agente}",
-  "type": "decision",
-  "scope": "project",
-  "title": "Checkpoint {agente}: {instance_name}",
-  "treatment_class": "complete | light",
-  "state": "active | paused | completed",
-  "updated_at": "timestamp",
-  "sequence": 1,
-  "topic_signature": {
-    "ids": ["CA-topic-validation", "handshake-protocol"],
-    "keywords": ["validación", "tema"]
-  },
-  "flow_state": {
-    "estado": "activo",
-    "ca_id": "CA-{ID}",
-    "agente": "{agente}",
-    "instance_name": "{Name}"
-  }
-}
-```
-
-### Campos del schema
+El schema `CheckpointPayload` v2 está definido en `memory-contract` (sección "Excepciones Tipadas").
+Toda observación de checkpoint en Engram usa ese schema. Los campos clave son:
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
@@ -62,11 +41,8 @@ Toda observación de checkpoint en Engram usa este schema:
 | `sequence` | entero | Contador monotónico incremental por agente. |
 | `topic_signature` | objeto \| ausente | Firma del tema (opcional, backward-compatible). Si el checkpoint no lo trae, se asume mismo tema (degradación explícita). |
 | `flow_state` | objeto | Estado específico del agente. |
-
-### Campos adicionales por tratamiento
-
-- **Completo**: `flow_state.ca_id` (obligatorio) + `flow_state.resume_ref` (referencia de reanudación).
-- **Ligero sin CA**: `flow_state.operation_id` (obligatorio) + `flow_state.fresh_thread_marker: true`.
+| `resume_ref` | string (opcional) | Referencia de reanudación. **Obligatorio en tratamiento completo** (ca-writer, planner). |
+| `fresh_thread_marker` | boolean (opcional) | Marcador de hilo nuevo. Solo en tratamiento ligero sin CA. |
 
 ## Protocolo de uso
 
@@ -75,7 +51,7 @@ Toda observación de checkpoint en Engram usa este schema:
 **Al inicio:**
 
 ```
-1. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/{agente}")
+1. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/{sufijo}")
 2. Si existe y state != "completed":
    - Restaurar flow_state (tradeoffs, gaps, decisiones pendientes)
    - Continuar desde donde quedó (Escenario B)
@@ -88,7 +64,7 @@ Toda observación de checkpoint en Engram usa este schema:
 mem_save(
   type: "decision",
   scope: "project",
-  topic_key: "flow-state/{CA-ID}/{agente}",
+  topic_key: "flow-state/{CA-ID}/{sufijo}",
   title: "Checkpoint {agente}: {instance_name}",
   content: {
     version: "2.0",
@@ -114,7 +90,7 @@ mem_save(
 mem_save(
   type: "decision",
   scope: "project",
-  topic_key: "flow-state/{CA-ID}/{agente}",
+  topic_key: "flow-state/{CA-ID}/{sufijo}",
   title: "Checkpoint {agente}: {instance_name}",
   content: {
     version: "2.0",
@@ -138,7 +114,7 @@ mem_save(
 **Al inicio:**
 
 ```
-1. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/{agente}")
+1. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/{sufijo}")
    (o flow-state/no-ca/{agente}/{operation-id} si no hay CA)
 2. Si existe checkpoint previo:
    - Restaurar explícitamente el estado como insumo (temas explorados, tradeoffs, gaps)
@@ -152,7 +128,7 @@ mem_save(
 mem_save(
   type: "decision",
   scope: "project",
-  topic_key: "flow-state/{CA-ID}/{agente}",
+  topic_key: "flow-state/{CA-ID}/{sufijo}",
   title: "Checkpoint {agente}: {instance_name}",
   content: {
     version: "2.0",
@@ -201,7 +177,7 @@ mem_save(
 mem_save(
   type: "decision",
   scope: "project",
-  topic_key: "flow-state/{CA-ID}/{agente}",
+  topic_key: "flow-state/{CA-ID}/{sufijo}",
   title: "Checkpoint {agente}: {instance_name}",
   content: {
     version: "2.0",
@@ -224,24 +200,27 @@ El `topic_key` sigue uno de dos patrones según el contexto operacional:
 
 | Contexto | Patrón | Ejemplo |
 |----------|--------|---------|
-| Con CA | `flow-state/{CA-ID}/{agente}` | `flow-state/CA-onboarder-agent/ca` |
+| Con CA | `flow-state/{CA-ID}/{sufijo}` | `flow-state/CA-onboarder-agent/create` |
 | Sin CA | `flow-state/no-ca/{agente}/{operation-id}` | `flow-state/no-ca/inspect/query-auth-flow` |
 
 ### Mapeo de sufijos por agente
 
-| Agente | Sufijo |
+| Agente | Sufijo canónico |
 |--------|--------|
-| ca-writer | `ca` |
-| planner | `planning` |
+| ca-writer | `create` |
+| planner | `plan` |
 | constructor | `construct` |
 | inspector | `inspect` |
 | validator | `validate` |
 | tester | `tests` |
 | review-orchestrator | `review` |
 | logger | `logging` |
-| initializer | `initialize` |
+| initializer | `init` |
 
-> Nunca se exige un `{CA-ID}` inexistente. Nunca se mezclan operaciones sin CA en el namespace de un CA.
+> Los sufijos canónicos están declarados en `memory-contract` (tabla de Namespaces Canónicos).
+> Este skill los aplica; no los redefine.
+
+> Mapeo de sufijos legacy a canónico: `ca` → `create`, `planning` → `plan`, `initialize` → `init`. `inspect` se mantiene.
 
 ## Prioridades
 
@@ -260,4 +239,4 @@ El runner es responsable de:
 - Detectar el tag `[FLOWTASK_CHECKPOINT_CAPACITY: X%]` y gestionar el relevo.
 - Purgar `task_id` huérfanos (solo tratamiento completo).
 
-El agente solo ejecuta `mem_save` con el schema definido en esta skill. No gestiona el mapa de instancias ni la lógica de reanudación.
+El agente solo ejecuta `mem_save` con el schema definido en `memory-contract`. No gestiona el mapa de instancias ni la lógica de reanudación.

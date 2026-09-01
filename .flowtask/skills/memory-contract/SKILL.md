@@ -10,41 +10,58 @@ metadata:
 
 # Engram Memory Contract
 
-Este skill define el contrato estructural de memoria para FlowTask, independiente de la implementación subyacente.
-Si necesitás la guía práctica de uso diario, cargá `memory-protocol`.
+Este skill es la única fuente normativa de persistencia en Engram para FlowTask.
+Define namespaces canónicos, ownership, types, scopes, payloads, excepciones tipadas,
+el invariante central de configuración vigente y la degradación ante indisponibilidad.
+
+Para la guía práctica de uso diario, cargá `memory-protocol`.
+Para la tabla de ownership derivada, cargá `topic-keys-convention`.
+Para el protocolo de uso específico de checkpoints, cargá `checkpoint-mixin`.
 
 ---
 
-## Contratos de Datos (Payloads)
+## Namespaces Canónicos
 
-### 1. SAVE_DECISION / SAVE_OBSERVATION
+Todo `topic_key` sigue el formato `{namespace}/CA-{ID}[/{sub-namespace}]`.
 
-```typescript
-interface MemoryPayload {
-  title: string;       // Corto, descriptivo (ver Naming)
-  type: string;        // Categoría oficial
-  scope: "project";    // Siempre "project" para FlowTask
-  topic_key?: string;  // Identificador estable para updates/upserts
-  content: {
-    What: string;      // Qué se hizo/encontró
-    Why: string;       // Motivación o razón
-    Where: string;     // Archivos o módulos afectados
-    Learned?: string;  // Gotchas o lecciones aprendidas (opcional)
-  }
-}
-```
+| Namespace | Owner | Lectores | Tipo de payload |
+|-----------|-------|----------|-----------------|
+| `ca/CA-{ID}/artifact/ca` | ca-writer | Runner, Planner, Constructor, Validator | `ca-artifact` |
+| `ca/CA-{ID}/artifact/plan` | planner | Runner, Plan-Auditor, Constructor, Validator | `ca-artifact` |
+| `ca/CA-{ID}/artifact/validacion` | validator | Runner | `ca-artifact` |
+| `ca/CA-{ID}/artifact/audit` | plan-auditor | Runner, Validator | `ca-artifact` |
+| `ca/CA-{ID}/artifact/logging-report` | logger | — | `ca-artifact` |
+| `ca/CA-{ID}/artifact/tests-report` | tester | — | `ca-artifact` |
+| `ca/project/artifact/project-context` | initializer | Todos | `ca-artifact` |
+| `flow-state/CA-{ID}/create` | ca-writer | Runner | `decision` (CheckpointPayload) |
+| `flow-state/CA-{ID}/plan` | planner | Runner | `decision` (CheckpointPayload) |
+| `flow-state/CA-{ID}/audit` | plan-auditor | Runner | `decision` |
+| `flow-state/{execution_id}/construct` | constructor | Runner | `decision` |
+| `flow-state/{execution_id}/validate` | validator | Runner | `decision` |
+| `flow-state/{ID}/tests` | tester | Runner | `decision` |
+| `flow-state/{CA-ID}/review` | review-orchestrator | Runner | `decision` |
+| `flow-state/{ID}/logging` | logger | Runner | `decision` |
+| `flow-state/{ID}/init` | initializer | Runner | `decision` |
+| `flow-state/CA-{ID}/inspect` | inspector | Runner | `decision` |
+| `flow-state/CA-{ID}/instances` | runner | Runner (escritura exclusiva) | `decision` |
+| `flow-state/no-ca/{agente}/{operation-id}` | agentes ligeros sin CA | Runner | `decision` |
+| `project/stack` | initializer (owner) / onboarder (excepción: snapshot vigente) | Todos (read-only) | `config` |
+| `project/conventions` | initializer | Todos (read-only) | `pattern` |
+| `project/naming` | initializer | Todos (read-only) | `pattern` |
+| `project/layers` | initializer | Todos (read-only) | `discovery` |
+| `project/{layer}` | **initializer ONLY** | Todos (read-only) | `pattern` / `discovery` |
+| `project/protected-files` | initializer | Todos (read-only) | `decision` |
+| `project/config` | initializer | Todos (read-only) | `config` |
+| `project/patterns` | initializer | Todos (read-only) | `pattern` |
+| `project/heuristics/*` | todos los agentes (escritura compartida) | Todos | `pattern` |
+| `personal/heuristics/*` | todos los agentes (escritura compartida, scope: personal) | Todos | `pattern` |
+| `pending/{slug}` | runner, ca-writer, inspector (escritura compartida) | Agentes que necesiten conocer pendientes | `pending` |
 
-### 2. SESSION_SUMMARY
-
-```typescript
-interface SessionSummary {
-  goal: string;
-  accomplished: string[];
-  discoveries: string[];
-  next_steps: string[];
-  relevant_files: string[];
-}
-```
+**Reglas**:
+- Prefijo `CA-` obligatorio en el ID (ej: `flow-state/CA-search-integration/plan`).
+- `pending/{slug}` es una excepción explícita al prefijo `CA-` obligatorio.
+- `flow-state/{CA-ID}` **NUNCA** se usa sin sub-namespace de agente.
+- Cada agente escribe **SOLO** sus namespaces autorizados.
 
 ---
 
@@ -63,68 +80,93 @@ interface SessionSummary {
 
 ---
 
-## Topic Key Convention
+## Excepciones Tipadas
 
-Todo `topic_key` debe seguir el formato canónico:
+### CheckpointPayload (schema v2)
 
-```text
-{namespace}/CA-{ID}[/{sub-namespace}]
+Los checkpoints de continuidad constituyen una excepción tipada al formato narrativo ordinario.
+Usan este schema y conservan el estado estructurado necesario para reanudación:
+
+```json
+{
+  "version": "2.0",
+  "treatment_class": "complete | light",
+  "state": "active | paused | completed",
+  "updated_at": "timestamp",
+  "sequence": 1,
+  "topic_signature": {
+    "ids": ["..."],
+    "keywords": ["..."]
+  },
+  "flow_state": {
+    "ca_id": "CA-{ID}",
+    "agente": "{agente}",
+    "instance_name": "{Name}",
+    "resume_ref": "{task_id}"
+  },
+  "fresh_thread_marker": true
+}
 ```
 
-**Reglas**:
-- Prefijo `CA-` **obligatorio** en el ID (ej: `plan/CA-search-integration`, no `plan/054`)
-- `pending/{slug}` es un namespace oficial para pendientes no decididos y una excepción explícita al prefijo `CA-` obligatorio, igual que el ID especial `project` usado en `ca/project/artifact/project-context`.
-- `flow-state/{ID}` **NUNCA** se usa sin sub-namespace
-- Cada agente escribe **SOLO** sus namespaces autorizados
+**Campos**:
+- `version`: siempre `"2.0"`.
+- `treatment_class`: `"complete"` (ca-writer, planner) o `"light"` (resto de agentes).
+- `state`: `"active"`, `"paused"` o `"completed"`. `"completed"` marca el cierre y conserva la observación como traza.
+- `sequence`: contador monotónico incremental por agente.
+- `topic_signature`: firma del tema (opcional, backward-compatible).
+- `flow_state`: estado específico del agente.
+- `resume_ref`: obligatorio en tratamiento completo (ca-writer, planner). Referencia de reanudación.
+- `fresh_thread_marker`: solo en tratamiento ligero sin CA.
 
-Para la tabla completa de ownership (quién escribe cada namespace), consultá `topic-keys-convention`.
+### SessionSummary
 
----
+El payload de cierre de sesión sigue esta estructura:
 
-## Artifact Namespace
+```typescript
+interface SessionSummary {
+  goal: string;
+  accomplished: string[];
+  discoveries: string[];
+  next_steps: string[];
+  relevant_files: string[];
+}
+```
 
-Los artifactos completos se persisten como observaciones Engram con `type: "ca-artifact"`.
-El namespace canónico es `ca/CA-{ID}/artifact/{filename}`.
-
-| Archivo | topic_key | Agente que escribe |
-|---------|-----------|-------------------|
-| `ca.md` | `ca/CA-{ID}/artifact/ca` | ca-writer |
-| `plan.md` | `ca/CA-{ID}/artifact/plan` | planner |
-| `validacion.md` | `ca/CA-{ID}/artifact/validacion` | validator |
-| `audit.md` | `ca/CA-{ID}/artifact/audit` | plan-auditor |
-| `logging-report.md` | `ca/CA-{ID}/artifact/logging-report` | logger |
-| `tests-report.md` | `ca/CA-{ID}/artifact/tests-report` | tester |
-| `project-context.md` | `ca/project/artifact/project-context` | initializer |
-
-> **Nota sobre `project-context.md`**: usa el ID especial `project`.
-
----
-
-## Restricciones
-
-- **NUNCA** uses `flow-state/{ID}` sin sub-namespace
-- **SIEMPRE** usa prefijo `CA-` en el ID del `topic_key`
+El contrato completo de `mem_session_summary` vive en este skill. Los agentes lo invocan sin redefinirlo.
 
 ---
 
-## Protocolo de Resiliencia (CA-005)
+## Invariante Central de Configuración Vigente
 
-Si el proveedor de memoria (MCP) no está disponible:
-1. Serializá el payload según el contrato anterior.
-2. Guardalo en `.flowtask/.temp/operation-{timestamp}.json`.
-3. Notificá al Runner del estado `Buffered`.
-4. Para artifactos (`type: "ca-artifact"`), incluí el contenido completo del artifacto en el JSON de fallback.
+Los archivos de configuración de agentes y skills enuncian solo reglas vigentes en positivo:
+sin nombres de CAs de origen, sin comparaciones con modos reemplazados, sin historia de implementación.
 
-El Runner sincronizará estos archivos automáticamente en la próxima ejecución exitosa.
+**Roles responsables**:
+- **Aplican**: constructor (al modificar archivos de `.flowtask/`).
+- **Controlan**: plan-auditor (antes de aprobar un plan) y validator (después de la implementación).
+- **Registran snapshots vigentes**: initializer, logger, tester (sin transformar esa responsabilidad en regla literal de redacción).
+- **Consumen sin duplicar**: comandos y personas.
+
+Las exclusiones normativas, riesgos, GAPs aceptados y restricciones activas permanecen expresados como salvedades vigentes cuando correspondan.
+
+---
+
+## Degradación sin Engram
+
+Si el proveedor de memoria (MCP) no está disponible al persistir información:
+
+1. Informá el bloqueo al usuario.
+2. Solicitá decisión al usuario sobre cómo continuar.
+3. **NO** persistas en archivos locales de fallback (JSON, buffers, archivos temporales).
+
+La operación queda detenida hasta una decisión del usuario. No se crea ninguna fuente paralela de datos.
 
 ---
 
 ## Artifact Protocol
 
-Los artifactos completos generados por agentes NO se escriben como archivos en `.workspace/CA-{ID}/`.
-Se persisten como observaciones Engram con `type: "ca-artifact"`.
-
-### Regla de escritura: `mem_save_artifact`
+Los artifactos completos se persisten como observaciones Engram con `type: "ca-artifact"`.
+El namespace canónico es `ca/CA-{ID}/artifact/{filename}`.
 
 ```text
 mem_save(
@@ -137,43 +179,39 @@ mem_save(
 ```
 
 **Reglas**:
-- `type` es siempre `ca-artifact`
-- `topic_key` sigue el namespace `ca/CA-{ID}/artifact/{filename}`
-- `title` debe ser descriptivo y buscable
-- `content` contiene el texto completo del artifacto
-- Nunca se crea archivo en `.workspace/CA-{ID}/` como fallback
-- `mem_save_artifact` no existe como tool real: es un patrón documentado
-
-### Antes vs Ahora
-
-| Operación | Antes | Ahora |
-|-----------|-------|-------|
-| Guardar plan | `write_file(path: ".workspace/CA-{ID}/plan.md", ...)` | `mem_save(type: "ca-artifact", topic_key: "ca/CA-{ID}/artifact/plan", ...)` |
-| Guardar CA | `write_file(path: ".workspace/CA-{ID}/ca.md", ...)` | `mem_save(type: "ca-artifact", topic_key: "ca/CA-{ID}/artifact/ca", ...)` |
-| Guardar validación | `write_file(path: ".workspace/CA-{ID}/validacion.md", ...)` | `mem_save(type: "ca-artifact", topic_key: "ca/CA-{ID}/artifact/validacion", ...)` |
+- `type` es siempre `ca-artifact`.
+- `topic_key` sigue el namespace `ca/CA-{ID}/artifact/{filename}`.
+- `title` debe ser descriptivo y buscable.
+- `content` contiene el texto completo del artifacto.
+- `mem_save_artifact` no existe como tool real: es un patrón documentado.
 
 ### Regla de lectura bajo demanda
 
 Los artifactos con `type: "ca-artifact"` no se cargan en contexto operativo normal.
 
 **Cuándo SÍ buscar artifactos:**
-- La tarea explícitamente lo requiere
-- El agente está en modo investigación, auditoría o evolución
-- El Runner o el usuario lo solicita explícitamente
+- La tarea explícitamente lo requiere.
+- El agente está en modo investigación, auditoría o evolución.
+- El Runner o el usuario lo solicita explícitamente.
 
 **Cuándo NO buscar artifactos:**
-- Durante la inicialización del agente
-- Durante búsquedas operativas de contexto
-- Durante `mem_context`
+- Durante la inicialización del agente.
+- Durante búsquedas operativas de contexto.
+- Durante `mem_context`.
 
 **Protocolo de recuperación:**
 1. `mem_search(query: "CA-{ID} {tipo}", type: "ca-artifact")`
-2. Identificar el observation ID correcto por título
-3. `mem_get_observation(id: N)` para el contenido completo
+2. Identificar el observation ID correcto por título.
+3. `mem_get_observation(id: N)` para el contenido completo.
 
-### Regla de precedencia
+---
 
-`memory-protocol` es el punto de verdad para la persistencia operativa de artifactos; este skill define el contrato y el namespace.
+## Restricciones
+
+- **NUNCA** uses `flow-state/{CA-ID}` sin sub-namespace de agente.
+- **SIEMPRE** usa prefijo `CA-` en el ID del `topic_key`.
+- **NUNCA** persistas en archivos locales ante caída de Engram.
+- **NUNCA** migres ni sanees observaciones históricas.
 
 ---
 
@@ -182,8 +220,8 @@ Los artifactos con `type: "ca-artifact"` no se cargan en contexto operativo norm
 Los artifactos de CAs se recuperan exclusivamente desde Engram:
 
 1. `mem_search(query: "CA-{ID} {tipo}", type: "ca-artifact")`
-2. `mem_get_observation(id: N)` para el contenido completo
-3. Si no aparece, reportar no encontrado al runner
+2. `mem_get_observation(id: N)` para el contenido completo.
+3. Si no aparece, reportar no encontrado al runner.
 
 Los hotfixes y CAs previos se buscan bajo el ID original con el que fueron creados; los IDs históricos no se renombran.
 
@@ -196,3 +234,9 @@ Los títulos deben ser concisos y buscables.
 **Bien**: `"Agregado endpoint de validación de usuarios"`
 
 **Mal**: `"cambios varios"`
+
+---
+
+## Fuera de Alcance
+
+`project-context.md` y su tratamiento de artefactos operativos quedan resueltos fuera de este contrato.

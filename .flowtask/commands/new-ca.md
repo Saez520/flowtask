@@ -17,7 +17,7 @@ Create a new Acceptance Criteria (CA) with guided clarification:
    - Guide a conversation to clarify business requirements
    - Ask about edge cases, failure conditions, and business rules
    - Generate a structured CA draft
-   - Save the approved CA to Engram (topic_key: ca/{ID})
+   - Save the approved CA to Engram (topic_key: ca/CA-{ID}/artifact/ca)
 
 5. Report to the user that the CA is ready in Engram.
 

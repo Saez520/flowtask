@@ -14,12 +14,12 @@ Activate Evolution Mode to evolve a FlowTask agent.
 2. Activate @flowtask-ca-writer in Evolution Mode:
    - Pass the agent name and evolution description
    - The CA-Writer will converse with the user, validate tradeoffs/GAPs, and generate a SPEC
-   - CA-Writer saves the CA to Engram (topic_key: ca/evolve-{agent}-{timestamp})
+   - CA-Writer saves the CA to Engram (topic_key: ca/CA-evolve-{agent}-{timestamp}/artifact/ca)
 
 3. Once the CA is saved, activate @flowtask-planner:
-   - Pass the CA topic_key and the Evolution Mode flag
-   - The Planner generates a plan of changes to .flowtask/ files
-   - Planner saves the plan to Engram (topic_key: plan/evolve-{agent}-{timestamp})
+    - Pass the CA topic_key and the Evolution Mode flag
+    - The Planner generates a plan of changes to .flowtask/ files
+    - Planner saves the plan to Engram (topic_key: ca/CA-evolve-{agent}-{timestamp}/artifact/plan)
 
 4. ALWAYS activate @flowtask-plan-auditor in Evolution Mode (mandatory, regardless of task count):
    - Plan-Auditor reviews the plan of .flowtask/ changes

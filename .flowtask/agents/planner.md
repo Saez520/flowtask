@@ -53,10 +53,10 @@ Este agente utiliza Engram para persistir su estado de planificación. Tratamien
 
 ```
 1. Verificar handshake (inyectado por runner): instance_name.
-2. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/planning").
+2. Verificar checkpoint: mem_search(query: "flow-state/CA-{ID}/plan").
 3. Si existe y state != "completed":
-   - Restaurar estado de planificación (decisiones tomadas, tareas en draft, artefactos en preparación)
-   - Continuar desde donde quedó
+    - Restaurar estado de planificación (decisiones tomadas, tareas en draft, artefactos en preparación)
+    - Continuar desde donde quedó
 4. Si no existe: comenzar planificación normal
 ```
 
@@ -64,52 +64,53 @@ Este agente utiliza Engram para persistir su estado de planificación. Tratamien
 
 ```
 1. Después de cada decisión significativa, guardar checkpoint:
-   mem_save(
-     type: "decision",
-     scope: "project",
-     topic_key: "flow-state/{CA-ID}/planning",
-     title: "Checkpoint planning: {instance_name}",
-     content: {
-       version: "2.0",
-       treatment_class: "complete",
-       state: "active",
-       updated_at: now(),
-       sequence: N,
-       flow_state: {
-         ca_id: "CA-{ID}",
-         agente: "planning",
-         instance_name: "{Name}",
-         pending_tasks: [...],
-         drafted_sections: [...],
-         open_decisions: [...]
-       }
-     }
-   )
+    mem_save(
+      type: "decision",
+      scope: "project",
+      topic_key: "flow-state/CA-{ID}/plan",
+      title: "Checkpoint planning: {instance_name}",
+      content: {
+        version: "2.0",
+        treatment_class: "complete",
+        state: "active",
+        updated_at: now(),
+        sequence: N,
+        flow_state: {
+          ca_id: "CA-{ID}",
+          agente: "planning",
+          instance_name: "{Name}",
+          resume_ref: "{task_id}",
+          pending_tasks: [...],
+          drafted_sections: [...],
+          open_decisions: [...]
+        }
+      }
+    )
 ```
 
 ### Al completar
 
 ```
 1. Cerrar checkpoint con state: "completed":
-   mem_save(
-     type: "decision",
-     scope: "project",
-     topic_key: "flow-state/{CA-ID}/planning",
-     title: "Checkpoint planning: {instance_name}",
-     content: {
-       version: "2.0",
-       treatment_class: "complete",
-       state: "completed",
-       updated_at: now(),
-       sequence: N,
-       flow_state: {
-         ca_id: "CA-{ID}",
-         agente: "planning",
-         instance_name: "{Name}"
-       }
-     }
-   )
-   (state: "completed" conserva la observación como traza — no se elimina)
+    mem_save(
+      type: "decision",
+      scope: "project",
+      topic_key: "flow-state/CA-{ID}/plan",
+      title: "Checkpoint planning: {instance_name}",
+      content: {
+        version: "2.0",
+        treatment_class: "complete",
+        state: "completed",
+        updated_at: now(),
+        sequence: N,
+        flow_state: {
+          ca_id: "CA-{ID}",
+          agente: "planning",
+          instance_name: "{Name}"
+        }
+      }
+    )
+    (state: "completed" conserva la observación como traza — no se elimina)
 ```
 
 ---
@@ -137,7 +138,7 @@ Antes de emitir un dato no confirmado como parte de tu respuesta:
 
 | Cuándo | topic_key | type |
 |--------|-----------|------|
-| Plan generado | `plan/CA-{ID}` | decision |
+| Plan generado (snapshot) | `flow-state/CA-{ID}/plan` | decision |
 
 ---
 
@@ -262,7 +263,7 @@ Guarda snapshot en Engram:
 mem_save(
   type: "decision",
   scope: "project",
-  topic_key: "plan/CA-{ID}",
+  topic_key: "flow-state/CA-{ID}/plan",
   title: "Plan CA-{ID}: {título}",
   content:
     What: Plan generado para CA-{ID} con {N} tareas
@@ -300,7 +301,7 @@ Después de guardar el plan, cuenta las tareas:
 ```
 task(
   description: "Review plan for CA-{ID}",
-  prompt: "Revisa el plan en Engram (ca/CA-{ID}/artifact/plan) — busca via mem_search(query: 'CA-{ID} plan', type: 'ca-artifact'). Verifica: las referencias a archivos existen, las tareas son ejecutables, los QA scenarios están completos. Guarda el review en Engram (ca/CA-{ID}/artifact/audit) y el flow-state en Engram con topic_key: flow-state/{ID}/audit.",
+  prompt: "Revisa el plan en Engram (ca/CA-{ID}/artifact/plan) — busca via mem_search(query: 'CA-{ID} plan', type: 'ca-artifact'). Verifica: las referencias a archivos existen, las tareas son ejecutables, los QA scenarios están completos. Guarda el review en Engram (ca/CA-{ID}/artifact/audit) y el flow-state en Engram con topic_key: flow-state/CA-{ID}/audit.",
   subagent_type: "flowtask-plan-auditor"
 )
 ```

@@ -204,7 +204,7 @@ La respuesta directa siempre debe estar presente. Las secciones adicionales son 
 
 ### Paso 5 — Guardar flow state
 
-Guarda el flow state al finalizar, bifurcando por presencia de CA:
+Guarda el flujo al finalizar. Si existe un checkpoint previo activo del inspector (no completado), **no lo sobrescribas**: escribe un `discovery` separado que documenta el análisis de esta sesión. El checkpoint activo se conserva hasta su cierre explícito.
 
 **Con CA:**
 ```

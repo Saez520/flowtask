@@ -17,7 +17,7 @@ Follow the FlowTask workflow:
 6. Handle retries (max 2) if rejected
 
 All state must be persisted in Engram using the appropriate topic_keys:
-- ca/{ID} for requirements
-- plan/{ID} for plans
-- validation/{ID} for validation reports
-- flow-state/{ID}/[namespace] for workflow state (create, plan, audit, construct, validate)
+- `ca/CA-{ID}/artifact/ca` for requirements (artifact) / `flow-state/CA-{ID}/create` for flow state
+- `ca/CA-{ID}/artifact/plan` for plans (artifact) / `flow-state/CA-{ID}/plan` for flow state
+- `ca/CA-{ID}/artifact/validacion` for validation reports (artifact) / `flow-state/CA-{ID}/validate` for flow state
+- `flow-state/CA-{ID}/{sufijo}` for workflow state (create, plan, audit, construct, validate)
