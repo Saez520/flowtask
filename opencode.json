@@ -30,8 +30,8 @@
       "hidden": true,
       "prompt": "{file:.flowtask/agents/ca-writer.md}",
       "permission": {
-        "edit": "allow",
-        "bash": "allow"
+        "edit": "deny",
+        "bash": "deny"
       }
     },
     "flowtask-planner": {
@@ -40,8 +40,8 @@
       "hidden": true,
       "prompt": "{file:.flowtask/agents/planner.md}",
       "permission": {
-        "edit": "allow",
-        "bash": "allow"
+        "edit": "deny",
+        "bash": "deny"
       }
     },
     "flowtask-constructor": {
@@ -60,8 +60,8 @@
       "hidden": true,
       "prompt": "{file:.flowtask/agents/validator.md}",
       "permission": {
-        "edit": "allow",
-        "bash": "allow"
+        "edit": "deny",
+        "bash": "deny"
       }
     },
     "flowtask-initializer": {
@@ -100,8 +100,8 @@
       "hidden": true,
       "prompt": "{file:.flowtask/agents/plan-auditor.md}",
       "permission": {
-        "edit": "allow",
-        "bash": "allow"
+        "edit": "deny",
+        "bash": "deny"
       }
     },
     "flowtask-review-orchestrator": {
@@ -110,8 +110,23 @@
       "hidden": true,
       "prompt": "{file:.flowtask/agents/review-orchestrator.md}",
       "permission": {
-        "edit": "allow",
-        "bash": "allow"
+        "edit": {
+          "**": "deny",
+          ".flowtask/config/.review-stamp": "allow",
+          ".opencode/flowtask/config/.review-stamp": "allow",
+          "*/.flowtask/config/.review-stamp": "allow"
+        },
+        "bash": {
+          "**": "deny",
+          "git diff": "allow",
+          "git status": "allow",
+          "git branch": "allow",
+          "git log": "allow",
+          "git rev-parse": "allow",
+          "git show": "allow",
+          "gh pr diff": "allow",
+          "gh pr view": "allow"
+        }
       }
     },
     "flowtask-inspector": {
@@ -120,8 +135,8 @@
       "hidden": true,
       "prompt": "{file:.flowtask/agents/inspector.md}",
       "permission": {
-        "edit": "allow",
-        "bash": "allow"
+        "edit": "deny",
+        "bash": "deny"
       }
     },
     "flowtask-onboarder": {
