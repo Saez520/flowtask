@@ -54,12 +54,16 @@ const tui = async (api: TuiPluginApi) => {
       api.ui.dialog.clear();
     };
 
-    const moveSection = (state: SelectorState, delta: number, renderFn: () => any, onClose?: () => void) => {
+    const moveSection = (state: SelectorState, delta: number, renderFn: () => any) => {
       if (!state) return;
       const next = Math.max(0, Math.min(state.sections.length - 1, state.idx + delta));
       if (next === state.idx) return;
       state.idx = next;
-      api.ui.dialog.replace(renderFn, onClose);
+      // T1: navegación interna NO pasa onClose a dialog.replace.
+      // OpenCode dispara onClose del dialog vigente antes de instalar el reemplazo;
+      // pasar teardown aquí nulifica state y desregistra nav layer → modal vacío + flechas muertas.
+      // El onClose real (ESC/backdrop/onSelect) queda registrado por el replace inicial en openSelector/showModelDialog.
+      api.ui.dialog.replace(renderFn);
     };
 
     // T2: layer en mode "modal" (host empuja modal al abrir dialog) con ownership estricto.
@@ -76,7 +80,7 @@ const tui = async (api: TuiPluginApi) => {
             run: () => {
               if (!agentSelectorState && !modelSelectorState) return;
               const s = agentSelectorState ?? modelSelectorState;
-              moveSection(s, -1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => teardownSelector(s));
+              moveSection(s, -1, s === agentSelectorState ? renderAgentDialog : renderModelDialog);
             },
           },
           {
@@ -87,7 +91,7 @@ const tui = async (api: TuiPluginApi) => {
             run: () => {
               if (!agentSelectorState && !modelSelectorState) return;
               const s = agentSelectorState ?? modelSelectorState;
-              moveSection(s, +1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => teardownSelector(s));
+              moveSection(s, +1, s === agentSelectorState ? renderAgentDialog : renderModelDialog);
             },
           },
         ],

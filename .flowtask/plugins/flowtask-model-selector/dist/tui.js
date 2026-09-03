@@ -255,12 +255,12 @@ var tui = async (api) => {
       teardownSelector(state);
       api.ui.dialog.clear();
     };
-    const moveSection = (state, delta, renderFn, onClose) => {
+    const moveSection = (state, delta, renderFn) => {
       if (!state) return;
       const next = Math.max(0, Math.min(state.sections.length - 1, state.idx + delta));
       if (next === state.idx) return;
       state.idx = next;
-      api.ui.dialog.replace(renderFn, onClose);
+      api.ui.dialog.replace(renderFn);
     };
     const registerNavLayer = () => {
       if (navLayerUnregister) return;
@@ -274,7 +274,7 @@ var tui = async (api) => {
           run: () => {
             if (!agentSelectorState && !modelSelectorState) return;
             const s = agentSelectorState ?? modelSelectorState;
-            moveSection(s, -1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => teardownSelector(s));
+            moveSection(s, -1, s === agentSelectorState ? renderAgentDialog : renderModelDialog);
           }
         }, {
           name: "flowtask.section.next",
@@ -284,7 +284,7 @@ var tui = async (api) => {
           run: () => {
             if (!agentSelectorState && !modelSelectorState) return;
             const s = agentSelectorState ?? modelSelectorState;
-            moveSection(s, 1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => teardownSelector(s));
+            moveSection(s, 1, s === agentSelectorState ? renderAgentDialog : renderModelDialog);
           }
         }],
         bindings: [{
