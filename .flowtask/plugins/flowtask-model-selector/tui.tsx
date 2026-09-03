@@ -119,19 +119,25 @@ const tui = async (api: TuiPluginApi) => {
 
       return (
         <box flexDirection="column">
-          {/* T3: breadcrumb en fila horizontal */}
-          <box flexDirection="row">
+          {/* T3: breadcrumb en fila horizontal, alineado con título */}
+          <box flexDirection="row" paddingLeft={4} gap={1}>
             {state.sections.map((s, i) => (
-              <text
-                fg={i === state.idx ? api.theme.current.accent : api.theme.current.textMuted}
+              <box
+                paddingLeft={1}
+                paddingRight={1}
+                backgroundColor={i === state.idx ? api.theme.current.backgroundElement : undefined}
               >
-                {s.label}{i < state.sections.length - 1 ? " · " : ""}
-              </text>
+                <text
+                  fg={i === state.idx ? api.theme.current.accent : api.theme.current.textMuted}
+                >
+                  {s.label}{i < state.sections.length - 1 ? " · " : ""}
+                </text>
+              </box>
             ))}
           </box>
           {section.items.length > 0 ? (
             <api.ui.DialogSelect
-              title="FlowTask — Agente"
+              title="Select Agent"
               placeholder="Buscar..."
               options={section.items}
               onSelect={(item) => {
@@ -157,14 +163,20 @@ const tui = async (api: TuiPluginApi) => {
 
       return (
         <box flexDirection="column">
-          {/* T3: breadcrumb en fila horizontal */}
-          <box flexDirection="row">
+          {/* T3: breadcrumb en fila horizontal, alineado con título */}
+          <box flexDirection="row" paddingLeft={4} gap={1}>
             {state.sections.map((s, i) => (
-              <text
-                fg={i === state.idx ? api.theme.current.accent : api.theme.current.textMuted}
+              <box
+                paddingLeft={1}
+                paddingRight={1}
+                backgroundColor={i === state.idx ? api.theme.current.backgroundElement : undefined}
               >
-                {s.label}{i < state.sections.length - 1 ? " · " : ""}
-              </text>
+                <text
+                  fg={i === state.idx ? api.theme.current.accent : api.theme.current.textMuted}
+                >
+                  {s.label}{i < state.sections.length - 1 ? " · " : ""}
+                </text>
+              </box>
             ))}
           </box>
           {section.items.length > 0 ? (

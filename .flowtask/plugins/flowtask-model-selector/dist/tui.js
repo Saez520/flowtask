@@ -308,17 +308,30 @@ var tui = async (api) => {
         _$insertNode(_el$, _el$2);
         _$setProp(_el$, "flexDirection", "column");
         _$setProp(_el$2, "flexDirection", "row");
+        _$setProp(_el$2, "paddingLeft", 4);
+        _$setProp(_el$2, "gap", 1);
         _$insert(_el$2, () => state.sections.map((s, i) => (() => {
-          var _el$3 = _$createElement("text");
-          _$insert(_el$3, () => s.label, null);
-          _$insert(_el$3, () => i < state.sections.length - 1 ? " \xB7 " : "", null);
-          _$effect((_$p) => _$setProp(_el$3, "fg", i === state.idx ? api.theme.current.accent : api.theme.current.textMuted, _$p));
+          var _el$3 = _$createElement("box"), _el$4 = _$createElement("text");
+          _$insertNode(_el$3, _el$4);
+          _$setProp(_el$3, "paddingLeft", 1);
+          _$setProp(_el$3, "paddingRight", 1);
+          _$insert(_el$4, () => s.label, null);
+          _$insert(_el$4, () => i < state.sections.length - 1 ? " \xB7 " : "", null);
+          _$effect((_p$) => {
+            var _v$ = i === state.idx ? api.theme.current.backgroundElement : void 0, _v$2 = i === state.idx ? api.theme.current.accent : api.theme.current.textMuted;
+            _v$ !== _p$.e && (_p$.e = _$setProp(_el$3, "backgroundColor", _v$, _p$.e));
+            _v$2 !== _p$.t && (_p$.t = _$setProp(_el$4, "fg", _v$2, _p$.t));
+            return _p$;
+          }, {
+            e: void 0,
+            t: void 0
+          });
           return _el$3;
         })()));
         _$insert(_el$, (() => {
           var _c$ = _$memo(() => section.items.length > 0);
           return () => _c$() ? _$createComponent(api.ui.DialogSelect, {
-            title: "FlowTask \u2014 Agente",
+            title: "Select Agent",
             placeholder: "Buscar...",
             get options() {
               return section.items;
@@ -329,10 +342,10 @@ var tui = async (api) => {
               showModelDialog(selectedValue);
             }
           }) : (() => {
-            var _el$4 = _$createElement("box"), _el$5 = _$createElement("text");
-            _$insertNode(_el$4, _el$5);
-            _$insertNode(_el$5, _$createTextNode(`Sin opciones`));
-            return _el$4;
+            var _el$5 = _$createElement("box"), _el$6 = _$createElement("text");
+            _$insertNode(_el$5, _el$6);
+            _$insertNode(_el$6, _$createTextNode(`Sin opciones`));
+            return _el$5;
           })();
         })(), null);
         return _el$;
@@ -343,18 +356,31 @@ var tui = async (api) => {
       if (!state) return null;
       const section = state.sections[state.idx];
       return (() => {
-        var _el$7 = _$createElement("box"), _el$8 = _$createElement("box");
-        _$insertNode(_el$7, _el$8);
-        _$setProp(_el$7, "flexDirection", "column");
-        _$setProp(_el$8, "flexDirection", "row");
-        _$insert(_el$8, () => state.sections.map((s, i) => (() => {
-          var _el$9 = _$createElement("text");
-          _$insert(_el$9, () => s.label, null);
-          _$insert(_el$9, () => i < state.sections.length - 1 ? " \xB7 " : "", null);
-          _$effect((_$p) => _$setProp(_el$9, "fg", i === state.idx ? api.theme.current.accent : api.theme.current.textMuted, _$p));
-          return _el$9;
+        var _el$8 = _$createElement("box"), _el$9 = _$createElement("box");
+        _$insertNode(_el$8, _el$9);
+        _$setProp(_el$8, "flexDirection", "column");
+        _$setProp(_el$9, "flexDirection", "row");
+        _$setProp(_el$9, "paddingLeft", 4);
+        _$setProp(_el$9, "gap", 1);
+        _$insert(_el$9, () => state.sections.map((s, i) => (() => {
+          var _el$0 = _$createElement("box"), _el$1 = _$createElement("text");
+          _$insertNode(_el$0, _el$1);
+          _$setProp(_el$0, "paddingLeft", 1);
+          _$setProp(_el$0, "paddingRight", 1);
+          _$insert(_el$1, () => s.label, null);
+          _$insert(_el$1, () => i < state.sections.length - 1 ? " \xB7 " : "", null);
+          _$effect((_p$) => {
+            var _v$3 = i === state.idx ? api.theme.current.backgroundElement : void 0, _v$4 = i === state.idx ? api.theme.current.accent : api.theme.current.textMuted;
+            _v$3 !== _p$.e && (_p$.e = _$setProp(_el$0, "backgroundColor", _v$3, _p$.e));
+            _v$4 !== _p$.t && (_p$.t = _$setProp(_el$1, "fg", _v$4, _p$.t));
+            return _p$;
+          }, {
+            e: void 0,
+            t: void 0
+          });
+          return _el$0;
         })()));
-        _$insert(_el$7, (() => {
+        _$insert(_el$8, (() => {
           var _c$2 = _$memo(() => section.items.length > 0);
           return () => _c$2() ? _$createComponent(api.ui.DialogSelect, {
             get title() {
@@ -388,13 +414,13 @@ var tui = async (api) => {
               }), () => teardownSelector(modelSelectorState));
             }
           }) : (() => {
-            var _el$0 = _$createElement("box"), _el$1 = _$createElement("text");
-            _$insertNode(_el$0, _el$1);
-            _$insertNode(_el$1, _$createTextNode(`Sin opciones`));
-            return _el$0;
+            var _el$10 = _$createElement("box"), _el$11 = _$createElement("text");
+            _$insertNode(_el$10, _el$11);
+            _$insertNode(_el$11, _$createTextNode(`Sin opciones`));
+            return _el$10;
           })();
         })(), null);
-        return _el$7;
+        return _el$8;
       })();
     };
     const openSelector = async () => {
