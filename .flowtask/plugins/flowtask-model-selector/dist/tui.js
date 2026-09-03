@@ -239,12 +239,22 @@ var tui = async (api) => {
   try {
     let agentSelectorState = null;
     let modelSelectorState = null;
-    const filterItems = (items, query) => {
-      if (!query) return items;
-      const q = query.toLowerCase();
-      return items.filter((item) => item.title.toLowerCase().includes(q) || item.description && item.description.toLowerCase().includes(q));
-    };
     let navLayerUnregister = null;
+    const teardownSelector = (state) => {
+      if (!state || state._teardown) return;
+      state._teardown = true;
+      state.popMode();
+      if (navLayerUnregister) {
+        navLayerUnregister();
+        navLayerUnregister = null;
+      }
+      if (state === agentSelectorState) agentSelectorState = null;
+      if (state === modelSelectorState) modelSelectorState = null;
+    };
+    const closeSelector = (state) => {
+      teardownSelector(state);
+      api.ui.dialog.clear();
+    };
     const moveSection = (state, delta, renderFn, onClose) => {
       if (!state) return;
       const next = Math.max(0, Math.min(state.sections.length - 1, state.idx + delta));
@@ -252,28 +262,19 @@ var tui = async (api) => {
       state.idx = next;
       api.ui.dialog.replace(renderFn, onClose);
     };
-    const cleanupSelector = (state) => {
-      if (!state) return;
-      api.ui.dialog.clear();
-      state.popMode();
-      if (navLayerUnregister) {
-        navLayerUnregister();
-        navLayerUnregister = null;
-      }
-    };
     const registerNavLayer = () => {
       if (navLayerUnregister) return;
-      const activeState = agentSelectorState ?? modelSelectorState;
       const layerResult = api.keymap.registerLayer({
-        mode: "flowtask-model-selector",
+        mode: "modal",
         commands: [{
           name: "flowtask.section.prev",
           title: "Secci\xF3n anterior",
           category: "FlowTask",
           namespace: "flowtask",
           run: () => {
+            if (!agentSelectorState && !modelSelectorState) return;
             const s = agentSelectorState ?? modelSelectorState;
-            moveSection(s, -1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => cleanupSelector(s));
+            moveSection(s, -1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => teardownSelector(s));
           }
         }, {
           name: "flowtask.section.next",
@@ -281,8 +282,9 @@ var tui = async (api) => {
           category: "FlowTask",
           namespace: "flowtask",
           run: () => {
+            if (!agentSelectorState && !modelSelectorState) return;
             const s = agentSelectorState ?? modelSelectorState;
-            moveSection(s, 1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => cleanupSelector(s));
+            moveSection(s, 1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => teardownSelector(s));
           }
         }],
         bindings: [{
@@ -301,44 +303,38 @@ var tui = async (api) => {
       const state = agentSelectorState;
       if (!state) return null;
       const section = state.sections[state.idx];
-      const filteredItems = filterItems(section.items, state.query);
       return (() => {
-        var _el$ = _$createElement("box"), _el$2 = _$createElement("input"), _el$3 = _$createElement("box");
+        var _el$ = _$createElement("box"), _el$2 = _$createElement("box");
         _$insertNode(_el$, _el$2);
-        _$insertNode(_el$, _el$3);
         _$setProp(_el$, "flexDirection", "column");
-        _$setProp(_el$2, "placeholder", "Buscar...");
-        _$setProp(_el$2, "onInput", (value) => {
-          state.query = value;
-          api.ui.dialog.replace(renderAgentDialog, () => cleanupSelector(agentSelectorState));
-        });
-        _$insert(_el$3, () => state.sections.map((s, i) => (() => {
-          var _el$4 = _$createElement("text");
-          _$insert(_el$4, () => s.label, null);
-          _$insert(_el$4, () => i < state.sections.length - 1 ? " \xB7 " : "", null);
-          _$effect((_$p) => _$setProp(_el$4, "fg", i === state.idx ? api.theme.current.accent : api.theme.current.textMuted, _$p));
-          return _el$4;
+        _$setProp(_el$2, "flexDirection", "row");
+        _$insert(_el$2, () => state.sections.map((s, i) => (() => {
+          var _el$3 = _$createElement("text");
+          _$insert(_el$3, () => s.label, null);
+          _$insert(_el$3, () => i < state.sections.length - 1 ? " \xB7 " : "", null);
+          _$effect((_$p) => _$setProp(_el$3, "fg", i === state.idx ? api.theme.current.accent : api.theme.current.textMuted, _$p));
+          return _el$3;
         })()));
         _$insert(_el$, (() => {
-          var _c$ = _$memo(() => filteredItems.length > 0);
+          var _c$ = _$memo(() => section.items.length > 0);
           return () => _c$() ? _$createComponent(api.ui.DialogSelect, {
             title: "FlowTask \u2014 Agente",
-            options: filteredItems,
-            skipFilter: true,
+            placeholder: "Buscar...",
+            get options() {
+              return section.items;
+            },
             onSelect: (item) => {
               const selectedValue = item.value;
-              cleanupSelector(agentSelectorState);
-              agentSelectorState = null;
+              closeSelector(agentSelectorState);
               showModelDialog(selectedValue);
             }
           }) : (() => {
-            var _el$5 = _$createElement("box"), _el$6 = _$createElement("text");
-            _$insertNode(_el$5, _el$6);
-            _$insertNode(_el$6, _$createTextNode(`Sin opciones`));
-            return _el$5;
+            var _el$4 = _$createElement("box"), _el$5 = _$createElement("text");
+            _$insertNode(_el$4, _el$5);
+            _$insertNode(_el$5, _$createTextNode(`Sin opciones`));
+            return _el$4;
           })();
         })(), null);
-        _$effect((_$p) => _$setProp(_el$2, "value", state.query, _$p));
         return _el$;
       })();
     };
@@ -346,37 +342,32 @@ var tui = async (api) => {
       const state = modelSelectorState;
       if (!state) return null;
       const section = state.sections[state.idx];
-      const filteredItems = filterItems(section.items, state.query);
       return (() => {
-        var _el$8 = _$createElement("box"), _el$9 = _$createElement("input"), _el$0 = _$createElement("box");
-        _$insertNode(_el$8, _el$9);
-        _$insertNode(_el$8, _el$0);
-        _$setProp(_el$8, "flexDirection", "column");
-        _$setProp(_el$9, "placeholder", "Buscar...");
-        _$setProp(_el$9, "onInput", (value) => {
-          state.query = value;
-          api.ui.dialog.replace(renderModelDialog, () => cleanupSelector(modelSelectorState));
-        });
-        _$insert(_el$0, () => state.sections.map((s, i) => (() => {
-          var _el$1 = _$createElement("text");
-          _$insert(_el$1, () => s.label, null);
-          _$insert(_el$1, () => i < state.sections.length - 1 ? " \xB7 " : "", null);
-          _$effect((_$p) => _$setProp(_el$1, "fg", i === state.idx ? api.theme.current.accent : api.theme.current.textMuted, _$p));
-          return _el$1;
+        var _el$7 = _$createElement("box"), _el$8 = _$createElement("box");
+        _$insertNode(_el$7, _el$8);
+        _$setProp(_el$7, "flexDirection", "column");
+        _$setProp(_el$8, "flexDirection", "row");
+        _$insert(_el$8, () => state.sections.map((s, i) => (() => {
+          var _el$9 = _$createElement("text");
+          _$insert(_el$9, () => s.label, null);
+          _$insert(_el$9, () => i < state.sections.length - 1 ? " \xB7 " : "", null);
+          _$effect((_$p) => _$setProp(_el$9, "fg", i === state.idx ? api.theme.current.accent : api.theme.current.textMuted, _$p));
+          return _el$9;
         })()));
-        _$insert(_el$8, (() => {
-          var _c$2 = _$memo(() => filteredItems.length > 0);
+        _$insert(_el$7, (() => {
+          var _c$2 = _$memo(() => section.items.length > 0);
           return () => _c$2() ? _$createComponent(api.ui.DialogSelect, {
             get title() {
               return `Modelo para ${state.agentName}`;
             },
-            options: filteredItems,
-            skipFilter: true,
+            placeholder: "Buscar...",
+            get options() {
+              return section.items;
+            },
             onSelect: (item) => {
               const selectedValue = item.value;
               const agentName = state.agentName;
-              cleanupSelector(modelSelectorState);
-              modelSelectorState = null;
+              closeSelector(modelSelectorState);
               if (selectedValue === CLEAR_SENTINEL) {
                 applySelection(agentName, selectedValue);
                 return;
@@ -389,21 +380,21 @@ var tui = async (api) => {
               }
               api.ui.dialog.replace(() => _$createComponent(api.ui.DialogSelect, {
                 title: `Variant para ${agentName}`,
+                placeholder: "Buscar...",
                 options: variants,
                 onSelect: (variant) => {
                   applySelection(agentName, selectedValue, variant.value);
                 }
-              }), () => cleanupSelector(modelSelectorState));
+              }), () => teardownSelector(modelSelectorState));
             }
           }) : (() => {
-            var _el$10 = _$createElement("box"), _el$11 = _$createElement("text");
-            _$insertNode(_el$10, _el$11);
-            _$insertNode(_el$11, _$createTextNode(`Sin opciones`));
-            return _el$10;
+            var _el$0 = _$createElement("box"), _el$1 = _$createElement("text");
+            _$insertNode(_el$0, _el$1);
+            _$insertNode(_el$1, _$createTextNode(`Sin opciones`));
+            return _el$0;
           })();
         })(), null);
-        _$effect((_$p) => _$setProp(_el$9, "value", state.query, _$p));
-        return _el$8;
+        return _el$7;
       })();
     };
     const openSelector = async () => {
@@ -431,10 +422,9 @@ var tui = async (api) => {
         agentSelectorState = {
           sections,
           idx: 0,
-          query: "",
           popMode
         };
-        api.ui.dialog.replace(renderAgentDialog, () => cleanupSelector(agentSelectorState));
+        api.ui.dialog.replace(renderAgentDialog, () => teardownSelector(agentSelectorState));
       } catch (error) {
         api.ui.toast({
           title: "FlowTask Model",
@@ -452,11 +442,10 @@ var tui = async (api) => {
         modelSelectorState = {
           sections,
           idx: 0,
-          query: "",
           popMode,
           agentName
         };
-        api.ui.dialog.replace(renderModelDialog, () => cleanupSelector(modelSelectorState));
+        api.ui.dialog.replace(renderModelDialog, () => teardownSelector(modelSelectorState));
       } catch (error) {
         api.ui.toast({
           title: "FlowTask Model",

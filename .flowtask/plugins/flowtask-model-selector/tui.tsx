@@ -19,9 +19,9 @@ import * as fs from "fs";
 type SelectorState = {
   sections: Section<string>[];
   idx: number;
-  query: string;
   popMode: () => void;
   agentName?: string;
+  _teardown?: boolean;
 } | null;
 
 const tui = async (api: TuiPluginApi) => {
@@ -30,20 +30,29 @@ const tui = async (api: TuiPluginApi) => {
     let agentSelectorState: SelectorState = null;
     let modelSelectorState: SelectorState = null;
 
-    const filterItems = (
-      items: { title: string; value: string; description?: string }[],
-      query: string
-    ) => {
-      if (!query) return items;
-      const q = query.toLowerCase();
-      return items.filter(
-        (item) =>
-          item.title.toLowerCase().includes(q) ||
-          (item.description && item.description.toLowerCase().includes(q))
-      );
+    let navLayerUnregister: (() => void) | null = null;
+
+    // T1: teardown sin clear — solo limpia estado/modo/layer.
+    // NUNCA llama api.ui.dialog.clear() para evitar reentrada clear→onClose→clear.
+    const teardownSelector = (state: SelectorState) => {
+      if (!state || state._teardown) return;
+      state._teardown = true;
+      state.popMode();
+      if (navLayerUnregister) {
+        navLayerUnregister();
+        navLayerUnregister = null;
+      }
+      // Nullify corresponding state so layer guard (agentSelectorState ?? modelSelectorState)
+      // resolves to the active selector, not a stale one. Fixes T2 arrow navigation.
+      if (state === agentSelectorState) agentSelectorState = null;
+      if (state === modelSelectorState) modelSelectorState = null;
     };
 
-    let navLayerUnregister: (() => void) | null = null;
+    // T1: cierre explícito (onSelect) — teardown + clear.
+    const closeSelector = (state: SelectorState) => {
+      teardownSelector(state);
+      api.ui.dialog.clear();
+    };
 
     const moveSection = (state: SelectorState, delta: number, renderFn: () => any, onClose?: () => void) => {
       if (!state) return;
@@ -53,21 +62,11 @@ const tui = async (api: TuiPluginApi) => {
       api.ui.dialog.replace(renderFn, onClose);
     };
 
-    const cleanupSelector = (state: SelectorState) => {
-      if (!state) return;
-      api.ui.dialog.clear();
-      state.popMode();
-      if (navLayerUnregister) {
-        navLayerUnregister();
-        navLayerUnregister = null;
-      }
-    };
-
+    // T2: layer en mode "modal" (host empuja modal al abrir dialog) con ownership estricto.
     const registerNavLayer = () => {
       if (navLayerUnregister) return;
-      const activeState = agentSelectorState ?? modelSelectorState;
       const layerResult = api.keymap.registerLayer({
-        mode: "flowtask-model-selector",
+        mode: "modal",
         commands: [
           {
             name: "flowtask.section.prev",
@@ -75,8 +74,9 @@ const tui = async (api: TuiPluginApi) => {
             category: "FlowTask",
             namespace: "flowtask",
             run: () => {
+              if (!agentSelectorState && !modelSelectorState) return;
               const s = agentSelectorState ?? modelSelectorState;
-              moveSection(s, -1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => cleanupSelector(s));
+              moveSection(s, -1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => teardownSelector(s));
             },
           },
           {
@@ -85,8 +85,9 @@ const tui = async (api: TuiPluginApi) => {
             category: "FlowTask",
             namespace: "flowtask",
             run: () => {
+              if (!agentSelectorState && !modelSelectorState) return;
               const s = agentSelectorState ?? modelSelectorState;
-              moveSection(s, +1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => cleanupSelector(s));
+              moveSection(s, +1, s === agentSelectorState ? renderAgentDialog : renderModelDialog, () => teardownSelector(s));
             },
           },
         ],
@@ -106,41 +107,32 @@ const tui = async (api: TuiPluginApi) => {
       navLayerUnregister = typeof layerResult === "function" ? layerResult : (layerResult && typeof (layerResult as any).unregister === "function" ? (layerResult as any).unregister : null);
     };
 
-    // Render function for agent dialog
+    // T4: render sin input custom — DialogSelect nativo con filtro+focus propios.
     const renderAgentDialog = () => {
       const state = agentSelectorState;
       if (!state) return null;
       const section = state.sections[state.idx];
-      const filteredItems = filterItems(section.items, state.query);
 
       return (
         <box flexDirection="column">
-           <input
-             value={state.query}
-             placeholder="Buscar..."
-             onInput={(value: string) => {
-               state.query = value;
-               api.ui.dialog.replace(renderAgentDialog, () => cleanupSelector(agentSelectorState));
-             }}
-           />
-            <box>
-             {state.sections.map((s, i) => (
-               <text
-                 fg={i === state.idx ? api.theme.current.accent : api.theme.current.textMuted}
-               >
-                 {s.label}{i < state.sections.length - 1 ? " · " : ""}
-               </text>
-             ))}
-           </box>
-           {filteredItems.length > 0 ? (
-             <api.ui.DialogSelect
-               title="FlowTask — Agente"
-              options={filteredItems}
-              skipFilter={true}
+          {/* T3: breadcrumb en fila horizontal */}
+          <box flexDirection="row">
+            {state.sections.map((s, i) => (
+              <text
+                fg={i === state.idx ? api.theme.current.accent : api.theme.current.textMuted}
+              >
+                {s.label}{i < state.sections.length - 1 ? " · " : ""}
+              </text>
+            ))}
+          </box>
+          {section.items.length > 0 ? (
+            <api.ui.DialogSelect
+              title="FlowTask — Agente"
+              placeholder="Buscar..."
+              options={section.items}
               onSelect={(item) => {
                 const selectedValue = item.value;
-                cleanupSelector(agentSelectorState);
-                agentSelectorState = null;
+                closeSelector(agentSelectorState);
                 showModelDialog(selectedValue);
               }}
             />
@@ -153,42 +145,33 @@ const tui = async (api: TuiPluginApi) => {
       );
     };
 
-    // Render function for model dialog
+    // T4: render sin input custom — DialogSelect nativo con filtro+focus propios.
     const renderModelDialog = () => {
       const state = modelSelectorState;
       if (!state) return null;
       const section = state.sections[state.idx];
-      const filteredItems = filterItems(section.items, state.query);
 
       return (
         <box flexDirection="column">
-           <input
-             value={state.query}
-             placeholder="Buscar..."
-             onInput={(value: string) => {
-               state.query = value;
-               api.ui.dialog.replace(renderModelDialog, () => cleanupSelector(modelSelectorState));
-             }}
-           />
-            <box>
-             {state.sections.map((s, i) => (
-               <text
-                 fg={i === state.idx ? api.theme.current.accent : api.theme.current.textMuted}
-               >
-                 {s.label}{i < state.sections.length - 1 ? " · " : ""}
-               </text>
-             ))}
-           </box>
-           {filteredItems.length > 0 ? (
-             <api.ui.DialogSelect
-               title={`Modelo para ${state.agentName}`}
-              options={filteredItems}
-              skipFilter={true}
+          {/* T3: breadcrumb en fila horizontal */}
+          <box flexDirection="row">
+            {state.sections.map((s, i) => (
+              <text
+                fg={i === state.idx ? api.theme.current.accent : api.theme.current.textMuted}
+              >
+                {s.label}{i < state.sections.length - 1 ? " · " : ""}
+              </text>
+            ))}
+          </box>
+          {section.items.length > 0 ? (
+            <api.ui.DialogSelect
+              title={`Modelo para ${state.agentName}`}
+              placeholder="Buscar..."
+              options={section.items}
               onSelect={(item) => {
                 const selectedValue = item.value;
                 const agentName = state.agentName!;
-                cleanupSelector(modelSelectorState);
-                modelSelectorState = null;
+                closeSelector(modelSelectorState);
 
                 if (selectedValue === CLEAR_SENTINEL) {
                   applySelection(agentName, selectedValue);
@@ -205,12 +188,13 @@ const tui = async (api: TuiPluginApi) => {
                 api.ui.dialog.replace(() => (
                   <api.ui.DialogSelect
                     title={`Variant para ${agentName}`}
+                    placeholder="Buscar..."
                     options={variants}
                     onSelect={(variant) => {
                       applySelection(agentName, selectedValue, variant.value);
                     }}
                   />
-                ), () => cleanupSelector(modelSelectorState));
+                ), () => teardownSelector(modelSelectorState));
               }}
             />
           ) : (
@@ -254,11 +238,11 @@ const tui = async (api: TuiPluginApi) => {
         agentSelectorState = {
           sections,
           idx: 0,
-          query: "",
           popMode,
         };
 
-        api.ui.dialog.replace(renderAgentDialog, () => cleanupSelector(agentSelectorState));
+        // T1: onClose = teardown (sin clear) para evitar reentrada.
+        api.ui.dialog.replace(renderAgentDialog, () => teardownSelector(agentSelectorState));
       } catch (error) {
         api.ui.toast({
           title: "FlowTask Model",
@@ -280,12 +264,12 @@ const tui = async (api: TuiPluginApi) => {
         modelSelectorState = {
           sections,
           idx: 0,
-          query: "",
           popMode,
           agentName,
         };
 
-        api.ui.dialog.replace(renderModelDialog, () => cleanupSelector(modelSelectorState));
+        // T1: onClose = teardown (sin clear) para evitar reentrada.
+        api.ui.dialog.replace(renderModelDialog, () => teardownSelector(modelSelectorState));
       } catch (error) {
         api.ui.toast({
           title: "FlowTask Model",
