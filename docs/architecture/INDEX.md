@@ -41,25 +41,25 @@ Archivos de diseño arquitectónico consolidados desde `New Architecture/` (CA-0
 
 | Archivo | Descripción |
 |---------|-------------|
-| [flowtask-core.txt](./flowtask-core.txt) | Diagrama del ecosistema core: Runner, Plugins, Skills, Memoria (Engram) y Agentes |
-| [handshake.txt](./handshake.txt) | Protocolo Handshake: identidad, continuidad y self-healing de agentes |
-| [anatomia-workspace.txt](./anatomia-workspace.txt) | Anatomía del workspace: `.flowtask/` (estático) vs `.workspace/` + Engram (dinámico) |
-| [instalacion.txt](./instalacion.txt) | Guía de instalación y configuración de FlowTask |
-| [integracion-skills.txt](./integracion-skills.txt) | Integración de skills en el sistema de agentes |
-| [Plugin-Link.txt](./Plugin-Link.txt) | Mecanismo de enlace de plugins |
+| [flowtask-core.md](./flowtask-core.md) | Diagrama del ecosistema core: Runner, Plugins, Skills, Memoria (Engram) y Agentes |
+| [handshake.md](./handshake.md) | Protocolo Handshake: identidad, continuidad y self-healing de agentes |
+| [anatomia-workspace.md](./anatomia-workspace.md) | Anatomía del workspace: `.flowtask/` (estático) vs `.workspace/` + Engram (dinámico) |
+| [instalacion.md](./instalacion.md) | Guía de instalación y configuración de FlowTask |
+| [integracion-skills.md](./integracion-skills.md) | Integración de skills en el sistema de agentes |
+| [plugin-link.md](./plugin-link.md) | Mecanismo de enlace de plugins |
 
-## Documentos de Arquitectura Conceptual (`.txt` originales)
+## Documentos de Arquitectura Conceptual (originales)
 
 | Archivo | Pilar | Descripción |
 |---------|-------|-------------|
-| [worktree.txt](./worktree.txt) | P1 — Git Worktrees | Diseño conceptual de aislamiento con Git Worktrees |
-| [sub-agent-archivista.txt](./sub-agent-archivista.txt) | P1 — Git Worktrees | Flujo del sub-agente Archivist |
-| [engram-cloud.txt](./engram-cloud.txt) | P2 — Engram | Estructura de memoria de Engram y sincronización cloud |
-| [LSP + AST-Grep.txt](./LSP + AST-Grep.txt) | P3 — LSP+AST-Grep | Comparativa de flujo actual vs optimizado (91% reducción) |
-| [flujo-orquestacion.txt](./flujo-orquestacion.txt) | Transversal | Flujo de orquestación del Runner |
-| [floswtask-sistematico.txt](./floswtask-sistematico.txt) | Transversal | Visión sistemática de FlowTask |
-| [initializer.txt](./initializer.txt) | Transversal | Diseño del sub-agente Initializer |
-| [SDD.txt](./SDD.txt) | Transversal | Specification-Driven Development en FlowTask |
+| [worktree.md](./worktree.md) | P1 — Git Worktrees | Diseño conceptual de aislamiento con Git Worktrees |
+| [sub-agent-archivista.md](./sub-agent-archivista.md) | P1 — Git Worktrees | Flujo del sub-agente Archivist |
+| [engram-cloud.md](./engram-cloud.md) | P2 — Engram | Estructura de memoria de Engram y sincronización cloud |
+| [lsp-ast-grep.md](./lsp-ast-grep.md) | P3 — LSP+AST-Grep | Comparativa de flujo actual vs optimizado (91% reducción) |
+| [flujo-orquestacion.md](./flujo-orquestacion.md) | Transversal | Flujo de orquestación del Runner |
+| [flowtask-sistematico.md](./flowtask-sistematico.md) | Transversal | Visión sistemática de FlowTask |
+| [initializer.md](./initializer.md) | Transversal | Diseño del sub-agente Initializer |
+| [sdd.md](./sdd.md) | Transversal | Specification-Driven Development en FlowTask |
 
 ---
 

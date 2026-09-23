@@ -45,8 +45,8 @@ FlowTask se sostiene sobre tres pilares que lo diferencian de herramientas de as
 
 **Por qué importa**: Es la garantía de que un agente autónomo **no puede corromper el código del desarrollador**. Sin este pilar, FlowTask sería una herramienta de asistencia; con él, es un sistema delegable con seguridad de integridad.
 
-**Diagrama ASCII**: Ver [`docs/architecture/worktree.txt`](../docs/architecture/worktree.txt) — diseño conceptual del ciclo de vida con Git Worktrees.  
-**Artefacto relacionado**: [`docs/architecture/sub-agent-archivista.txt`](../docs/architecture/sub-agent-archivista.txt) — flujo del sub-agente Archivist.
+**Diagrama ASCII**: Ver [`docs/architecture/worktree.md`](../docs/architecture/worktree.md) — diseño conceptual del ciclo de vida con Git Worktrees.  
+**Artefacto relacionado**: [`docs/architecture/sub-agent-archivista.md`](../docs/architecture/sub-agent-archivista.md) — flujo del sub-agente Archivist.
 
 ### Pilar 2 — Persistencia y Self-Healing (Engram + Handshake)
 
@@ -54,14 +54,14 @@ FlowTask se sostiene sobre tres pilares que lo diferencian de herramientas de as
 
 **Por qué importa**: Sin memoria persistente, cada sesión empieza ciega. Sin handshake, los agentes no saben quiénes son. Este pilar convierte a FlowTask de "chatbot que escribe código" a **sistema de agentes con continuidad operativa**.
 
-**Estructura de memoria de Engram** (ver [`docs/architecture/engram-cloud.txt`](../docs/architecture/engram-cloud.txt)):
+**Estructura de memoria de Engram** (ver [`docs/architecture/engram-cloud.md`](../docs/architecture/engram-cloud.md)):
 - `project/*` — contexto global del proyecto (stack, convenciones, capas)
 - `ca/{ID}`, `plan/{ID}`, `validation/{ID}` — snapshots de artefactos
 - `ca/CA-{ID}/artifact/{filename}` — contenido completo de artefactos (ca-artifact)
 - `flow-state/{ID}/*` — control paso a paso por CA
 - `impl/{ID}/*` — descubrimientos de implementación (decisiones, patrones)
 
-**Handshake Protocol** (ver [`docs/architecture/handshake.txt`](../docs/architecture/handshake.txt)):
+**Handshake Protocol** (ver [`docs/architecture/handshake.md`](../docs/architecture/handshake.md)):
 1. El Runner consulta Engram: ¿existe handshake para este CA?
 2. Si es nuevo: asigna BaseName de un pool predefinido (Aitana, Kael, Lyra...)
 3. Si es continuación: recupera `task_id`, lee el último checkpoint, relanza al agente con el contexto completo
@@ -72,7 +72,7 @@ FlowTask se sostiene sobre tres pilares que lo diferencian de herramientas de as
 
 **Por qué importa**: El contexto es el recurso más caro en sistemas basados en LLM. Cada token ahorrado es velocidad, precisión y menor costo. Este pilar permite que FlowTask escale a proyectos grandes sin degradación.
 
-**Diagrama comparativo**: Ver [`docs/architecture/LSP + AST-Grep.txt`](../docs/architecture/LSP + AST-Grep.txt) — flujo actual (Glob+Grep, 2,200 tokens) vs flujo optimizado (LSP+AST-Grep, 180 tokens).
+**Diagrama comparativo**: Ver [`docs/architecture/lsp-ast-grep.md`](../docs/architecture/lsp-ast-grep.md) — flujo actual (Glob+Grep, 2,200 tokens) vs flujo optimizado (LSP+AST-Grep, 180 tokens).
 
 ---
 
@@ -158,8 +158,8 @@ FlowTask/
 ├── docs/architecture/        ← Documentación de arquitectura unificada
 │   ├── INDEX.md              ← Índice de todos los documentos
 │   ├── 01-agentes.md .. 09-workspace.md  ← Módulos del repomix-output.xml
-│   ├── worktree.txt, LSP + AST-Grep.txt  ← Diagramas ASCII de pilares
-│   └── handshake.txt, flowtask-core.txt  ← Diseños de New Architecture
+│   ├── worktree.md, lsp-ast-grep.md  ← Diagramas ASCII de pilares
+│   └── handshake.md, flowtask-core.md  ← Diseños de New Architecture
 ├── .engram/                  ← Configuración de Engram (memoria persistente)
 └── src/                      ← Código fuente del proyecto
 ```
@@ -172,15 +172,15 @@ Toda la documentación técnica está en [`docs/architecture/`](../docs/architec
 - Agentes, skills, implementación, plugins, comandos, configuración, README, Engram, workspace
 
 **Documentos de diseño conceptual** (originalmente en `New Architecture/`):
-- [`flowtask-core.txt`](../docs/architecture/flowtask-core.txt) — Ecosistema core
-- [`handshake.txt`](../docs/architecture/handshake.txt) — Protocolo Handshake
-- [`anatomia-workspace.txt`](../docs/architecture/anatomia-workspace.txt) — Anatomía del workspace
+- [`flowtask-core.md`](../docs/architecture/flowtask-core.md) — Ecosistema core
+- [`handshake.md`](../docs/architecture/handshake.md) — Protocolo Handshake
+- [`anatomia-workspace.md`](../docs/architecture/anatomia-workspace.md) — Anatomía del workspace
 
 **Diagramas ASCII de los pilares**:
-- [`worktree.txt`](../docs/architecture/worktree.txt) — Pilar 1: Git Worktrees
-- [`sub-agent-archivista.txt`](../docs/architecture/sub-agent-archivista.txt) — Flujo del Archivist
-- [`engram-cloud.txt`](../docs/architecture/engram-cloud.txt) — Pilar 2: Estructura Engram
-- [`LSP + AST-Grep.txt`](../docs/architecture/LSP + AST-Grep.txt) — Pilar 3: Optimización LSP+AST-Grep
+- [`worktree.md`](../docs/architecture/worktree.md) — Pilar 1: Git Worktrees
+- [`sub-agent-archivista.md`](../docs/architecture/sub-agent-archivista.md) — Flujo del Archivist
+- [`engram-cloud.md`](../docs/architecture/engram-cloud.md) — Pilar 2: Estructura Engram
+- [`lsp-ast-grep.md`](../docs/architecture/lsp-ast-grep.md) — Pilar 3: Optimización LSP+AST-Grep
 
 ---
 
