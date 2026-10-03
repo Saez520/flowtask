@@ -4,6 +4,8 @@ AI-driven development workflow system with persistent memory via Engram.
 
 FlowTask provides specialized AI agents that work together to automate software development tasks — from requirements capture to implementation and validation. Artifacts (CAs, plans, audits, reports) are stored in Engram as ca-artifact type; Engram persists both artifact content and operational state. Legacy CA artifacts remain in .workspace/ as fallback (Dual-Source).
 
+Current version: **1.22.0** (declared in `.flowtask/package.json`).
+
 The system includes a **personality system** that adapts the runner's tone and depth based on your experience level, and **parallel worktree isolation** for running multiple development workflows simultaneously.
 
 ***
@@ -127,7 +129,7 @@ FlowTask will:
 5. **Constructor** — implements following project conventions
 6. **Validator** — reviews implementation against the plan (max 2 retries)
 
-> **Parallel CAs**: The first active CA runs in your normal working branch. A second parallel CA automatically creates an isolated **Git worktree** — see [Git Worktrees](#git-worktrees) below.
+> **Parallel CAs**: Every CA runs in its own isolated **Git worktree** — see [Git Worktrees](#git-worktrees) below.
 
 ### Explore the project
 
@@ -170,7 +172,6 @@ Shows Engram memory statistics, active workflows, and project initialization sta
 | `/inspect`           | Inspector           | Explore and analyze the project                          |
 | `/evolve-agent`      | All (via Runner)    | Evolve a FlowTask agent (Evolution Mode)                 |
 | `/onboard`           | Onboarder           | Run technical quiz and assign runner personality         |
-| `/register-skills`   | Runner              | Register FlowTask skills into OpenCode                   |
 | `/status`            | Runner              | Show FlowTask and Engram status                          |
 | `/update`            | Runner              | Update FlowTask in current project                       |
 
@@ -182,22 +183,23 @@ Shows Engram memory statistics, active workflows, and project initialization sta
 
 The runner is always active as the primary agent. You can speak directly to it without slash commands — it classifies your intent automatically. Commands still work but are optional.
 
-The `flowtask-classifier-hook` plugin (server-side) intercepts your input and the `flowtask-classifier-tui` plugin (OpenCode UI) injects a `FLOWTASK_CLASSIFICATION` tag into context before the runner sees it:
+When `FLOWTASK_CLASSIFICATION` is present in the incoming context, the runner consumes that tag as-is. The categories and their destinations:
 
-| Classification          | Detected when                             |
-| ----------------------- | ----------------------------------------- |
-| `COMMAND:/run CA-{ID}`  | You type `/run CA-001`                    |
-| `COMMAND:/inspect`      | You type `/inspect`                       |
-| `COMMAND:/new-ca`       | You type `/new-ca`                        |
-| `COMMAND:/evolve-agent` | You type `/evolve-agent`                  |
-| `COMMAND:/init`         | You type `/init`                          |
-| `COMMAND:/status`       | You type `/status`                        |
-| `CA_MENTION:{ID}`       | You reference "CA-018", etc.              |
-| `PROJECT_QUESTION`      | You ask a question about the project      |
-| `CHANGE_REQUEST`        | You request a change without a CA         |
-| Fallback                | Ambiguous — runner asks for clarification |
+| Classification          | Routes to                                               |
+| ----------------------- | ------------------------------------------------------- |
+| `COMMAND:/run CA-{ID}`  | Full CA workflow                                        |
+| `COMMAND:/inspect`      | Inspector                                               |
+| `COMMAND:/new-ca`       | CA-Writer                                               |
+| `COMMAND:/evolve-agent` | CA-Writer in Evolution Mode                             |
+| `COMMAND:/init`         | Initializer                                             |
+| `COMMAND:/status`       | FlowTask and Engram status                              |
+| `CA_MENTION:{ID}`       | CA-Writer                                               |
+| `PROJECT_QUESTION`      | Inspector                                               |
+| `CHANGE_REQUEST`        | CA-Writer                                               |
+| `REVIEW_REQUEST`        | Review-orchestrator                                     |
+| `AMBIGUO`               | Runner asks whether it is a new requirement, a project question, or something related to an existing CA |
 
-If the classifier is inactive, the runner falls back to the `manual-classification` skill.
+When `FLOWTASK_CLASSIFICATION` is absent, the runner loads the `manual-classification` skill and classifies your message against explicit commands, existing-CA mentions, project questions, change requests without a CA, and ambiguous input. `REVIEW_REQUEST` is not one of that skill's rules — review intent is detected by the [Review flow](#review-flow) phrases instead.
 
 ### Personality system
 
@@ -214,17 +216,35 @@ The personality is injected into the runner agent definition and persists across
 
 ### Git Worktrees
 
-FlowTask supports **parallel CA execution** using Git worktrees for isolation:
+Every CA runs in an isolated Git worktree, so parallel executions never share a working directory:
 
-- **First active CA**: Runs in your normal working branch (no worktree).
-- **Second+ parallel CA**: Automatically creates an isolated worktree via `${FLOWTASK_SCRIPTS}/worktree.sh create <CA-ID> --base development`.
+```bash
+${FLOWTASK_SCRIPTS}/worktree.sh create <CA-ID> --base <base_branch_detectada>
+```
 
-When a parallel CA completes successfully (Validator APPROVED):
-1. The worktree is merged back via `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID>`.
-2. Squash-merge to `development`, then worktree and branch are cleaned up.
-3. If a merge conflict occurs, the constructor is re-escalated to resolve it.
+The base branch is detected in the order `development → main → trunk → main`, and the runner passes it explicitly. If the worktree or the branch `worktree/<CA-ID>` already exist (interrupted session, resumption), `create` fails — reuse the existing worktree and continue instead of creating another one.
 
-The worktree state is persisted in Engram under `flow-state/CA-{ID}/instances` as `constructor.worktree`.
+The worktree state is persisted in Engram under `flow-state/CA-{ID}/instances` as `constructor.worktree = { path, branch, base_branch }`, and the runner includes path and branch in the constructor's prompt.
+
+On successful closure (Validator APPROVED):
+
+1. Commit before closing.
+2. Run `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID>`.
+3. On success, the script squash-merges into the detected base branch and removes the worktree and branch.
+4. If `complete` fails with a conflict, the worktree and branch are preserved and the constructor is re-escalated to resolve it.
+
+#### worktree.sh subcommands
+
+| Subcommand                                            | Purpose                                                                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `create <execution-name> [--base <branch>]`          | Creates the isolated worktree and its branch                                                                  |
+| `complete <execution-name> [--base <branch>]`        | Squash-merges into the base branch and removes worktree and branch                                            |
+| `cleanup <execution-name> [--base <branch>]`         | Removes worktree and branch without merging                                                                   |
+| `recover [<transaction-id>]`                         | Resumes an interrupted `--preserve-dirty` transaction from its last phase; without an argument takes the most recent pending one. Idempotent |
+| `prune`                                              | Cleans stale Git metadata and reports unassociated directories; it never deletes orphan worktrees             |
+| `list`                                               | Lists worktrees on disk — the source of truth for reconciliation                                              |
+
+`list` output is cross-checked with `flow-state/*/instances` to detect `constructor.worktree` and report worktrees present on disk with no Engram counterpart.
 
 ### Artifact storage
 
@@ -248,9 +268,11 @@ FlowTask uses **OpenCode skills** for reusable protocol instructions. Skills are
 | Skill                  | Purpose                                           |
 | ---------------------- | ------------------------------------------------- |
 | `checkpoint-mixin`     | Persistence protocol for subagent checkpoints      |
+| `graphify-protocol`    | Mandatory Graphify query chain, degradation and evidence contract |
 | `handshake-protocol`   | Identity, task_id assignment, and context injection |
 | `heuristics`           | Developer heuristic storage and detection          |
-| `manual-classification`| Fallback input classifier (when auto is inactive)  |
+| `investigacion`        | Evidence-based investigation and diagnosis without writing files |
+| `manual-classification`| Fallback input classifier (when no tag arrives)    |
 | `memory-contract`      | Data contracts, categories, and topic_key format   |
 | `memory-protocol`      | Engram mem_* usage protocol                        |
 | `plan-template`        | Standard plan structure template                   |
@@ -261,30 +283,37 @@ FlowTask uses **OpenCode skills** for reusable protocol instructions. Skills are
 | `topic-keys-convention`| Engram topic_key ownership rules                   |
 | `zero-assumptions`     | Prohibits assuming entity state without verification |
 
-FlowTask includes **13 skills** covering memory protocols, identity management, and the **4R review lenses** (Risk, Readability, Reliability, Resilience) for comprehensive code review.
+FlowTask includes **15 skills** covering memory protocols, identity management, Graphify consumption, and the **4R review lenses** (Risk, Readability, Reliability, Resilience) for comprehensive code review.
 
 Skills are loaded via `skill({ name: "..." })` before invocation.
 
 ### Engram topic keys
 
-| Topic Key                   | Owner                     | What it stores                        |
-| --------------------------- | ------------------------- | ------------------------------------- |
-| `ca/{ID}`                   | Runner (via CA-Writer)    | CA snapshot                           |
-| `plan/{ID}`                 | Runner (via Planner)      | Plan snapshot                         |
-| `plan-audit/{ID}`           | Plan-Auditor              | Audit results                         |
-| `validation/{ID}`           | Validator                 | Validation report                     |
-| `flow-state/{ID}/instances` | Runner                    | Instance map + worktree + ca_status   |
-| `flow-state/{ID}/create`    | CA-Writer                 | CA creation state                     |
-| `flow-state/{ID}/plan`      | Planner                   | Plan generation state                 |
-| `flow-state/{ID}/audit`     | Plan-Auditor              | Audit state                           |
-| `flow-state/{ID}/construct` | Constructor               | Implementation state                  |
-| `flow-state/{ID}/validate`  | Validator                 | Validation state                      |
-| `project/stack`             | Initializer               | Tech stack                            |
-| `project/conventions`       | Initializer               | Project conventions                   |
-| `project/{layer}`           | Initializer               | Layer patterns (api, data, business…) |
-| `ca/CA-{ID}/artifact/{filename}` | All agents | Artifact content (ca-artifact type) |
-| `impl/{ID}/patterns`        | Constructor/Tester/Logger | Discovered technical patterns         |
-| `impl/{ID}/decisions`       | Constructor/Planner       | Design decisions                      |
+| Topic Key                              | Owner                     | What it stores                        |
+| -------------------------------------- | ------------------------- | ------------------------------------- |
+| `ca/CA-{ID}/artifact/ca`               | CA-Writer                 | Acceptance criteria content           |
+| `ca/CA-{ID}/artifact/plan`             | Planner                   | Plan content                          |
+| `ca/CA-{ID}/artifact/audit`            | Plan-Auditor              | Plan audit content                    |
+| `ca/CA-{ID}/artifact/validacion`       | Validator                 | Validation report content             |
+| `ca/CA-{ID}/artifact/logging-report`   | Logger                    | Logging report content                |
+| `ca/CA-{ID}/artifact/tests-report`     | Tester                    | Tests report content                  |
+| `hotfix/{id}/artifact/investigacion`   | Runner                    | Hotfix investigation evidence         |
+| `hotfix/{id}/artifact/plan`            | Runner                    | Hotfix plan content                   |
+| `hotfix/{id}/artifact/validacion`      | Validator                 | Hotfix validation report              |
+| `flow-state/CA-{ID}/instances`         | Runner                    | Instance map + worktree + ca_status   |
+| `flow-state/CA-{ID}/create`            | CA-Writer                 | CA creation state                     |
+| `flow-state/CA-{ID}/plan`              | Planner                   | Plan generation state                 |
+| `flow-state/CA-{ID}/audit`             | Plan-Auditor              | Audit state                           |
+| `flow-state/CA-{ID}/construct`         | Constructor               | Implementation state                  |
+| `flow-state/CA-{ID}/validate`          | Validator                 | Validation state                      |
+| `flow-state/hotfix/{id}/instances`     | Runner                    | Hotfix instance map + worktree        |
+| `flow-state/hotfix/{id}/construct`      | Constructor               | Hotfix implementation state           |
+| `flow-state/hotfix/{id}/validate`      | Validator                 | Hotfix validation state               |
+| `project/stack`                        | Initializer               | Tech stack                            |
+| `project/conventions`                  | Initializer               | Project conventions                   |
+| `project/{layer}`                      | Initializer               | Layer patterns (api, data, business…) |
+| `impl/{ID}/patterns`                   | Constructor/Tester/Logger | Discovered technical patterns         |
+| `impl/{ID}/decisions`                  | Constructor/Planner       | Design decisions                      |
 
 ### CA lifecycle and cleanup
 
@@ -296,6 +325,66 @@ Each CA tracks its state through Engram. When a workflow completes:
 
 If a session is abandoned or lost, orphan CAs retain their instance name until a future session cleans them up.
 
+### Execution Gate
+
+The Execution Gate blocks the Constructor when the plan is not ready. It applies to every managed path that starts construction: `/run CA-{ID}` and `/evolve-agent`.
+
+Three verifiable criteria, all of which must hold:
+
+1. **Final plan exists**: `mem_search(query: "CA-{ID} plan", type: "ca-artifact", scope: "project")` returns at least one observation with `topic_key = ca/CA-{ID}/artifact/plan`.
+2. **The plan body carries `gate_status`** with `blockers: NONE` and `pending_decisions: []`. A missing block fails the Gate.
+3. **When `audit_required: true`** in the `gate_status`, `ca/CA-{ID}/artifact/audit` exists with `verdict: OKAY` and `blockers: NONE`.
+
+On **FAIL** the runner emits a single line starting with `⛔ Gate rechazado: {razón concreta}` naming the condition to resolve (pending decision, blocker, missing or rejected audit, or absent `gate_status`). No Constructor is invoked and no worktree is created. On **PASS** the flow continues.
+
+`--auto` does not exempt the Gate. It only skips the wait for explicit human confirmation; the Gate's checks are mandatory in every mode.
+
+### Hotfix flow
+
+A hotfix applies an agreed correction without creating a CA. The runner waits for the literal `ejecutar` event; this path invokes no CA-Writer, no Planner and no Plan-Auditor.
+
+1. **Persist first** — build one normalized lowercase kebab-case slug from the agreed problem and form the ID `HF-{slug}` (do not duplicate an `HF-` prefix the operator already supplied). Query Engram for the candidate `hotfix/{id}` before writing; if it already exists, keep the base name and try `HF-{slug}-2`, `-3`, … sequentially until the first free candidate is found. The same ID is then reused verbatim across the `type: ca-artifact` artifacts, the `hotfix/{id}/artifact/*` namespaces, the flow-state, the prompts, the `execution_id`, the `artifact_namespace`, the worktree and the branch.
+2. **Worktree and Constructor** — detect the base in the order `development → main → trunk → main`, then run `${FLOWTASK_SCRIPTS}/worktree.sh create hotfix/{id} --base {base_branch}`. The path is `.worktrees/hotfix/{id}` and the branch is `worktree/hotfix/{id}`. Resumptions reuse the existing worktree. State persists under `flow-state/hotfix/{id}/instances`, and the Constructor is dispatched with `execution_id=hotfix/{id}`, `artifact_namespace=hotfix/{id}`, path, branch and base branch.
+3. **Validator and closure** — the Validator persists `hotfix/{id}/artifact/validacion` and its own flow-state. A rejection returns to the Constructor for up to two attempts, then escalates. On APPROVED, commit first, then run `${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch}`. A conflict preserves worktree and branch and escalates without cleaning up; a rejection caused by uncommitted destination changes also preserves everything and escalates to the developer. `list`, `prune` and the reconciliation cross hotfix worktrees with `flow-state/hotfix/{id}/instances` and report orphans.
+
+The hotfix flow keeps the same isolation, checkpoints, retries and squash-merge closure as the CA flow, without touching the CA namespaces.
+
+`--preserve-dirty` is an **opt-in transaction**: it captures the destination's eligible uncommitted changes into private refs (`refs/flowtask/backups/<tx-id>`, never in the public stash list), records each phase in `.flowtask/backups/<tx-id>/journal`, and restores fine-grained state at the end. Offer it **only on explicit human instruction** — never by default nor in an automated flow. Persisted config (`.flowtask/config/worktree.json` with `"preserveDirty": true`) counts as explicit human consent, and the script never writes it. If a preserving closure is interrupted, resume it with `worktree.sh recover [<tx-id>]`; repeating it is safe and idempotent. If the restoration ends pending-manual, show the developer the safe instructions the script prints — manual resolution is never automated.
+
+### Review flow
+
+The Review flow is triggered by review intent, detected from phrases such as "revisá el código", "hace un review", "revisa el diff", "revisa la rama", "revisa los archivos", "code review", "review de", "pre-commit review" or `/review`.
+
+Scope is extracted from one of: a branch (`git diff {base_branch}...HEAD`), an explicitly supplied diff, a file list, or a PR/MR. When the scope is unclear the runner asks before invoking.
+
+| Mode         | Scope                                                                  |
+| ------------ | ---------------------------------------------------------------------- |
+| `pre-commit` | Current staged or unstaged diff — the default when no other mode is given |
+| `branch`     | `git diff {base_branch}...HEAD`                                        |
+| `files`      | The listed file paths                                                   |
+| `pr-mr`      | The diff of the given PR/MR                                             |
+| `full-4r`    | Activated by critical paths, a diff over 400 lines, or an explicit request |
+
+The runner dispatches `flowtask-review-orchestrator` with only `mode`, `worktree`, `branch`, `base_branch` and, when present, `error`. The `files` and `pr-mr` variants add just the path list or the PR/MR identifier. The diff is never attached or serialized, and neither lenses nor review frameworks are prescribed. Findings keep the contract `APPROVED | BLOCKED | CHANGES_REQUIRED` with severity, file/line, evidence, justification and recommendation.
+
+### Graphify
+
+Graphify maintains a persistent knowledge graph of the repository under `graphify-out/`. For its own repository-context needs the runner follows the query chain defined in `.flowtask/agents/runner.md`: the configured graph integration, then the local CLI, then escalation to the Inspector.
+
+```
+1. graph integration (MCP) — the configured graph query tool
+   ↓ unavailable, or no usable result
+2. node .flowtask/bin/flowtask.js graphify query --query <query-string>
+   ↓ unavailable, ok:false, or no usable result
+3. escalate to the Inspector
+```
+
+Queries always run from the main repository root, never from `.worktrees/`. The chain stops at the first path returning a usable result, and any skipped path is reported as partial degradation. When no path yields usable references the runner emits `no pude obtener referencias utilizables del grafo, escalando al Inspector` and delegates the exact question, scope, citable references, pending GAPs and a one-line record of the failed paths. If the Inspector is unavailable it reports the missing evidence and escalates to the developer, without a normal project search and without invented context.
+
+> **Open divergence between two sources.** The third step above is the runner's. The `graphify-protocol` skill defines its own non-skippable chain for the agents that consume the graph — MCP tool → local CLI → *normal project search* — and it never delegates to the Inspector. Both definitions are in force: the runner escalates to the Inspector, and `graphify-protocol` requires a normal project search when its first two paths yield nothing. Unifying them is pending; until it happens, follow the chain of whichever source governs the agent you are configuring.
+
+The `flowtask-graphify-docs-media` background agent generates the graph's documentation and media (`graph.json`, `GRAPH_REPORT.md` and `graph.html` in `graphify-out/`). It runs only after explicit developer acceptance, in background, with `projectDir` pointing at the main repository, and never blocks the requested work.
+
 ***
 
 ## Workflow Diagram
@@ -304,29 +393,26 @@ If a session is abandoned or lost, orphan CAs retain their instance name until a
 1. /new-ca CA-001
    └── CA-Writer clarifies requirements
        └── Saves CA to Engram (ca/CA-001/artifact/ca)
-       └── Saves flow state to Engram (flow-state/001/create)
-       └── Runner saves snapshot (ca/001)
+       └── Saves flow state to Engram (flow-state/CA-001/create)
 
 2. /run CA-001
-   └── Runner reads CA snapshot from Engram
-       ├── [1st CA] → normal working directory
-       └── [2nd+ CA] → creates Git worktree (.worktrees/CA-001/)
+   └── Runner reads the CA from Engram
+       └── Execution Gate verifies plan + gate_status
+       └── Creates Git worktree (.worktrees/CA-001/, branch worktree/CA-001)
        └── Planner generates plan (decision-complete)
             └── Saves plan to Engram (ca/CA-001/artifact/plan)
-           └── Saves flow state (flow-state/001/plan)
+            └── Saves flow state (flow-state/CA-001/plan)
        └── Plan-Auditor reviews (auto if >5 tasks or Evolution Mode)
             └── Saves audit to Engram (ca/CA-001/artifact/audit)
-           └── Saves flow state (flow-state/001/audit)
+            └── Saves flow state (flow-state/CA-001/audit)
 
 3. "ejecutar"
-   └── Constructor implements following project conventions
-       └── Saves flow state (flow-state/001/construct)
+   └── Constructor implements in the worktree, following project conventions
+       └── Saves flow state (flow-state/CA-001/construct)
 
 4. Validator reviews
    └── Saves validation to Engram (ca/CA-001/artifact/validacion)
-   └── APPROVED → flow complete
-       ├── [worktree CA] → squash-merge to development, cleanup
-       └── [normal CA]   → done
+   └── APPROVED → worktree.sh complete → squash-merge to detected base, cleanup
    └── REJECTED → retry Constructor (max 2 times)
        └── 2nd rejection → escalates to developer
 ```
@@ -342,8 +428,9 @@ FlowTask/
 │   │   ├── flowtask.js           # CLI entry point (npm link)
 │   │   ├── ferris-search-darwin-arm64
 │   │   └── ferris-search-windows-x64.exe
-│   │   └── lib/                  # Binary libraries
-│   ├── package.json              # Plugin dependencies and bin config
+│   │   ├── lib/                  # Implementation code (installer, graphify, claude, ui)
+│   │   └── test/                 # Test suites (7) for the CLI and its libraries
+│   ├── package.json              # Version, plugin dependencies and bin config
 │   ├── agents/                   # FlowTask agent definitions
 │   │   ├── runner.md             # Primary orchestrator (always active)
 │   │   ├── ca-writer.md          # Requirements clarification and CA generation
@@ -356,10 +443,12 @@ FlowTask/
 │   │   ├── logger.md             # Logging instrumentation
 │   │   ├── tester.md             # Test generation
 │   │   ├── onboarder.md          # Technical quiz and personality assignment
-│   │   └── review-orchestrator.md # 4R review orchestration
+│   │   ├── review-orchestrator.md # 4R review orchestration
+│   │   └── graphify-docs-media.md # Background graph documentation and media generation
 │   ├── checkpoints/              # Checkpoint state storage
 │   ├── claude/                   # Global Claude Code support/templates
-│   │   └── settings.json         # Claude Code settings template
+│   │   ├── settings.json         # Claude Code settings template
+│   │   └── mcp.json              # MCP server declaration template
 │   ├── commands/                 # FlowTask slash commands
 │   │   ├── init.md               # /init
 │   │   ├── init-api.md           # /init-api
@@ -372,7 +461,6 @@ FlowTask/
 │   │   ├── inspect.md            # /inspect
 │   │   ├── evolve-agent.md       # /evolve-agent
 │   │   ├── onboard.md            # /onboard
-│   │   ├── register-skills.md    # /register-skills
 │   │   ├── status.md             # /status
 │   │   └── update.md             # /update
 │   ├── config/                   # Configuration used by this installation
@@ -381,27 +469,32 @@ FlowTask/
 │   │   ├── tutor-senior.md
 │   │   └── tutor-training.md
 │   ├── plugins/
+│   │   ├── flowtask-plugins.json      # Plugin manifest — declares the 5 components below
 │   │   ├── flowtask-classifier-hook/  # Server-side classification plugin
 │   │   │   ├── src/
 │   │   │   └── dist/
 │   │   ├── flowtask-classifier-tui/   # OpenCode UI classification plugin
 │   │   │   ├── src/
 │   │   │   └── dist/
-│   │   ├── flowtask-permission-gate/  # Permission and commit gate plugin
-│   │   ├── flowtask-model-selector/   # Model selection plugin
+│   │   ├── flowtask-model-selector/    # Model selection plugin
+│   │   ├── flowtask-permission-gate/   # Permission and commit gate plugin
 │   │   ├── flowtask-context-checkpoint/ # Context checkpoint plugin
-│   │   └── flowtask.js           # Additional plugin
+│   │   └── flowtask.js           # Additional plugin entry point (not in the manifest)
 │   ├── scripts/                  # Utility scripts
 │   │   ├── version-watcher.ps1   # Engram version monitoring
 │   │   ├── buffer-sync.ps1       # Buffer synchronization
-│   │   └── worktree.sh           # Git worktree management (create/complete/cleanup)
+│   │   └── worktree.sh           # Git worktree management (create/complete/cleanup/recover/prune/list)
 │   ├── skills/                   # OpenCode skills (canonical source)
 │   │   ├── checkpoint-mixin/
 │   │   │   └── SKILL.md          # Checkpoint persistence protocol
+│   │   ├── graphify-protocol/
+│   │   │   └── SKILL.md          # Mandatory Graphify query chain and evidence contract
 │   │   ├── handshake-protocol/
 │   │   │   └── SKILL.md          # Identity and task_id assignment
 │   │   ├── heuristics/
 │   │   │   └── SKILL.md          # Developer heuristic storage and detection
+│   │   ├── investigacion/
+│   │   │   └── SKILL.md          # Evidence-based investigation without writing files
 │   │   ├── manual-classification/
 │   │   │   └── SKILL.md          # Fallback input classifier
 │   │   ├── memory-contract/
@@ -422,16 +515,22 @@ FlowTask/
 │   │   │   └── SKILL.md          # Engram topic_key ownership rules
 │   │   └── zero-assumptions/
 │   │       └── SKILL.md          # Zero-assumptions protocol
+│   ├── tui.json                  # Canonical TUI declaration (regenerated from the manifest)
 │   └── .temp/                    # Local buffer for checkpoints
 ├── .opencode/                    # OpenCode configuration
 │   ├── plugins/
 │   ├── package.json
 │   └── bun.lock
-├── docs/                         # Additional documentation
+├── .temp/                        # Runtime buffer for checkpoints
+├── .worktrees/                   # Isolated worktrees for CA and hotfix executions
+├── docs/
+│   └── architecture/             # Architecture docs (INDEX.md + 14 docs)
+├── graphify-out/                 # Graphify graph outputs
 ├── Flowtask-Architecture/        # Architecture documentation
-├── opencode.json                 # OpenCode configuration
-├── tui.json                      # Legacy del consumidor; update lo elimina
+├── opencode.json                 # OpenCode configuration (agent registry, MCP)
 ├── update-engram.ps1             # Engram update script
+├── core-flowtask.md              # Core FlowTask document
+├── core-flowtask.pdf             # Core FlowTask document (PDF)
 ├── presentacion-flowtask.md      # Project presentation
 ├── .gitignore                    # Git ignore rules
 └── .workspace/                   # Legacy artifact storage (pre-ARTIFACTOS-ENGRAM)
@@ -446,7 +545,7 @@ FlowTask/
 
 ## FlowTask Agents
 
-FlowTask includes **12 specialized agents** that work together to automate development workflows:
+FlowTask includes **13 specialized agents** that work together to automate development workflows:
 
 | Agent                   | Role                                                                             |
 | ----------------------- | -------------------------------------------------------------------------------- |
@@ -462,6 +561,7 @@ FlowTask includes **12 specialized agents** that work together to automate devel
 | `flowtask-logger`       | Adds logging instrumentation                                                     |
 | `flowtask-tester`       | Generates tests                                                                  |
 | `flowtask-review-orchestrator` | Orchestrates 4R review lenses (Risk, Readability, Reliability, Resilience) |
+| `flowtask-graphify-docs-media` | Background agent that generates graph documentation and media into `graphify-out/` |
 
 ### Evolution Mode
 
@@ -518,7 +618,7 @@ ls ~/.config/opencode/commands/
 
 ### Classifier plugins not compiling
 
-To rebuild the classifier hook (server-side):
+Applies after re-enabling both classifier entries in the manifest. To rebuild the classifier hook (server-side):
 ```bash
 cd .flowtask/plugins/flowtask-classifier-hook
 npm install
@@ -534,7 +634,7 @@ npm run build
 
 ### Worktree conflicts
 
-If a parallel CA's merge fails with conflicts:
+If `worktree.sh complete` fails with conflicts, the worktree and branch are preserved:
 
 ```bash
 cd .worktrees/CA-{ID}/
@@ -544,6 +644,8 @@ git add .
 git commit -m "resolve conflicts"
 # The FlowTask runner can re-escalate the constructor
 ```
+
+For a hotfix the path is `.worktrees/hotfix/{id}/` on branch `worktree/hotfix/{id}`.
 
 ***
 
