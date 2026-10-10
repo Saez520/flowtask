@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -582,5 +582,261 @@ describe("transactional preservation", () => {
     assert.equal(result.status, 0);
     assert.equal(fs.readFileSync(stampPath, "utf8"), stampBefore);
     assert.equal(fs.statSync(stampPath).mtimeMs, stampMtimeBefore);
+  });
+});
+
+describe("portable configuration, preflight, cleanup and locks", () => {
+  beforeEach(() => {
+    initTempRepo();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempRepo, { recursive: true, force: true });
+  });
+
+  function writePortableConfig(contents) {
+    const config = path.join(tempRepo, ".worktree-manager.conf");
+    fs.writeFileSync(config, contents);
+    return config;
+  }
+
+  function waitForFile(file) {
+    return new Promise((resolve) => {
+      const check = () => (fs.existsSync(file) ? resolve() : setImmediate(check));
+      check();
+    });
+  }
+
+  function waitForExit(child) {
+    return new Promise((resolve) => child.on("exit", (status) => resolve(status)));
+  }
+
+  it("rejects invalid or repeated data configuration before creating resources", () => {
+    writePortableConfig("branch_prefix=worktree/\nbranch_prefix=other/\n");
+    const result = runResult("create", "invalid-config", "--base", "main");
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /repetida/i);
+    assert.equal(fs.existsSync(worktreeFor("invalid-config")), false);
+    assert.doesNotMatch(git("branch", "--list"), /invalid-config/);
+  });
+
+  it("uses configured external paths and runs declared actions in order", () => {
+    const external = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-external-")).replaceAll("\\", "/");
+    const logName = "action.log";
+    writePortableConfig(
+      `worktrees_dir=${external}\nbranch_prefix=standalone/\nstate_dir=portable-state\n` +
+      `prepare_command=printf prepare >> ${logName}\nverify_command=printf verify >> ${logName}\n`
+    );
+
+    const result = runResult("create", "generic-001", "--base", "main", "--prepare", "--verify");
+    assert.equal(result.status, 0, result.stderr);
+    const created = path.join(external, "generic-001");
+    assert.ok(fs.existsSync(created));
+    assert.equal(fs.readFileSync(path.join(created, logName), "utf8"), "prepareverify");
+    assert.match(result.stdout, /prepare: passed/);
+    assert.match(result.stdout, /verify: passed/);
+    assert.match(git("branch", "--list"), /standalone\/generic-001/);
+    assert.ok(fs.existsSync(path.join(tempRepo, ".git", "portable-state", "locks")));
+    fs.rmSync(external, { recursive: true, force: true });
+  });
+
+  it("keeps a worktree after a requested action fails and rejects unsafe IDs", () => {
+    writePortableConfig("prepare_command=false\n");
+    const failed = runResult("create", "action-fails", "--base", "main", "--prepare");
+    assert.equal(failed.status, 1);
+    assert.ok(fs.existsSync(worktreeFor("action-fails")));
+    assert.match(failed.stdout, /prepare: failed/);
+
+    const unsafe = runResult("create", "../escape", "--base", "main");
+    assert.equal(unsafe.status, 1);
+    assert.equal(fs.existsSync(path.join(tempRepo, "escape")), false);
+  });
+
+  it("requires discard for dirty public cleanup and uses it only for that work", () => {
+    const worktree = createCommittedWorktree("cleanup-guard");
+    fs.writeFileSync(path.join(worktree, "pending.txt"), "pending\n");
+    const rejected = runResult("cleanup", "cleanup-guard", "--base", "main");
+    assert.equal(rejected.status, 1);
+    assert.ok(fs.existsSync(worktree));
+    assert.match(rejected.stderr, /--discard/);
+
+    const discarded = runResult("cleanup", "cleanup-guard", "--base", "main", "--discard");
+    assert.equal(discarded.status, 0, discarded.stderr);
+    assert.equal(fs.existsSync(worktree), false);
+    assert.doesNotMatch(git("branch", "--list"), /cleanup-guard/);
+  });
+
+  it("locks recover against cleanup discard without waiting or mutating resources", async () => {
+    createCommittedWorktree("lock-recover");
+    createMixedDirtyDestination("lock");
+    const crashed = runResultWithEnv(
+      { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_CRASH_AFTER: "captured" },
+      "complete", "lock-recover", "--base", "main", "--preserve-dirty"
+    );
+    assert.equal(crashed.status, 99);
+    const txId = fs.readdirSync(backupsDir())[0];
+    const barrier = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-lock-barrier-"));
+    const recover = spawn(SCRIPT, ["recover", txId], {
+      cwd: tempRepo,
+      env: { ...process.env, FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_LOCK_BARRIER_DIR: barrier, FLOWTASK_TEST_HOLD_AFTER_LOCK: "recover" },
+      stdio: "pipe",
+    });
+    await waitForFile(path.join(barrier, "recover.ready"));
+    const rejected = runResult("cleanup", "lock-recover", "--base", "main", "--discard");
+    assert.equal(rejected.status, 1);
+    assert.ok(fs.existsSync(worktreeFor("lock-recover")));
+    assert.match(git("branch", "--list"), /worktree\/lock-recover/);
+    fs.writeFileSync(path.join(barrier, "release"), "ok\n");
+    assert.equal(await waitForExit(recover), 0);
+    fs.rmSync(barrier, { recursive: true, force: true });
+  });
+
+  // B1 — el cierre squash verificado retira sus propios recursos sin --discard,
+  // sin `-D` y sin borrado forzado, y solo después del restore cuando aplica.
+  it("closes a two-commit squash through the internal capability and removes its resources", () => {
+    const worktree = createCommittedWorktree("squash-close");
+    fs.appendFileSync(path.join(worktree, "change.txt"), "segundo\n");
+    git("-C", worktree, "add", "change.txt");
+    git("-C", worktree, "commit", "-qm", "second worktree change");
+
+    const mainBefore = git("rev-parse", "main").trim();
+    const result = runResult("complete", "squash-close", "--base", "main");
+    assert.equal(result.status, 0, result.stderr);
+
+    // Exactamente un commit nuevo en la base, con contenido de ambos commits.
+    const mainAfter = git("rev-parse", "main").trim();
+    assert.notEqual(mainAfter, mainBefore);
+    assert.equal(git("rev-list", "--count", `${mainBefore}..main`).trim(), "1");
+    assert.match(git("log", "-1", "--format=%s"), /squash merge/);
+    assert.match(git("show", "main:change.txt"), /segundo/);
+
+    // `completed` solo después de retirar worktree y rama.
+    assert.match(result.stdout, /completed: squash-close/);
+    assert.equal(fs.existsSync(worktree), false);
+    assert.doesNotMatch(git("branch", "--list"), /squash-close/);
+
+    // Ningún stash público quedó y no hubo descarte explícito en la invocación.
+    assert.equal(git("stash", "list").trim(), "");
+    assert.doesNotMatch(result.stdout, /discard/);
+  });
+
+  it("keeps squash-close resources intact after a preserve recover and routes removal to public cleanup", () => {
+    createCommittedWorktree("recover-keep");
+    createMixedDirtyDestination("keep");
+    const crashed = runResultWithEnv(
+      { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_CRASH_AFTER: "merged" },
+      "complete", "recover-keep", "--base", "main", "--preserve-dirty"
+    );
+    assert.equal(crashed.status, 99);
+    const txId = fs.readdirSync(backupsDir())[0];
+
+    const recovered = runResult("recover", txId);
+    assert.equal(recovered.status, 0, recovered.stderr);
+    // B1: recover no invoca la capacidad interna de cierre.
+    assert.match(recovered.stdout, /recovered:/);
+    assert.ok(fs.existsSync(worktreeFor("recover-keep")));
+    assert.match(git("branch", "--list"), /worktree\/recover-keep/);
+    assert.equal(fs.readFileSync(path.join(backupsDir(), txId, "journal"), "utf8"), "restored\n");
+
+    // Y el retiro posterior es el camino público, explícito.
+    const cleaned = runResult("cleanup", "recover-keep", "--base", "main", "--discard");
+    assert.equal(cleaned.status, 0, cleaned.stderr);
+    assert.equal(fs.existsSync(worktreeFor("recover-keep")), false);
+    assert.doesNotMatch(git("branch", "--list"), /recover-keep/);
+  });
+
+  it("rejects cleanup of own commits without --discard and keeps resources on refusal", () => {
+    createCommittedWorktree("own-commits");
+    const rejected = runResult("cleanup", "own-commits", "--base", "main");
+    assert.equal(rejected.status, 1);
+    assert.match(rejected.stderr, /--discard/);
+    assert.ok(fs.existsSync(worktreeFor("own-commits")));
+    assert.match(git("branch", "--list"), /worktree\/own-commits/);
+  });
+
+  // B2 — orden inverso: cleanup --discard sostiene el lock y recover falla ya.
+  it("blocks recover while cleanup discard holds the shared work lock", async () => {
+    createCommittedWorktree("lock-cleanup");
+    createMixedDirtyDestination("rev");
+    const crashed = runResultWithEnv(
+      { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_CRASH_AFTER: "captured" },
+      "complete", "lock-cleanup", "--base", "main", "--preserve-dirty"
+    );
+    assert.equal(crashed.status, 99);
+    const txId = fs.readdirSync(backupsDir())[0];
+    const journalBefore = fs.readFileSync(path.join(backupsDir(), txId, "journal"), "utf8");
+    const refsBefore = backupRefs();
+
+    const barrier = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-lock-barrier-"));
+    const cleanup = spawn(SCRIPT, ["cleanup", "lock-cleanup", "--base", "main", "--discard"], {
+      cwd: tempRepo,
+      env: { ...process.env, FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_LOCK_BARRIER_DIR: barrier, FLOWTASK_TEST_HOLD_AFTER_LOCK: "cleanup" },
+      stdio: "pipe",
+    });
+    await waitForFile(path.join(barrier, "cleanup.ready"));
+
+    const rejected = runResult("recover", txId);
+    assert.equal(rejected.status, 1);
+    // recover no alteró journal ni backups, y no retiró recursos ajenos al lock.
+    assert.equal(fs.readFileSync(path.join(backupsDir(), txId, "journal"), "utf8"), journalBefore);
+    assert.equal(backupRefs(), refsBefore);
+
+    fs.writeFileSync(path.join(barrier, "release"), "ok\n");
+    assert.equal(await waitForExit(cleanup), 0);
+    assert.equal(fs.existsSync(worktreeFor("lock-cleanup")), false);
+    fs.rmSync(barrier, { recursive: true, force: true });
+  });
+
+  // Preflight conservador: verifica la exclusión sin editar .gitignore.
+  it("refuses a local worktree path Git does not ignore and never edits .gitignore", () => {
+    fs.writeFileSync(path.join(tempRepo, ".gitignore"), "file.txt\n");
+    git("add", ".gitignore");
+    git("commit", "-qm", "drop worktrees ignore");
+    const gitignoreBefore = fs.readFileSync(path.join(tempRepo, ".gitignore"), "utf8");
+
+    const result = runResult("create", "not-ignored", "--base", "main");
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /no está excluida por Git/);
+    assert.equal(fs.existsSync(worktreeFor("not-ignored")), false);
+    assert.doesNotMatch(git("branch", "--list"), /not-ignored/);
+    assert.equal(fs.readFileSync(path.join(tempRepo, ".gitignore"), "utf8"), gitignoreBefore);
+  });
+
+  it("rejects unknown config keys, missing action commands and a non-existent requested config", () => {
+    writePortableConfig("unknown_key=1\n");
+    const unknown = runResult("create", "cfg-unknown", "--base", "main");
+    assert.equal(unknown.status, 1);
+    assert.match(unknown.stderr, /desconocida/i);
+    assert.equal(fs.existsSync(worktreeFor("cfg-unknown")), false);
+
+    // Acción solicitada sin comando declarado: rechazo antes de crear.
+    writePortableConfig("");
+    const noCommand = runResult("create", "cfg-noaction", "--base", "main", "--verify");
+    assert.equal(noCommand.status, 1);
+    assert.match(noCommand.stderr, /--verify requiere verify_command/);
+    assert.equal(fs.existsSync(worktreeFor("cfg-noaction")), false);
+
+    const missingConfig = runResult("--config", path.join(tempRepo, "nope.conf"), "list");
+    assert.equal(missingConfig.status, 1);
+    assert.match(missingConfig.stderr, /archivo absoluto existente/);
+  });
+
+  it("reuses legacy backups for recovery without migrating or deleting prior state", () => {
+    createCommittedWorktree("legacy-tx");
+    createMixedDirtyDestination("legacy");
+    const crashed = runResultWithEnv(
+      { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_CRASH_AFTER: "captured" },
+      "complete", "legacy-tx", "--base", "main", "--preserve-dirty"
+    );
+    assert.equal(crashed.status, 99);
+    const txId = fs.readdirSync(backupsDir())[0];
+
+    // Config nueva: el journal nuevo vive bajo common-dir, el legacy se sigue leyendo.
+    writePortableConfig("state_dir=portable-state\n");
+    const recovered = runResult("recover", txId);
+    assert.equal(recovered.status, 0, recovered.stderr);
+    assert.equal(fs.readFileSync(path.join(backupsDir(), txId, "journal"), "utf8"), "restored\n");
+    // El estado previo no se borra ni se migra.
+    assert.ok(fs.existsSync(path.join(backupsDir(), txId, "meta")));
   });
 });

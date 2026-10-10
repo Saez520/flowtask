@@ -244,6 +244,35 @@ On successful closure (Validator APPROVED):
 | `prune`                                              | Cleans stale Git metadata and reports unassociated directories; it never deletes orphan worktrees             |
 | `list`                                               | Lists worktrees on disk — the source of truth for reconciliation                                              |
 
+The script is also usable without FlowTask, CA identifiers or Engram. Global
+`--repo <absolute-directory>` and `--config <absolute-file>` options must come
+before the subcommand. The data-only configuration file accepts
+`worktrees_dir`, `branch_prefix`, `state_dir`, `prepare_command`,
+`prepare_enabled`, `verify_command`, `verify_enabled` and `preserve_dirty`;
+unknown or repeated keys fail closed and the file is never sourced or eval'd.
+Defaults are `.worktrees`, `worktree/` and `worktree-manager` under Git's
+common directory. Local worktrees are created only when Git already ignores
+their path; external locations must be explicitly configured.
+
+`create` reports `prepare: skipped|passed|failed` and
+`verify: skipped|passed|failed`. `--prepare` and `--verify` only run declared
+commands, in that order, and a failed action keeps the worktree for inspection.
+Every subcommand also reports `operation:` and `result:`.
+
+`complete` performs a verified squash closure: it retires only its own matching
+worktree and branch through an internal, one-shot capability created after the
+squash commit and any restore were verified. It reports `completed:` only after
+both retirements. That internal capability is unreachable from the CLI and from
+`recover`, and it never uses `--discard`, `--force` or `git branch -D`.
+
+Public `cleanup` never discards changes implicitly: use `cleanup <id> --discard`
+only with explicit authorization. `recover` uses destination and work locks,
+refuses overlap without waiting or retrying, and leaves `pending_manual`
+backups intact; when it finishes a squash it deliberately leaves the worktree
+and branch in place, so retiring them afterwards goes through the public
+`cleanup` path. No MCP, external repository, or subtree synchronization is part
+of this script.
+
 `list` output is cross-checked with `flow-state/*/instances` to detect `constructor.worktree` and report worktrees present on disk with no Engram counterpart.
 
 ### Artifact storage

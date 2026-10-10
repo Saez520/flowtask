@@ -77,8 +77,13 @@ test("matches canonical Runner commands structurally", () => {
   for (const command of [
     "./.flowtask/scripts/worktree.sh create wt-1 --base main",
     "./.opencode/flowtask/scripts/worktree.sh create wt-1 --base main",
-    "./.claude/flowtask/scripts/worktree.sh complete wt-1 --base main",
-    "./.flowtask/scripts/worktree.sh complete wt-1 --base main",
+     "./.claude/flowtask/scripts/worktree.sh complete wt-1 --base main",
+     "./.flowtask/scripts/worktree.sh complete wt-1 --base main",
+     "./.flowtask/scripts/worktree.sh complete wt-1 --preserve-dirty",
+     "./.flowtask/scripts/worktree.sh complete wt-1 --base main --preserve-dirty",
+     "./.flowtask/scripts/worktree.sh cleanup wt-1",
+     "./.flowtask/scripts/worktree.sh cleanup wt-1 --discard",
+     "./.flowtask/scripts/worktree.sh cleanup wt-1 --base main --discard",
     "./.flowtask/scripts/worktree.sh list", "./.flowtask/scripts/worktree.sh prune",
     "./.flowtask/scripts/worktree.sh complete wt-1", "git status --short", "git add file.ts",
     "git restore --staged file.ts", 'git commit -m "mensaje de prueba"', "git push origin branch",
@@ -149,8 +154,12 @@ test("rejects malformed, mixed and dangerous commands", () => {
     "git status; git diff", "git status | git diff",
     "git status && git diff > output.txt", "git status `git diff`", "git status $(git diff)",
     "git status (git diff)", "git status << heredoc", "echo ok >>/dev/null", "echo ok < /dev/null",
-    "./.opencode/flowtask/scripts/worktree.sh create wt-1",
-    "./.flowtask/scripts/worktree.sh create wt-1", "jq . file",
+     "./.opencode/flowtask/scripts/worktree.sh create wt-1",
+     "./.flowtask/scripts/worktree.sh create wt-1", "jq . file",
+     "./.flowtask/scripts/worktree.sh --repo /tmp/repo list",
+     "./.flowtask/scripts/worktree.sh complete wt-1 --discard",
+     "./.flowtask/scripts/worktree.sh cleanup wt-1 --preserve-dirty",
+     "./.flowtask/scripts/worktree.sh create wt-1 --base main --prepare",
   ]) {
     assert.equal(isAuthorizedRunnerCommand(command), false, command);
   }

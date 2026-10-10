@@ -234,8 +234,23 @@ export function isAuthorizedRunnerCommand(command: string): boolean {
     if (worktreeScript === "./.flowtask/scripts/worktree.sh" || worktreeScript.endsWith("/flowtask/scripts/worktree.sh")) {
       if (tokens.length === 2 && ["list", "prune"].includes(tokens[1])) return true;
       if (tokens[1] === "recover" && tokens.length <= 3) return true; // recover | recover <tx-id>
-      if (tokens[1] === "complete" && tokens.length === 3 && Boolean(tokens[2])) return true;
-      return tokens.length === 5 && ["create", "complete"].includes(tokens[1]) && Boolean(tokens[2]) && tokens[3] === "--base" && Boolean(tokens[4]);
+      if (tokens[1] === "create") {
+        return tokens.length === 5 && Boolean(tokens[2]) && tokens[3] === "--base" && Boolean(tokens[4]);
+      }
+      // `complete` and `cleanup` share the shape "<id> [--base <branch>] [own-flag]"
+      // but each one owns a different trailing flag.  Keeping them in a single
+      // table avoids the trap of accepting `complete --discard` (public discard
+      // belongs to cleanup only) or `cleanup --preserve-dirty`.
+      const ownFlag: Record<string, string> = { complete: "--preserve-dirty", cleanup: "--discard" };
+      if (ownFlag[tokens[1]] !== undefined && Boolean(tokens[2]) && tokens[2] !== "--base") {
+        const args = tokens.slice(3);
+        const flag = ownFlag[tokens[1]];
+        if (args.length === 0) return true;
+        if (args.length === 1 && args[0] === flag) return true;
+        if (args.length === 2 && args[0] === "--base" && Boolean(args[1])) return true;
+        if (args.length === 3 && args[0] === "--base" && Boolean(args[1]) && args[2] === flag) return true;
+      }
+      return false;
     }
     if (tokens[0] === "ls") return hasFlagsAndPaths(tokens.slice(1));
     if (tokens[0] === "cat") return tokens.length >= 2; // read-only file access for runner diagnostics

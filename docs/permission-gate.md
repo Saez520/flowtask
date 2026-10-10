@@ -66,6 +66,10 @@ Las operaciones Runner autorizadas, con sus formas canónicas, son:
 - `${FLOWTASK_SCRIPTS}/worktree.sh create <id> --base <branch>`
 - `${FLOWTASK_SCRIPTS}/worktree.sh prune`
 - `${FLOWTASK_SCRIPTS}/worktree.sh complete <id>` o con `--base <branch>` opcional
+- `${FLOWTASK_SCRIPTS}/worktree.sh complete <id> --preserve-dirty` o con
+  `--base <branch> --preserve-dirty`, únicamente tras consentimiento humano
+- `${FLOWTASK_SCRIPTS}/worktree.sh cleanup <id>` o con `--discard` y/o
+  `--base <branch>` en ese orden canónico; `--discard` requiere autorización
 - `git status` y `git status` con flags (por ejemplo, `git status --short`);
   no acepta argumentos que no sean flags.
 - `git worktree list` con flags opcionales.
@@ -98,6 +102,9 @@ Las operaciones Runner autorizadas, con sus formas canónicas, son:
 - `read`, `glob` y `grep` para consultar archivos de forma estructurada.
 
 No se aceptan verbos, flags o argumentos fuera de estas formas canónicas.
+Las opciones standalone `--repo` y `--config`, así como `--prepare` y
+`--verify`, no son operaciones del Runner y se rechazan aquí. `--auto` tampoco
+concede preservación ni descarte.
 
 Los comandos compuestos se separan únicamente por `&&` y `||`, respetando las
 comillas, y se autorizan solo si todos sus segmentos pasan la allowlist. Se

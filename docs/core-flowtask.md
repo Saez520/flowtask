@@ -188,8 +188,30 @@ RUNNER clasifica ── ¿existe el CA en Engram?
               │
               ▼ APPROVED
         [9] CIERRE ── commit → worktree.sh complete (squash-merge a la base)
-            → ca_status: closed + purga de task_id huérfanos + session summary
+             → ca_status: closed + purga de task_id huérfanos + session summary
 ```
+
+### Gestor portable y cierre seguro
+
+`worktree.sh` puede operar sobre un repositorio genérico con `--repo` y un
+archivo de configuración `key=value` pasado con `--config`; no necesita CA,
+Engram ni FlowTask. La configuración no se ejecuta como shell y solo admite
+las claves documentadas en el README. `create` no instala dependencias ni
+ejecuta pruebas por detección: `--prepare` y `--verify` son opt-in, requieren
+comandos declarados y se ejecutan en ese orden.
+
+El cierre conserva el squash, pero su limpieza usa una capacidad efímera
+interna verificada contra el commit de origen, el worktree, la rama y el
+commit squash. No usa `--discard`, `-D` ni borrado forzado, y esa capacidad no
+es alcanzable desde `recover` ni desde la configuración: si un recover termina
+un squash, deja el worktree y la rama en su sitio y el retiro posterior pasa por
+el `cleanup` público. En cambio, `cleanup --discard` es la única vía pública
+que puede retirar trabajo no integrado, después de revalidar su identidad.
+`complete`, `recover` y `cleanup` comparten locks ordenados de destino/trabajo;
+el segundo proceso falla inmediatamente y no toca backups. Los resultados
+distinguen operación, resultado, acciones omitidas o fallidas, recuperación y
+limpieza; nunca se informa cierre completo mientras quede un recurso o
+restauración pendiente.
 
 ---
 

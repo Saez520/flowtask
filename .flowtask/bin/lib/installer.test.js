@@ -674,3 +674,27 @@ test("canonical TUI bytes remain identical on a second regeneration", () => {
   regenerateCanonicalTui(root, flowtaskDir, manifest);
   assert.deepEqual(fs.readFileSync(path.join(flowtaskDir, "tui.json")), first);
 });
+
+// La extracción del núcleo depende de que `scripts/` se distribuya completo:
+// el wrapper público es inocuo sin `lib/worktree-manager-core.sh`.
+test("scripts distribution carries the wrapper and its portable core together", () => {
+  const source = path.resolve(path.dirname(FLOWTASK_CLI), "..");
+  assert.ok(
+    ASSETS.opencode.some(({ src, dest }) => src === "scripts" && dest === "scripts"),
+    "opencode debe distribuir scripts/"
+  );
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-scripts-dist-"));
+  fixtures.push(root);
+  const flowtaskDir = path.join(root, "flowtask");
+  fs.cpSync(path.join(source, "scripts"), path.join(flowtaskDir, "scripts"), { recursive: true });
+
+  const wrapper = path.join(flowtaskDir, "scripts", "worktree.sh");
+  const core = path.join(flowtaskDir, "scripts", "lib", "worktree-manager-core.sh");
+  assert.ok(fs.existsSync(wrapper), "el wrapper público debe distribuirse");
+  assert.ok(fs.existsSync(core), "el núcleo portable debe distribuirse junto al wrapper");
+
+  // El wrapper instalado debe ser funcional, no solo presente.
+  const usage = spawnSync(wrapper, ["--help"], { encoding: "utf8" });
+  assert.equal(usage.status, 0, usage.stderr);
+  assert.match(usage.stdout, /create <work-id>/);
+});
