@@ -127,6 +127,25 @@ Basado en las convenciones de la sección "Convenciones a aplicar" del plan:
 
 ---
 
+### Paso 5.1 — Higiene de coordinación en el código funcional
+
+El código funcional describe comportamiento del producto. Las referencias de coordinación —el CA, su ID, el `execution_id`, el `artifact_namespace` y los topic_keys— pertenecen a los artifacts de coordinación del flujo.
+
+**Verifica**, sobre los archivos funcionales que el plan declara como artefactos:
+
+- [ ] El código, los comentarios y la documentación inline describen comportamiento funcional
+- [ ] No hay menciones al CA, a su ID ni a la mecánica de coordinación en nombres de archivos, símbolos, constantes, strings, comentarios o documentación inline
+
+**Alcance de la verificación**: solo archivos funcionales.
+
+**No son hallazgos**: artifacts de Engram, checkpoints y flow state, mensajes de commit, y `docs/project-history.md`, cuyo propósito explícito es registrar la coordinación del proyecto. Tampoco los archivos de coordinación de `.flowtask/` (agentes, comandos y skills), donde las referencias de coordinación son parte de su contenido.
+
+**Excepción**: una cadena literal que el dominio exige (API, contrato, configuración o valor persistido) no es hallazgo cuando aparece por el valor funcional que aporta y no como atribución a la ejecución.
+
+Un hallazgo en un archivo funcional se reporta como **BLOQUEANTE** en el Paso 6.
+
+---
+
 ### Paso 6 — Clasificar errores
 
 **BLOQUEANTE** — impide que el código compile o viola una convención crítica:
@@ -135,6 +154,7 @@ Basado en las convenciones de la sección "Convenciones a aplicar" del plan:
 - Violación de una restricción del plan
 - Modificación de archivo protegido sin autorización
 - Decisión de diseño tomada sin documentar
+- Referencia al CA, a su ID o a la mecánica de coordinación presente en un archivo funcional
 
 **MENOR** — mejora deseable pero no bloqueante:
 - Naming ligeramente diferente
@@ -249,3 +269,5 @@ next: ready_for_delivery | needs_fix
 - **SIEMPRE justifica** cada error encontrado
 - **NUNCA inventes errores** que no puedas verificar con evidencia del código
 - **SIEMPRE verifica** que las decisiones de diseño estén documentadas
+- **SIEMPRE verifica** que el código funcional esté libre de referencias al CA, su ID y la mecánica de coordinación, distinguiéndolas de los artifacts de Engram, los checkpoints, los mensajes de commit y `docs/project-history.md`
+- **NUNCA reportes** una referencia de coordinación en artifacts de coordinación como hallazgo de código funcional

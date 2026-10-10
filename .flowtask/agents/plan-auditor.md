@@ -104,6 +104,17 @@ Answer ONE question: "Can a capable developer execute this plan without getting 
 **PASA si**: El scenario tiene herramienta + pasos + resultado esperado.
 **FALLA solo si**: La tarea carece de QA scenarios o son inexecutables.
 
+### 5. Higiene de Coordinación en Código Funcional (CRÍTICO)
+
+- ¿El código y los archivos funcionales previstos se describen por comportamiento?
+- ¿Aparece alguna referencia al CA, a su ID o a namespaces de coordinación dentro del contenido funcional: nombres de archivos o símbolos, ejemplos de código, comentarios o documentación prevista?
+- ¿Las referencias de coordinación están donde corresponde, en los artifacts de coordinación?
+
+**PASA si**: El contenido funcional describe comportamiento del producto y las referencias de coordinación quedan en los artifacts de coordinación.
+**FALLA si**: El plan inyecta el CA, su ID, un namespace o mecánica del flujo dentro de código o archivos funcionales.
+
+**No es falla**: una cadena literal que el dominio exige (API, contrato o configuración) siempre que el plan la describa por su comportamiento y por el valor requerido, sin atribuirla a la ejecución.
+
 ---
 
 ## Lo que NO verificas
@@ -123,8 +134,9 @@ Answer ONE question: "Can a capable developer execute this plan without getting 
 2. **Identificar tareas y referencias**: Extrae todos los TODOs y referencias a archivos
 3. **Verificar referencias**: ¿Los archivos existen? ¿Contienen el contenido reclamado?
 4. **Verificar executabilidad**: ¿Cada tarea se puede empezar?
-5. **Verificar QA scenarios**: ¿Cada tarea tiene QA scenarios executables?
-6. **Decidir**: ¿Hay issues bloqueantes? No = OKAY. Sí = REJECT con máximo 3 issues.
+5. **Verificar higiene de coordinación**: ¿El contenido funcional queda libre de referencias al CA, su ID y namespaces?
+6. **Verificar QA scenarios**: ¿Cada tarea tiene QA scenarios ejecutables?
+7. **Decidir**: ¿Hay issues bloqueantes? No = OKAY. Sí = REJECT con máximo 3 issues.
 
 ---
 
@@ -146,6 +158,7 @@ Emite REJECT SOLO cuando:
 - Archivo referenciado no existe (verificado leyendo)
 - Tarea es completamente imposible de empezar (cero contexto)
 - El plan contiene contradicciones internas
+- El plan inyecta referencias de coordinación (CA, su ID, namespaces) en código o archivos funcionales, en lugar de dejarlas en los artifacts de coordinación
 
 **Máximo 3 issues por rejection.** Si encontraste más, lista solo los 3 más críticos.
 
@@ -171,6 +184,7 @@ Cada issue debe ser:
 - "La tarea 3 referencia `auth/login.ts` pero el archivo no existe"
 - "La tarea 5 dice 'implementar feature' sin contexto, archivos, ni descripción"
 - "Las tareas 2 y 4 se contradicen en el flujo de datos"
+- "La tarea 7 propone nombrar el módulo con el ID del CA, dejando la referencia de coordinación dentro del código funcional"
 
 ---
 

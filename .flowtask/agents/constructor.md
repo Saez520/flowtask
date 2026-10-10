@@ -156,6 +156,16 @@ Al finalizar:
 
 Sigue las convenciones indicadas en el plan. No re-busques en Engram lo que el planner ya resolvió.
 
+### Código funcional y referencias de coordinación
+
+El código que producís describe el comportamiento del producto. Las referencias de coordinación —el CA, su ID, el `execution_id`, el `artifact_namespace` y los topic_keys— pertenecen a los artifacts de coordinación del flujo, que persistes en Engram, y no al código funcional.
+
+**Regla**: en código, comentarios, documentación inline y archivos funcionales escribís comportamiento funcional, sin menciones al CA, a su ID ni a la mecánica de coordinación. Esto incluye nombres de archivos, clases, funciones, constantes y strings.
+
+**Excepción**: cuando el requisito funcional exija literalmente una cadena del dominio (API, contrato, configuración o valor persistido), esa cadena se escribe tal como el producto la requiere, descrita por comportamiento y no atribuida a la ejecución.
+
+Cuando un artefacto del plan sea en sí mismo un archivo de coordinación (agente, comando o skill de `.flowtask/`), sus referencias de coordinación son parte de su contenido funcional y se conservan.
+
 ### Errores de compilación
 
 Si la compilación falla:
@@ -223,4 +233,5 @@ next: ready_for_verification | needs_decision
 - **SIEMPRE guarda** el flow state en Engram al finalizar
 - **NUNCA saltes capas** — si el plan dice primero Entity, luego DTO, luego Service, así debe ser
 - **NUNCA implementes features** que no están en el plan
+- **SIEMPRE mantengas el código funcional libre de referencias de coordinación** — el CA, su ID y la mecánica de coordinación se documentan en los artifacts de Engram, salvo cuando el requisito funcional exija literalmente esa cadena del dominio
 - **En Evolution Mode**: solo modificas `.flowtask/` — nunca código del proyecto

@@ -235,6 +235,19 @@ mem_save(
 )
 ```
 
+### Código funcional y referencias de coordinación
+
+El plan separa dos planos de información:
+
+| Plano | Dónde vive | Contenido |
+|-------|-----------|-----------|
+| **Código funcional** | Tareas, artefactos y archivos del plan | Comportamiento, firmas, rutas y convenciones del producto |
+| **Coordinación** | Artifacts de coordinación del flujo | Identificadores de ejecución, topic_keys, checkpoints y referencias de coordinación |
+
+**Regla**: el código y los archivos funcionales previstos se describen **por comportamiento funcional**. Las referencias al CA, a su ID y a los namespaces de coordinación corresponden al plano de coordinación y no aparecen en el contenido funcional del plan: ni en nombres de archivos o símbolos, ni en ejemplos de código, ni en comentarios o documentación previstos.
+
+El nombre del dominio manda sobre cualquier identificador de coordinación. Cuando una API, un contrato o un valor de configuración exija literalmente una cadena del dominio, esa cadena se describe por su comportamiento y por el valor exacto requerido, sin adscribirla al ID de la ejecución.
+
 ### Verificación antes de guardar
 
 Antes de guardar, verifica internamente:
@@ -242,6 +255,7 @@ Antes de guardar, verifica internamente:
 - ¿Todos los archivos mencionados existen o están verificados?
 - ¿Cada tarea tiene referencias, criterios de aceptación y QA scenarios?
 - ¿Las dependencias están en orden correcto?
+- ¿El código previsto está descrito por comportamiento, sin referencias al CA, su ID ni namespaces de coordinación?
 
 Si hay gaps:
 
@@ -357,6 +371,7 @@ next: ready_for_audit | ready_for_construction | awaiting_decisions
 ## Restricciones
 
 - **NUNCA generes código**, solo rutas, nombres y descripciones
+- **SIEMPRE describe el código funcional por comportamiento**, separando las referencias de coordinación (CA, su ID, namespaces y topic_keys) en los artifacts de coordinación del flujo, donde sí corresponden
 - **NUNCA asumas** qué debe hacer una clase sin evidencia de Engram o escaneo
 - **NUNCA omitas** la sección "Decisiones de diseño" si hay ambigüedad
 - **NUNCA incluyas archivos protegidos** sin marcarlos como **PROTEGIDO — requiere confirmación**
