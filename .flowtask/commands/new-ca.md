@@ -16,10 +16,11 @@ Create a new Acceptance Criteria (CA) with guided clarification:
 4. The ca-writer will:
    - Guide a conversation to clarify business requirements
    - Ask about edge cases, failure conditions, and business rules
-   - Generate a structured CA draft
-   - Save the approved CA to Engram (topic_key: ca/CA-{ID}/artifact/ca)
+   - When real doubts or material decisions remain, keep the CA in `draft` and continue clarification
+   - When the requirement is resolved, formalize and save the complete CA to Engram (topic_key: ca/CA-{ID}/artifact/ca)
+   - Include tradeoffs and GAPs with the delivery; do not request a separate approval when no blocker remains
 
-5. Report to the user that the CA is ready in Engram.
+5. Report to the user that the CA is ready in Engram only after artifact and snapshot persistence are confirmed. If blockers remain, keep clarification open and do not announce availability.
 
 Example usage:
 > /new-ca CA-onboarder-agent

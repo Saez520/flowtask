@@ -372,6 +372,11 @@ Si la herramienta `task` (o `Agent` en Claude) retorna un error indicando que el
    cuando se trata de la recuperación normal; la rama de solicitud explícita no
    se reintenta con un hilo sustituto.
 
+La rama prioritaria de revisión de un CA formalizado definida en el Paso 1
+prevalece sobre esta recuperación normal: ante pérdida o rechazo de su hilo,
+se informa la pérdida de continuidad y se detiene sin Escenario A ni Self-Healing
+de sustitución.
+
 ### Formato canónico de `task()` (fuente única de verdad)
 
 Los templates de flujo referencian este formato en prosa. No duplican la sintaxis.
@@ -565,7 +570,41 @@ squash-merge, sin alterar los namespaces históricos de CA.
 mem_search(query: "CA-{ID}", type: "decision", scope: "project")
 ```
 
-**Si existe snapshot:** Continúa al Paso 2.
+**Si existe snapshot:** Determina primero si el input solicita una modificación;
+si no es una revisión, continúa al Paso 2.
+
+### Rama prioritaria — revisión de un CA formalizado
+
+Si el input solicita modificar o revisar un CA que ya tiene snapshot, no se
+salta directamente a la planificación. Recupera
+`flow-state/CA-{ID}/instances` y exige que existan ambos valores en
+`agents["ca-writer"]`:
+
+- `instance_name`, que identifica la misma instancia del CA-Writer;
+- `task_id`, que identifica el mismo hilo de conversación.
+
+Con ambos valores disponibles, invoca a CA-Writer mediante el formato de
+reanudación vigente, pasando a `task()` el `task_id` exacto y la misma
+`instance_name`. La revisión actualiza el artifacto canónico existente; no
+crea otro CA ni sustituye el mapa de instancias.
+
+Si falta el mapa, falta cualquiera de los dos valores o `task()` rechaza el
+`task_id`, informa la pérdida de continuidad y detiene la revisión. Esta rama
+no ejecuta Escenario A, no abre un hilo nuevo, no aplica Self-Healing de
+sustitución y no comunica una reanudación exitosa. El `task_id` registrado no
+se fabrica, limpia ni reemplaza como parte de esta revisión.
+
+Solo cuando la respuesta de CA-Writer indique `ca_created` o `ca_updated`,
+`ca_status: complete`, `blockers: NONE` y `persistencia: confirmed` se continúa
+al Paso 2. Una respuesta `draft`, `blocked`, con persistencia incompleta o con
+decisiones pendientes detiene el avance y se comunica sin planificar. En modo
+`--auto` esta rama tampoco agrega una espera de formalización: la entrega
+completa persistida habilita la transición, y los controles posteriores del
+flujo permanecen vigentes.
+
+La creación normal conserva el comportamiento existente: si no se trata de
+una revisión de un CA formalizado y no existe snapshot, invoca a CA-Writer con
+el prompt del usuario.
 
 **Si no existe:** Invoca ca-writer con el prompt del usuario — el ca-writer conduce la conversación:
 

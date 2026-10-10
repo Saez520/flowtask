@@ -81,14 +81,25 @@ Este agente utiliza Engram para persistir su estado entre interacciones.
     )
 ```
 
-### Al confirmar "ejecutar"
+### Al completar la clarificación y persistir el CA
 
 ```
-1. Cerrar checkpoint con state: "completed":
-    mem_save(
-      type: "decision",
-      scope: "project",
-      topic_key: "flow-state/CA-{ID}/create",
+1. Actualizar primero el artifacto de CA completo en Engram:
+     mem_save(
+       type: "ca-artifact",
+       scope: "project",
+       topic_key: "ca/CA-{ID}/artifact/ca",
+       title: "CA-{ID}: ca — {título del requisito}",
+       content: {artifacto completo con tradeoffs y GAPs}
+     )
+   Confirmar que esta persistencia terminó correctamente antes de cerrar el
+   checkpoint. Si falla, responder `blocked`, identificar el artifacto y no
+   anunciar `ca_created`, `ca_updated`, `complete` ni `ready_for_planning`.
+2. Solo después de confirmar el artifacto, cerrar el checkpoint con state: "completed":
+     mem_save(
+       type: "decision",
+       scope: "project",
+       topic_key: "flow-state/CA-{ID}/create",
       title: "Checkpoint ca: {instance_name}",
       content: {
         version: "2.0",
@@ -97,14 +108,17 @@ Este agente utiliza Engram para persistir su estado entre interacciones.
         updated_at: now(),
         sequence: N,
         flow_state: {
-          ca_id: "CA-{ID}",
-          agente: "ca",
-          instance_name: "{Name}"
-        }
-      }
-    )
-    (state: "completed" conserva la observación como traza — no se elimina)
-2. Proceder con guardado de CA completo
+           ca_id: "CA-{ID}",
+           agente: "ca",
+           instance_name: "{Name}",
+           persistence: "artifact_confirmed"
+         }
+       }
+     )
+     (state: "completed" conserva la observación como traza — no se elimina)
+3. Responder éxito únicamente cuando artifacto y snapshot estén confirmados.
+   Si falla el snapshot, responder `blocked`, identificar el snapshot y no
+   anunciar `ca_created`, `ca_updated`, `complete` ni `ready_for_planning`.
 ```
 
 ---
@@ -206,9 +220,11 @@ Los hallazgos del grafo se usan para comprender el repositorio, pero **no se tra
 
 ### Paso 3 — Clarificación + AI-slop + Tradeoffs
 
-Este paso tiene **dos interacciones separadas con el usuario**. No comprimas ambas en un solo mensaje.
+Este paso mantiene la clarificación de decisiones materiales y presenta los
+tradeoffs/GAPs como parte de la entrega. Solo una decisión material pendiente
+mantiene abierta la conversación.
 
-#### 3a — Clarificación (primera interacción)
+#### 3a — Clarificación
 
 1. Presenta en 2-3 líneas cómo entiendes el requisito. Si algo no está claro, dilo explícitamente.
 2. Agrupa todas las decisiones abiertas y pregúntalas de una vez.
@@ -222,11 +238,16 @@ Preguntas que no omitas si aplican: qué pasa si el sistema no puede acceder al 
 
 No preguntes si: es obvio por contexto, ya fue respondido, es decisión técnica del planner.
 
-**→ ESPERA respuesta del usuario antes de continuar a 3b.**
+Si hay preguntas, ambigüedades o decisiones materiales pendientes, espera la
+respuesta del usuario antes de continuar. Las objeciones siguen el Protocolo de
+desacuerdo y no se convierten en decisiones automáticamente.
 
-#### 3b — Tradeoffs y GAPs (segunda interacción)
+#### 3b — Tradeoffs y GAPs
 
-Con las decisiones ya tomadas en 3a (distinguendo entre confirmación explícita y pregunta/objeción — si hay objeciones, aplica el **Protocolo de desacuerdo** antes de tratarlas como decisión final), identifica mínimo 2 tradeoffs. Preséntalo así:
+Con las decisiones ya resueltas en 3a (distinguiendo entre confirmación
+explícita y pregunta/objeción — si hay objeciones, aplica el **Protocolo de
+desacuerdo** antes de tratarlas como decisión final), identifica mínimo 2
+tradeoffs. Preséntalos junto con los GAPs conocidos:
 
 ```
 ## Tradeoffs identificados
@@ -237,43 +258,50 @@ Con las decisiones ya tomadas en 3a (distinguendo entre confirmación explícita
 ## GAPs conocidos
 - [GAP 1]: [qué queda fuera y por qué se acepta]
 
-¿Confirmás estos tradeoffs y GAPs para continuar?
 ```
 
-**→ ESPERA confirmación explícita antes de pasar al Paso 4.1.**
-**NUNCA generes el borrador sin haber presentado los tradeoffs y GAPs y recibido confirmación.**
+Si un tradeoff descubre una decisión de negocio todavía abierta, documenta el
+bloqueo y vuelve a 3a para aclararlo. Si no descubre una decisión material,
+presenta los tradeoffs/GAPs y continúa directamente al Paso 4.1, sin pedir una
+aprobación separada ni esperar la palabra «ejecutar». Un GAP conocido y
+expresamente fuera de alcance acompaña la formalización y no activa `draft` por
+sí solo.
 
 ---
 
 ### Paso 4.1 — Borrador, iteración y guardado
 
-**Lógica de escritura diferida:**
+**Lógica de escritura:**
 
 El CA-writer gestiona dos estados:
-- **draft**: El artifacto se guarda en Engram con contenido parcial (sin sección completa de Tradeoffs y GAPs) — cuando hay gaps sin resolver
-- **complete**: El artifacto se actualiza en Engram con contenido completo — cuando el usuario dice "ejecutar" para avanzar
+- **draft**: El artifacto se guarda en Engram con contenido parcial (sin sección completa de Tradeoffs y GAPs) — cuando hay dudas, preguntas o decisiones materiales sin resolver
+- **complete**: El artifacto se actualiza en Engram con contenido completo cuando no hay dudas ni decisiones materiales pendientes
 
 **Durante la conversación (draft):**
 
 Cuando generes el borrador del CA, evalúa si quedan gaps sin resolver, preguntas pendientes o decisiones sin confirmar:
 
-- **Si hay preguntas/gaps** → Guarda en Engram vía `mem_save` **SIN la sección "Tradeoffs y GAPs" completa** (incluye solo "Tradeoffs asumidos:" y "GAPs conocidos:" como marcador con pendientes)
+- **Si hay preguntas o decisiones materiales** → Guarda en Engram vía `mem_save` **SIN la sección "Tradeoffs y GAPs" completa** (incluye solo "Tradeoffs asumidos:" y "GAPs conocidos:" como marcador con pendientes)
 - **Responde al runner con:**
   - `ca_status: draft`
   - Lista de tradeoffs identificados
   - Lista de gaps conocidos
   - `next: waiting_for_user`
 
-**Cuando el usuario dice "ejecutar" (complete):**
+**Cuando no quedan dudas ni decisiones materiales (complete):**
 
-Cuando el usuario confirma explícitamente que quiere avanzar al planner:
-
-1. ** Actualiza el artifacto en Engram con contenido completo** incluyendo la sección de Tradeoffs y GAPs con la información confirmable
-2. **Responde al runner con:**
-  - `ca_status: complete`
-  - Lista de tradeoffs (ya confirmados)
-  - Lista de gaps (ya conocidos)
-  - `next: ready_for_planning`
+1. Actualiza el artifacto en Engram con contenido completo, incluyendo la
+   sección de Tradeoffs y GAPs con la información confirmable.
+2. Confirma la persistencia del artifacto y luego guarda el snapshot cerrado en
+   `flow-state/CA-{ID}/create`.
+3. Responde al runner únicamente después de confirmar ambas persistencias:
+   - `ca_status: complete`
+   - Lista de tradeoffs (ya confirmados)
+   - Lista de gaps (ya conocidos)
+   - `next: ready_for_planning`
+   Si falla el artifacto o el snapshot, responde `state: blocked`, identifica
+   la persistencia fallida y no emite `ca_created`, `ca_updated`, `complete` ni
+   `ready_for_planning`.
 
 ```
 mem_save(
@@ -288,7 +316,10 @@ mem_save(
 Evalúa si quedan gaps de negocio, ambigüedades en criterios de aceptación o decisiones sin resolver.
 
 - **Si hay preguntas pendientes** → preséntaselas al usuario. Si el usuario cuestiona una sugerencia, aplica el **Protocolo de desacuerdo** antes de retirarla. Luego aplica los cambios vía `mem_save` (upsert por `topic_key`: ca/CA-{ID}/artifact/ca) manteniendo el estado **draft** (sin la sección completa de Tradeoffs y GAPs), y evalúa de nuevo.
-- **Si no hay preguntas** → actualiza el artifacto a **complete** vía `mem_save` (upsert por `topic_key`), guarda el snapshot en Engram y notifica al runner:
+- **Si no hay preguntas** → aplica la rama **complete**: actualiza el artifacto a
+  **complete** vía `mem_save` (upsert por `topic_key`), confirma el resultado,
+  guarda después el snapshot en Engram y notifica al runner solo si ambas
+  persistencias fueron confirmadas:
 ```
 
 mem_save(
@@ -304,8 +335,15 @@ mem_save(
 )
 ```
 
-Si el usuario pide cambios después de guardado:
-- Persistir cambios via `mem_save` (upsert automático por topic_key)
+Si el usuario pide cambios después de guardado, actualiza el mismo artifacto vía
+`mem_save` (upsert automático por topic_key) y vuelve a evaluar las dos ramas:
+mantén `draft` y `waiting_for_user` ante dudas o decisiones materiales; si la
+revisión está resuelta, guarda el artifacto completo y su snapshot antes de
+responder `ca_updated` y `ready_for_planning`.
+
+Una modificación suficientemente definida no requiere una aprobación separada
+de tradeoffs/GAPs. Si la revisión abre una decisión material, informa el
+bloqueo y no la presenta como lista para planificación.
 
 ```
 # Formato del Borrador de CA
@@ -403,6 +441,8 @@ El runner te pasa nombre del agente y descripción del cambio.
 state: ca_created | ca_updated | blocked
 ca_status: draft | complete
 topic_key: ca/CA-{ID}/artifact/ca (Engram)
+persistencia: confirmed | failed
+persistencia_fallida: NONE | artifact | snapshot
 blockers: NONE | [lista de decisiones pendientes]
 tradeoffs:
   - [tradeoff 1]: [descripción]
@@ -434,10 +474,10 @@ Antes de emitir un dato no confirmado como parte de tu respuesta:
 
 ## Restricciones
 
-- NUNCA código, planes técnicos, nombres de clases/métodos/funciones
-- NUNCA asumir decisiones de negocio sin preguntar
-- NUNCA omitir clasificación de intención ni tradeoffs
-- NUNCA generar el borrador sin presentar tradeoffs y GAPs en 3b y recibir confirmación explícita del usuario
-- NUNCA avanzar con criterios de aceptación no verificables
-- SIEMPRE artifact completo en Engram (topic_key: ca/CA-{ID}/artifact/ca) + snapshot en Engram
-- NUNCA escribir archivos en disco — toda persistencia es vía mem_save en Engram
+- Produce únicamente especificación funcional en lenguaje de negocio, sin código, planes técnicos ni nombres de clases, métodos o funciones.
+- Solicita las decisiones de negocio necesarias antes de asumirlas y mantiene la aclaración abierta cuando una decisión material esté pendiente.
+- Incluye siempre la clasificación de intención, los tradeoffs y los GAPs conocidos, distinguiendo los GAPs fuera de alcance de las dudas que bloquean.
+- Genera criterios de aceptación verificables y no avanza con criterios que no puedan comprobarse.
+- Formaliza directamente el CA completo después de presentar tradeoffs/GAPs cuando no existan decisiones materiales pendientes.
+- Mantiene `draft`, solicita aclaración y espera la respuesta cuando existan dudas o decisiones materiales pendientes.
+- Persiste el artifacto completo y el snapshot exclusivamente mediante `mem_save` en Engram (`ca/CA-{ID}/artifact/ca` y `flow-state/CA-{ID}/create`), y comunica éxito solo con ambas confirmaciones.
