@@ -369,19 +369,17 @@ The runner dispatches `flowtask-review-orchestrator` with only `mode`, `worktree
 
 ### Graphify
 
-Graphify maintains a persistent knowledge graph of the repository under `graphify-out/`. For its own repository-context needs the runner follows the query chain defined in `.flowtask/agents/runner.md`: the configured graph integration, then the local CLI, then escalation to the Inspector.
+Graphify maintains a persistent knowledge graph of the repository under `graphify-out/`. For its own repository-context needs the runner follows the query chain defined in `.flowtask/agents/runner.md`: the configured graph integration, then escalation to the Inspector.
 
 ```
 1. graph integration (MCP) — the configured graph query tool
    ↓ unavailable, or no usable result
-2. node .flowtask/bin/flowtask.js graphify query --query <query-string>
-   ↓ unavailable, ok:false, or no usable result
-3. escalate to the Inspector
+2. escalate to the Inspector
 ```
 
-Queries always run from the main repository root, never from `.worktrees/`. The chain stops at the first path returning a usable result, and any skipped path is reported as partial degradation. When no path yields usable references the runner emits `no pude obtener referencias utilizables del grafo, escalando al Inspector` and delegates the exact question, scope, citable references, pending GAPs and a one-line record of the failed paths. If the Inspector is unavailable it reports the missing evidence and escalates to the developer, without a normal project search and without invented context.
+Queries always run from the main repository root, never from `.worktrees/`. When MCP yields no usable references the runner emits `no pude obtener referencias utilizables del grafo, escalando al Inspector` and delegates the exact question, scope, citable references, pending GAPs and a one-line record of the failed path. If the Inspector is unavailable it reports the missing evidence and escalates to the developer, without a normal project search and without invented context.
 
-> **Open divergence between two sources.** The third step above is the runner's. The `graphify-protocol` skill defines its own non-skippable chain for the agents that consume the graph — MCP tool → local CLI → *normal project search* — and it never delegates to the Inspector. Both definitions are in force: the runner escalates to the Inspector, and `graphify-protocol` requires a normal project search when its first two paths yield nothing. Unifying them is pending; until it happens, follow the chain of whichever source governs the agent you are configuring.
+The agents that consume Graphify use the same MCP-only contract. If MCP does not provide usable context, they use normal project search and explicitly state that the result is not Graphify evidence.
 
 The `flowtask-graphify-docs-media` background agent generates the graph's documentation and media (`graph.json`, `GRAPH_REPORT.md` and `graph.html` in `graphify-out/`). It runs only after explicit developer acceptance, in background, with `projectDir` pointing at the main repository, and never blocks the requested work.
 

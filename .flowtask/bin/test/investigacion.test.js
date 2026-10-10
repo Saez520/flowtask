@@ -22,10 +22,10 @@ describe("investigacion skill contract", () => {
 
   it("defines the Graphify chain and exact degradation", () => {
     assert.ok(content.includes("graphify_query_graph"));
-    assert.ok(content.includes("node .flowtask/bin/flowtask.js graphify query --query <query-string>"));
-    assert.ok(content.includes("búsqueda normal del proyecto"));
-    assert.ok(content.includes("no pude consultar el grafo, estoy usando búsqueda normal"));
-    assert.ok(content.includes("La búsqueda normal no se presenta como evidencia Graphify"));
+    assert.ok(content.includes("escalar automáticamente al Inspector"));
+    assert.doesNotMatch(content, /node \.flowtask\/bin\/flowtask\.js graphify query/);
+    assert.ok(content.includes("La búsqueda normal del proyecto no reemplaza esa escalada"));
+    assert.ok(content.includes("como evidencia Graphify"));
   });
 
   it("defines certainty, escalation, no-write, and hotfix transition", () => {
@@ -75,7 +75,7 @@ describe("Runner hotfix integration contract", () => {
   it("keeps the hotfix namespace while Validator distinguishes legacy IDs", () => {
     const validator = read(".flowtask/agents/validator.md");
     assert.ok(validator.includes("HF-{nombre-descriptivo}"));
-    assert.ok(validator.includes("IDs temporales de hotfixes anteriores"));
+    assert.ok(validator.includes("Los hotfixes anteriores se buscan bajo el ID original"));
     assert.ok(validator.includes("execution_id=hotfix/{id}"));
     assert.ok(validator.includes("artifact_namespace=hotfix/{id}"));
   });

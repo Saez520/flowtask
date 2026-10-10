@@ -39,17 +39,13 @@ de `graphify-protocol`:
 ```
 1. graphify_query_graph (MCP) — herramienta de integración concreta del grafo
     ↓ si el MCP no está disponible o no devuelve resultado utilizable
-2. node .flowtask/bin/flowtask.js graphify query --query <query-string> (CLI local)
-    ↓ si no está disponible, devuelve ok:false, está vacío o no produce
-      referencias utilizables
-3. escalar automáticamente al Inspector
+2. escalar automáticamente al Inspector
 ```
 
 La consulta se ejecuta desde la raíz del repositorio principal y nunca consulta
-`.worktrees/`. Ante cualquier resultado no utilizable de la primera vía Graphify
-aplicable —incluidos resultado vacío, MCP no disponible, integración o CLI no
-disponibles, `ok:false`, exit code `1` o ausencia de referencias utilizables— se
-avanza a la siguiente vía. Si ninguna vía Graphify entregó referencias utilizables,
+`.worktrees/`. Ante cualquier resultado no utilizable de la vía MCP aplicable
+—incluidos resultado vacío, MCP no disponible, error de integración o ausencia de
+referencias utilizables— se escala al Inspector. Si Graphify no entregó referencias utilizables,
 se detiene la cadena y se emite exactamente:
 
 ```
@@ -74,7 +70,8 @@ utilizables, escala automáticamente al Inspector con:
 La identidad viaja como campo de dato (`instance_name`), no como afirmación retórica.
 
 Cuando Graphify y Engram no bastan para responder con evidencia, se escala al
-Inspector; la búsqueda normal del proyecto no reemplaza esa escalada. La búsqueda normal no se presenta como evidencia Graphify. Si no pude consultar el grafo, estoy usando búsqueda normal.
+Inspector. La búsqueda normal del proyecto no reemplaza esa escalada ni se presenta
+como evidencia Graphify. Si no pude consultar el grafo, estoy usando búsqueda normal.
 
 La delegación no convierte una inferencia en hecho ni
 autoriza al Runner a escribir. Si el Inspector no está disponible, el Runner

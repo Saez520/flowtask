@@ -4,7 +4,6 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { install, update } from "./lib/installer.js";
-import { runLocalQueryCli } from "./lib/graphify-local-query.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,20 +47,17 @@ switch (command) {
     break;
 
   case "graphify": {
-    // Sub-command: graphify query --query <query-string>
+    // Legacy compatibility shim: graphify query no longer runs local queries.
     const subCommand = args[1];
     if (subCommand === "query") {
-      const queryIdx = args.indexOf("--query");
-      if (queryIdx === -1 || queryIdx + 1 >= args.length) {
-        process.stderr.write("[graphify] Error: --query <query-string> requerido.\n");
-        process.exitCode = 1;
-        break;
-      }
-      const queryString = args[queryIdx + 1];
-      const projectDir = process.cwd();
-      runLocalQueryCli(projectDir, queryString);
+      process.stderr.write(
+        "[graphify] Deprecated: graphify query ya no ejecuta consultas locales. " +
+        "Usa graphify_query_graph por MCP; si no está disponible, escala al Inspector " +
+        "o usa la búsqueda normal del proyecto.\n",
+      );
+      process.exitCode = 1;
     } else {
-      process.stderr.write(`[graphify] Subcomando desconocido: ${subCommand}. Usa: graphify query --query <query>\n`);
+      process.stderr.write(`[graphify] Subcomando desconocido: ${subCommand}. Usa: graphify query (deprecated).\n`);
       process.exitCode = 1;
     }
     break;
@@ -78,14 +74,14 @@ Usage:
                       Select the agent personality explicitly
   flowtask update     Update FlowTask files (delta-only sync)
   flowtask update --persona <training|mid|senior|custom>
-  flowtask graphify query --query <q>  Query local code graph (JSON stdout)
+  flowtask graphify query --query <q>  Deprecated shim; no local query is executed
   flowtask --help     Show this help message
   flowtask --version  Show version
 
 Examples:
   flowtask install    Install FlowTask in current directory
   flowtask update     Update existing FlowTask installation
-  flowtask graphify query --query UserService  Query code graph
+  flowtask graphify query --query UserService  Deprecated; use Graphify MCP
     `);
     break;
 

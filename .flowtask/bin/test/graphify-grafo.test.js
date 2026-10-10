@@ -12,10 +12,6 @@ import {
   configureMcpForTargets,
 } from "../lib/graphify-query.js";
 import {
-  queryLocalGraph,
-  runLocalQueryCli,
-} from "../lib/graphify-local-query.js";
-import {
   registerGrafoExtensions,
   clearExtensions,
   runExtension,
@@ -267,124 +263,7 @@ describe("configureMcpForTargets", () => {
   });
 });
 
-// ─── Task 2: Local query tool ─────────────────────────────────────────────────
-
-describe("queryLocalGraph", () => {
-  let tempDir;
-
-  beforeEach(() => { tempDir = makeTempDir(); });
-  afterEach(() => { cleanupDir(tempDir); });
-
-  it("returns ok=false for empty query", () => {
-    const result = queryLocalGraph(tempDir, "");
-    assert.equal(result.ok, false);
-    assert.equal(result.source, "local");
-    assert.deepEqual(result.results, []);
-    assert.ok(result.diagnostic.includes("vacía"));
-  });
-
-  it("returns ok=false when graph file missing", () => {
-    const result = queryLocalGraph(tempDir, "UserService");
-    assert.equal(result.ok, false);
-    assert.equal(result.source, "local");
-    assert.deepEqual(result.results, []);
-    assert.ok(result.diagnostic.includes("no encontrado"));
-  });
-
-  it("returns ok=false for invalid JSON", () => {
-    const outDir = path.join(tempDir, "graphify-out");
-    fs.mkdirSync(outDir, { recursive: true });
-    fs.writeFileSync(path.join(outDir, "graph.json"), "{{invalid json", "utf8");
-
-    const result = queryLocalGraph(tempDir, "test");
-    assert.equal(result.ok, false);
-    assert.deepEqual(result.results, []);
-    assert.ok(result.diagnostic.includes("JSON inválido"));
-  });
-
-  it("returns ok=true with matches for valid graph", () => {
-    const outDir = path.join(tempDir, "graphify-out");
-    fs.mkdirSync(outDir, { recursive: true });
-    const graphData = {
-      nodes: [
-        { name: "UserService", path: "src/services/user.js", type: "class" },
-        { name: "AuthController", path: "src/controllers/auth.js", type: "class" },
-        { name: "UserRepository", path: "src/repos/user.js", type: "class" },
-      ],
-    };
-    fs.writeFileSync(path.join(outDir, "graph.json"), JSON.stringify(graphData), "utf8");
-
-    const result = queryLocalGraph(tempDir, "User");
-    assert.equal(result.ok, true);
-    assert.equal(result.source, "local");
-    assert.equal(result.diagnostic, null);
-    assert.equal(result.results.length, 2); // UserService and UserRepository
-    assert.ok(result.results.some((r) => r.name === "UserService"));
-    assert.ok(result.results.some((r) => r.name === "UserRepository"));
-  });
-
-  it("returns ok=true with empty results when no matches", () => {
-    const outDir = path.join(tempDir, "graphify-out");
-    fs.mkdirSync(outDir, { recursive: true });
-    const graphData = {
-      nodes: [
-        { name: "UserService", path: "src/services/user.js", type: "class" },
-      ],
-    };
-    fs.writeFileSync(path.join(outDir, "graph.json"), JSON.stringify(graphData), "utf8");
-
-    const result = queryLocalGraph(tempDir, "NonExistent");
-    assert.equal(result.ok, true);
-    assert.deepEqual(result.results, []);
-    assert.equal(result.diagnostic, null);
-  });
-
-  it("searches case-insensitively", () => {
-    const outDir = path.join(tempDir, "graphify-out");
-    fs.mkdirSync(outDir, { recursive: true });
-    const graphData = {
-      nodes: [
-        { name: "UserService", path: "src/services/user.js", type: "class" },
-      ],
-    };
-    fs.writeFileSync(path.join(outDir, "graph.json"), JSON.stringify(graphData), "utf8");
-
-    const result = queryLocalGraph(tempDir, "userservice");
-    assert.equal(result.ok, true);
-    assert.equal(result.results.length, 1);
-  });
-
-  it("searches by path field", () => {
-    const outDir = path.join(tempDir, "graphify-out");
-    fs.mkdirSync(outDir, { recursive: true });
-    const graphData = {
-      nodes: [
-        { name: "Foo", path: "src/services/user.js", type: "class" },
-      ],
-    };
-    fs.writeFileSync(path.join(outDir, "graph.json"), JSON.stringify(graphData), "utf8");
-
-    const result = queryLocalGraph(tempDir, "user.js");
-    assert.equal(result.ok, true);
-    assert.equal(result.results.length, 1);
-  });
-
-  it("handles array-based graph format", () => {
-    const outDir = path.join(tempDir, "graphify-out");
-    fs.mkdirSync(outDir, { recursive: true });
-    const graphData = [
-      { name: "UserService", path: "src/user.js", type: "class" },
-      { name: "AuthService", path: "src/auth.js", type: "class" },
-    ];
-    fs.writeFileSync(path.join(outDir, "graph.json"), JSON.stringify(graphData), "utf8");
-
-    const result = queryLocalGraph(tempDir, "Service");
-    assert.equal(result.ok, true);
-    assert.equal(result.results.length, 2);
-  });
-});
-
-// ─── Task 3: Extension handoff ───────────────────────────────────────────────
+// ─── Task 2: Extension handoff ───────────────────────────────────────────────
 
 describe("registerGrafoExtensions", () => {
   beforeEach(() => { clearExtensions(); });
@@ -524,87 +403,15 @@ describe("registerGrafoExtensions", () => {
   });
 });
 
-// ─── Task 4: CLI dispatch ─────────────────────────────────────────────────────
-
-describe("runLocalQueryCli", () => {
-  let tempDir;
-  let origStdoutWrite;
-  let origStderrWrite;
-  let origExitCode;
-  let stdoutOutput;
-  let stderrOutput;
-
-  beforeEach(() => {
-    tempDir = makeTempDir();
-    stdoutOutput = "";
-    stderrOutput = "";
-    origStdoutWrite = process.stdout.write;
-    origStderrWrite = process.stderr.write;
-    origExitCode = process.exitCode;
-    process.stdout.write = (data) => { stdoutOutput += data; return true; };
-    process.stderr.write = (data) => { stderrOutput += data; return true; };
-  });
-
-  afterEach(() => {
-    cleanupDir(tempDir);
-    process.stdout.write = origStdoutWrite;
-    process.stderr.write = origStderrWrite;
-    process.exitCode = origExitCode;
-  });
-
-  it("writes JSON to stdout and sets exit code 0 for success", () => {
-    const outDir = path.join(tempDir, "graphify-out");
-    fs.mkdirSync(outDir, { recursive: true });
-    fs.writeFileSync(path.join(outDir, "graph.json"), JSON.stringify({
-      nodes: [{ name: "TestService", path: "src/test.js", type: "class" }],
-    }), "utf8");
-
-    runLocalQueryCli(tempDir, "Test");
-
-    assert.ok(stdoutOutput.length > 0);
-    const parsed = JSON.parse(stdoutOutput.trim());
-    assert.equal(parsed.ok, true);
-    assert.equal(parsed.source, "local");
-    assert.equal(process.exitCode, 0);
-  });
-
-  it("writes JSON to stdout and sets exit code 1 for failure", () => {
-    runLocalQueryCli(tempDir, "Test");
-
-    const parsed = JSON.parse(stdoutOutput.trim());
-    assert.equal(parsed.ok, false);
-    assert.deepEqual(parsed.results, []);
-    assert.equal(process.exitCode, 1);
-    assert.ok(stderrOutput.includes("[graphify-query]"));
-  });
-
-  it("stdout is pure JSON — no logs mixed in", () => {
-    const outDir = path.join(tempDir, "graphify-out");
-    fs.mkdirSync(outDir, { recursive: true });
-    fs.writeFileSync(path.join(outDir, "graph.json"), "[]", "utf8");
-
-    runLocalQueryCli(tempDir, "anything");
-
-    // stdout should be exactly one JSON line
-    const lines = stdoutOutput.trim().split("\n");
-    assert.equal(lines.length, 1);
-    assert.doesNotThrow(() => JSON.parse(lines[0]));
-  });
-});
-
-// ─── Task 5: Regression — no installer.js modification ───────────────────────
+// ─── Task 3: Regression — no installer.js modification ───────────────────────
 
 describe("Regression: installer.js untouched", () => {
   it("graphify-grafo modules do not import from installer.js", async () => {
     // Verify by checking that our modules don't reference installer
     const extractModule = await import("../lib/graphify-extract.js");
     const queryModule = await import("../lib/graphify-query.js");
-    const localQueryModule = await import("../lib/graphify-local-query.js");
-
     // These modules should export their documented functions
     assert.ok(typeof extractModule.extractCodeOnly === "function");
     assert.ok(typeof queryModule.configureMcpForTargets === "function");
-    assert.ok(typeof localQueryModule.queryLocalGraph === "function");
-    assert.ok(typeof localQueryModule.runLocalQueryCli === "function");
   });
 });

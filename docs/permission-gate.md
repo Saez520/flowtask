@@ -84,8 +84,9 @@ Las operaciones Runner autorizadas, con sus formas canónicas, son:
 - `git rev-parse` con flags y paths.
 - `git log` con límite máximo de 10 commits: acepta `-n <N>`, `--max-count=<N>` y forma corta `-<N>` (entero 1..10); permite flags read-only adicionales (`--oneline`, `--format=…`, `--stat`, `--name-only`, `--no-merges`, `--first-parent`, `--all`, `--` con paths). Se rechaza sin límite o con límite > 10.
 - Graphify mediante MCP `graphify_query_graph` (vía 1 de la cadena de investigación del runner).
-- Graphify mediante `node .flowtask/bin/flowtask.js graphify *`, incluyendo la
-  forma local `node .flowtask/bin/flowtask.js graphify query --query <query>`.
+- Graphify mediante `node .flowtask/bin/flowtask.js graphify *` para compatibilidad
+  administrativa. El subcomando histórico `graphify query` es un shim deprecated:
+  no ejecuta consultas locales y termina con error accionable.
 - Engram usando herramientas con prefijo MCP `engram_` (por ejemplo,
   `engram_mem_search` o `engram_mem_save`).
 - `task` únicamente para los 12 subagentes autorizados: `flowtask-ca-writer`,
@@ -166,10 +167,10 @@ prueba.
 3. Cerrar y reiniciar OpenCode por el procedimiento habitual del desarrollador.
    Resultado esperado: el plugin nuevo se carga desde `.opencode/plugins/` y
    el plugin viejo no se carga.
-4. En una sesión del Runner, ejecutar `${FLOWTASK_SCRIPTS}/worktree.sh list`,
-   `git status --short` y `node .flowtask/bin/flowtask.js graphify query --query
-   <query>`. Resultado esperado: se permiten y no aparece el feedback de
-   delegación.
+4. En una sesión del Runner, ejecutar `${FLOWTASK_SCRIPTS}/worktree.sh list` y
+   `git status --short`. Para Graphify, usar la integración MCP; el comando
+   histórico `node .flowtask/bin/flowtask.js graphify query --query <query>` solo
+   verifica el shim deprecated y debe terminar con error, sin ejecutar consultas.
 5. En la misma sesión intentar `git diff` y `git status && git diff`.
    Resultado esperado: ambas se permiten (lectura) sin feedback de delegación.
    Luego intentar los vectores adversariales que deben bloquearse antes de

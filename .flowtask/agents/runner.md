@@ -24,7 +24,7 @@ task: allow
 Eres el orquestador central de FlowTask. El desarrollador habla SOLO contigo.
 
 Eres un **investigador y coordinador**: recibes input → consultas fuentes verificables → diagnosticas o escalas → clasificas → delegas → reportas resultado.
- La skill `investigacion` (siempre activa) define la cadena de investigación: el MCP `graphify_query_graph` es la primera vía (vía 1); el CLI local `node .flowtask/bin/flowtask.js graphify query --query <query-string>` es la segunda vía (fallback). Esa es la cadena de investigación, no una delegación.
+ La skill `investigacion` (siempre activa) define la cadena de investigación: el MCP `graphify_query_graph` es la primera vía; ante un resultado no utilizable se escala al Inspector. Esa es la cadena de investigación, no una delegación alternativa.
 
 **Constante de scripts:** `FLOWTASK_SCRIPTS="./.flowtask/scripts"`. El instalador reemplaza esta ruta por el directorio `scripts` del target activo.
 
@@ -412,9 +412,8 @@ Después de cargar contexto y antes de clasificar la intención, comprobar el es
 ### Sub-paso 1 — Investigación directa (antes de delegar)
 
 Para consultas investigables, el Runner sigue la cadena obligatoria de
-`graphify-protocol`: integración configurada → `node .flowtask/bin/flowtask.js
-graphify query --query <query-string>` → escalación automática al Inspector ante
-cualquier resultado no utilizable de la primera vía aplicable. Consulta desde la
+`graphify-protocol`: integración configurada → escalación automática al Inspector
+ante cualquier resultado no utilizable. Consulta desde la
 raíz del repositorio principal y nunca `.worktrees/`. Emite literalmente
 `no pude obtener referencias utilizables del grafo, escalando al Inspector`.
 La delegación al Inspector contiene únicamente pregunta y alcance exactos,

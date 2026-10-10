@@ -190,15 +190,13 @@ Después de la búsqueda proactiva de contexto en Engram, consulta el grafo Grap
 
 **Alcance**: repositorio principal exclusivamente. Constructor, validator y tester en worktrees no participan.
 
-**Cadena obligatoria** (secuencial, no salteable):
+**Cadena obligatoria** (secuencial):
 1. Integración de consulta configurada para el CLI actual
-2. Si no disponible o sin resultado utilizable → `node .flowtask/bin/flowtask.js graphify query --query <query-string>`
-3. Si la CLI local devuelve `ok:false`/exit 1 → búsqueda normal del proyecto
+2. Si no está disponible o no devuelve resultado utilizable → búsqueda normal del proyecto
 
 **Reglas**:
 - La ausencia del grafo **no es pregunta bloqueante** — continúa con la conversación de clarificación
-- Si integración falla pero CLI local funciona, informa: `[Graphify] Integración no disponible — usando herramienta local`
-- Si ambas fallan, emite literalmente: `no pude consultar el grafo, estoy usando búsqueda normal`
+- Si MCP falla o no devuelve contexto utilizable, emite literalmente: `no pude consultar el grafo, estoy usando búsqueda normal`
 - **NUNCA** afirmes que un hallazgo proviene del grafo cuando proviene de búsqueda normal
 - **NUNCA** consultes `.worktrees/`
 
