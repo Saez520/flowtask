@@ -15,7 +15,7 @@ FlowTask es un **orquestador de agentes de IA para desarrollo de software**. A d
 ### El flujo de un CA
 
 ```
-USUARIO: "/run CA-018"
+USUARIO: "Flujo del CA-018"
           │
           ▼
 ┌─────────────────────────────────────────────────┐
@@ -196,7 +196,7 @@ Toda la documentación técnica está en [`docs/architecture/`](../docs/architec
 ### ¿Cómo crear un nuevo CA?
 
 ```
-/new-ca "Descripción del cambio"
+Solicitud de un nuevo CA: "Descripción del cambio"
 ```
 
 Esto inicia el flujo FlowTask: el CA-Writer formaliza los requisitos, el Planner genera el plan, el Plan-Auditor revisa coherencia, el Constructor implementa, y el Validator verifica.

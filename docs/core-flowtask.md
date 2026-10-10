@@ -94,8 +94,8 @@ flowchart TB
 Pilares documentados: Git Worktrees (aislamiento) · Engram + Handshake
 (memoria e identidad) · LSP + AST-Grep (lectura eficiente de código).
 
-Comandos legacy (`/run`, `/new-ca`, `/inspect`, `/evolve-agent`, `/init`, `/status`)
-siguen funcionando, pero el runner ya no los requiere.
+El runner enruta por intención; los comandos explícitos se retiraron y su
+relato queda en `docs/project-history.md`.
 
 ---
 
@@ -139,7 +139,7 @@ siguen funcionando, pero el runner ya no los requiere.
 *(runner delega; nunca ejecuta el trabajo)*
 
 ```text
-input del dev: CHANGE_REQUEST · CA_MENTION · /new-ca · /run CA-{ID}
+input del dev: CHANGE_REQUEST · CA_MENTION · CA-{ID}
 │
 ▼
 RUNNER clasifica ── ¿existe el CA en Engram?

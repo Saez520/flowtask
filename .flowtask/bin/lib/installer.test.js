@@ -15,6 +15,7 @@ import {
 } from "./installer.js";
 import { showInteractiveSelector } from "./ui.js";
 import { registerPluginArrayEntry } from "./opencode.js";
+import { generateClaudeCommands } from "./claude.js";
 
 const fixtures = [];
 const FLOWTASK_CLI = fileURLToPath(new URL("../flowtask.js", import.meta.url));
@@ -279,6 +280,63 @@ test("IDE assets include scripts in their target directories", () => {
   for (const id of ["opencode", "claude", "vscode"]) {
     assert.deepEqual(ASSETS[id].find(({ src }) => src === "scripts"), { src: "scripts", dest: "scripts" });
   }
+});
+
+test("canonical command source offers no retired command and still ships current ones", () => {
+  const canonicalDir = fileURLToPath(new URL("../../commands", import.meta.url));
+  const shipped = fs
+    .readdirSync(canonicalDir)
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => f.replace(/\.md$/, ""));
+
+  const retired = ["init", "new-ca", "run", "inspect", "evolve-agent", "status"];
+  for (const name of retired) {
+    assert.equal(shipped.includes(name), false, `retired command still shipped: ${name}`);
+  }
+
+  for (const name of ["init-types", "init-data", "init-business", "init-config", "init-api", "onboard", "update"]) {
+    assert.equal(shipped.includes(name), true, `current command missing from canonical source: ${name}`);
+  }
+});
+
+test("the canonical manifest offers no retired command entry", () => {
+  const manifest = JSON.parse(
+    fs.readFileSync(fileURLToPath(new URL("../../../opencode.json", import.meta.url)), "utf8"),
+  );
+  const offered = Object.keys(manifest.command ?? {});
+
+  for (const name of ["init", "new-ca", "run", "inspect", "evolve-agent", "status"]) {
+    assert.equal(offered.includes(name), false, `retired command still offered by manifest: ${name}`);
+  }
+  for (const name of ["init-types", "init-data", "init-business", "init-config", "init-api", "onboard", "update"]) {
+    assert.equal(offered.includes(name), true, `current command missing from manifest: ${name}`);
+  }
+});
+
+test("Claude generation produces current commands and never re-creates retired ones", () => {
+  const { root, flowtaskDir } = createFixture();
+  const commandsSrc = path.join(flowtaskDir, "commands");
+  fs.mkdirSync(commandsSrc, { recursive: true });
+  fs.writeFileSync(path.join(commandsSrc, "update.md"), "---\ndescription: current\n---\nbody\n", "utf8");
+  fs.writeFileSync(path.join(commandsSrc, "run.md"), "---\ndescription: retired\n---\nbody\n", "utf8");
+
+  const projectDir = path.join(root, "project");
+  fs.mkdirSync(projectDir, { recursive: true });
+
+  const { generated } = generateClaudeCommands(flowtaskDir, projectDir);
+  const destDir = path.join(projectDir, ".claude", "commands");
+
+  assert.equal(generated, 2);
+  assert.equal(fs.existsSync(path.join(destDir, "update.md")), true);
+
+  fs.rmSync(path.join(commandsSrc, "run.md"));
+  const second = generateClaudeCommands(flowtaskDir, projectDir);
+
+  assert.equal(second.generated, 1);
+  assert.equal(fs.existsSync(path.join(destDir, "update.md")), true, "current command lost");
+  // A pre-existing destination is left untouched on purpose: this CA adds no
+  // consumer-cleanup routine, so removal only prevents future regeneration.
+  assert.equal(fs.existsSync(path.join(destDir, "run.md")), true);
 });
 
 test("update integrates config and cleans legacy scripts into an installed target", () => {

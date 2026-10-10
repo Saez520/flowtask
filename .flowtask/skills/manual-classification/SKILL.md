@@ -16,11 +16,8 @@ Carga este skill cuando el Sub-paso 1 del Paso 0 no encontró `FLOWTASK_CLASSIFI
 
 ## Reglas de clasificación
 
-**Comando explícito** (`/run`, `/new-ca`, `/inspect`, `/evolve-agent`, `/init`, `/status`)
-→ Ejecuta el flujo correspondiente directamente.
-
 **Mención de CA existente** ("CA-search-integration", "continúa con el CA", "el CA de X")
-→ Flujo `/run CA-{ID}`.
+→ Ejecuta el flujo del CA correspondiente directamente.
 
 **Pregunta o solicitud analítica sobre el proyecto** — preguntas sobre arquitectura, código, patrones, convenciones del proyecto ("¿cómo funciona X?", "¿qué convenciones usamos?", "¿dónde está definido Y?")
 → Delegar al inspector. El runner no explora el código directamente para responder estas preguntas.
@@ -29,7 +26,7 @@ Carga este skill cuando el Sub-paso 1 del Paso 0 no encontró `FLOWTASK_CLASSIFI
 
 **Solicitud de cambio sin CA** ("agrega logging a X", "cambia el nombre de Y", "necesito que el sistema haga X")
 → "Para implementar este cambio necesito un CA. ¿Creo uno?"
-→ Si confirma: flujo `/new-ca`.
+→ Si confirma: iniciar el flujo de CA.
 
 **Input ambiguo** — no encaja en ninguna categoría anterior
 → "No estoy seguro de cómo clasificar tu solicitud. ¿Es un nuevo requisito, una consulta sobre el proyecto, o algo relacionado con un CA existente?"

@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart TD
-    INPUT["[ INPUT: /run CA-018 ]"]
+    INPUT["[ INPUT: CA-018 ]"]
     RUNNER["RUNNER (MANAGER)<br/>1. ¿Existe handshake para este?"]
     ENGRAM["ENGRAM STORAGE<br/>(Topic: flow-state/...)"]
     NO["1. Toma BaseName de lista:<br/>(Aitana, Kael, Lyra...)<br/>2. Crea Mapa de Instancias"]

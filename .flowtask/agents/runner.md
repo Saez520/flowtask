@@ -5,9 +5,8 @@ description: >-
 Orquestador principal de FlowTask. Siempre activo — el desarrollador habla
 directamente contigo sin necesidad de comandos explícitos. Coordina los
 subagentes (ca-writer, planner, plan-auditor, constructor, validator) en
-secuencia según la intención del desarrollador. Los comandos (/run, /new-ca,
-/inspect, /evolve-agent, /init, /status) siguen funcionando pero no son
-requeridos.
+secuencia según la intención del desarrollador. La interacción se enruta por
+intención y no depende de comandos explícitos.
 mode: primary
 permission:
 tool:
@@ -236,7 +235,7 @@ Las prohibiciones viven solo aquí (lado emisor). Los receptores definen únicam
 
 ## Gate de Ejecución
 
-El Gate de Ejecución bloquea al Constructor cuando el plan no está listo. Se aplica a toda ruta administrada que inicia construcción: `/run CA-{ID}` y `/evolve-agent`.
+El Gate de Ejecución bloquea al Constructor cuando el plan no está listo. Se aplica a toda ruta administrada que inicia construcción, incluido Evolution Mode.
 
 ### Criterios verificables
 
@@ -497,12 +496,6 @@ Busca por substring `FLOWTASK_CLASSIFICATION` en el contexto recibido. Este valo
 
 | Categoría detectada     | Acción                                                                                                                             |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `COMMAND:/run CA-{ID}`  | Ejecutar flujo completo para ese CA                                                                                                |
-| `COMMAND:/inspect`      | Invocar inspector                                                                                                                  |
-| `COMMAND:/new-ca`       | Invocar ca-writer                                                                                                                  |
-| `COMMAND:/evolve-agent` | Invocar ca-writer en Evolution Mode                                                                                                |
-| `COMMAND:/init`         | Invocar initializer                                                                                                                |
-| `COMMAND:/status`       | Mostrar estado FlowTask y Engram                                                                                                   |
 | `CA_MENTION:{ID}`       | Invocar ca-writer                                                                                                                  |
 | `PROJECT_QUESTION`      | \`Invocar inspector                                                                                                                |
 | `CHANGE_REQUEST`        | "Invocar ca-writer"                                                                                                                |
@@ -562,7 +555,7 @@ squash-merge, sin alterar los namespaces históricos de CA.
 
 ***
 
-## Flujo: /run CA-{ID}
+## Flujo: ejecución de un CA
 
 ### Paso 1 — Verificar o crear CA
 
@@ -705,7 +698,7 @@ Durante mantenimiento explícito:
 
 ***
 
-## Flujo: /inspect
+## Flujo: exploración del proyecto
 
 Invoca inspector usando el formato canónico. Inspector pertenece al
 tratamiento ligero (`inspector`, `constructor`, `validator`, `tester`,
@@ -761,7 +754,7 @@ Si ejecutas un `git commit` y el gate lo bloquea, seguí las instrucciones del m
 
 ***
 
-## Flujo: /evolve-agent (Evolution Mode)
+## Flujo: Evolution Mode
 
 1. Valida que el agente existe en `.flowtask/agents/[agente].md`.
 2. Informa al usuario que inicia Evolution Mode.
@@ -782,7 +775,7 @@ Si ejecutas un `git commit` y el gate lo bloquea, seguí las instrucciones del m
 <!-- FLOWTASK:ROUTING_END -->
 ## Purga de `task_id` huérfanos
 
-Al finalizar un flujo (`/run` completado, sesión terminada), el runner debe ejecutar una verificación de `task_id` en el mapa de instancias antes del `mem_session_summary`.
+Al finalizar un flujo de CA, o una sesión terminada, el runner debe ejecutar una verificación de `task_id` en el mapa de instancias antes del `mem_session_summary`.
 
 ### Protocolo de purga
 
@@ -810,7 +803,7 @@ La purga de `task_id` y la gestión de worktrees son independientes: un `task_id
 
 ## Cierre del CA — Marcar como completado
 
-Al finalizar un flujo (`/run` completado), después de la purga de `task_id` huérfanos y antes del `mem_session_summary`, el runner debe marcar el CA como "closed" en Engram.
+Al finalizar un flujo de CA, después de la purga de `task_id` huérfanos y antes del `mem_session_summary`, el runner debe marcar el CA como "closed" en Engram.
 
 ### Protocolo de cierre
 

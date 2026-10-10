@@ -61,7 +61,7 @@ CA-Writer → Planner → Constructor → Validator
 ## 4. El Flujo de Ejecución
 
 ```
-/run CA-{ID}
+CA-{ID}
 ```
 
 **Paso 1** — ¿Existe el CA? Si no → CA-Writer lo crea con el dev

@@ -24,7 +24,7 @@ export const FlowTaskPlugin = async ({ client }) => {
         description: "Show FlowTask and Engram memory statistics",
         args: {},
         async execute(args, context) {
-          return "Use the /status command in OpenCode to view FlowTask status.";
+          return "FlowTask status is available through the active runner.";
         },
       }),
     },

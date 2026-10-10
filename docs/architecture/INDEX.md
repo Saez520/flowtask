@@ -29,7 +29,7 @@ Conversión de `repomix-output.xml` (247 KB, 7,273 líneas) a archivos Markdown 
 | 02 | [02-skills.md](./02-skills.md) | 9 | Skills del sistema: módulos de conocimiento especializado cargables bajo demanda (memory-protocol, plan-template, checkpoint-mixin, etc.) |
 | 03 | [03-implementacion.md](./03-implementacion.md) | 7 | Núcleo de implementación del CLI: binario principal y librerías de soporte (flujo de instalación, generación de agentes, logging, UI) |
 | 04 | [04-plugins.md](./04-plugins.md) | 10 | Sistema de plugins: clasificador de intención (flowtask-classifier) y punto de entrada del sistema de plugins |
-| 05 | [05-comandos.md](./05-comandos.md) | 12 | Comandos FlowTask: definiciones de los comandos disponibles para el usuario (/run, /inspect, /init, /new-ca, /status, etc.) |
+| 05 | [05-comandos.md](./05-comandos.md) | 12 | Comandos FlowTask: definiciones de los comandos disponibles para el usuario |
 | 06 | [06-config-y-scripts.md](./06-config-y-scripts.md) | 9 | Configuración y scripts auxiliares: manifiestos de Engram, package.json, config de OpenCode/Claude, y scripts de sincronización |
 | 07 | [07-readme-y-raiz.md](./07-readme-y-raiz.md) | 2 | Documentación raíz: README del proyecto y reglas de ignorados de Git (.gitignore) |
 

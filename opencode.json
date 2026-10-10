@@ -65,7 +65,7 @@
       }
     },
     "flowtask-initializer": {
-      "description": "Scans project and populates Engram with project context. Activated by /init commands.",
+      "description": "Scans project and populates Engram with project context. Activated by the initialization flow and layer commands.",
       "mode": "subagent",
       "hidden": true,
       "prompt": "{file:.flowtask/agents/initializer.md}",
@@ -161,12 +161,6 @@
     }
   },
   "command": {
-    "init": {
-      "description": "Initialize FlowTask in current project: install/engram if needed, configure MCP, scan project",
-      "template": "Initialize FlowTask in this project:\n1. Check if engram is installed and install if missing\n2. Configure engram MCP server in opencode.json if not present\n3. Scan the project structure and conventions\n4. Populate Engram with project context\n5. Generate project-context.md summary\n$ARGUMENTS",
-      "agent": "flowtask-initializer",
-      "subtask": true
-    },
     "init-types": {
       "description": "Scan and index only types/models layer into Engram",
       "template": "Scan the types/models layer of this project:\n1. Find all type definitions (models, interfaces, schemas, types)\n2. Extract naming conventions and structure\n3. Save to Engram with topic_key: project/types\n$ARGUMENTS",
@@ -195,35 +189,6 @@
       "description": "Scan and index only API/endpoints layer into Engram",
       "template": "Scan the API/endpoints layer of this project:\n1. Find all API definitions (controllers, routes, endpoints)\n2. Extract API conventions and response patterns\n3. Save to Engram with topic_key: project/api\n$ARGUMENTS",
       "agent": "flowtask-initializer",
-      "subtask": true
-    },
-    "run": {
-      "description": "Execute FlowTask workflow for a case (CA-{ID}). Full flow: verify CA, plan, execute, validate.",
-      "template": "Execute the FlowTask workflow for the case ID provided.\nExtract the CA-ID from the user's message (format: CA-{CA-name}).\n$ARGUMENTS",
-      "agent": "flowtask-runner",
-      "subtask": true
-    },
-    "new-ca": {
-      "description": "Create a new Acceptance Criteria (CA) with guided clarification",
-      "template": "Create a new Acceptance Criteria (CA) with guided clarification.\nExtract the CA-ID from the user's message (format: CA-{CA-name}).\n$ARGUMENTS",
-      "agent": "flowtask-runner",
-      "subtask": true
-    },
-    "status": {
-      "description": "Show FlowTask and Engram memory statistics",
-      "template": "Show FlowTask status:\n1. Call engram mem_stats to get memory statistics\n2. Search Engram for active workflows (topic_key matching flow-state/*)\n3. Search Engram for recent requirements (type: requirement)\n4. Display a summary of active cases, memory usage, and project initialization status",
-      "agent": "build"
-    },
-    "inspect": {
-      "description": "Explore and validate any aspect of the project without creating a CA",
-      "template": "Activate the Inspector agent to answer questions about the project.\n$ARGUMENTS",
-      "agent": "flowtask-runner",
-      "subtask": true
-    },
-    "evolve-agent": {
-      "description": "Evolve a FlowTask agent using the full CA → Plan → Implement cycle",
-      "template": "Activate Evolution Mode to evolve a FlowTask agent.\n$ARGUMENTS",
-      "agent": "flowtask-runner",
       "subtask": true
     },
     "onboard": {

@@ -28,7 +28,7 @@ verificación incompleta junto con la causa conocida. El acceso a Bash no permit
 crear ni modificar archivos ni trasladar la responsabilidad de implementación al
 Inspector.
 
-Eres un subagente. El runner te invoca cuando el usuario usa `/inspect` o cuando determina que la intención del usuario requiere exploración o análisis antes de actuar.
+Eres un subagente. El runner te invoca cuando determina que la intención del usuario requiere exploración o análisis antes de actuar.
 
 **Tuyo**: análisis de estado actual, Tradeoffs y GAPs cuando correspondan, respuestas contextuales.
 **Del CA-Writer**: formalizar requisitos, criterios de aceptación, decisiones de negocio.
@@ -136,7 +136,7 @@ Este agente utiliza Engram para persistir su estado de análisis. Tratamiento li
 | **Evolution Mode** | Pregunta sobre agente FlowTask | ✅ SÍ (solo lectura) | ✅ SÍ |
 
 **Si te preguntan sobre algo fuera del alcance del modo activo**, responde:
-> "Por el momento no puedo responder esa pregunta en este modo. Si querés explorar [tema], usa `/evolve-agent` para Evolution Mode."
+> "Por el momento no puedo responder esa pregunta en este modo. Si querés explorar [tema], solicitá Evolution Mode."
 
 ---
 

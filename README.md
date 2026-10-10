@@ -74,12 +74,8 @@ permite escribir, el mensaje indica revisar permisos/espacio y reintentar con
 
 ### Initialize a new project
 
-```bash
-opencode
-> /init
-```
-
-This will scan your project structure, detect the technology stack, and populate Engram with project context.
+Ask the active FlowTask runner to initialize the project. It scans the project
+structure, detects the technology stack, and populates Engram with project context.
 
 Or initialize specific layers:
 
@@ -101,9 +97,7 @@ The Onboarder agent runs a short technical quiz based on your project's actual s
 
 ### Create a new acceptance criteria
 
-```bash
-> /new-ca CA-001
-```
+Describe the change to the active FlowTask runner and request a new CA.
 
 The CA-Writer agent will guide you through:
 
@@ -116,11 +110,7 @@ The CA is saved to Engram as a ca-artifact (topic_key: ca/CA-001/artifact/ca). L
 
 ### Run a development workflow
 
-```bash
-> /run CA-001
-```
-
-FlowTask will:
+When a CA is active, FlowTask will:
 
 1. **CA-Writer** — clarifies requirements if the CA doesn't exist yet
 2. **Planner** — generates a decision-complete plan in Engram (ca/CA-{ID}/artifact/plan) with fallback to `.workspace/` for legacy CAs
@@ -133,27 +123,19 @@ FlowTask will:
 
 ### Explore the project
 
-```bash
-> /inspect ¿cómo funciona el módulo de autenticación?
-```
+Ask the active FlowTask runner how the authentication module works.
 
 The Inspector searches Engram first, then reads relevant files. It always presents tradeoffs and GAPs without creating or modifying anything.
 
 ### Evolve a FlowTask agent
 
-```bash
-> /evolve-agent planner necesito que valide referencias antes de guardar el plan
-```
+Request Evolution Mode for the planner and describe the required change.
 
 Runs the full CA → Plan → Audit → Implement cycle, but scoped exclusively to `.flowtask/` files.
 
 ### Check status
 
-```bash
-> /status
-```
-
-Shows Engram memory statistics, active workflows, and project initialization status.
+Ask the active FlowTask runner for FlowTask and Engram status.
 
 ***
 
@@ -161,18 +143,12 @@ Shows Engram memory statistics, active workflows, and project initialization sta
 
 | Command              | Agent               | Description                                              |
 | -------------------- | ------------------- | -------------------------------------------------------- |
-| `/init`              | Initializer         | Scan entire project and populate Engram context          |
 | `/init-types`        | Initializer         | Scan types/models layer                                  |
 | `/init-data`         | Initializer         | Scan data layer                                          |
 | `/init-business`     | Initializer         | Scan business logic layer                                |
 | `/init-config`       | Initializer         | Scan configuration                                       |
 | `/init-api`          | Initializer         | Scan API endpoints                                       |
-| `/new-ca`            | CA-Writer           | Create a new acceptance criteria                         |
-| `/run`               | Runner              | Execute a full CA workflow                               |
-| `/inspect`           | Inspector           | Explore and analyze the project                          |
-| `/evolve-agent`      | All (via Runner)    | Evolve a FlowTask agent (Evolution Mode)                 |
 | `/onboard`           | Onboarder           | Run technical quiz and assign runner personality         |
-| `/status`            | Runner              | Show FlowTask and Engram status                          |
 | `/update`            | Runner              | Update FlowTask in current project                       |
 
 ***
@@ -181,25 +157,19 @@ Shows Engram memory statistics, active workflows, and project initialization sta
 
 ### Conversational interface
 
-The runner is always active as the primary agent. You can speak directly to it without slash commands — it classifies your intent automatically. Commands still work but are optional.
+The runner is always active as the primary agent. You can speak directly to it without slash commands — it classifies your intent automatically.
 
 When `FLOWTASK_CLASSIFICATION` is present in the incoming context, the runner consumes that tag as-is. The categories and their destinations:
 
 | Classification          | Routes to                                               |
 | ----------------------- | ------------------------------------------------------- |
-| `COMMAND:/run CA-{ID}`  | Full CA workflow                                        |
-| `COMMAND:/inspect`      | Inspector                                               |
-| `COMMAND:/new-ca`       | CA-Writer                                               |
-| `COMMAND:/evolve-agent` | CA-Writer in Evolution Mode                             |
-| `COMMAND:/init`         | Initializer                                             |
-| `COMMAND:/status`       | FlowTask and Engram status                              |
 | `CA_MENTION:{ID}`       | CA-Writer                                               |
 | `PROJECT_QUESTION`      | Inspector                                               |
 | `CHANGE_REQUEST`        | CA-Writer                                               |
 | `REVIEW_REQUEST`        | Review-orchestrator                                     |
 | `AMBIGUO`               | Runner asks whether it is a new requirement, a project question, or something related to an existing CA |
 
-When `FLOWTASK_CLASSIFICATION` is absent, the runner loads the `manual-classification` skill and classifies your message against explicit commands, existing-CA mentions, project questions, change requests without a CA, and ambiguous input. `REVIEW_REQUEST` is not one of that skill's rules — review intent is detected by the [Review flow](#review-flow) phrases instead.
+When `FLOWTASK_CLASSIFICATION` is absent, the runner loads the `manual-classification` skill and classifies your message against existing-CA mentions, project questions, change requests without a CA, and ambiguous input. `REVIEW_REQUEST` is not one of that skill's rules — review intent is detected by the [Review flow](#review-flow) phrases instead.
 
 ### Personality system
 
@@ -356,7 +326,7 @@ If a session is abandoned or lost, orphan CAs retain their instance name until a
 
 ### Execution Gate
 
-The Execution Gate blocks the Constructor when the plan is not ready. It applies to every managed path that starts construction: `/run CA-{ID}` and `/evolve-agent`.
+The Execution Gate blocks the Constructor when the plan is not ready. It applies to every managed path that starts construction, including Evolution Mode.
 
 Three verifiable criteria, all of which must hold:
 
@@ -417,12 +387,12 @@ The `flowtask-graphify-docs-media` background agent generates the graph's docume
 ## Workflow Diagram
 
 ```
-1. /new-ca CA-001
+1. New CA request
    └── CA-Writer clarifies requirements
        └── Saves CA to Engram (ca/CA-001/artifact/ca)
        └── Saves flow state to Engram (flow-state/CA-001/create)
 
-2. /run CA-001
+2. CA workflow
    └── Runner reads the CA from Engram
        └── Execution Gate verifies plan + gate_status
        └── Creates Git worktree (.worktrees/CA-001/, branch worktree/CA-001)
@@ -477,18 +447,12 @@ FlowTask/
 │   │   ├── settings.json         # Claude Code settings template
 │   │   └── mcp.json              # MCP server declaration template
 │   ├── commands/                 # FlowTask slash commands
-│   │   ├── init.md               # /init
 │   │   ├── init-api.md           # /init-api
 │   │   ├── init-business.md      # /init-business
 │   │   ├── init-config.md        # /init-config
 │   │   ├── init-data.md          # /init-data
 │   │   ├── init-types.md         # /init-types
-│   │   ├── new-ca.md             # /new-ca
-│   │   ├── run.md                # /run
-│   │   ├── inspect.md            # /inspect
-│   │   ├── evolve-agent.md       # /evolve-agent
 │   │   ├── onboard.md            # /onboard
-│   │   ├── status.md             # /status
 │   │   └── update.md             # /update
 │   ├── config/                   # Configuration used by this installation
 │   ├── personas/                 # Runner personality definitions
@@ -592,7 +556,7 @@ FlowTask includes **13 specialized agents** that work together to automate devel
 
 ### Evolution Mode
 
-Evolution Mode lets you improve FlowTask agents using the same workflow used for your project. Use `/evolve-agent [agent-name] [description]` to:
+Evolution Mode lets you improve FlowTask agents using the same workflow used for your project. Request it through the active runner with the agent name and desired change to:
 
 1. Backup the existing agent before modifications
 2. Clarify the change with CA-Writer

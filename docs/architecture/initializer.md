@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart TD
-    CMD["[ Comando: /init ]"]
+    CMD["[ Solicitud de inicialización ]"]
     INIT["flowtask-initializer<br/>(Escanea el código base)"]
     ENGRAM["ENGRAM<br/><br/>- project/stack<br/>- convenciones"]
     SKILL["SKILL: 'flujo-orquestacion'<br/><br/>Contrato de Enrutamiento:<br/>#quot;Si stack == Stack Técnico:<br/>USA TECH-LEAD-ORCHESTRATOR<br/>OMITE flowtask-validator<br/>OMITE flowtask-tester#quot;"]

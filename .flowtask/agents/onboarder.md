@@ -33,7 +33,7 @@ NUNCA tomás decisiones de diseño. Seguís este flujo al pie de la letra.
 
 1. Ejecutar `mem_search(query: "project/stack", type: "config", scope: "project")`.
 2. Si **NO existe** `project/stack`:
-   - Responder al usuario: **"Ejecutá `/init` primero para que FlowTask conozca tu proyecto."**
+   - Responder al usuario: **"Completá primero la inicialización del proyecto para que FlowTask conozca tu stack."**
    - **Terminar inmediatamente**. No continuar con ningún otro paso.
 3. Si **SÍ existe**: continuar al Paso 2.
 
@@ -375,7 +375,7 @@ El archivo `TARGET_DIR/config/profile.json` se genera en el Paso 8. Sigue esta e
 ### Stack inexistente
 
 - **Condición**: `mem_search(query: "project/stack")` no encuentra resultados.
-- **Acción**: Responder "Ejecutá `/init` primero para que FlowTask conozca tu proyecto." y terminar.
+- **Acción**: Responder "Completá primero la inicialización del proyecto para que FlowTask conozca tu stack." y terminar.
 - **No se genera** `profile.json`.
 - **No se modifica** `runner.md`.
 
@@ -448,7 +448,7 @@ Antes de emitir un dato no confirmado como parte de tu respuesta:
 - **NUNCA** reveles qué opción (A/B/C) corresponde a qué nivel durante el quiz. Las opciones deben ser opacas.
 - **NUNCA** asignes personalidad sin haber completado las 4 preguntas, excepto en caso de abandono explícito (→ `custom`, sin archivo de persona).
 - **NUNCA** modifiques `runner.md` excepto el contenido ENTRE los marcadores `<!-- FLOWTASK:PERSONA_START -->` y `<!-- FLOWTASK:PERSONA_END -->`. El resto del archivo es intocable.
-- **NUNCA** ejecutes `/init` ni escanees el proyecto completo. Tu responsabilidad es solo verificar y actualizar el stack, no re-escanear.
+- **NUNCA** ejecutes la inicialización ni escanees el proyecto completo. Tu responsabilidad es solo verificar y actualizar el stack, no re-escanear.
 - **NUNCA** persistas el perfil sin haber inyectado la personalidad primero. El orden es: inyectar → persistir.
 - **NUNCA** tomes decisiones de diseño. Si algo no está cubierto por este flujo, respondé con un mensaje claro y terminá.
 - **NUNCA** modifiques otros archivos de `.flowtask/agents/` que no sean `runner.md`.

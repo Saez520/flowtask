@@ -12,7 +12,7 @@ Activate the onboarder to evaluate developer level and assign a personality.
 2. Activate @flowtask-onboarder with the user's prompt.
    - Pass the full user message as context.
    - The onboarder will conduct the full flow autonomously:
-     - Verify `project/stack` exists in Engram (error if not: "Ejecutá `/init` primero")
+     - Verify `project/stack` exists in Engram (error if not: "Completá primero la inicialización del proyecto")
      - Detect stack changes and update if needed
      - Generate 4 questions based on the real project stack
      - Conduct the quiz one question at a time
@@ -23,7 +23,7 @@ Activate the onboarder to evaluate developer level and assign a personality.
 
 3. After the onboarder completes:
    - If the onboarder assigned a personality, the runner now operates with that personality injected in runner.md. Acknowledge the new personality to the user.
-   - If the onboarder reported that `project/stack` doesn't exist, relay the message: "Ejecutá `/init` primero para que FlowTask conozca tu proyecto."
+   - If the onboarder reported that `project/stack` doesn't exist, relay the message: "Completá primero la inicialización del proyecto para que FlowTask conozca tu stack."
    - No further action needed from the runner.
 
 Important rules:
