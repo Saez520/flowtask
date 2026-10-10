@@ -21,10 +21,38 @@ describe("investigacion skill contract", () => {
   });
 
   it("defines the Graphify chain and exact degradation", () => {
+    // Los contratos viven en Markdown con saltos de línea arbitrarios: se aplana
+    // el whitespace para asentar frases del contrato sin depender del wrap.
+    const flat = (text) => text.replace(/\s+/g, " ");
+    const flatContent = flat(content);
+
     assert.ok(content.includes("graphify_query_graph"));
-    assert.ok(content.includes("escalar automáticamente al Inspector"));
+
+    // Contrato vigente: chain de 3 pasos. Antes de delegar, se evalúa la
+    // suficiencia de la evidencia ya investigada.
+    assert.ok(flatContent.includes("2. evaluar la suficiencia de la evidencia ya investigada y disponible"));
+    assert.ok(flatContent.includes("3. delegar al Inspector para completar el GAP concreto"));
+    assert.ok(
+      flatContent.includes("la ausencia de referencias Graphify no activa por sí sola al Inspector"),
+      "SKILL.md should state that missing Graphify references alone do not trigger delegation",
+    );
+    assert.ok(
+      flatContent.includes("se identifica el GAP material y se delega al Inspector para completar esa brecha"),
+      "SKILL.md should delegate to the Inspector when a material element is missing",
+    );
+
+    // Guarda de regresión: la delegación es condicional, nunca automática.
+    assert.doesNotMatch(
+      content,
+      /escalar automáticamente al Inspector/,
+      "SKILL.md must not regress to automatic escalation to the Inspector",
+    );
+
     assert.doesNotMatch(content, /node \.flowtask\/bin\/flowtask\.js graphify query/);
-    assert.ok(content.includes("La búsqueda normal del proyecto no reemplaza esa escalada"));
+    assert.ok(
+      flatContent.includes("La búsqueda normal del proyecto no reemplaza la evidencia Graphify"),
+      "SKILL.md should state that normal project search does not replace Graphify evidence",
+    );
     assert.ok(content.includes("como evidencia Graphify"));
   });
 

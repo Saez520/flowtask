@@ -368,15 +368,17 @@ The runner dispatches `flowtask-review-orchestrator` with only `mode`, `worktree
 
 ### Graphify
 
-Graphify maintains a persistent knowledge graph of the repository under `graphify-out/`. For its own repository-context needs the runner follows the query chain defined in `.flowtask/agents/runner.md`: the configured graph integration, then escalation to the Inspector.
+Graphify maintains a persistent knowledge graph of the repository under `graphify-out/`. For its own repository-context needs the runner follows the query chain defined in `.flowtask/agents/runner.md`: the configured graph integration, an evaluation of whether the evidence already gathered is sufficient, and only then a delegation to the Inspector for the concrete GAP.
 
 ```
 1. graph integration (MCP) — the configured graph query tool
    ↓ unavailable, or no usable result
-2. escalate to the Inspector
+2. evaluate the sufficiency of the evidence already gathered
+   ↓ if a material element for answering is still missing
+3. delegate to the Inspector for the concrete GAP
 ```
 
-Queries always run from the main repository root, never from `.worktrees/`. When MCP yields no usable references the runner emits `no pude obtener referencias utilizables del grafo, escalando al Inspector` and delegates the exact question, scope, citable references, pending GAPs and a one-line record of the failed path. If the Inspector is unavailable it reports the missing evidence and escalates to the developer, without a normal project search and without invented context.
+Queries always run from the main repository root, never from `.worktrees/`. When MCP yields no usable references the runner evaluates the evidence already gathered in the current context — Engram, citable references and earlier findings — against the concrete question, without opening new searches, file reads or queries just to decide the delegation. If that evidence answers the question without turning assumptions into facts, the runner responds without invoking the Inspector; missing Graphify references alone do not trigger a delegation. If a material element is still missing, the runner identifies the GAP and delegates to the Inspector the exact question, scope, citable references, pending GAPs and a one-line record of the failed path. If the Inspector is unavailable it reports the missing evidence and escalates to the developer, without a normal project search and without invented context.
 
 The agents that consume Graphify use the same MCP-only contract. If MCP does not provide usable context, they use normal project search and explicitly state that the result is not Graphify evidence.
 

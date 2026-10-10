@@ -110,9 +110,42 @@ describe("Graphify agent integration", () => {
     const caWriter = readRelative(".flowtask/agents/ca-writer.md");
     const planner = readRelative(".flowtask/agents/planner.md");
     const runner = readRelative(".flowtask/agents/runner.md");
+    // Los contratos viven en Markdown con saltos de línea arbitrarios: se aplana
+    // el whitespace para asentar frases del contrato sin depender del wrap.
+    const flat = (text) => text.replace(/\s+/g, " ");
+    const runnerFlat = flat(runner);
+
     assert.ok(caWriter.includes("búsqueda normal del proyecto"));
     assert.ok(planner.includes("búsqueda normal del proyecto"));
-    assert.ok(runner.includes("escalación automática al Inspector"));
+
+    // Contrato vigente: antes de delegar, el Runner evalúa la suficiencia de la
+    // evidencia ya investigada (etapa 2 del chain de 3 pasos).
+    assert.ok(
+      runnerFlat.includes("evalúa la suficiencia de la evidencia ya investigada"),
+      "runner.md should document the evidence-sufficiency evaluation before delegating",
+    );
+    assert.ok(
+      runnerFlat.includes("la ausencia de referencias Graphify no activa por sí sola una delegación"),
+      "runner.md should state that missing Graphify references alone do not trigger delegation",
+    );
+
+    // Contrato vigente: delega al Inspector cuando falta un elemento material.
+    assert.ok(
+      runnerFlat.includes("Si falta un elemento necesario, identifica el GAP material y delega al Inspector"),
+      "runner.md should delegate to the Inspector when a material element is missing",
+    );
+
+    // Guarda de regresión: el Runner no debe volver a degradar a escalación
+    // automática, ni perder la condicionalidad de la delegación.
+    assert.doesNotMatch(
+      runner,
+      /escalación automática al Inspector/,
+      "runner.md must not regress to automatic escalation to the Inspector",
+    );
+    assert.ok(
+      runnerFlat.includes("no delega por defecto una consulta que la evidencia resuelve"),
+      "runner.md should keep delegation conditional on a GAP the evidence does not resolve",
+    );
   });
 });
 
@@ -142,7 +175,13 @@ describe("documentation alignment", () => {
   it("documents the deprecated shim without describing it as a query fallback", () => {
     const readme = readRelative("README.md");
     const permissionGate = readRelative("docs/permission-gate.md");
-    assert.ok(readme.includes("escalation to the Inspector"));
+    assert.ok(readme.includes("delegate to the Inspector for the concrete GAP"));
+    assert.ok(
+      readme.includes("evaluate the sufficiency of the evidence already gathered"),
+      "README should document the sufficiency-evaluation stage of the chain",
+    );
+    assert.doesNotMatch(readme, /escalation to the Inspector/);
+    assert.doesNotMatch(readme, /escalando al Inspector/);
     assert.doesNotMatch(readme, /then the local CLI/);
     assert.ok(permissionGate.includes("shim deprecated"));
     assert.ok(permissionGate.includes("no ejecuta consultas locales"));
