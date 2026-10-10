@@ -120,6 +120,13 @@ sesión previa, no se ejecuta Topic Validation, no se construye Resume Prompt y
 no se inyecta contexto de sesión anterior. Sus checkpoints se conservan como
 histórico y nunca disparan continuidad.
 
+Una solicitud explícita del usuario tiene prioridad para una invocación puntual:
+cuando identifica el agente y pide reutilizar un `task_id` concreto disponible,
+el Runner pasa exactamente ese `task_id` a `task()` para cualquier agente,
+incluidos los de tratamiento ligero. Esta rama evita el filtro normal de
+elegibilidad, el handshake y Topic Validation únicamente para esa invocación;
+no convierte la continuidad explícita en comportamiento automático.
+
 ### Uso
 
 Antes de invocar `ca-writer` o `planner`, el runner DEBE cargar la skill:
@@ -179,22 +186,29 @@ intención. Permanece activa durante investigación, diagnóstico y ejecución.
 | `flowtask-graphify-docs-media` | necesita generar docs/media de Graphify (background, tras aceptación) |
 
 Formato para invocar:
-Flujo de delegación — sin excepciones:
+Flujo de delegación — con continuidad explícita acotada:
 
 1. Identificas el subagente por la tabla.
-2. Si el subagente es `ca-writer` o `planner`, cargas `handshake-protocol` y
+2. Antes de aplicar la elegibilidad normal, compruebas si el desarrollador
+   identificó explícitamente el agente y solicitó reutilizar un `task_id` concreto.
+   En ese caso, invocas `task()` con el identificador exacto para cualquier
+   `subagent_type`, sin ejecutar handshake ni Topic Validation para esa llamada.
+   El prompt delegado conserva su contrato y no incluye `task_id`, `scenario` ni
+   mecánica de handshake.
+3. Si no existe una solicitud explícita de reutilización y el subagente es
+   `ca-writer` o `planner`, cargas `handshake-protocol` y
    ejecutas el Handshake para obtener `{ task_id, instance_name, scenario }`.
    Si el agente es de tratamiento ligero (`inspector`, `constructor`,
    `validator`, `tester`, `review-orchestrator`, `logger` e `initializer`),
    conservas/derivas `instance_name` desde el mapa y fuerzas Escenario A sin
    `task_id` ni contexto de sesión.
-3. La skill ya ejecutó **Context Injection** (mem_context + mem_search). Incorporas los hallazgos al prompt como **referencias citables** (IDs de Engram, rutas) — nunca como resúmenes ni conclusiones.
-4. **Antes de invocar**: verificar si existe checkpoint en Engram (`flow-state/{CA-ID}/{agente}`).
-5. Si el agente es `ca-writer` o `planner`, invocas `task(...)` según A/B.
+4. La skill ya ejecutó **Context Injection** (mem_context + mem_search). Incorporas los hallazgos al prompt como **referencias citables** (IDs de Engram, rutas) — nunca como resúmenes ni conclusiones.
+5. **Antes de invocar**: verificar si existe checkpoint en Engram (`flow-state/{CA-ID}/{agente}`).
+6. Si el agente es `ca-writer` o `planner`, invocas `task(...)` según A/B.
    Para cualquier agente de tratamiento ligero (`inspector`, `constructor`,
    `validator`, `tester`, `review-orchestrator`, `logger` e `initializer`),
    invocas siempre `task(...)` como Escenario A fresco, conservando únicamente
-   su identidad y trazabilidad.
+   su identidad y trazabilidad, salvo la solicitud explícita descrita en el paso 2.
 
 ***
 
@@ -252,6 +266,10 @@ El Gate se invoca igual que en modo interactivo. `--auto` solo exime la espera d
 ### Antes de invocar sub-agente (Handshake & Context)
 
 1. **Selección**:
+   - Si existe una solicitud explícita del desarrollador que identifica el agente
+     y pide reutilizar un `task_id` concreto, pasar ese identificador exactamente
+     a `task()` para cualquier agente. Esta rama puntual no ejecuta la elegibilidad
+     normal, el handshake ni Topic Validation.
    - Para `ca-writer` y `planner`, cargar `handshake-protocol` y obtener
      `{ task_id, instance_name, scenario }` desde la skill.
    - Para agentes de tratamiento ligero (`inspector`, `constructor`,
@@ -260,6 +278,18 @@ El Gate se invoca igual que en modo interactivo. `--auto` solo exime la espera d
      para trazabilidad; no cargar la skill para decidir reanudación; forzar
      Escenario A con `task_id = null`.
 2. **Bifurcación de Escenario**:
+
+**Rama prioritaria — solicitud explícita de continuidad**
+
+Cuando el desarrollador nombra un agente y solicita reutilizar un `task_id`
+concreto, el Runner invoca `task()` pasando ese identificador exactamente, sin
+aplicar la elegibilidad normal de la clase de tratamiento y sin ejecutar
+handshake ni Topic Validation para esa invocación puntual. La llamada usa el
+formato de reanudación únicamente como mecánica de `task()`; el prompt mantiene
+el contrato de ensamblado y no incorpora `task_id`, `scenario` ni instrucciones
+internas del Runner. Esta excepción no habilita reanudación automática para
+agentes ligeros ni cambia el comportamiento por defecto cuando no existe una
+instrucción explícita.
 
 **Escenario A: Initial Prompt (Nuevo hilo)**
 Si NO existe un `task_id` válido para el agente en el mapa de instancias, o si Engram no está disponible (`mem_search` falló):
@@ -323,19 +353,24 @@ checkpoint como traza y crear siempre un hilo fresco con el prompt inicial, sin
 ### Recuperación ante Fallos (Self-Healing)
 
 Si la herramienta `task` (o `Agent` en Claude) retorna un error indicando que el hilo no existe o ha expirado:
-1. **Limpieza**: Para `ca-writer` y `planner`, ejecutar `mem_save` para
+1. **Solicitud explícita**: Si el `task_id` provenía de una instrucción explícita
+   del desarrollador, informar que la conversación no está disponible. No limpiar
+   el identificador, no relanzar Escenario A ni afirmar una continuidad lograda.
+2. **Limpieza normal**: Para `ca-writer` y `planner`, ejecutar `mem_save` para
    eliminar el `task_id` fallido del mapa de instancias en
-    `flow-state/{CA-ID}/instances`. En el tratamiento ligero (`inspector`,
+   `flow-state/{CA-ID}/instances`. En el tratamiento ligero (`inspector`,
    `constructor`, `validator`, `tester`, `review-orchestrator`, `logger` e
    `initializer`) no se reutiliza ni se purga un `task_id`; se conserva el
    registro histórico.
-2. **Reintento**: Para `ca-writer` y `planner`, relanzar automáticamente usando
+3. **Reintento normal**: Para `ca-writer` y `planner`, relanzar automáticamente usando
    el flujo del **Escenario A (Initial Prompt)**. Para agentes de tratamiento
    ligero (`inspector`, `constructor`, `validator`, `tester`,
    `review-orchestrator`, `logger` e `initializer`), crear siempre un hilo
    fresco; nunca reutilizar ni limpiar un `task_id` como mecanismo de
    reanudación.
-3. No es necesario pedir confirmación al desarrollador para este reintento técnico.
+4. No es necesario pedir confirmación al desarrollador para este reintento técnico
+   cuando se trata de la recuperación normal; la rama de solicitud explícita no
+   se reintenta con un hilo sustituto.
 
 ### Formato canónico de `task()` (fuente única de verdad)
 
@@ -361,6 +396,23 @@ task(
   description: "[opcional, para trazabilidad]"
 )
 ```
+
+**Solicitud explícita de reutilización:**
+
+```
+task(
+  prompt: "[prompt conforme al contrato + contexto inyectado]",
+  subagent_type: "[tipo solicitado explícitamente]",
+  task_id: "[task_id solicitado exactamente]",
+  description: "[opcional, para trazabilidad]"
+)
+```
+
+La solicitud explícita se aplica a cualquier agente. Si `task()` rechaza el
+identificador porque la conversación no está disponible o expiró, el Runner
+informa esa imposibilidad real, conserva el identificador registrado, no crea ni
+presenta un hilo nuevo como reutilización lograda y no comunica continuidad
+exitosa.
 
 > **Regla**: Los templates de flujo referencian este formato. No duplican la sintaxis.
 
@@ -412,16 +464,21 @@ Después de cargar contexto y antes de clasificar la intención, comprobar el es
 ### Sub-paso 1 — Investigación directa (antes de delegar)
 
 Para consultas investigables, el Runner sigue la cadena obligatoria de
-`graphify-protocol`: integración configurada → escalación automática al Inspector
-ante cualquier resultado no utilizable. Consulta desde la
-raíz del repositorio principal y nunca `.worktrees/`. Emite literalmente
-`no pude obtener referencias utilizables del grafo, escalando al Inspector`.
-La delegación al Inspector contiene únicamente pregunta y alcance exactos,
-referencias citables, GAPs pendientes y una línea de vías fallidas — según el
-Contrato de ensamblado de prompts de delegación. Si el Inspector no está
-disponible, reporta que no pudo obtener
-evidencia porque el Inspector no está disponible y escala al desarrollador, sin
-búsqueda normal ni contexto inventado.
+`graphify-protocol` desde la raíz del repositorio principal y nunca consulta
+`.worktrees/`. Cuando la vía Graphify termina sin referencias utilizables, evalúa
+la suficiencia de la evidencia ya investigada y disponible en el contexto actual:
+Engram, referencias citables y hallazgos ya obtenidos. Esta evaluación responde
+la pregunta concreta sin abrir nuevas búsquedas, lecturas de archivos ni consultas
+adicionales solo para decidir la escalación.
+
+Si la evidencia disponible cubre la respuesta sin convertir suposiciones en hechos,
+el Runner responde o continúa sin invocar al Inspector y atribuye cada conclusión
+a su fuente real; la ausencia de referencias Graphify no activa por sí sola una
+delegación. Si falta un elemento necesario, identifica el GAP material y delega al
+Inspector con pregunta y alcance exactos, referencias citables ya disponibles,
+GAPs pendientes y una línea de vías fallidas, según el Contrato de ensamblado de
+prompts de delegación. Si el Inspector no está disponible, informa el GAP y la
+indisponibilidad, sin inventar una conclusión ni afirmar una delegación exitosa.
 
 El Runner etiqueta certeza (`[Inferencia]`, `[Especulación]`, `[No verificado]`),
 expone tradeoffs y GAPs y no escribe. Si Engram y Graphify no bastan y

@@ -39,18 +39,25 @@ de `graphify-protocol`:
 ```
 1. graphify_query_graph (MCP) — herramienta de integración concreta del grafo
     ↓ si el MCP no está disponible o no devuelve resultado utilizable
-2. escalar automáticamente al Inspector
+2. evaluar la suficiencia de la evidencia ya investigada y disponible
+    ↓ si falta un elemento material para responder
+3. delegar al Inspector para completar el GAP concreto
 ```
 
 La consulta se ejecuta desde la raíz del repositorio principal y nunca consulta
 `.worktrees/`. Ante cualquier resultado no utilizable de la vía MCP aplicable
 —incluidos resultado vacío, MCP no disponible, error de integración o ausencia de
-referencias utilizables— se escala al Inspector. Si Graphify no entregó referencias utilizables,
-se detiene la cadena y se emite exactamente:
+referencias utilizables— se evalúa la evidencia ya investigada en el contexto
+actual: Engram, referencias citables y hallazgos previamente obtenidos. La
+evaluación de suficiencia compara la pregunta concreta con esos insumos sin abrir
+una nueva ronda de búsquedas, lecturas o consultas para decidir la delegación.
 
-```
-no pude obtener referencias utilizables del grafo, escalando al Inspector
-```
+Si la evidencia disponible resuelve la pregunta sin suposiciones, el Runner
+responde o continúa y atribuye cada conclusión a su fuente real; la ausencia de
+referencias Graphify no activa por sí sola al Inspector. Si falta información
+necesaria, se identifica el GAP material y se delega al Inspector para completar
+esa brecha. Si el Inspector no está disponible, el Runner informa el GAP y la
+indisponibilidad sin inventar una respuesta ni afirmar una delegación exitosa.
 
 La evidencia y los resultados se resumen sin volcar secretos ni salidas
 completas. Las afirmaciones inciertas llevan `[Inferencia]`, `[Especulación]`
@@ -58,9 +65,10 @@ o `[No verificado]`; la ausencia de resultados no se rellena con suposiciones.
 
 ## Frontera Runner / Inspector
 
-El Runner responde directamente cuando Engram o Graphify permiten diagnosticar
-sin suponer. Cuando la primera vía Graphify aplicable no entrega referencias
-utilizables, escala automáticamente al Inspector con:
+El Runner responde directamente cuando la evidencia ya investigada y disponible
+permite diagnosticar sin suponer. Cuando la primera vía Graphify aplicable no
+entrega referencias utilizables, evalúa primero si los insumos existentes cubren
+la pregunta concreta. Cuando no la cubren, delega al Inspector con:
 
 - pregunta y alcance exactos;
 - referencias citables (IDs de Engram, rutas);
@@ -69,15 +77,15 @@ utilizables, escala automáticamente al Inspector con:
 
 La identidad viaja como campo de dato (`instance_name`), no como afirmación retórica.
 
-Cuando Graphify y Engram no bastan para responder con evidencia, se escala al
-Inspector. La búsqueda normal del proyecto no reemplaza esa escalada ni se presenta
-como evidencia Graphify. Si no pude consultar el grafo, estoy usando búsqueda normal.
+Cuando Graphify y Engram no bastan para responder con evidencia, se delega al
+Inspector con el GAP concreto. La búsqueda normal del proyecto no reemplaza la
+evidencia Graphify ni se presenta como evidencia Graphify.
 
-La delegación no convierte una inferencia en hecho ni
-autoriza al Runner a escribir. Si el Inspector no está disponible, el Runner
-reporta explícitamente que no pudo obtener evidencia porque el Inspector no está
-disponible y escala al desarrollador. En ese caso no usa búsqueda normal ni
-inventa contexto. El Inspector no se modifica por este contrato. Runner nunca escribe archivos de producto ni configuración.
+La delegación no convierte una inferencia en hecho ni autoriza al Runner a
+escribir. Si el Inspector no está disponible, el Runner reporta explícitamente
+el GAP y la indisponibilidad y escala al desarrollador. En ese caso no inventa
+contexto ni afirma una delegación exitosa. El Inspector no se modifica por este
+contrato. Runner nunca escribe archivos de producto ni configuración.
 
 ## Conversación y transición a ejecución
 
