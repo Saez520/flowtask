@@ -1,0 +1,3 @@
+[submodule ".flowtask/plugins/flowtask-context-checkpoint"]
+	path = .flowtask/plugins/flowtask-context-checkpoint
+	url = git@github.com:Saez520/flowtask-context-checkpoint.git
