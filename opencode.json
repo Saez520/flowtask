@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "default_agent": "flowtask-runner",
   "mcp": {
     "engram": {
       "type": "local",

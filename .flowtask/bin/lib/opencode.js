@@ -243,6 +243,15 @@ export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
 
     const targetSubDir = path.join(ideDir, "flowtask");
 
+    // FlowTask owns the default for new installations, but an existing
+    // consumer's explicit choice is preserved on update.
+    if (
+      Object.prototype.hasOwnProperty.call(ftConfig, "default_agent") &&
+      !Object.prototype.hasOwnProperty.call(ideConfig, "default_agent")
+    ) {
+      ideConfig.default_agent = ftConfig.default_agent;
+    }
+
     for (const section of ["mcp", "agent", "command", "plugin"]) {
       if (!ftConfig[section]) continue;
       const adjusted = adjustConfigPaths(ftConfig[section], targetSubDir);

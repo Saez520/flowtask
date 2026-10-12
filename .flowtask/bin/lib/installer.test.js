@@ -354,6 +354,7 @@ test("update integrates config and cleans legacy scripts into an installed targe
     onboarded: true,
   });
   writeJson(path.join(root, ".flowtask", "opencode.json"), {
+    default_agent: "flowtask-runner",
     agent: { "flowtask-runner": { permission: canonicalRunnerPermission, task: { legacy: "keep" } } },
   });
   writeJson(path.join(root, ".opencode", "opencode.json"), {
@@ -374,6 +375,7 @@ test("update integrates config and cleans legacy scripts into an installed targe
   const updatedConfig = readJson(path.join(root, ".opencode", "opencode.json"));
   assert.ok(updatedConfig.agent["flowtask-validator"], "update must merge the new canonical agent");
   assert.equal(updatedConfig.agent["flowtask-validator"].prompt, "{file:flowtask/agents/validator.md}");
+  assert.equal(updatedConfig.default_agent, "flowtask-runner");
   assert.deepEqual(updatedConfig.agent.existing, { description: "manual" });
   assert.equal(Object.hasOwn(updatedConfig.agent["flowtask-runner"], "permission"), false);
   assert.ok(updatedConfig.agent["flowtask-runner"]);

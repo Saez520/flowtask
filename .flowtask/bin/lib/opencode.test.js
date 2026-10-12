@@ -61,6 +61,26 @@ test("merge removes legacy Runner permission while preserving unrelated config",
   assert.deepEqual(JSON.parse(fs.readFileSync(configPath, "utf8")), first);
 });
 
+test("merge installs the canonical default agent and preserves a manual update", () => {
+  const { root, flowtaskDir } = fixture();
+  writeJson(path.join(flowtaskDir, "opencode.json"), {
+    default_agent: "flowtask-runner",
+    agent: { "flowtask-runner": { description: "canonical" } },
+  });
+  const configPath = path.join(root, ".opencode", "opencode.json");
+  writeJson(configPath, { mcp: { external: { enabled: true } } });
+
+  mergeOpencodeConfig(configPath, flowtaskDir, ".opencode");
+  const installed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  assert.equal(installed.default_agent, "flowtask-runner");
+  assert.deepEqual(installed.mcp.external, { enabled: true });
+
+  installed.default_agent = "manual-agent";
+  writeJson(configPath, installed);
+  mergeOpencodeConfig(configPath, flowtaskDir, ".opencode");
+  assert.equal(JSON.parse(fs.readFileSync(configPath, "utf8")).default_agent, "manual-agent");
+});
+
 test("merge preserves manual values and repairs duplicate plugins idempotently", () => {
   const { root, flowtaskDir } = fixture();
   writeJson(path.join(flowtaskDir, "opencode.json"), {
