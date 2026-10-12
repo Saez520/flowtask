@@ -4,7 +4,7 @@ AI-driven development workflow system with persistent memory via Engram.
 
 FlowTask provides specialized AI agents that work together to automate software development tasks — from requirements capture to implementation and validation. Artifacts (CAs, plans, audits, reports) are stored in Engram as ca-artifact type; Engram persists both artifact content and operational state. Legacy CA artifacts remain in .workspace/ as fallback (Dual-Source).
 
-Current version: **1.22.0** (declared in `.flowtask/package.json`).
+Current version: **1.23.0** (declared in `.flowtask/package.json`).
 
 The system includes a **personality system** that adapts the runner's tone and depth based on your experience level, and **parallel worktree isolation** for running multiple development workflows simultaneously.
 
