@@ -260,6 +260,40 @@ Todos deben cumplirse:
 
 El Gate se invoca igual que en modo interactivo. `--auto` solo exime la espera de confirmación humana explícita; las comprobaciones del Gate son obligatorias en cualquier modo.
 
+### Descriptor multi-repo target-direct (CA2)
+
+La ruta CA2 se transporta como descriptor estructurado, nunca como texto libre:
+`target_kind`, `target_repo`, `target_common_dir`, `parent_repo`,
+`parent_common_dir`, `submodule_path`, `gitlink_sha`, `target_head`, `base`,
+`base_sha`, `branch`, `worktree_path`, `link_parent`, `namespace`, `phase`,
+`tx_id` e `index_snapshot_ref`. El Runner rehidrata esos campos para el
+Constructor y verifica que todos estén presentes antes de ejecutar. El target
+directo usa un repositorio de submodule explícito y no crea un worktree parent;
+`link_parent` sólo admite `staged-only`, sin commit, push ni merge.
+
+La implementación del transporte no es texto descriptivo: el Runner serializa
+el descriptor como un registro UTF-8/LF de claves únicas (o JSON estructurado),
+lo pasa como `target_direct_descriptor` y lo rehidrata antes de despachar. La
+rehidratación es fail-closed: valida versión, claves requeridas, paths
+absolutos normalizados, `target_kind=submodule`, `link_parent=staged-only`,
+`phase`, `tx_id` e `index_snapshot_ref`; un campo ausente, duplicado,
+desconocido o con newline detiene el despacho sin invocar al Constructor.
+
+El límite ejecutable de ese transporte es `.flowtask/bin/lib/target-direct-transport.js`:
+`serializeTargetDirectDescriptor` valida y serializa, `persistTargetDirectDescriptor`
+escribe el registro atómicamente, y `dispatchTargetDirectDescriptor` rehidrata el
+registro antes de llamar al Constructor. No se permite pasar el objeto original
+ni una paráfrasis como sustituto de `target_direct_descriptor`.
+
+```json
+{"descriptor_version":"1","operation":"link-parent","target_kind":"submodule","target_repo":"/abs/sub","target_common_dir":"/abs/sub/.git","parent_repo":"/abs/parent","parent_common_dir":"/abs/parent/.git","submodule_path":"sub","gitlink_sha":"<sha>","target_head":"<sha>","base":"main","base_sha":"<sha>","branch":"worktree/CA","worktree_path":"/abs/sub/.worktrees/CA","link_parent":"staged-only","namespace":"CA-worktree-submodule-target-direct","owner":"<pid>","phase":"verified","tx_id":"td-CA","index_snapshot_ref":"/abs/state/snapshot"}
+```
+
+El prompt del Constructor contiene sólo una referencia a ese registro y su
+contrato de ejecución; nunca reconstruye el target desde `cwd`, texto, gitlink
+o `.gitmodules`. Los campos se vuelven a comprobar antes de cada fase para
+impedir que una reanudación use un descriptor de otra transacción.
+
 ## Checkpoint Protocol (Vía Engram)
 
 ### Antes de invocar sub-agente (Handshake & Context)

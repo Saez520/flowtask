@@ -16,9 +16,40 @@ import {
 import { showInteractiveSelector } from "./ui.js";
 import { registerPluginArrayEntry } from "./opencode.js";
 import { generateClaudeCommands } from "./claude.js";
+import { verifyDirectoryMirror } from "./copy.js";
 
 const fixtures = [];
 const FLOWTASK_CLI = fileURLToPath(new URL("../flowtask.js", import.meta.url));
+
+test("mirror verification rejects missing, altered, and truncated files", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-mirror-"));
+  fixtures.push(root);
+  const source = path.join(root, "source");
+  const target = path.join(root, "target");
+  fs.mkdirSync(source, { recursive: true });
+  fs.mkdirSync(target, { recursive: true });
+  fs.writeFileSync(path.join(source, "runner.md"), "descriptor\n");
+  fs.copyFileSync(path.join(source, "runner.md"), path.join(target, "runner.md"));
+  assert.equal(verifyDirectoryMirror(source, target), true);
+  fs.writeFileSync(path.join(target, "runner.md"), "altered");
+  assert.equal(verifyDirectoryMirror(source, target), false);
+  fs.copyFileSync(path.join(source, "runner.md"), path.join(target, "runner.md"));
+  fs.truncateSync(path.join(target, "runner.md"), 0);
+  assert.equal(verifyDirectoryMirror(source, target), false);
+  fs.copyFileSync(path.join(source, "runner.md"), path.join(target, "runner.md"));
+  fs.rmSync(path.join(target, "runner.md"));
+  assert.equal(verifyDirectoryMirror(source, target), false);
+  fs.copyFileSync(path.join(source, "runner.md"), path.join(target, "runner.md"));
+  fs.writeFileSync(path.join(target, "stale"), "stale");
+  assert.equal(verifyDirectoryMirror(source, target), false);
+  fs.rmSync(path.join(target, "stale"));
+  fs.symlinkSync("runner.md", path.join(source, "runner-link"));
+  fs.symlinkSync("runner.md", path.join(target, "runner-link"));
+  assert.equal(verifyDirectoryMirror(source, target), true);
+  fs.unlinkSync(path.join(target, "runner-link"));
+  fs.symlinkSync("other", path.join(target, "runner-link"));
+  assert.equal(verifyDirectoryMirror(source, target), false);
+});
 
 afterEach(() => {
   for (const fixture of fixtures.splice(0)) {

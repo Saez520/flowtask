@@ -1134,6 +1134,9 @@ prune_worktrees() {
   printf 'operation: prune\nresult: success\npruned: %s\n' "$orphan_count"
 }
 
+# CA2 target-direct implementation is isolated from the parent-only lifecycle.
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/worktree-manager-target-direct.sh"
+
 usage() {
   cat <<'EOF'
 Uso:
@@ -1143,12 +1146,20 @@ Uso:
   worktree.sh [globales] recover [<transaction-id>]
   worktree.sh [globales] prune | list
 
+  target-direct:
+  worktree.sh --repo <submodule> --parent-repo <parent> create <CA_ID> --target submodule --submodule-path <REL> --base <branch> --link-parent staged-only
+  worktree.sh --repo <submodule> --parent-repo <parent> link-parent <CA_ID> --target submodule --submodule-path <REL> --link-parent staged-only
+  worktree.sh --repo <submodule> --parent-repo <parent> abort <CA_ID> --target submodule --submodule-path <REL> --link-parent staged-only [--tx <TX_ID>]
+
 La configuración es un archivo de datos key=value; nunca se ejecuta como shell.
 EOF
 }
 
 worktree_manager_main() {
-  ensure_git
+  local target_status
+  target_direct_main "$@" || target_status=$?
+  if [[ -n "${target_status:-}" && "$target_status" -ne 10 ]]; then exit "$target_status"; fi
+  [[ -n "${target_status:-}" ]] && unset target_status || return 0
   local requested_repo="" requested_config="" command arg base
   CREATE_PREPARE=0; CREATE_VERIFY=0
   while [[ $# -gt 0 ]]; do

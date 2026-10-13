@@ -188,6 +188,14 @@ describe("nested hotfix worktrees", () => {
     assert.equal(fs.readFileSync(path.join(tempRepo, "file.txt"), "utf8"), "fixed\n");
   });
 
+  it("keeps explicit --repo on the parent-only lifecycle", () => {
+    const result = runResult("--repo", tempRepo, "create", "parent-only-explicit", "--base", "main");
+    assert.equal(result.status, 0, result.stderr);
+    assert.ok(fs.existsSync(worktreeFor("parent-only-explicit")));
+    run("--repo", tempRepo, "cleanup", "parent-only-explicit", "--base", "main", "--discard");
+    assert.ok(!fs.existsSync(worktreeFor("parent-only-explicit")));
+  });
+
   it("preserves the hotfix worktree and branch on merge conflict", () => {
     markCa1Case("conflict");
     run("create", "hotfix/test-002", "--base", "main");
@@ -295,6 +303,184 @@ describe("nested hotfix worktrees", () => {
     assert.match(git("branch", "--list"), /worktree\/hotfix\/no-force/);
     assert.equal(git("rev-parse", "main"), before);
   });
+});
+
+describe("CA2 target-direct submodule lifecycle", () => {
+  beforeEach(() => initTempRepo());
+  afterEach(() => {
+    cleanupTemporarySubmoduleRepos();
+    fs.rmSync(tempRepo, { recursive: true, force: true });
+  });
+
+  it("creates only the target worktree and aborts staged-only parent link", () => {
+    createNestedSubmoduleFixture();
+    const target = path.join(tempRepo, "sub");
+    const baseArgs = ["--repo", target, "--parent-repo", tempRepo];
+    const targetArgs = ["--target", "submodule", "--submodule-path", "sub", "--link-parent", "staged-only"];
+    const created = runResult(...baseArgs, "create", "CA2-direct", ...targetArgs, "--base", "main");
+    assert.equal(created.status, 0, created.stderr);
+    assert.match(created.stdout, /parent_worktree: none/);
+    const targetWorktree = path.join(target, ".worktrees", "CA2-direct");
+    fs.writeFileSync(path.join(targetWorktree, "ca2.txt"), "target-direct\n");
+    execFileSync("git", ["-C", targetWorktree, "add", "ca2.txt"]);
+    execFileSync("git", ["-C", targetWorktree, "commit", "-qm", "target-direct change"]);
+    const linked = runResult(...baseArgs, "link-parent", "CA2-direct", ...targetArgs);
+    assert.equal(linked.status, 0, linked.stderr);
+    assert.match(git("diff", "--cached", "--name-status"), /sub/);
+    const aborted = runResult(...baseArgs, "abort", "CA2-direct", ...targetArgs);
+    assert.equal(aborted.status, 0, aborted.stderr);
+    assert.equal(git("diff", "--cached", "--name-status").trim(), "");
+    assert.equal(execFileSync("git", ["-C", target, "worktree", "list", "--porcelain"], { encoding: "utf8" }).split("\n").filter((line) => line.startsWith("worktree ")).length, 2);
+  });
+
+  it("completes target-direct and makes a repeated complete a no-op", () => {
+    createNestedSubmoduleFixture();
+    const target = path.join(tempRepo, "sub");
+    const args = ["--repo", target, "--parent-repo", tempRepo];
+    const spec = ["--target", "submodule", "--submodule-path", "sub", "--link-parent", "staged-only"];
+    assert.equal(runResult(...args, "create", "CA2-complete", ...spec, "--base", "main").status, 0);
+    const worktree = path.join(target, ".worktrees", "CA2-complete");
+    fs.writeFileSync(path.join(worktree, "complete.txt"), "complete\n");
+    git("-C", worktree, "add", "complete.txt");
+    git("-C", worktree, "commit", "-qm", "target complete");
+    assert.equal(runResult(...args, "complete", "CA2-complete", ...spec).status, 0);
+    assert.equal(fs.existsSync(worktree), false);
+    assert.equal(runResult(...args, "complete", "CA2-complete", ...spec).status, 0);
+    assert.doesNotMatch(execFileSync("git", ["-C", target, "branch", "--list"], { encoding: "utf8" }), /CA2-complete/);
+  });
+
+  it("supports link-parent followed by complete without touching the parent commit", () => {
+    createNestedSubmoduleFixture();
+    const target = path.join(tempRepo, "sub");
+    const args = ["--repo", target, "--parent-repo", tempRepo];
+    const spec = ["--target", "submodule", "--submodule-path", "sub", "--link-parent", "staged-only"];
+    assert.equal(runResult(...args, "create", "CA2-composed", ...spec, "--base", "main").status, 0);
+    const worktree = path.join(target, ".worktrees", "CA2-composed");
+    fs.writeFileSync(path.join(worktree, "composed.txt"), "composed\n");
+    git("-C", worktree, "add", "composed.txt");
+    git("-C", worktree, "commit", "-qm", "composed target");
+    const parentHead = git("rev-parse", "HEAD");
+    const linked = runResult(...args, "link-parent", "CA2-composed", ...spec);
+    assert.equal(linked.status, 0, linked.stderr);
+    assert.match(git("diff", "--cached", "--name-only"), /sub/);
+    const completed = runResult(...args, "complete", "CA2-composed", ...spec);
+    assert.equal(completed.status, 0, completed.stderr);
+    assert.equal(fs.existsSync(worktree), false);
+    assert.equal(git("rev-parse", "HEAD"), parentHead);
+  });
+
+  it("rejects complete when the staged gitlink SHA is no longer the target SHA", () => {
+    createNestedSubmoduleFixture();
+    const target = path.join(tempRepo, "sub");
+    const args = ["--repo", target, "--parent-repo", tempRepo];
+    const spec = ["--target", "submodule", "--submodule-path", "sub", "--link-parent", "staged-only"];
+    assert.equal(runResult(...args, "create", "CA2-sha-drift", ...spec, "--base", "main").status, 0);
+    const worktree = path.join(target, ".worktrees", "CA2-sha-drift");
+    fs.writeFileSync(path.join(worktree, "sha-drift.txt"), "sha drift\n");
+    git("-C", worktree, "add", "sha-drift.txt");
+    git("-C", worktree, "commit", "-qm", "sha drift target");
+    assert.equal(runResult(...args, "link-parent", "CA2-sha-drift", ...spec).status, 0);
+    const unrelatedSha = git("-C", target, "rev-parse", "main").trim();
+    execFileSync("git", ["-C", tempRepo, "update-index", "--add", "--cacheinfo", `160000,${unrelatedSha},sub`]);
+    const rejected = runResult(...args, "complete", "CA2-sha-drift", ...spec);
+    assert.equal(rejected.status, 4);
+    assert.equal(fs.existsSync(worktree), true);
+  });
+
+  it("rejects complete when the parent HEAD drifts after link-parent", () => {
+    createNestedSubmoduleFixture();
+    const target = path.join(tempRepo, "sub");
+    const args = ["--repo", target, "--parent-repo", tempRepo];
+    const spec = ["--target", "submodule", "--submodule-path", "sub", "--link-parent", "staged-only"];
+    assert.equal(runResult(...args, "create", "CA2-parent-drift", ...spec, "--base", "main").status, 0);
+    const worktree = path.join(target, ".worktrees", "CA2-parent-drift");
+    fs.writeFileSync(path.join(worktree, "parent-drift.txt"), "parent drift\n");
+    git("-C", worktree, "add", "parent-drift.txt");
+    git("-C", worktree, "commit", "-qm", "parent drift target");
+    assert.equal(runResult(...args, "link-parent", "CA2-parent-drift", ...spec).status, 0);
+    fs.writeFileSync(path.join(tempRepo, "unrelated-parent.txt"), "drift\n");
+    git("add", "unrelated-parent.txt", "sub");
+    git("commit", "-qm", "unrelated parent drift");
+    const targetSha = git("-C", worktree, "rev-parse", "HEAD").trim();
+    execFileSync("git", ["-C", tempRepo, "update-index", "--add", "--cacheinfo", `160000,${targetSha},sub`]);
+    const rejected = runResult(...args, "complete", "CA2-parent-drift", ...spec);
+    assert.equal(rejected.status, 6);
+    assert.equal(fs.existsSync(worktree), true);
+  });
+
+  it("fails closed on target/gitlink mismatch before creating resources", () => {
+    createNestedSubmoduleFixture();
+    const target = path.join(tempRepo, "sub");
+    fs.writeFileSync(path.join(target, "mismatch.txt"), "mismatch\n");
+    git("-C", target, "add", "mismatch.txt");
+    git("-C", target, "commit", "-qm", "mismatch");
+    const result = runResult("--repo", target, "--parent-repo", tempRepo, "create", "CA2-mismatch", "--target", "submodule", "--submodule-path", "sub", "--link-parent", "staged-only", "--base", "main");
+    assert.equal(result.status, 4);
+    assert.equal(fs.existsSync(path.join(target, ".worktrees", "CA2-mismatch")), false);
+  });
+
+  it("blocks abort on unrelated parent index drift and preserves the staged evidence", () => {
+    createNestedSubmoduleFixture();
+    const target = path.join(tempRepo, "sub");
+    const args = ["--repo", target, "--parent-repo", tempRepo];
+    const spec = ["--target", "submodule", "--submodule-path", "sub", "--link-parent", "staged-only"];
+    assert.equal(runResult(...args, "create", "CA2-drift", ...spec, "--base", "main").status, 0);
+    const worktree = path.join(target, ".worktrees", "CA2-drift");
+    fs.writeFileSync(path.join(worktree, "drift.txt"), "drift\n");
+    git("-C", worktree, "add", "drift.txt");
+    git("-C", worktree, "commit", "-qm", "drift target");
+    assert.equal(runResult(...args, "link-parent", "CA2-drift", ...spec).status, 0);
+    fs.writeFileSync(path.join(tempRepo, "unrelated.txt"), "unrelated\n");
+    git("add", "unrelated.txt");
+    const aborted = runResult(...args, "abort", "CA2-drift", ...spec);
+    assert.equal(aborted.status, 6);
+    assert.match(git("diff", "--cached", "--name-only"), /sub/);
+    assert.match(git("diff", "--cached", "--name-only"), /unrelated/);
+  });
+
+  it("uses owner locks and recovers a staged crash without repeating the stage", () => {
+    createNestedSubmoduleFixture();
+    const target = path.join(tempRepo, "sub");
+    const args = ["--repo", target, "--parent-repo", tempRepo];
+    const spec = ["--target", "submodule", "--submodule-path", "sub", "--link-parent", "staged-only"];
+    assert.equal(runResult(...args, "create", "CA2-lock-crash", ...spec, "--base", "main").status, 0);
+    const worktree = path.join(target, ".worktrees", "CA2-lock-crash");
+    fs.writeFileSync(path.join(worktree, "crash.txt"), "crash\n");
+    git("-C", worktree, "add", "crash.txt");
+    git("-C", worktree, "commit", "-qm", "crash target");
+    const common = path.resolve(target, git("-C", target, "rev-parse", "--git-common-dir").trim());
+    const lock = path.join(common, "worktree-manager", "target-direct", "locks", `target-${Buffer.from(common).toString("hex")}`);
+    fs.mkdirSync(lock, { recursive: true });
+    fs.writeFileSync(path.join(lock, "owner_pid"), `${process.pid}\n`);
+    assert.equal(runResult(...args, "link-parent", "CA2-lock-crash", ...spec).status, 5);
+    fs.rmSync(lock, { recursive: true, force: true });
+    const crashed = runResultWithEnv({ FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_TARGET_CRASH_AFTER: "staged_started" }, ...args, "link-parent", "CA2-lock-crash", ...spec);
+    assert.equal(crashed.status, 99);
+    const recovered = runResult(...args, "recover", "td-CA2-lock-crash");
+    assert.equal(recovered.status, 0, recovered.stderr);
+    assert.equal(git("diff", "--cached", "--name-only").trim(), "");
+  });
+
+  for (const crashPhase of ["complete_validated", "remove_started", "removed"]) {
+    it(`reconciles target-direct crash after ${crashPhase} without repeating effects`, () => {
+      createNestedSubmoduleFixture();
+      const target = path.join(tempRepo, "sub");
+      const args = ["--repo", target, "--parent-repo", tempRepo];
+      const spec = ["--target", "submodule", "--submodule-path", "sub", "--link-parent", "staged-only"];
+      assert.equal(runResult(...args, "create", `CA2-${crashPhase}`, ...spec, "--base", "main").status, 0);
+      const worktree = path.join(target, ".worktrees", `CA2-${crashPhase}`);
+      fs.writeFileSync(path.join(worktree, "close.txt"), "close\n");
+      git("-C", worktree, "add", "close.txt");
+      git("-C", worktree, "commit", "-qm", "target close");
+      const crashed = runResultWithEnv({ FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_TARGET_CRASH_AFTER: crashPhase }, ...args, "complete", `CA2-${crashPhase}`, ...spec);
+      assert.equal(crashed.status, 99, crashed.stderr);
+      const recovered = runResult(...args, "recover", `td-CA2-${crashPhase}`);
+      assert.equal(recovered.status, 0, recovered.stderr);
+      assert.equal(fs.existsSync(worktree), false);
+      assert.doesNotMatch(execFileSync("git", ["-C", target, "branch", "--list"], { encoding: "utf8" }), new RegExp(`CA2-${crashPhase}`));
+      assert.equal(runResult(...args, "recover", `td-CA2-${crashPhase}`).status, 0);
+    });
+  }
 });
 
 describe("complete submodule lifecycle (Git 2.54.0)", () => {

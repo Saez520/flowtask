@@ -94,6 +94,26 @@ primero para entender el contexto antes de crear nuevos.
 
 Ejecuta los artefactos del plan en el orden especificado.
 
+Para CA2 target-direct, ejecuta únicamente el descriptor rehidratado por el
+Runner: `target_repo` es el repositorio del submodule y `parent_repo` es sólo
+el repositorio de enlace. No derives el target desde cwd, gitlink o
+`.gitmodules`; no crees un worktree parent. `link_parent` sólo puede ser
+`staged-only` y cualquier abort/reanudación debe conservar el snapshot del
+índice y bloquear ante drift ambiguo.
+
+La entrada operativa de CA2 es `target_direct_descriptor`, no una paráfrasis
+del Runner. Antes de cada comando el Constructor comprueba que la
+rehidratación contiene las claves contractuales, que `phase` coincide con el
+journal y que la identidad target/parent/submodule no cambió. Si falla, devuelve
+un error cerrado y no ejecuta Git. `complete`, `recover` y `abort` reutilizan el
+descriptor persistido; `recover` nunca se convierte en `discard`.
+
+La rehidratación se ejecuta mediante `.flowtask/bin/lib/target-direct-transport.js`
+(`loadTargetDirectDescriptor`/`rehydrateTargetDirectDescriptor`); el Constructor
+recibe únicamente ese valor validado desde el transporte del Runner. El módulo
+rechaza claves desconocidas o duplicadas, newline en valores, paths relativos,
+SHA inválidos y cualquier `link_parent` distinto de `staged-only`.
+
 Para cada artefacto:
 1. Lee los archivos de referencia indicados en el plan
 2. Implementa siguiendo las convenciones del plan

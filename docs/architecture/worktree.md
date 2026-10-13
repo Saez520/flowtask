@@ -41,6 +41,26 @@ verifica el estado desinicializado, usa `worktree remove --force` sólo en esa
 ruta interna y elimina la branch con `update-ref` condicionado al SHA esperado.
 Los crashes se reanudan por fase sin repetir squash, deinit o remove.
 
-El `cleanup` público y `cleanup --discard` conservan su contrato actual y no
-leen el journal de `complete`; `recover` sigue siendo exclusivo de
-`--preserve-dirty` y nunca retira worktrees ni branches.
+## Lifecycle target-direct (CA2)
+
+Cuando el operador proporciona explícitamente `--repo` para el repositorio del
+submodule, `--parent-repo`, `--target submodule` y `--submodule-path`, el
+worktree vive en la raíz Git real del submodule. No se crea ni se arrastra un
+worktree del parent. La identidad valida el gitlink `160000`, la raíz y el SHA
+antes de mutar recursos.
+
+`link-parent ... --link-parent staged-only` captura bajo lock el `HEAD`, el
+diff staged binario, `ls-files --stage` y los bytes/hash del índice parent.
+Sólo prepara el gitlink en el índice; no hace commit, merge, push ni limpieza.
+`abort` restaura atómicamente el índice únicamente en clasificación A/B; ante
+HEAD drift, cambios ajenos o estado no clasificable conserva evidencia y
+bloquea. El descriptor, metadata y journal son UTF-8/LF, reemplazados
+atómicamente, y el gate exige exactamente Git 2.54.0 (el shim de tests es la
+única prueba portable de esa versión).
+
+El `complete` target-direct cierra sólo el worktree/branch del target, con
+fases state-first e idempotencia; nunca modifica el parent. `recover` target-
+direct rehidrata el descriptor y reconcilia la transacción bajo locks target →
+parent; ante estado ambiguo devuelve 6 y conserva evidencia. El `cleanup`
+público y `cleanup --discard` conservan su contrato actual y no leen este
+journal.

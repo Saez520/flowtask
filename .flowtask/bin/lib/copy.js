@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { logSuccess } from "./logger.js";
+import crypto from "crypto";
 
 const SKIP_DIRS = new Set(["node_modules", ".git"]);
 
@@ -14,6 +15,7 @@ const SKIP_DIRS = new Set(["node_modules", ".git"]);
 export function copyWithProgress(src, dest, label, readline) {
   const files = [];
   const visited = new Set();
+  const root = fs.realpathSync(src);
 
   const scan = (dir) => {
     const realDir = fs.realpathSync(dir);
@@ -23,17 +25,23 @@ export function copyWithProgress(src, dest, label, readline) {
       if (SKIP_DIRS.has(entry.name)) return;
       const fullPath = path.join(dir, entry.name);
       if (entry.isSymbolicLink()) {
-        try {
-          const stat = fs.statSync(fullPath);
-          if (stat.isDirectory()) scan(fullPath);
-          else files.push(fullPath);
-        } catch (e) {
-          // broken symlink, skip
+        // Keep links as links, but never allow an installer payload to point
+        // outside its source tree.  Broken links are rejected rather than
+        // silently producing a different mirror.
+        let realTarget;
+        try { realTarget = fs.realpathSync(fullPath); } catch {
+          throw new Error(`Refusing broken symbolic link in ${src}: ${path.relative(src, fullPath)}`);
         }
+        if (realTarget !== root && !realTarget.startsWith(`${root}${path.sep}`)) {
+          throw new Error(`Refusing symbolic link outside source tree: ${path.relative(src, fullPath)}`);
+        }
+        files.push(fullPath);
       } else if (entry.isDirectory()) {
         scan(fullPath);
-      } else {
+      } else if (entry.isFile()) {
         files.push(fullPath);
+      } else {
+        throw new Error(`Refusing special file in installer payload: ${path.relative(src, fullPath)}`);
       }
     });
   };
@@ -44,7 +52,15 @@ export function copyWithProgress(src, dest, label, readline) {
     const destPath = path.join(dest, relative);
     const destDir = path.dirname(destPath);
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-    fs.copyFileSync(file, destPath);
+    const stat = fs.lstatSync(file);
+    if (stat.isSymbolicLink()) {
+      if (fs.existsSync(destPath) || fs.lstatSync(destPath, { throwIfNoEntry: false })) fs.rmSync(destPath, { recursive: true, force: true });
+      fs.symlinkSync(fs.readlinkSync(file), destPath);
+    } else if (stat.isFile()) {
+      fs.copyFileSync(file, destPath);
+    } else {
+      throw new Error(`Refusing special file in installer payload: ${path.relative(src, file)}`);
+    }
     renderProgressBar(readline, index + 1, files.length, `${label}: ${path.basename(file)}`);
   });
 
@@ -94,27 +110,84 @@ export function copyDirectoryDelta(src, dest, preservePaths = [], visited = new 
     if (preservePaths.some((p) => destPath.includes(p))) { skipped++; continue; }
 
     // Security: skip symlinks that escape source tree
-    const realSrcPath = fs.realpathSync(srcPath);
+    let realSrcPath;
+    try { realSrcPath = fs.realpathSync(srcPath); } catch { skipped++; continue; }
     const realRootSrc = fs.realpathSync(rootSrc);
-    if (!realSrcPath.startsWith(realRootSrc)) { skipped++; continue; }
+    if (realSrcPath !== realRootSrc && !realSrcPath.startsWith(`${realRootSrc}${path.sep}`)) { skipped++; continue; }
 
-    if (entry.isSymbolicLink() || entry.isDirectory()) {
-      const stats = fs.statSync(srcPath);
-      if (stats.isDirectory()) {
+    if (entry.isSymbolicLink()) {
+      const target = fs.realpathSync(srcPath);
+      const root = fs.realpathSync(rootSrc);
+      if (!target.startsWith(`${root}${path.sep}`) && target !== root) { skipped++; continue; }
+      if (fs.existsSync(destPath) && !fs.lstatSync(destPath).isSymbolicLink()) fs.rmSync(destPath, { recursive: true, force: true });
+      if (!fs.existsSync(destPath) || fs.readlinkSync(destPath) !== fs.readlinkSync(srcPath)) {
+        fs.symlinkSync(fs.readlinkSync(srcPath), destPath); copied++;
+      } else skipped++;
+    } else if (entry.isDirectory()) {
+      {
         const result = copyDirectoryDelta(srcPath, destPath, preservePaths, visited, rootSrc);
         copied += result.copied;
         skipped += result.skipped;
-      } else {
-        if (isFileChanged(srcPath, destPath)) { fs.copyFileSync(srcPath, destPath); copied++; }
-        else skipped++;
       }
-    } else {
+    } else if (entry.isFile()) {
       if (isFileChanged(srcPath, destPath)) { fs.copyFileSync(srcPath, destPath); copied++; }
       else skipped++;
+    } else {
+      // Sockets, devices and FIFOs are not portable installer payloads.
+      skipped++;
     }
   }
 
   return { copied, skipped };
+}
+
+/** Verify an installed mirror byte-for-byte, including SHA-256 for every file. */
+export function verifyDirectoryMirror(src, dest) {
+  if (!fs.existsSync(src) || !fs.existsSync(dest)) return false;
+  const files = [];
+  const destinationFiles = [];
+  const collect = (dir, root) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      const source = path.join(dir, entry.name);
+      const relative = path.relative(root, source);
+      if (entry.isDirectory()) { if (!collect(source, root)) return false; }
+       else if (entry.isFile() || entry.isSymbolicLink()) files.push(relative);
+      else return false;
+    }
+    return true;
+  };
+  if (!collect(src, src)) return false;
+  const collectDestination = (dir, root) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      const target = path.join(dir, entry.name);
+      const relative = path.relative(root, target);
+      if (entry.isDirectory()) { if (!collectDestination(target, root)) return false; }
+       else if (entry.isFile() || entry.isSymbolicLink()) destinationFiles.push(relative);
+      else return false;
+    }
+    return true;
+  };
+  if (!collectDestination(dest, dest) || files.length !== destinationFiles.length) return false;
+  const destinationSet = new Set(destinationFiles);
+  if (files.some((relative) => !destinationSet.has(relative))) return false;
+  for (const relative of files) {
+    const source = path.join(src, relative);
+    const target = path.join(dest, relative);
+     let targetStat;
+     try { targetStat = fs.lstatSync(target); } catch { return false; }
+     if (!targetStat.isFile() && !targetStat.isSymbolicLink()) return false;
+     if (fs.lstatSync(source).isSymbolicLink() || fs.lstatSync(target).isSymbolicLink()) {
+       if (!fs.lstatSync(source).isSymbolicLink() || !fs.lstatSync(target).isSymbolicLink()) return false;
+       if (fs.readlinkSync(source) !== fs.readlinkSync(target)) return false;
+       continue;
+     }
+    const sourceHash = crypto.createHash("sha256").update(fs.readFileSync(source)).digest("hex");
+    const targetHash = crypto.createHash("sha256").update(fs.readFileSync(target)).digest("hex");
+    if (sourceHash !== targetHash || !fs.readFileSync(source).equals(fs.readFileSync(target))) return false;
+  }
+  return true;
 }
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
