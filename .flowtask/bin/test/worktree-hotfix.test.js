@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it, beforeEach, afterEach, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -9,6 +9,20 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const SCRIPT = path.join(ROOT, ".flowtask", "scripts", "worktree.sh");
 let tempRepo;
+const temporarySubmoduleRepos = [];
+const CA1_REQUIRED_CASES = [
+  "parser", "default", "opt-in", "nested", "init-failure", "deinit", "dirty", "conflict",
+  "sha-divergence", "crash-pre", "crash-post", "discard", "preserve-dirty", "recover", "prune",
+];
+const ca1ObservedCases = new Set();
+
+function markCa1Case(...cases) {
+  for (const name of cases) ca1ObservedCases.add(name);
+}
+
+after(() => {
+  assert.deepEqual([...ca1ObservedCases].sort(), [...CA1_REQUIRED_CASES].sort(), "CA1_REQUIRED_CASES sentinel: falta una regresión obligatoria");
+});
 
 function run(...args) {
   return execFileSync(SCRIPT, args, { cwd: tempRepo, encoding: "utf8", stdio: "pipe" });
@@ -34,6 +48,71 @@ function createCommittedWorktree(name) {
   git("-C", worktree, "add", "change.txt");
   git("-C", worktree, "commit", "-qm", "worktree change");
   return worktree;
+}
+
+function createNestedSubmoduleFixture() {
+  const nested = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-nested-submodule-"));
+  const upstream = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-upstream-submodule-"));
+  for (const repo of [nested, upstream]) {
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: repo });
+    execFileSync("git", ["config", "user.email", "test@example.invalid"], { cwd: repo });
+    execFileSync("git", ["config", "user.name", "FlowTask Test"], { cwd: repo });
+  }
+  fs.writeFileSync(path.join(nested, "nested.txt"), "nested\n");
+  execFileSync("git", ["add", "nested.txt"], { cwd: nested });
+  execFileSync("git", ["commit", "-qm", "nested"], { cwd: nested });
+  execFileSync("git", ["-c", "protocol.file.allow=always", "submodule", "add", "-q", nested, "nested"], { cwd: upstream });
+  execFileSync("git", ["commit", "-qam", "upstream with nested"], { cwd: upstream });
+  execFileSync("git", ["-c", "protocol.file.allow=always", "submodule", "add", "-q", upstream, "sub"], { cwd: tempRepo });
+  execFileSync("git", ["add", ".gitmodules", "sub"], { cwd: tempRepo });
+  execFileSync("git", ["commit", "-qm", "parent with nested submodule"], { cwd: tempRepo });
+  temporarySubmoduleRepos.push(nested, upstream);
+  return { nested, upstream };
+}
+
+function closeMetaFor(name) {
+  const common = path.resolve(tempRepo, git("rev-parse", "--git-common-dir").trim());
+  return path.join(common, "worktree-manager", "close", Buffer.from(name).toString("hex"), "meta");
+}
+
+function closeJournalFor(name) {
+  return path.join(path.dirname(closeMetaFor(name)), "journal");
+}
+
+function counterValues(counterPath) {
+  if (!fs.existsSync(counterPath)) return [];
+  return fs.readFileSync(counterPath, "utf8").trim().split(/\n/).filter(Boolean);
+}
+
+function testCounterPath(label) {
+  return path.join(os.tmpdir(), `flowtask-counter-${process.pid}-${label}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+}
+
+function runWithFailingSubmoduleStatus(...args) {
+  const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-git-shim-"));
+  const shim = path.join(shimDir, "git");
+  const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+  fs.writeFileSync(
+    shim,
+    "#!/bin/sh\n" +
+      "case \" $* \" in\n" +
+      "  *\" submodule status --recursive \"*) echo submodule-status-failure >&2; exit 77 ;;\n" +
+      "esac\n" +
+      "exec \"$REAL_GIT\" \"$@\"\n",
+    { mode: 0o755 },
+  );
+  try {
+    return runResultWithEnv({
+      REAL_GIT: realGit,
+      PATH: `${shimDir}${path.delimiter}${process.env.PATH}`,
+    }, ...args);
+  } finally {
+    fs.rmSync(shimDir, { recursive: true, force: true });
+  }
+}
+
+function cleanupTemporarySubmoduleRepos() {
+  for (const repo of temporarySubmoduleRepos.splice(0)) fs.rmSync(repo, { recursive: true, force: true });
 }
 
 // Mensaje de rechazo destino-dirty: plantilla fija, única variable permitida es
@@ -91,6 +170,7 @@ describe("nested hotfix worktrees", () => {
   });
 
   afterEach(() => {
+    cleanupTemporarySubmoduleRepos();
     fs.rmSync(tempRepo, { recursive: true, force: true });
   });
 
@@ -109,6 +189,7 @@ describe("nested hotfix worktrees", () => {
   });
 
   it("preserves the hotfix worktree and branch on merge conflict", () => {
+    markCa1Case("conflict");
     run("create", "hotfix/test-002", "--base", "main");
     const hotfix = path.join(tempRepo, ".worktrees", "hotfix", "test-002");
     fs.writeFileSync(path.join(hotfix, "file.txt"), "hotfix\n");
@@ -202,6 +283,7 @@ describe("nested hotfix worktrees", () => {
   }
 
   it("rejects complete bypass options before changing state", () => {
+    markCa1Case("parser");
     const worktree = createCommittedWorktree("hotfix/no-force");
     const before = git("rev-parse", "main");
     for (const option of ["--force", "--unknown"]) {
@@ -212,6 +294,359 @@ describe("nested hotfix worktrees", () => {
     assert.ok(fs.existsSync(worktree));
     assert.match(git("branch", "--list"), /worktree\/hotfix\/no-force/);
     assert.equal(git("rev-parse", "main"), before);
+  });
+});
+
+describe("complete submodule lifecycle (Git 2.54.0)", () => {
+  beforeEach(() => {
+    initTempRepo();
+  });
+
+  afterEach(() => {
+    cleanupTemporarySubmoduleRepos();
+    fs.rmSync(tempRepo, { recursive: true, force: true });
+  });
+
+  it("keeps submodules unpopulated by default and closes a clean parent", () => {
+    markCa1Case("default", "deinit");
+    const fixture = createNestedSubmoduleFixture();
+    run("create", "sub-default", "--base", "main");
+    const worktree = worktreeFor("sub-default");
+    assert.match(git("-C", worktree, "submodule", "status", "--recursive"), /^-/m);
+    assert.match(fs.readFileSync(closeMetaFor("sub-default"), "utf8"), /^init_requested=false$/m);
+    assert.match(fs.readFileSync(closeMetaFor("sub-default"), "utf8"), /^init_result=not_requested$/m);
+    fs.writeFileSync(path.join(worktree, "file.txt"), "submodule default\n");
+    git("-C", worktree, "add", "file.txt");
+    git("-C", worktree, "commit", "-qm", "default close");
+    run("complete", "sub-default", "--base", "main");
+    assert.equal(fs.existsSync(worktree), false);
+    assert.doesNotMatch(git("branch", "--list"), /worktree\/sub-default/);
+    run("create", "sub-complete-init", "--base", "main");
+    const initializedOnComplete = worktreeFor("sub-complete-init");
+    fs.writeFileSync(path.join(initializedOnComplete, "file.txt"), "complete init\n");
+    git("-C", initializedOnComplete, "add", "file.txt");
+    git("-C", initializedOnComplete, "commit", "-qm", "complete init");
+    const initialized = runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "complete", "sub-complete-init", "--base", "main", "--init-submodules");
+    assert.equal(initialized.status, 0, initialized.stderr);
+    assert.match(fs.readFileSync(closeMetaFor("sub-complete-init"), "utf8"), /^init_result=initialized$/m);
+    assert.equal(fixture.nested.length > 0, true);
+  });
+
+  it("initializes root and nested submodules only with the opt-in flag", () => {
+    markCa1Case("opt-in", "nested");
+    const fixture = createNestedSubmoduleFixture();
+    const created = runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "create", "sub-opt-in", "--base", "main", "--init-submodules");
+    assert.equal(created.status, 0, created.stderr);
+    const worktree = worktreeFor("sub-opt-in");
+    const status = git("-C", worktree, "submodule", "status", "--recursive");
+    assert.doesNotMatch(status, /^-/m);
+    assert.match(status, /sub\/nested/);
+    assert.match(fs.readFileSync(closeMetaFor("sub-opt-in"), "utf8"), /^init_requested=true$/m);
+    assert.match(fs.readFileSync(closeMetaFor("sub-opt-in"), "utf8"), /^init_result=initialized$/m);
+    fs.writeFileSync(path.join(worktree, "file.txt"), "submodule opt-in\n");
+    git("-C", worktree, "add", "file.txt");
+    git("-C", worktree, "commit", "-qm", "opt-in close");
+    const completed = runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "complete", "sub-opt-in", "--base", "main");
+    assert.equal(completed.status, 0, completed.stderr);
+    assert.equal(fs.existsSync(worktree), false);
+    assert.equal(fixture.upstream.length > 0, true);
+  });
+
+  it("retains the worktree and pending init journal when initialization fails", () => {
+    markCa1Case("init-failure");
+    const fixture = createNestedSubmoduleFixture();
+    fs.rmSync(fixture.upstream, { recursive: true, force: true });
+    const failed = runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "create", "sub-init-failure", "--base", "main", "--init-submodules");
+    assert.equal(failed.status, 1);
+    const worktree = worktreeFor("sub-init-failure");
+    assert.equal(fs.existsSync(worktree), true);
+    assert.match(git("branch", "--list"), /worktree\/sub-init-failure/);
+    assert.match(fs.readFileSync(closeMetaFor("sub-init-failure"), "utf8"), /^phase=init_started$/m);
+    assert.match(fs.readFileSync(closeMetaFor("sub-init-failure"), "utf8"), /^init_result=pending$/m);
+  });
+
+  it("ignores the complete-only close crash hook during create init", () => {
+    markCa1Case("crash-pre");
+    const fixture = createNestedSubmoduleFixture();
+    const name = "sub-create-close-hook";
+    const created = runResultWithEnv(
+      { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_CLOSE_CRASH_AFTER: "init_started", GIT_ALLOW_PROTOCOL: "file" },
+      "create", name, "--base", "main", "--init-submodules",
+    );
+
+    assert.equal(created.status, 0, created.stderr);
+    const worktree = worktreeFor(name);
+    assert.equal(fs.existsSync(worktree), true);
+    assert.match(git("branch", "--list"), new RegExp(`worktree/${name}`));
+    const status = git("-C", worktree, "submodule", "status", "--recursive");
+    assert.doesNotMatch(status, /^-/m);
+    assert.match(status, /sub\/nested/);
+    assert.match(fs.readFileSync(closeMetaFor(name), "utf8"), /^phase=initialized$/m);
+    assert.match(fs.readFileSync(closeMetaFor(name), "utf8"), /^init_result=initialized$/m);
+    assert.equal(fs.readFileSync(closeJournalFor(name), "utf8"), "initialized\n");
+    assert.equal(fixture.nested.length > 0, true);
+  });
+
+  it("retains the normal non-force cleanup error for a populated submodule", () => {
+    createNestedSubmoduleFixture();
+    const created = runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "create", "sub-cleanup-normal", "--base", "main", "--init-submodules");
+    assert.equal(created.status, 0, created.stderr);
+    const worktree = worktreeFor("sub-cleanup-normal");
+    const rejected = runResult("cleanup", "sub-cleanup-normal", "--base", "main");
+    assert.equal(rejected.status, 1);
+    assert.match(rejected.stderr, /submodule|force|retirar|remove/i);
+    assert.equal(fs.existsSync(worktree), true);
+    assert.match(git("branch", "--list"), /worktree\/sub-cleanup-normal/);
+  });
+
+  it("rejects populated dirty submodules and gitlink divergence before retirement", () => {
+    markCa1Case("dirty", "sha-divergence");
+    const fixture = createNestedSubmoduleFixture();
+    runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "create", "sub-dirty", "--base", "main", "--init-submodules");
+    const dirtyWorktree = worktreeFor("sub-dirty");
+    fs.appendFileSync(path.join(dirtyWorktree, "sub", "nested", "nested.txt"), "dirty\n");
+    const dirty = runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "complete", "sub-dirty", "--base", "main");
+    assert.equal(dirty.status, 1);
+    assert.match(dirty.stderr, /Submodule|cambios|diverge/i);
+    assert.equal(fs.existsSync(dirtyWorktree), true);
+    assert.match(git("branch", "--list"), /worktree\/sub-dirty/);
+
+    runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "create", "sub-diverge", "--base", "main", "--init-submodules");
+    const divergedWorktree = worktreeFor("sub-diverge");
+    fs.appendFileSync(path.join(divergedWorktree, "file.txt"), "diverged parent\n");
+    git("-C", divergedWorktree, "add", "file.txt");
+    git("-C", divergedWorktree, "commit", "-qm", "diverge close");
+    fs.appendFileSync(path.join(divergedWorktree, "sub", "nested", "nested.txt"), "divergent gitlink\n");
+    git("-C", divergedWorktree + "/sub/nested", "add", "nested.txt");
+    git("-C", divergedWorktree + "/sub/nested", "-c", "user.email=test@example.invalid", "-c", "user.name=FlowTask Test", "commit", "-qm", "divergent nested commit");
+    const divergence = runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "complete", "sub-diverge", "--base", "main");
+    assert.equal(divergence.status, 1);
+    assert.equal(fs.existsSync(divergedWorktree), true);
+    assert.match(divergence.stderr, /worktree|HEAD|rama|diverge|cambios/i);
+    assert.match(git("branch", "--list"), /worktree\/sub-diverge/);
+    assert.equal(fixture.nested.length > 0, true);
+  });
+
+  it("keeps public discard independent from the close journal", () => {
+    markCa1Case("discard");
+    createNestedSubmoduleFixture();
+    runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "create", "sub-discard", "--base", "main", "--init-submodules");
+    const worktree = worktreeFor("sub-discard");
+    const metaPath = closeMetaFor("sub-discard");
+    const before = fs.readFileSync(metaPath, "utf8");
+    const discarded = runResult("cleanup", "sub-discard", "--base", "main", "--discard");
+    assert.equal(discarded.status, 0, discarded.stderr);
+    assert.equal(fs.existsSync(worktree), false);
+    assert.equal(fs.readFileSync(metaPath, "utf8"), before);
+  });
+
+  it("does not report nested submodule gitdirs as prune orphans", () => {
+    markCa1Case("prune");
+    createNestedSubmoduleFixture();
+    runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "create", "sub-prune", "--base", "main", "--init-submodules");
+    const orphan = path.join(tempRepo, ".worktrees", "independent-orphan");
+    fs.mkdirSync(orphan, { recursive: true });
+    fs.writeFileSync(path.join(orphan, ".git"), "gitdir: /not-registered\n");
+    const pruned = runResult("prune");
+    assert.equal(pruned.status, 0, pruned.stderr);
+    assert.match(pruned.stdout, /independent-orphan/);
+    assert.doesNotMatch(pruned.stdout, /sub\/nested/);
+  });
+});
+
+describe("complete close journal crash phases", () => {
+  beforeEach(() => {
+    initTempRepo();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tempRepo, { recursive: true, force: true });
+  });
+
+  for (const phase of [
+    ["merge_started", "merge_started"],
+    ["merged_after", "merge_started"],
+    ["deinit_started", "deinit_started"],
+    ["deinitialized_after", "deinit_started"],
+    ["remove_started", "remove_started"],
+    ["removed_after", "remove_started"],
+    ["branch_cleanup_started", "branch_cleanup_started"],
+    ["branch_cleanup_after", "branch_cleanup_started"],
+  ]) {
+    it(`resumes idempotently after ${phase[0]}`, () => {
+      markCa1Case(phase[0].includes("after") ? "crash-post" : "crash-pre");
+      const name = `crash-${phase[0]}`;
+      const worktree = createCommittedWorktree(name);
+      const before = git("rev-parse", "main").trim();
+      const crashed = runResultWithEnv(
+        { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_CLOSE_CRASH_AFTER: phase[0] },
+        "complete", name, "--base", "main",
+      );
+      assert.equal(crashed.status, 99, crashed.stderr);
+      assert.equal(fs.readFileSync(closeMetaFor(name), "utf8").match(/^phase=(.*)$/m)?.[1], phase[1]);
+      const resumed = runResult("complete", name, "--base", "main");
+      assert.equal(resumed.status, 0, resumed.stderr);
+      assert.equal(git("rev-list", "--count", `${before}..main`).trim(), "1");
+      assert.equal(fs.existsSync(worktree), false);
+      assert.doesNotMatch(git("branch", "--list"), new RegExp(`worktree/${name}`));
+      const repeated = runResult("complete", name, "--base", "main");
+      assert.equal(repeated.status, 0, repeated.stderr);
+    });
+  }
+
+  it("does not advance removal after a branch SHA divergence", () => {
+    markCa1Case("sha-divergence");
+    const name = "crash-sha-divergence";
+    const worktree = createCommittedWorktree(name);
+    const crashed = runResultWithEnv(
+      { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_CLOSE_CRASH_AFTER: "removed_after" },
+      "complete", name, "--base", "main",
+    );
+    assert.equal(crashed.status, 99, crashed.stderr);
+    assert.equal(fs.existsSync(worktree), false);
+    const branch = `refs/heads/worktree/${name}`;
+    git("update-ref", branch, git("rev-parse", "main").trim());
+    const retry = runResult("complete", name, "--base", "main");
+    assert.equal(retry.status, 1);
+    assert.match(retry.stderr, /rama cambió|SHA/i);
+    assert.equal(git("rev-parse", branch).trim(), git("rev-parse", "main").trim());
+    assert.match(fs.readFileSync(closeMetaFor(name), "utf8"), /^phase=remove_started$/m);
+  });
+
+  it("does not squash when merge_started is retried after the path was removed", () => {
+    markCa1Case("crash-pre");
+    const name = "crash-merge-path-removed";
+    const worktree = createCommittedWorktree(name);
+    const before = git("rev-parse", "main").trim();
+    const crashed = runResultWithEnv(
+      { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_CLOSE_CRASH_AFTER: "merge_started" },
+      "complete", name, "--base", "main",
+    );
+    assert.equal(crashed.status, 99, crashed.stderr);
+    fs.rmSync(worktree, { recursive: true, force: true });
+
+    const counter = testCounterPath("merge-path-removed");
+    const retry = runResultWithEnv(
+      { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_COUNTER_FILE: counter },
+      "complete", name, "--base", "main",
+    );
+    assert.equal(retry.status, 1);
+    assert.match(retry.stderr, /merge_started|worktree|base|modifica/i);
+    assert.equal(git("rev-parse", "main").trim(), before);
+    assert.match(git("branch", "--list"), /worktree\/crash-merge-path-removed/);
+    assert.equal(counterValues(counter).includes("squash"), false);
+    assert.match(fs.readFileSync(closeMetaFor(name), "utf8"), /^phase=merge_started$/m);
+  });
+
+  it("rejects close journal/meta phase mismatch and corruption without mutating the base", () => {
+    for (const [label, mutate] of [
+      ["mismatch", (name) => fs.writeFileSync(closeJournalFor(name), "merged\n")],
+      ["journal-corrupt", (name) => fs.writeFileSync(closeJournalFor(name), "not-a-phase\n")],
+      ["meta-corrupt", (name) => {
+        const meta = fs.readFileSync(closeMetaFor(name), "utf8");
+        fs.writeFileSync(closeMetaFor(name), meta.replace(/^phase=.*$/m, "phase=not-a-phase"));
+      }],
+      ["merged-without-squash", (name) => {
+        const meta = fs.readFileSync(closeMetaFor(name), "utf8");
+        fs.writeFileSync(closeMetaFor(name), meta.replace(/^phase=.*$/m, "phase=merged"));
+        fs.writeFileSync(closeJournalFor(name), "merged\n");
+      }],
+      ["impossible-init", (name) => {
+        const meta = fs.readFileSync(closeMetaFor(name), "utf8");
+        fs.writeFileSync(closeMetaFor(name), meta.replace(/^init_requested=.*$/m, "init_requested=false").replace(/^init_result=.*$/m, "init_result=initialized"));
+      }],
+    ]) {
+      const name = `journal-${label}`;
+      const worktree = createCommittedWorktree(name);
+      const before = git("rev-parse", "main").trim();
+      const crashed = runResultWithEnv(
+        { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_CLOSE_CRASH_AFTER: "merge_started" },
+        "complete", name, "--base", "main",
+      );
+      assert.equal(crashed.status, 99, crashed.stderr);
+      mutate(name);
+      const retry = runResult("complete", name, "--base", "main");
+      assert.equal(retry.status, 1);
+      assert.match(retry.stderr, /journal|corrupt|fase|phase/i);
+      assert.equal(git("rev-parse", "main").trim(), before);
+      assert.equal(fs.existsSync(worktree), true);
+      assert.match(git("branch", "--list"), new RegExp(`worktree/${name}`));
+    }
+  });
+
+  it("does not repeat squash, deinit, remove, or normal identity validation across post-action retries", () => {
+    for (const crashPhase of ["merged_after", "deinitialized_after", "removed_after", "branch_cleanup_after"]) {
+      const name = `counter-${crashPhase}`;
+      const worktree = createCommittedWorktree(name);
+      const counter = testCounterPath(name);
+      const crashed = runResultWithEnv(
+        {
+          FLOWTASK_TEST_MODE: "1",
+          FLOWTASK_TEST_CLOSE_CRASH_AFTER: crashPhase,
+          FLOWTASK_TEST_COUNTER_FILE: counter,
+        },
+        "complete", name, "--base", "main",
+      );
+      assert.equal(crashed.status, 99, crashed.stderr);
+      const retried = runResultWithEnv(
+        { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_COUNTER_FILE: counter },
+        "complete", name, "--base", "main",
+      );
+      assert.equal(retried.status, 0, retried.stderr);
+      const values = counterValues(counter);
+      assert.equal(values.filter((value) => value === "squash").length, 1, crashPhase);
+      assert.equal(values.filter((value) => value === "deinit").length, 1, crashPhase);
+      assert.equal(values.filter((value) => value === "remove").length, 1, crashPhase);
+      assert.equal(values.filter((value) => value === "branch_cleanup").length, 1, crashPhase);
+      assert.equal(values.filter((value) => value === "validate_identity").length, 1, crashPhase);
+      assert.equal(fs.existsSync(worktree), false);
+    }
+  });
+
+  it("crash before init action in complete leaves init_started and retries from verified metadata", () => {
+    markCa1Case("crash-pre");
+    createNestedSubmoduleFixture();
+    const name = "crash-init-started";
+    const counter = testCounterPath("crash-init-started");
+    run("create", name, "--base", "main");
+    const worktree = worktreeFor(name);
+    fs.writeFileSync(path.join(worktree, "file.txt"), "init retry\n");
+    git("-C", worktree, "add", "file.txt");
+    git("-C", worktree, "commit", "-qm", "init retry");
+    const crashed = runResultWithEnv(
+      {
+        FLOWTASK_TEST_MODE: "1",
+        FLOWTASK_TEST_CLOSE_CRASH_AFTER: "init_started",
+        FLOWTASK_TEST_COUNTER_FILE: counter,
+        GIT_ALLOW_PROTOCOL: "file",
+      },
+      "complete", name, "--base", "main", "--init-submodules",
+    );
+    assert.equal(crashed.status, 99, crashed.stderr);
+    assert.match(fs.readFileSync(closeMetaFor(name), "utf8"), /^phase=init_started$/m);
+    assert.match(fs.readFileSync(closeMetaFor(name), "utf8"), /^init_result=pending$/m);
+    assert.equal(counterValues(counter).includes("init"), false);
+    const retried = runResultWithEnv(
+      { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_COUNTER_FILE: counter, GIT_ALLOW_PROTOCOL: "file" },
+      "complete", name, "--base", "main", "--init-submodules",
+    );
+    assert.equal(retried.status, 0, retried.stderr);
+    assert.equal(counterValues(counter).filter((value) => value === "init").length, 1);
+    assert.equal(fs.existsSync(worktree), false);
+  });
+
+  it("blocks the preflight when submodule status cannot be queried", () => {
+    const worktree = createCommittedWorktree("submodule-status-failure");
+    fs.writeFileSync(path.join(tempRepo, "preflight-dirty.txt"), "dirty\n");
+    const before = git("rev-parse", "main").trim();
+    const failed = runWithFailingSubmoduleStatus(
+      "complete", "submodule-status-failure", "--base", "main", "--preserve-dirty",
+    );
+    assert.equal(failed.status, 1);
+    assert.match(failed.stderr, /no se pudo verificar.*submodules/i);
+    assert.equal(git("rev-parse", "main").trim(), before);
+    assert.equal(fs.existsSync(worktree), true);
+    assert.equal(fs.existsSync(path.join(tempRepo, ".flowtask", "backups")), false);
   });
 });
 
@@ -341,6 +776,7 @@ describe("transactional preservation", () => {
   });
 
   it("recover without pending transactions is an informative no-op", () => {
+    markCa1Case("recover");
     const result = runResult("recover");
     assert.equal(result.status, 0);
     assert.match(`${result.stdout}${result.stderr}`, /no hay transacciones/i);
@@ -361,6 +797,7 @@ describe("transactional preservation", () => {
   });
 
   it("preserves with CLI flag alone (AC2.1)", () => {
+    markCa1Case("preserve-dirty");
     createCommittedWorktree("CA-tx-flag");
     createMixedDirtyDestination("flag");
     const result = runResult("complete", "CA-tx-flag", "--base", "main", "--preserve-dirty");
@@ -565,6 +1002,21 @@ describe("transactional preservation", () => {
     // AC2.8: sello inalterado también en pending_manual
     assert.equal(fs.readFileSync(stampPath, "utf8"), stampBefore);
     assert.equal(fs.statSync(stampPath).mtimeMs, stampMtimeBefore);
+
+    // Un retry no puede convertir la transacción pendiente en un cierre: no
+    // deinit/remove/branch cleanup mientras la restauración manual siga abierta.
+    const baseAfterFailure = git("rev-parse", "main");
+    const retry = runResult("complete", "CA-tx-conflict", "--base", "main");
+    assert.equal(retry.status, 1);
+    assert.match(retry.stderr, /pending_manual/);
+    assert.match(retry.stderr, new RegExp(`recover ${txId}`));
+    assert.equal(git("rev-parse", "main"), baseAfterFailure);
+    assert.ok(fs.existsSync(worktree));
+    assert.match(git("branch", "--list"), /worktree\/CA-tx-conflict/);
+    assert.equal(
+      fs.readFileSync(path.join(backupsDir(), txId, "journal"), "utf8"),
+      "pending_manual\n"
+    );
   });
 
   // AC2.8 — sello de validación inalterado en happy path
@@ -743,6 +1195,22 @@ describe("portable configuration, preflight, cleanup and locks", () => {
     assert.equal(cleaned.status, 0, cleaned.stderr);
     assert.equal(fs.existsSync(worktreeFor("recover-keep")), false);
     assert.doesNotMatch(git("branch", "--list"), /recover-keep/);
+  });
+
+  it("lets complete continue its own close after recover restores a preserve transaction", () => {
+    createCommittedWorktree("recover-then-complete");
+    createMixedDirtyDestination("continue");
+    const crashed = runResultWithEnv(
+      { FLOWTASK_TEST_MODE: "1", FLOWTASK_TEST_CRASH_AFTER: "merged" },
+      "complete", "recover-then-complete", "--base", "main", "--preserve-dirty",
+    );
+    assert.equal(crashed.status, 99);
+    assert.equal(runResult("recover").status, 0);
+    git("reset", "--hard");
+    fs.rmSync(path.join(tempRepo, "continue-untracked.txt"), { force: true });
+    const completed = runResult("complete", "recover-then-complete", "--base", "main");
+    assert.equal(completed.status, 0, completed.stderr);
+    assert.equal(fs.existsSync(worktreeFor("recover-then-complete")), false);
   });
 
   it("rejects cleanup of own commits without --discard and keeps resources on refusal", () => {

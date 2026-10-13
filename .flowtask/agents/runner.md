@@ -530,7 +530,7 @@ Una vez fijado, reutiliza exactamente el mismo ID en los artifacts completos
 ### Paso 2 — Worktree y Constructor
 
 Detecta la base en orden `development → main → trunk → main` y ejecuta:
-`${FLOWTASK_SCRIPTS}/worktree.sh create hotfix/{id} --base {base_branch}`. La
+`${FLOWTASK_SCRIPTS}/worktree.sh create hotfix/{id} --base {base_branch} [--init-submodules]`. La
 ruta es `.worktrees/hotfix/{id}` y la branch es `worktree/hotfix/{id}`.
 Reutiliza un worktree existente en reanudaciones. Persiste el estado bajo
 `flow-state/hotfix/{id}/instances` y despacha el Constructor con
@@ -542,7 +542,7 @@ base branch.
 Despacha el Validator con el mismo contexto. El Validator persiste
 `hotfix/{id}/artifact/validacion` y su flow-state separado. Un rechazo vuelve al
 Constructor hasta dos intentos; después escala. Con APPROVED hacé el commit antes de
-`${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch}`.
+`${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch} [--init-submodules]`.
 Un conflicto conserva worktree y branch y se escala sin limpiar; un rechazo por
 destino con cambios sin commitear también conserva todo intacto, se escala al
 desarrollador y solo procede con `--preserve-dirty` si hay consentimiento
@@ -635,9 +635,9 @@ Prompt: flow state del plan desde Engram y contexto actual del CA.
 
 ### Política de worktrees — obligatorio por CA
 
-1. **Todo CA crea su worktree** en Paso 4, sin condiciones ni excepciones. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh create <CA-ID> --base {base_branch_detectada}`. La rama base se detecta con orden `development → main → trunk → main`, y el runner la pasa explícitamente.
+1. **Todo CA crea su worktree** en Paso 4, sin condiciones ni excepciones. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh create <CA-ID> --base {base_branch_detectada}` y agrega `--init-submodules` sólo si el requisito lo pide explícitamente. La rama base se detecta con orden `development → main → trunk → main`, y el runner la pasa explícitamente.
 2. Si el worktree o la rama `worktree/<CA-ID>` ya existen (sesión interrumpida, reanudación), el script `create` fallará. En ese caso, NO invoques `create` de nuevo: reutiliza el worktree existente y continúa.
-3. Persiste en `flow-state/CA-{ID}/instances` el campo `constructor.worktree = { path, branch, base_branch }`.
+3. Persiste en `flow-state/CA-{ID}/instances` el campo `constructor.worktree = { path, branch, base_branch, init_submodules, init_submodules_result }`. La ausencia de `init_submodules` equivale a `false`; la reanudación conserva la intención y el resultado emitido por el script.
 4. Al despachar el constructor, incluye en el prompt el contexto del worktree (path y branch).
 
 ***
@@ -658,14 +658,14 @@ Prompt: flow state del plan desde Engram y contexto actual del CA.
 
 Cuando el validator apruebe y el CA tenga worktree asociado:
 
-1. Hacé el commit antes de `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID>`.
-2. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID>`.
+1. Hacé el commit antes de `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID> --base {base_branch_detectada}`.
+2. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID> --base {base_branch_detectada}` y agrega `--init-submodules` sólo para reanudar o solicitar esa intención explícita.
 3. Si completa bien, el script hace squash-merge a la rama base detectada y limpia el worktree/branch.
 4. Si `complete` falla por conflicto, **no limpies** el worktree.
 5. Si `complete` rechaza porque **el destino tiene cambios sin commitear**, no intentes limpiar el destino ni crear stashes: el rechazo es seguro y dejó todo intacto. Escala al desarrollador mostrando el motivo genérico del script; solo si el desarrollador consiente explícitamente, reinvoca `complete` con `--preserve-dirty`.
 6. `--preserve-dirty` es una transacción opt-in: captura los cambios elegibles del destino en refs privadas (`refs/flowtask/backups/<tx-id>`, jamás en la lista pública de stashes), registra cada fase en `.flowtask/backups/<tx-id>/journal` y restaura el estado fino al final. Ofrecélo **SOLO ante instrucción humana explícita** — jamás por defecto ni en flujos automáticos. La config persistida (`.flowtask/config/worktree.json` con `"preserveDirty": true`) cuenta como consentimiento humano explícito y el script nunca la escribe.
 7. Si un cierre con preservación se interrumpe, reanudalo con `worktree.sh recover [<tx-id>]` (sin argumento toma la pendiente más reciente); repetirlo es seguro e idempotente. Si la restauración quedó pendiente-manual, mostrale al desarrollador las instrucciones seguras impresas por el script: la resolución manual nunca se automatiza.
-8. El Runner solo invoca las formas canónicas del gate. No pasa `--repo`, `--config`, `--prepare`, `--verify` ni `--discard`; el modo `--auto` no sustituye el consentimiento humano para preservar o descartar.
+8. El Runner solo invoca las formas canónicas del gate (`create|complete <id> --base <branch>` y el opt-in `--init-submodules`). No pasa `--repo`, `--config`, `--prepare`, `--verify` ni `--discard`; el modo `--auto` no sustituye el consentimiento humano para preservar o descartar.
 9. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
 
 ***

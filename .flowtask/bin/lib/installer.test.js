@@ -400,10 +400,12 @@ test("update preserves source scripts when the project uses its canonical .flowt
   fs.cpSync(path.resolve(path.dirname(FLOWTASK_CLI), ".."), flowtaskDir, { recursive: true });
   fs.mkdirSync(path.join(flowtaskDir, "scripts"), { recursive: true });
   fs.writeFileSync(path.join(flowtaskDir, "scripts", "worktree.sh"), "source\n", "utf8");
+  fs.writeFileSync(path.join(flowtaskDir, "scripts", "lib", "worktree-manager-core.sh"), "canonical-core\n", "utf8");
 
   const targetDir = path.join(root, ".opencode", "flowtask");
-  fs.mkdirSync(path.join(targetDir, "scripts"), { recursive: true });
+  fs.mkdirSync(path.join(targetDir, "scripts", "lib"), { recursive: true });
   fs.writeFileSync(path.join(targetDir, "scripts", "worktree.sh"), "stale\n", "utf8");
+  fs.writeFileSync(path.join(targetDir, "scripts", "lib", "worktree-manager-core.sh"), "stale-core\n", "utf8");
   fs.writeFileSync(path.join(targetDir, ".installation-method"), JSON.stringify({ target: "opencode" }));
   writeJson(path.join(flowtaskDir, "config", "profile.json"), {
     level: "senior",
@@ -431,7 +433,30 @@ test("update preserves source scripts when the project uses its canonical .flowt
   assert.ok(fs.existsSync(path.join(root, ".flowtask", "scripts")));
   assert.equal(fs.readFileSync(path.join(root, ".flowtask", "scripts", "worktree.sh"), "utf8"), "source\n");
   assert.equal(fs.readFileSync(path.join(targetDir, "scripts", "worktree.sh"), "utf8"), "source\n");
+  assert.equal(fs.readFileSync(path.join(flowtaskDir, "scripts", "lib", "worktree-manager-core.sh"), "utf8"), "canonical-core\n");
+  assert.equal(fs.readFileSync(path.join(targetDir, "scripts", "lib", "worktree-manager-core.sh"), "utf8"), "canonical-core\n");
+  const canonicalRunner = fs.readFileSync(path.join(flowtaskDir, "agents", "runner.md"), "utf8");
+  const installedRunner = fs.readFileSync(path.join(targetDir, "agents", "runner.md"), "utf8");
+  assert.match(canonicalRunner, /--init-submodules/);
+  assert.match(installedRunner, /--init-submodules/);
+  const normalizeRunner = (content) => content
+    .replaceAll("./.opencode/flowtask/scripts", "./.flowtask/scripts")
+    .replace(/<!-- FLOWTASK:PERSONA_START -->[\s\S]*?<!-- FLOWTASK:PERSONA_END -->/, "<!-- FLOWTASK:PERSONA_START -->\n<!-- FLOWTASK:PERSONA_END -->");
+  assert.equal(normalizeRunner(installedRunner), normalizeRunner(canonicalRunner));
   assert.doesNotMatch(result.stdout, /Legacy scripts cleaned/);
+});
+
+test("Runner worktree contract keeps init opt-in and excludes CA2 routing", () => {
+  const source = path.resolve(path.dirname(FLOWTASK_CLI), "..", "agents", "runner.md");
+  const runner = fs.readFileSync(source, "utf8");
+  const invocations = runner.match(/\$\{FLOWTASK_SCRIPTS\}\/worktree\.sh (?:create|complete)[^\n]*/g) ?? [];
+  assert.ok(invocations.length >= 2);
+  for (const invocation of invocations) {
+    assert.match(invocation, /--base/);
+    assert.doesNotMatch(invocation, /--(?:target|repo|parent-repo)|link-parent/);
+  }
+  assert.match(runner, /init_submodules/);
+  assert.match(runner, /--init-submodules/);
 });
 
 test("writes TUI only in the native consumer manifest", () => {
