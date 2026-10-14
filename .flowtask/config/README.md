@@ -3,7 +3,7 @@
 ## Presupuesto de contexto (context-budget)
 
 El gate de presupuesto de contexto del runner es un **gate transparente en
-herramienta vía `tool.execute.after` mutable (OpenCode 1.18.15)**: vive en el
+herramienta vía `tool.execute.after` mutable**: vive en el
 plugin `flowtask-permission-gate` (hook post-ejecución + pre-gate barato en
 `tool.execute.before`).
 

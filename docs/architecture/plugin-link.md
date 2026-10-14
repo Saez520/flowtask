@@ -1,3 +1,5 @@
+> **Histórico:** este diseño describe el classifier deprecado y la inyección `FLOWTASK_CLASSIFICATION`. No es el mecanismo vigente. Consultá [../project-history.md](../project-history.md).
+
 ## 2. El Sistema de Clasificación (Plugin Link)
 
 Cómo el plugin intercepta el mensaje antes de que el Runner lo procese, evitando que el Runner tenga que "adivinar".

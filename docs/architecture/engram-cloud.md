@@ -1,3 +1,5 @@
+> **Histórico:** este diseño de sincronización cloud no forma parte de la guía operativa vigente. Consultá [../README.md](../README.md).
+
 # Estructura de memoria de Engram y sincronización cloud
 
 ```mermaid

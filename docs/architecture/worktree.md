@@ -1,66 +1,83 @@
-# Diseño conceptual de aislamiento con Git Worktrees
+# Worktrees vigentes: aislamiento y cierre
+
+La fuente operativa es `.flowtask/scripts/worktree.sh` y su implementación en
+`.flowtask/scripts/lib/`. El gestor puede operar con FlowTask y Engram, o sobre
+un repositorio genérico usando la configuración admitida por el script.
+
+## Flujo normal
 
 ```mermaid
 flowchart TD
-    MAIN["RAMA PRINCIPAL (Local/Dev)<br/>El 'flowtask-runner' reside aquí de forma segura."]
-    subgraph WT["GIT WORKTREE AISLADO (Sandbox)"]
-        WTINFO["Entorno paralelo temporal (ej. /.worktrees/CA-001/)"]
-        TEAM["TECH-LEAD-ORCHESTRATOR Y SUB-AGENTES EXPERTOS<br/>- Escriben código y modifican archivos.<br/>- Ejecutan pruebas unitarias (si rompen algo,<br/>solo se rompe este entorno aislado)."]
-    end
-    ARCH["EVALUACIÓN Y MEMORIA (flowtask-archivist)<br/>Usa 'git diff' entre el Worktree y la Rama Principal<br/>para extraer los patrones y guardar en Engram."]
-    MAIN2["RAMA PRINCIPAL (Local/Dev)<br/>?? El código funcional y auditado se une a tu rama."]
-
-    MAIN -->|"1. Delega y aísla (Crea Worktree)"| WT
-    WT -->|"2. Sub-orquestador reporta éxito"| ARCH
-    ARCH -->|"3. Integración Segura (Merge/Apply)"| MAIN2
+    RUNNER["Runner"] --> CREATE["worktree.sh create <id> --base <branch>"]
+    CREATE --> WT[".worktrees/<id>\nbranch worktree/<id>"]
+    WT --> CONSTRUCTOR["Constructor implementa"]
+    CONSTRUCTOR --> VALIDATOR["Validator verifica"]
+    VALIDATOR -->|"APPROVED"| COMMIT["commit"]
+    COMMIT --> COMPLETE["worktree.sh complete <id>"]
+    COMPLETE --> SQUASH["squash-merge a la base y retiro verificado"]
+    VALIDATOR -->|"REJECTED"| CONSTRUCTOR
 ```
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│ LEYENDA 5: Ciclo de Vida y Aislamiento (Git Worktrees)                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│ Demuestra la mitigación de riesgos. El 'runner' delega la tarea a un    │
-│ 'Git Worktree' (una copia aislada del proyecto). Los sub-agentes        │
-│ codifican y prueban allí sin afectar la rama principal. Solo cuando el  │
-│ trabajo termina y el 'archivist' documenta el 'diff', el código se      │
-│ integra a la rama del desarrollador humano.                             │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+La rama base se detecta en el orden `development → main → trunk`; si ninguna
+existe, se usa `main` como fallback, y el runner la pasa explícitamente. Si el
+worktree o la rama ya existen por una interrupción, no se crea otro: se
+reutiliza el existente.
 
-## Lifecycle parent-only
+## Subcomandos
 
-El sandbox es siempre un worktree del repositorio parent; el cierre no coordina
-un target directo de submodule ni `link-parent`. Los submodules quedan **no
-poblados por defecto**. `--init-submodules` es un opt-in explícito de `create`
-o `complete` y se persiste junto con su resultado para que una inicialización
-interrumpida pueda reanudarse en el mismo worktree.
+| Subcomando | Propósito |
+| --- | --- |
+| `create <execution-name> [--base <branch>]` | Crea el worktree y su branch. |
+| `complete <execution-name> [--base <branch>]` | Hace el cierre verificado, squash-merge y retiro de sus recursos. |
+| `cleanup <execution-name> [--base <branch>]` | Retira el worktree sin integrar; `--discard` requiere autorización explícita. |
+| `recover [<transaction-id>]` | Reanuda una transacción `--preserve-dirty` pendiente. |
+| `prune` | Limpia metadatos stale y reporta directorios no asociados; no borra worktrees huérfanos. |
+| `list` | Lista worktrees en disco para reconciliarlos con el estado de Engram. |
 
-`complete` escribe un journal atómico y, después de validar parent, branch,
-HEAD, gitlinks y todos los submodules recursivos, ejecuta `deinit` sin force,
-verifica el estado desinicializado, usa `worktree remove --force` sólo en esa
-ruta interna y elimina la branch con `update-ref` condicionado al SHA esperado.
-Los crashes se reanudan por fase sin repetir squash, deinit o remove.
+`create` no instala dependencias ni ejecuta pruebas por detección. `--prepare`
+y `--verify` son opt-in y solo ejecutan comandos declarados. Cada subcomando
+reporta `operation:` y `result:` además de las acciones omitidas o fallidas.
 
-## Lifecycle target-direct (CA2)
+## Cierre seguro
 
-Cuando el operador proporciona explícitamente `--repo` para el repositorio del
-submodule, `--parent-repo`, `--target submodule` y `--submodule-path`, el
-worktree vive en la raíz Git real del submodule. No se crea ni se arrastra un
-worktree del parent. La identidad valida el gitlink `160000`, la raíz y el SHA
-antes de mutar recursos.
+`complete` solo retira el worktree y la branch que coinciden con la operación
+que acaba de verificar. Después de validar la identidad, el estado, la
+de-inicialización y la fase del journal, su ruta interna de cierre usa `git
+worktree remove --force` para retirar el worktree ya cerrado. Eso no expone
+`--discard` ni `git branch -D` como parte de `complete`; la branch se elimina
+mediante una actualización condicionada al SHA esperado. Si hay un conflicto,
+conserva el worktree y la branch para que el Constructor resuelva la situación.
 
-`link-parent ... --link-parent staged-only` captura bajo lock el `HEAD`, el
-diff staged binario, `ls-files --stage` y los bytes/hash del índice parent.
-Sólo prepara el gitlink en el índice; no hace commit, merge, push ni limpieza.
-`abort` restaura atómicamente el índice únicamente en clasificación A/B; ante
-HEAD drift, cambios ajenos o estado no clasificable conserva evidencia y
-bloquea. El descriptor, metadata y journal son UTF-8/LF, reemplazados
-atómicamente, y el gate exige exactamente Git 2.54.0 (el shim de tests es la
-única prueba portable de esa versión).
+La vía pública para retirar trabajo no integrado es `cleanup --discard`, que
+requiere autorización explícita. `cleanup` sin `--discard` usa la retirada y la
+eliminación de branch no forzadas cuando el estado permite hacerlo.
 
-El `complete` target-direct cierra sólo el worktree/branch del target, con
-fases state-first e idempotencia; nunca modifica el parent. `recover` target-
-direct rehidrata el descriptor y reconcilia la transacción bajo locks target →
-parent; ante estado ambiguo devuelve 6 y conserva evidencia. El `cleanup`
-público y `cleanup --discard` conservan su contrato actual y no leen este
-journal.
+`cleanup` no descarta cambios implícitamente. `recover` usa locks de destino y
+trabajo; si una restauración termina en `pending_manual`, conserva el backup y
+deja instrucciones para resolución humana.
+
+`--preserve-dirty` es una transacción opt-in: captura cambios elegibles en refs
+privadas, registra cada fase en un journal y restaura el estado al finalizar.
+Solo debe ofrecerse ante una instrucción humana explícita.
+
+## Submodules y target-direct
+
+El ciclo parent-only crea el worktree del repositorio parent. Los submodules no
+se pueblan por defecto; `--init-submodules` es un opt-in explícito y su resultado
+se persiste para permitir reanudar una inicialización interrumpida.
+
+La implementación ejecutable es `.flowtask/scripts/worktree.sh`, que carga
+`.flowtask/scripts/lib/worktree-manager-core.sh`. El documento auxiliar
+`.flowtask/scripts/worktree.md` describe esta arquitectura, pero no se ejecuta
+ni sustituye al script. El core carga
+`.flowtask/scripts/lib/worktree-manager-target-direct.sh` para la variante
+target-direct; ese script invoca el adaptador JavaScript de Runner/Constructor,
+que usa `.flowtask/bin/lib/target-direct-transport.js` para validar, serializar
+y rehidratar el descriptor. El transporte no es cargado directamente por el
+wrapper shell.
+
+La ruta target-direct requiere `--repo`, `--parent-repo`, `--target submodule` y
+`--submodule-path`. El worktree vive en la raíz Git del submodule, no crea un
+worktree del parent y solo puede preparar el gitlink staged con
+`link-parent --link-parent staged-only`; no hace commit, merge ni push del
+parent. `abort` restaura el índice bajo sus comprobaciones de drift.

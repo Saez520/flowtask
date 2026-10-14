@@ -44,3 +44,35 @@ retirados.
 El retiro se aplicó únicamente al repositorio canónico. No se modificaron
 instalaciones previas ni proyectos consumidores, y no se incorporó ninguna
 rutina de migración, limpieza o compatibilidad.
+
+---
+
+## Documentación retirada del recorrido principal
+
+Esta sección conserva conceptos que existieron, pero ya no describen instalación ni ejecución actual.
+
+### Anatomía antigua
+
+`anatomia-workspace.md` presentaba `.flowtask` como instalación estática, `.workspace` como datos dinámicos principales y Engram como almacenamiento separado. El modelo vigente usa targets `.opencode/flowtask`, `.claude/flowtask`, `.vscode/flowtask` o `.flowtask` standalone; los artifacts nuevos se guardan en Engram y `.workspace` solo queda como compatibilidad de CAs antiguos.
+
+### Archivist y sub-orquestadores
+
+`sub-agent-archivista.md`, `flowtask-sistematico.md`, `flujo-orquestacion.md` e `initializer.md` describían `flowtask-archivist`, `TECH-LEAD-ORCHESTRATOR` y expertos de stack no registrados en `opencode.json`. El cierre real usa `.flowtask/scripts/worktree.sh` y los agentes registrados por la configuración instalada.
+
+### Classifier
+
+`plugin-link.md` y los README del classifier describían inyección `FLOWTASK_CLASSIFICATION`. El manifest actual marca `classifier-hook` y `classifier-tui` `deprecated=true` y `enabled=false`; el installer los omite y limpia instalaciones antiguas. El source se conserva, pero no pertenece al camino normal.
+
+### Snapshot Repomix/CA-008
+
+El índice anterior, `Flowtask-Architecture/README.md` y `docs/architecture/flowtask-core.md` fueron generados alrededor de CA-008 y enlazaban módulos ausentes, roadmap y Archivist. Se conservan como antecedente; usar `docs/README.md`, `docs/core-flowtask.md` y el nuevo `docs/architecture/INDEX.md` para el presente.
+
+### Instalación conceptual
+
+`architecture/instalacion.md` no describía selección interactiva, manifest, markers ni configuración derivada. La guía normativa pasa a `docs/installation.md`.
+
+### Claims no verificados
+
+`lsp-ast-grep.md`, `sdd.md` y `presentacion-flowtask.md` contienen propuestas, cifras o roadmap no respaldados por contratos actuales. No citarlos como capacidades disponibles.
+
+Los documentos históricos que permanecen físicamente comienzan con un aviso que remite a este archivo y a `docs/README.md`. No se eliminan porque pueden ser inputs externos de NotebookLM.

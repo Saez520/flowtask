@@ -1,3 +1,5 @@
+> **Histórico:** este diseño metodológico no es un contrato de ejecución vigente. Consultá [../project-history.md](../project-history.md).
+
 # Specification-Driven Development en FlowTask
 
 ```mermaid

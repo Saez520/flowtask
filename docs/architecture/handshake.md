@@ -1,73 +1,86 @@
-## 6. Handshake Protocol: Gestión de Identidad y Continuidad
+# Handshake vigente: identidad y continuidad
+
+El Handshake Protocol coordina la identidad de las instancias y la continuidad
+de los agentes que pueden reanudar una sesión. Su contrato canónico está en
+`.flowtask/skills/handshake-protocol/SKILL.md`; el runner lo carga antes de
+delegar cuando corresponde.
+
+## Alcance
+
+El protocolo aplica al tratamiento completo (`ca-writer` y `planner`). Los
+agentes de tratamiento ligero (`inspector`, `constructor`, `validator`,
+`tester`, `review-orchestrator`, `logger` e `initializer`) se invocan como hilo
+fresco; su `instance_name` puede conservarse como traza, pero no reanudan un
+`task_id` mediante este protocolo.
+
+La skill es agnóstica del mecanismo de invocación: devuelve un contrato al
+orquestador y no prescribe qué herramienta debe usar para iniciar el agente.
+
+## Flujo
 
 ```mermaid
 flowchart TD
-    INPUT["[ INPUT: CA-018 ]"]
-    RUNNER["RUNNER (MANAGER)<br/>1. ¿Existe handshake para este?"]
-    ENGRAM["ENGRAM STORAGE<br/>(Topic: flow-state/...)"]
-    NO["1. Toma BaseName de lista:<br/>(Aitana, Kael, Lyra...)<br/>2. Crea Mapa de Instancias"]
-    SI["1. Recupera BaseName<br/>2. Recupera 'task_id' del sub-agente"]
-    PROMPT["CONSTRUCCIÓN DEL PROMPT<br/>- Name: {BaseName}-{AgentType} (Ej: #quot;Aitana-Planner#quot;)<br/>- Context: Snapshot de Engram<br/>- TaskID: {task_id_existente}"]
-    INVOKE["INVOCACIÓN DE AGENTE<br/>(Task Tool / Claude)"]
-    SUBAGENT["SUB-AGENTE (P)<br/>(Ejecuta Tarea)"]
-    MAPA["ACTUALIZACIÓN MAPA<br/>1. Captura nuevo ID<br/>2. Timestamp"]
-    ENGRAM2["ENGRAM STORAGE<br/>(flow-state/CA-018/inst)"]
-
-    INPUT --> RUNNER
-    RUNNER --> ENGRAM
-    RUNNER -->|"[ NO (Nuevo CA) ]"| NO
-    RUNNER -->|"[ SÍ (Continuación) ]"| SI
-    NO -->|"3. Guarda en Engram"| ENGRAM
-    SI -->|"3. Lee último Checkpoint"| ENGRAM
-    NO --> PROMPT
-    SI --> PROMPT
-    PROMPT --> INVOKE
-    INVOKE --> SUBAGENT
-    SUBAGENT -->|"[ RESPUESTA ]"| MAPA
-    INVOKE --> MAPA
-    MAPA --> ENGRAM2
+    INPUT["CA o ejecución actual"] --> RUNNER["Runner"]
+    RUNNER --> LOAD["Carga handshake-protocol"]
+    LOAD --> SEARCH["mem_search flow-state/{ca_id}/instances"]
+    SEARCH --> NAME["Recupera o asigna BaseName"]
+    NAME --> INSTANCE["Construye {BaseName}-{agent_type}"]
+    INSTANCE --> CONTEXT["Inyecta mem_context y mem_search"]
+    CONTEXT --> TOPIC["Valida topic_signature"]
+    TOPIC --> SCENARIO{"¿Hay task_id activo y mismo tema?"}
+    SCENARIO -->|"No"| A["Escenario A: hilo nuevo"]
+    SCENARIO -->|"Sí"| B["Escenario B: reanudación"]
+    A --> OUT["{task_id, instance_name, scenario}"]
+    B --> OUT
 ```
 
-Desglose de los Componentes del Handshake:
+Si Engram no está disponible, el protocolo degrada a caso nuevo y Escenario A;
+no existe otro mecanismo de discovery dentro de esta skill.
 
-### 1. El Mapa de Instancias (En Engram)
+## Mapa de instancias
 
-Es el archivo de estado que el Runner consulta. Evita la duplicidad de hilos.
+El mapa se guarda en Engram con `topic_key`
+`flow-state/{ca_id}/instances`. El `BaseName` lo provee el orquestador; no está
+hardcodeado en la skill. La rama base se detecta al crear el worktree en el
+orden `development → main → trunk`; si ninguna existe, se usa `main` como
+fallback, y se persiste junto con su contexto.
 
 ```json
 {
   "base_name": "Aitana",
   "agents": {
-    "ca-writer": { 
-      "task_id": "T123...", 
-      "instance_name": "Aitana-ca-writer",
-      "last_resume": "2026-05-14T..." 
-    },
-    "planner": { 
-      "task_id": "T456...", 
-      "instance_name": "Aitana-planner"
+    "planner": {
+      "task_id": "...",
+      "instance_name": "Aitana-planner",
+      "topic_signature": {
+        "ids": ["CA-010"],
+        "keywords": ["plan", "tareas"]
+      },
+      "worktree": {
+        "path": ".worktrees/CA-010/",
+        "branch": "worktree/CA-010",
+        "base_branch": "main"
+      }
     }
   }
 }
 ```
 
-### 2. Naming Pool (Identidad Visual)
+El `task_id` se captura después de una respuesta exitosa. Los mapas antiguos
+que solo contienen `task_id`, `instance_name` y `last_resume` siguen siendo
+compatibles.
 
-El Runner asigna nombres de una lista predefinida (Aitana, Kael, Lyra, Zev, Thalía, Iago, Elowen, Mael).
+## Contrato de salida
 
-*   ¿Por qué? Porque es más fácil para el desarrollador identificar que "Aitana-Planner" está hablando de lo mismo que "Aitana-Constructor", en lugar de manejar IDs de sistema aburridos.
+La skill entrega exactamente:
 
-### 3. Context Injection (La Memoria de Trabajo)
+- `task_id`: el identificador existente para reanudar o `null` para un hilo nuevo.
+- `instance_name`: identidad de la instancia, por ejemplo `Lyra-planner`.
+- `scenario`: `"A"` para hilo nuevo o `"B"` para reanudación.
 
-Antes de que el agente empiece a trabajar, el Runner inyecta:
+La validación de tema compara primero IDs y después el solapamiento de keywords
+con el umbral definido por la skill. Si el tema cambió, fuerza Escenario A y no
+elimina de inmediato el `task_id` anterior: la purga corresponde al runner.
 
-1.  Hallazgos de memoria: Lo que se aprendió en sesiones anteriores.
-2.  Snapshot de estado: El "en qué nos quedamos" recuperado de Engram.
-
-### 4. Self-Healing (Recuperación Automática)
-
-Si el task_id ha expirado (por tiempo de inactividad de la API del LLM):
-
-1.  El Runner detecta el fallo.
-2.  Limpia el ID fallido de Engram.
-3.  Relanza al agente en un hilo nuevo inyectando el último Checkpoint, por lo que el agente "no siente" que perdió la memoria, solo que es un nuevo día.
+Para los detalles de checkpoint, relevo por capacidad y limpieza de sesiones,
+consultá `checkpoint-mixin` y el contrato del runner.

@@ -1,10 +1,12 @@
+> **Histórico:** este whitepaper fue generado alrededor de CA-008 y conserva diseños, roadmap y referencias retiradas. No describe la instalación ni la ejecución vigente. Consultá [docs/README.md](../docs/README.md).
+
 # FlowTask Architecture — Whitepaper Técnico
 
 > **TL;DR**: FlowTask es un sistema de agentes autónomos que ejecutan tareas de desarrollo en entornos aislados, con memoria persistente entre sesiones, y optimización radical del contexto para escalar a proyectos grandes. Este documento explica los tres pilares que lo hacen posible y el roadmap hacia su versión open source.
 
 **Tiempo de lectura**: ~5 minutos  
 **Última actualización**: CA-008 (Mayo 2026)  
-**Roadmap completo**: [`.workspace/CA-008/plan.md`](../.workspace/CA-008/plan.md)
+**Roadmap completo**: el roadmap de CA-008 se conserva únicamente como contexto histórico en este documento; no es una guía ejecutable.
 
 ---
 

@@ -1,3 +1,5 @@
+> **Histórico:** esta guía conceptual fue reemplazada por [../installation.md](../installation.md). No describe la selección de targets ni la configuración derivada actuales.
+
 ## 5. El Sistema de Instalación (Multi-Entorno)
 
 Cómo FlowTask se "clona" a sí mismo para funcionar en diferentes entornos (OpenCode, Claude Code, Standalone).

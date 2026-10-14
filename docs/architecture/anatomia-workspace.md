@@ -1,3 +1,5 @@
+> **Histórico:** el modelo `.workspace` de este documento fue retirado del recorrido operativo. Consultá [../project-history.md](../project-history.md) y [../README.md](../README.md).
+
 ## 3. Anatomía del Workspace y persistencia
 
 FlowTask separa los activos estáticos (.flowtask) de los datos dinámicos de ejecución (.workspace y Engram).

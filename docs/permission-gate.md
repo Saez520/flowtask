@@ -140,7 +140,7 @@ rechazada si contiene un segmento no autorizado o si su sintaxis es ambigua.
 
 ### Identidad del agente
 
-El runtime de OpenCode 1.18.4 no expone la identidad en
+El runtime de OpenCode no expone la identidad en
 `tool.execute.before`. El plugin la registra por sesión mediante `chat.message`
 (`agent?: string`) y consulta ese mapa al evaluar cada herramienta. Un mensaje
 sin `agent` conserva el valor previo de la sesión. No se infiere identidad desde

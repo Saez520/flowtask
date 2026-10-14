@@ -1,3 +1,5 @@
+> **Histórico:** este flujo conceptual contiene referencias a protocolos retirados. Consultá [../project-history.md](../project-history.md).
+
 # Flujo de orquestación del Runner
 
 ```mermaid

@@ -1,3 +1,5 @@
+> **Histórico:** este diseño conserva sub-orquestadores y rutas conceptuales retiradas. No describe el flujo vigente. Consultá [../README.md](../README.md).
+
 # Visión sistemática de FlowTask
 
 ```mermaid

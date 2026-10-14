@@ -1,3 +1,5 @@
+> **Histórico:** esta presentación conserva un roadmap y afirmaciones de diseño que no describen necesariamente el sistema vigente. Consultá [docs/README.md](docs/README.md).
+
 # FlowTask — Guía de Presentación
 
 > Audiencia: Líder de IA (técnico)

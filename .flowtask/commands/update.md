@@ -1,16 +1,14 @@
 ---
-description: Update Engram binary to the latest version
-agent: build
+description: Update FlowTask installation: sync agents, skills, plugins and config
+agent: flowtask-initializer
+subtask: true
 ---
-Update Engram to the latest version:
+Update the FlowTask installation in the current project.
 
-1. Execute the automated update script:
-   - Call `./update-engram.ps1`
+1. Detect installed targets from `.installation-method` markers.
+2. Sync canonical agents, commands, skills, scripts and target configuration.
+3. Reinstall manifest plugins and regenerate derived configuration.
+4. Preserve supported artifacts and report failures.
+5. Coordinate Graphify and report the result.
 
-2. Verify the output:
-   - If successful, it will report "ACTUALIZACION COMPLETADA CON EXITO"
-   - If it fails, it will attempt an automatic rollback and report the error
-
-3. Instructions for the agent:
-   - If the update requires a restart of the MCP server, notify the user.
-   - The script handles backup, process termination, and validation automatically.
+If no target exists, ask the developer to run `flowtask install`. Do not invoke `update-engram.ps1`.

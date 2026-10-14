@@ -1,12 +1,14 @@
 # FlowTask Core
 
-> Fuente: `core-flowtask.pdf` — bloques 0, A, B, C, D y E.
+> Este documento es la referencia técnica vigente de FlowTask; sus afirmaciones
+> se contrastan con los contratos ejecutables bajo `.flowtask/` y con la
+> documentación versionada bajo `docs/`. No depende de un archivo PDF externo.
 
 ## Tabla de contenidos
 
 - [Bloque 0 — Qué es FlowTask](#bloque-0--qué-es-flowtask)
 - [Bloque A — Ecosistema core](#bloque-a--ecosistema-core)
-- [Bloque B — Agentes (13)](#bloque-b--agentes-13)
+- [Bloque B — Delegación](#bloque-b--delegación)
 - [Bloque C — Flujo CA (Criterio de Aceptación)](#bloque-c--flujo-ca-criterio-de-aceptación)
 - [Bloque D — Flujo HF (Hotfix acordado)](#bloque-d--flujo-hf-hotfix-acordado)
 - [Bloque E — Plugins](#bloque-e--plugins)
@@ -19,15 +21,13 @@
 
 FlowTask es un sistema de workflow de desarrollo asistido por IA con memoria
 persistente (Engram). No es un agente: es un **orquestador**. Un agente primario
-—el RUNNER— recibe al desarrollador y coordina un equipo de agentes
-especializados que se reparten el trabajo de punta a punta: capturar
-requisitos, planificar, implementar y validar.
+—el RUNNER— recibe al desarrollador y coordina subagentes registrados que se
+reparten el trabajo de punta a punta: capturar requisitos, planificar,
+implementar y validar.
 
 El desarrollador habla SOLO con el runner. El runner investiga, clasifica la
-intención, delega en el subagente correcto y reporta el resultado. Ningún
-agente ejecuta el trabajo de otro: `ca-writer` define requisitos, `planner`
-planifica, `constructor` implementa, `validator` valida. El runner nunca escribe
-código ni archivos.
+intención, delega en el subagente correspondiente y reporta el resultado. El
+runner nunca escribe código ni archivos.
 
 ### Problema que resuelve
 
@@ -35,13 +35,12 @@ Automatizar el ciclo de desarrollo sin perder trazabilidad ni control humano:
 cada paso deja un artefacto persistente en Engram (requisito, plan, auditoría,
 validación) y las decisiones quedan auditables entre sesiones.
 
-### Los 3 pilares
+### Los pilares
 
 | Pilar | Nombre | Función |
 | --- | --- | --- |
 | **P1** | Git Worktrees | Aislamiento: cada trabajo corre en su propio `worktree`/`branch`; varios flujos en paralelo sin pisarse. |
 | **P2** | Engram + Handshake | Memoria e identidad: artefactos y estado operativo persisten; los agentes se reanudan con contexto. |
-| **P3** | LSP + AST-Grep | Lectura eficiente de código: entender el proyecto sin volcar archivos enteros. |
 
 ### Dos flujos de ejecución
 
@@ -63,7 +62,7 @@ conversación, no las reglas de orquestación.
 | Bloque | Contenido |
 | --- | --- |
 | Bloque A | ecosistema core |
-| Bloque B | agentes (13) |
+| Bloque B | delegación y contratos de runtime, sin inventario editorial |
 | Bloque C | flujo CA |
 | Bloque D | flujo HF |
 | Bloque E | plugins |
@@ -81,54 +80,31 @@ flowchart TB
 
     U -- "input literal" --> R
 
-    R -- "task()" --> A["AGENTES<br/>13 workers (bloque B)"]
-    R -- "skill()" --> S["SKILLS<br/>15 propias on-demand"]
+    R -- "task()" --> A["AGENTES<br/>(bloque B)"]
+    R -- "skill()" --> S["SKILLS<br/>on-demand"]
     R -- "mem_* (Engram)" --> E["ENGRAM<br/>memoria persistente"]
 
-    A -- "editan código en aislamiento" --> W["WORKSPACE FÍSICO<br/>.worktrees/&lt;ID&gt;/ · branch worktree/&lt;ID&gt;<br/>commit → squash-merge → branch base (development/main)"]
+    A -- "editan código en aislamiento" --> W["WORKSPACE FÍSICO<br/>.worktrees/&lt;ID&gt;/ · branch worktree/&lt;ID&gt;<br/>commit → squash-merge → branch base (development → main → trunk; fallback main)"]
 
     P["PLUGINS — hooks runtime que vigilan al runner (bloque E)<br/>permission-gate · context-checkpoint · model-selector"]
     R -.-> P
 ```
 
 Pilares documentados: Git Worktrees (aislamiento) · Engram + Handshake
-(memoria e identidad) · LSP + AST-Grep (lectura eficiente de código).
+(memoria e identidad).
 
 El runner enruta por intención; los comandos explícitos se retiraron y su
 relato queda en `docs/project-history.md`.
 
 ---
 
-## Bloque B — Agentes (13)
+## Bloque B — Delegación
 
-### Agentes de FlowTask (13)
-
-```text
-│
-├─ PRIMARIO
-│    runner ............ orquesta todo; el desarrollador habla solo con él
-│
-├─ PIPELINE CA — delegación secuencial del runner
-│    ca-writer ......... define requisitos y reglas de negocio (trat. completo)
-│    planner ........... genera el plan decision-complete      (trat. completo)
-│    plan-auditor ...... audita el plan (>5 tareas o Evolution Mode)
-│    constructor ....... implementa el plan en un worktree
-│    validator ......... valida implementación vs plan + convenciones
-│
-├─ SOPORTE — delegación puntual
-│    inspector ............. exploración/análisis read-only; tradeoffs y GAPs
-│    review-orchestrator ... code review 4R: R1 riesgo, R2 legibilidad,
-│                            R3 confiabilidad, R4 resiliencia (read-only)
-│    tester ................ genera tests (no toca código de producción)
-│    logger ................ instrumenta logging (no toca lógica de negocio)
-│    initializer ........... escanea el proyecto → Engram (stack, capas, etc.)
-│    graphify-docs-media ... docs/media de Graphify en background
-│    onboarder ............. quiz de nivel → personalidad del runner
-│
-└─ CONTINUIDAD (handshake-protocol)
-     tratamiento completo: ca-writer, planner → reanudan hilo (task_id)
-     tratamiento ligero:   resto → siempre hilo fresco (checkpoint = traza)
-```
+Los subagentes que el runtime puede invocar se registran en la configuración del
+target y sus contratos ejecutables viven bajo `.flowtask/agents/`. Este documento
+no duplica ese inventario editorial: las secciones CA y HF describen únicamente
+el orden observable del flujo y la documentación de instalación explica cómo se
+instalan y actualizan esos recursos.
 
 ---
 
@@ -171,7 +147,8 @@ RUNNER clasifica ── ¿existe el CA en Engram?
             (--auto solo exime la espera; el Gate se verifica igual)
               │
               ▼
-        [6] WORKTREE ── worktree.sh create CA-{ID} --base {development|main}
+        [6] WORKTREE ── worktree.sh create CA-{ID} --base {base detectada}
+            (orden: development → main → trunk; fallback main)
             → .worktrees/CA-{ID} · branch worktree/CA-{ID}
               │
               ▼
@@ -200,13 +177,16 @@ las claves documentadas en el README. `create` no instala dependencias ni
 ejecuta pruebas por detección: `--prepare` y `--verify` son opt-in, requieren
 comandos declarados y se ejecutan en ese orden.
 
-El cierre conserva el squash, pero su limpieza usa una capacidad efímera
-interna verificada contra el commit de origen, el worktree, la rama y el
-commit squash. No usa `--discard`, `-D` ni borrado forzado, y esa capacidad no
-es alcanzable desde `recover` ni desde la configuración: si un recover termina
-un squash, deja el worktree y la rama en su sitio y el retiro posterior pasa por
-el `cleanup` público. En cambio, `cleanup --discard` es la única vía pública
-que puede retirar trabajo no integrado, después de revalidar su identidad.
+El cierre conserva el squash, pero su limpieza usa una capacidad interna
+efímera y verificada: después de validar identidad, estado, de-inicialización y
+journal, `complete` ejecuta `git worktree remove --force` sobre el worktree
+cerrado y elimina la branch con una actualización condicionada al SHA esperado.
+`complete` no expone `--discard` ni `git branch -D`. En cambio,
+`cleanup --discard` es la única vía pública para retirar trabajo no integrado y
+requiere autorización explícita. Esa capacidad interna no es alcanzable desde
+`recover` ni desde la configuración: si un recover termina un squash, deja el
+worktree y la rama en su sitio y el retiro posterior pasa por el `cleanup`
+público.
 `complete`, `recover` y `cleanup` comparten locks ordenados de destino/trabajo;
 el segundo proceso falla inmediatamente y no toca backups. Los resultados
 distinguen operación, resultado, acciones omitidas o fallidas, recuperación y
@@ -251,7 +231,7 @@ validación y cierre por squash-merge— pero NO crea CA ni invoca
                  hotfix/{id}/artifact/plan (archivos afectados, cambios
                  acordados, criterios de aceptación verificables)
 [3] WORKTREE ── worktree.sh create hotfix/{id} --base {base detectada}
-    (orden: development → main → trunk → main)
+    (orden: development → main → trunk; fallback main)
     → .worktrees/hotfix/{id} · branch worktree/hotfix/{id}
 [4] CONSTRUCTOR ── implementa el plan mínimo (execution_id=hotfix/{id})
 [5] VALIDATOR ── → hotfix/{id}/artifact/validacion (no pasa por plan-auditor)
@@ -299,8 +279,3 @@ Manifest: `"deprecated": true`, `"enabled": false` — no se instalan.
 
 - `flowtask-classifier-hook` (server) — inyectaba `FLOWTASK_CLASSIFICATION`
 - `flowtask-classifier-tui` (tui) — indicador visual del clasificador
-
-#### Remanente
-
-- `flowtask-review-gate` — absorbido por `permission-gate` (ago-2026); su carpeta
-  conserva solo `node_modules` + `package-lock`

@@ -1,3 +1,5 @@
+> **Histórico:** `flowtask-archivist` no forma parte del registro vigente de agentes. Consultá [../project-history.md](../project-history.md).
+
 # Flujo del sub-agente Archivist
 
 ```mermaid

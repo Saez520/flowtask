@@ -1,3 +1,5 @@
+> **Histórico:** las cifras y comparativas de este documento no están verificadas por los contratos actuales. No las cites como capacidad disponible.
+
 # Comparativa de flujo actual vs optimizado (LSP + AST-Grep)
 
 ```mermaid

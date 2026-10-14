@@ -1,3 +1,5 @@
+> **Histórico:** este diseño conserva un contrato conceptual anterior del Initializer. La fuente vigente es `.flowtask/agents/initializer.md` y la configuración instalada.
+
 # Diseño del sub-agente Initializer
 
 ```mermaid
