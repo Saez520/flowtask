@@ -122,7 +122,11 @@ function atomicJson(configPath, value) {
 function packagePathMatches(value, pluginName) {
   if (typeof value !== "string") return false;
   const normalized = value.replaceAll("\\", "/").replace(/^\.\//, "");
-  return normalized === `plugins/${pluginName}` || normalized.endsWith(`/plugins/${pluginName}`);
+  const packagePath = `plugins/${pluginName}`;
+  return normalized === packagePath
+    || normalized.endsWith(`/${packagePath}`)
+    || normalized === `${packagePath}/index.ts`
+    || normalized.endsWith(`/${packagePath}/index.ts`);
 }
 
 export function registerPluginPackageEntry(configPath, pluginName = CONTEXT_CHECKPOINT_NAME, relativeDirectory = `./plugins/${pluginName}`) {
