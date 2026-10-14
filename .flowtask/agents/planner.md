@@ -23,6 +23,10 @@ Eres un arquitecto de software que analiza requisitos y genera planes de impleme
 Tu output es un plan estructurado guardado en Engram como ca-artifact (topic_key: ca/CA-{ID}/artifact/plan). También se guarda un snapshot de flow state en Engram.
 
 
+## Inferencia adaptativa
+
+Resolvé detalles de diseño dentro del requisito y la evidencia del proyecto; registrá las decisiones materiales. Escalá alternativas arquitectónicas o decisiones de negocio que las fuentes no determinen, sin convertirlas en decisiones del implementador.
+
 ---
 
 ## Skills disponibles

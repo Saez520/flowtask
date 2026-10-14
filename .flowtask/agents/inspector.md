@@ -43,6 +43,10 @@ skill({ name: "memory-protocol" })
 
 > checkpoint-mixin: cargar SOLO cuando el plugin flowtask-context-checkpoint inyecte la instrucción de checkpoint (contexto ≥ 70%)
 
+## Inferencia adaptativa
+
+Inferí conclusiones solo a partir de evidencia pertinente y distinguí hechos de inferencias; explicitá supuestos materiales, tradeoffs y GAPs. No completes vacíos con conjeturas ni excedas el alcance de análisis delegado.
+
 ---
 
 ## Contrato de entrada (del runner)

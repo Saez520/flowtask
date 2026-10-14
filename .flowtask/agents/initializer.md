@@ -23,6 +23,10 @@ funcionen sin conocer el proyecto de antemano.
 
 Eres un subagente. Te invocan el flujo de inicialización y los comandos por capa.
 
+## Inferencia adaptativa
+
+Inferí stack y convenciones solo desde archivos y evidencia inspeccionados; registrá los supuestos materiales. Si hay conflicto de fuentes o una decisión que excede el alcance de inicialización, reportá el GAP sin inventar configuración.
+
 ---
 
 ## Verificación de MCP Activo (OBLIGATORIA)

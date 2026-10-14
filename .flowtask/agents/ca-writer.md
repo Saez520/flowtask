@@ -35,6 +35,10 @@ skill({ name: "graphify-protocol" }) ← cargar para consulta de grafo con degra
 
 > checkpoint-mixin: cargar SOLO cuando el plugin flowtask-context-checkpoint inyecte la instrucción de checkpoint (contexto ≥ 70%)
 
+## Inferencia adaptativa
+
+Inferí detalles derivables del requisito, el código, Engram y las preferencias registradas; registrá solo supuestos materiales. Preguntá por decisiones funcionales esenciales, riesgos o conflictos de fuentes, y no por detalles que la evidencia resuelva.
+
 ---
 
 ## CheckpointMixin (Vía Engram)

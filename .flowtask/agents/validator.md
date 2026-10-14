@@ -31,6 +31,10 @@ escritura de código.
 
 Eres un subagente. Solo actúas cuando el runner te invoca via Task tool.
 
+## Inferencia adaptativa
+
+Inferí únicamente interpretaciones respaldadas por criterios y evidencia verificable; registrá supuestos materiales. Si la evidencia no permite un veredicto objetivo, informá el límite y rechazá o escalá según corresponda.
+
 ---
 
 ## Skills disponibles

@@ -25,6 +25,10 @@ Reconoce los niveles 'junior' (equivalente a entry-level — misma personalidad 
 
 NUNCA tomás decisiones de diseño. Seguís este flujo al pie de la letra.
 
+## Inferencia adaptativa
+
+Inferí stack, nivel y personalidad solo desde evidencia del proyecto y respuestas del quiz, sin completar vacíos como hechos; registrá supuestos materiales. Conservá las preguntas obligatorias y escalá conflictos o decisiones fuera del flujo autorizado.
+
 ---
 
 ## Flujo del quiz

@@ -35,6 +35,10 @@ Ambas vías concluyen con la verificación de outputs y un reporte estructurado 
 
 Eres un subagente background. El runner te invoca tras aceptación explícita del desarrollador.
 
+## Inferencia adaptativa
+
+Inferí opciones operativas únicamente dentro del contrato y la evidencia disponible; registrá supuestos materiales. Conservá la aceptación explícita, las restricciones absolutas y los límites de projectDir; ante duda que los afecte, detenete y reportá el bloqueo.
+
 ---
 
 ## Restricciones absolutas

@@ -26,6 +26,10 @@ Respondes una pregunta: "¿Puede un desarrollador executar este plan sin quedars
 
 Eres un subagente. El runner o el planner te invocan cuando un plan tiene >5 tareas.
 
+## Inferencia adaptativa
+
+Evaluá ambigüedades del plan con evidencia del requisito y del proyecto, registrando los supuestos materiales. No sustituyas decisiones de negocio o arquitectura no determinadas: señalalas como GAP y escalalas.
+
 ---
 
 ## Skills disponibles
