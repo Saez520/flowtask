@@ -739,12 +739,8 @@ parse_destination_status() {
 }
 
 detect_unsupported() {
-  local tracked_list="$1" path fields value unsupported="" submodule_status
-  if ! submodule_status="$(git submodule status --recursive 2>/dev/null)"; then
-    printf '%s\n' "Aviso: no se pudo verificar el estado de los submodules; se bloquea la preservación." >&2
-    return 1
-  fi
-  [[ -z "$submodule_status" ]] || unsupported+="submodules "
+  local tracked_list="$1" path fields value unsupported=""
+  preserve_submodules_clean "$REPO_ROOT" || return 1
   if [[ "$(git config --bool core.sparsecheckout 2>/dev/null || true)" == true ]] || git sparse-checkout list >/dev/null 2>&1; then unsupported+="sparse-checkout "; fi
   while IFS= read -r -d '' path; do
     fields=(); while IFS= read -r -d '' value; do fields+=("$value"); done < <(git check-attr -z filter -- "./$path")
@@ -752,6 +748,45 @@ detect_unsupported() {
   done < "$tracked_list"
   [[ -z "$unsupported" ]] || { printf 'Aviso: setup no soportado para preservar cambios: %s\n' "${unsupported% }" >&2; return 1; }
   if [[ -n "$(git ls-files --others --ignored --exclude-standard --directory | grep -v '^\.flowtask/backups/\?$' || true)" ]]; then printf '%s\n' "Aviso: hay archivos ignorados en el destino; quedan fuera de la captura y no serán tocados." >&2; fi
+}
+
+# A declared submodule is not part of the parent's dirty payload when it is
+# uninitialized.  Once active, however, preservation must be able to prove
+# that its checkout is clean and exactly at the recorded gitlink.  Keep this
+# check separate from close_worktree_gitlinks_clean because it must not use the
+# close journal's init intent and must report verification failures to the
+# caller rather than exiting the process.
+preserve_submodules_clean() {
+  local root="$1" line marker rest expected sm_path child child_status status_lines
+  if ! status_lines="$(git -C "$root" submodule status --recursive 2>/dev/null)"; then
+    printf '%s\n' "Aviso: no se pudo verificar el estado de los submodules; se bloquea la preservación." >&2
+    return 1
+  fi
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    marker="${line:0:1}"
+    rest="${line:1}"
+    expected="${rest%% *}"
+    sm_path="${rest#* }"
+    sm_path="${sm_path%% *}"
+    case "$marker" in
+      -) continue ;;
+      +) printf '%s\n' "Aviso: el submodule '$sm_path' diverge de su gitlink; se bloquea la preservación." >&2; return 1 ;;
+      U) printf '%s\n' "Aviso: el submodule '$sm_path' tiene un conflicto; se bloquea la preservación." >&2; return 1 ;;
+      ' ') ;;
+      *) printf '%s\n' "Aviso: no se pudo interpretar el estado del submodule '$sm_path'; se bloquea la preservación." >&2; return 1 ;;
+    esac
+    child="$root/$sm_path"
+    if ! child_status="$(git -C "$child" status --porcelain=v1 --untracked-files=all 2>/dev/null)"; then
+      printf '%s\n' "Aviso: no se pudo verificar el submodule '$sm_path'; se bloquea la preservación." >&2
+      return 1
+    fi
+    [[ -z "$child_status" ]] || { printf '%s\n' "Aviso: el submodule '$sm_path' tiene cambios locales; se bloquea la preservación." >&2; return 1; }
+    if [[ "$(git -C "$child" rev-parse HEAD 2>/dev/null || true)" != "$expected" ]]; then
+      printf '%s\n' "Aviso: el submodule '$sm_path' diverge de su gitlink; se bloquea la preservación." >&2
+      return 1
+    fi
+  done <<< "$status_lines"
 }
 
 consent_preserve_dirty() {
@@ -876,8 +911,8 @@ close_preflight() {
   stash_entries="$(git stash list)"; [[ -z "$stash_entries" ]] || problems+=$'\n- Repositorio: hay stash pendiente.\n  Acción: resolver o restaurar los stashes de forma segura antes de reintentar.\n'
   parse_destination_status "$REPO_ROOT"
   if (( DEST_STAGED || DEST_UNSTAGED || DEST_UNTRACKED )); then
-    consent_preserve_dirty "$preserve_flag" || dirty_destination_rejection "$work_id"
-    detect_unsupported "$TMP_STATE_DIR/dest.tracked" || dirty_destination_rejection "$work_id"
+    consent_preserve_dirty "$preserve_flag" || dirty_destination_rejection "$work_id" "$base"
+    detect_unsupported "$TMP_STATE_DIR/dest.tracked" || dirty_destination_rejection "$work_id" "$base"
   fi
   [[ -z "$problems" ]] || die "No se puede completar '$work_id'; se detectaron problemas antes de integrar o limpiar:$problems"
 }
@@ -1039,10 +1074,12 @@ complete_worktree() {
 }
 
 dirty_destination_rejection() {
-  local work_id="$1"
-  printf '%s\n' "No se puede completar '$work_id': el destino tiene cambios sin commitear." >&2
-  printf '%s\n' "Inspeccionalo vos mismo con 'git status' antes de reintentar." >&2
+  local work_id="$1" base="$2"
+  printf '%s\n' "Advertencia: no se puede completar '$work_id': el destino tiene cambios sin commitear." >&2
   printf '%s\n' "El cierre fue cancelado; no se modificó nada." >&2
+  printf '%s\n' "Para reintentar con un merge seguro preservando cambios locales, ejecutá:" >&2
+  printf '%s\n' "  worktree.sh complete '$work_id' --base '$base' --preserve-dirty" >&2
+  printf '%s\n' "--preserve-dirty respalda temporalmente los cambios staged, unstaged y untracked, ejecuta el merge y los restaura; no crea un commit." >&2
   exit 1
 }
 

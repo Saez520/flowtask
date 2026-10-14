@@ -119,9 +119,11 @@ function cleanupTemporarySubmoduleRepos() {
 // el ca_name (parámetro de invocación, nunca dato del repositorio).
 function expectedRejection(caName) {
   return (
-    `No se puede completar '${caName}': el destino tiene cambios sin commitear.\n` +
-    "Inspeccionalo vos mismo con 'git status' antes de reintentar.\n" +
-    "El cierre fue cancelado; no se modificó nada.\n"
+    `Advertencia: no se puede completar '${caName}': el destino tiene cambios sin commitear.\n` +
+    "El cierre fue cancelado; no se modificó nada.\n" +
+    "Para reintentar con un merge seguro preservando cambios locales, ejecutá:\n" +
+    `  worktree.sh complete '${caName}' --base 'main' --preserve-dirty\n` +
+    "--preserve-dirty respalda temporalmente los cambios staged, unstaged y untracked, ejecuta el merge y los restaura; no crea un commit.\n"
   );
 }
 
@@ -1031,30 +1033,47 @@ describe("transactional preservation", () => {
     assert.doesNotMatch(git("branch", "--list"), /worktree\/CA-tx-hostile/);
   });
 
-  // AC2.3 — setups no soportados: avisa categoría, no captura nada
-  it("rejects with submodules present before capturing anything", () => {
+  // AC2.3 — submodules sólo bloquean cuando el checkout activo no es verificable/limpio
+  it("preserves with a declared but uninitialized submodule", () => {
+    createNestedSubmoduleFixture();
     createCommittedWorktree("CA-tx-sub");
-    const upstream = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-upstream-"));
-    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: upstream });
-    execFileSync("git", ["config", "user.email", "test@example.invalid"], { cwd: upstream });
-    execFileSync("git", ["config", "user.name", "FlowTask Test"], { cwd: upstream });
-    fs.writeFileSync(path.join(upstream, "lib.txt"), "lib\n");
-    execFileSync("git", ["add", "lib.txt"], { cwd: upstream });
-    execFileSync("git", ["commit", "-qm", "lib"], { cwd: upstream });
-    execFileSync(
-      "git",
-      ["-c", "protocol.file.allow=always", "submodule", "add", "-q", upstream, "sub"],
-      { cwd: tempRepo }
-    );
     fs.writeFileSync(path.join(tempRepo, "dirty.txt"), "dirty\n");
-    const result = runResult("complete", "CA-tx-sub", "--base", "main", "--preserve-dirty");
+    const result = runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "complete", "CA-tx-sub", "--base", "main", "--preserve-dirty");
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(git("submodule", "status", "--recursive"), /^-/m);
+    assert.equal(fs.readFileSync(path.join(tempRepo, "dirty.txt"), "utf8"), "dirty\n");
+    assert.equal(fs.existsSync(worktreeFor("CA-tx-sub")), false);
+  });
+
+  it("preserves with an active clean submodule", () => {
+    createNestedSubmoduleFixture();
+    createCommittedWorktree("CA-tx-sub-clean");
+    execFileSync("git", ["-c", "protocol.file.allow=always", "submodule", "update", "--init", "--force", "sub"], { cwd: tempRepo });
+    assert.match(git("submodule", "status", "--recursive"), /^ [0-9a-f]{40} sub(?: |$)/m);
+    fs.writeFileSync(path.join(tempRepo, "clean-submodule-dirty.txt"), "dirty\n");
+
+    const result = runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "complete", "CA-tx-sub-clean", "--base", "main", "--preserve-dirty");
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.readFileSync(path.join(tempRepo, "clean-submodule-dirty.txt"), "utf8"), "dirty\n");
+  });
+
+  it("rejects an active dirty submodule before capturing", () => {
+    createNestedSubmoduleFixture();
+    createCommittedWorktree("CA-tx-sub-dirty");
+    execFileSync("git", ["-c", "protocol.file.allow=always", "submodule", "update", "--init", "--force", "sub"], { cwd: tempRepo });
+    assert.match(git("submodule", "status", "--recursive"), /^ [0-9a-f]{40} sub(?: |$)/m);
+    fs.writeFileSync(path.join(tempRepo, "sub", "dirty.txt"), "dirty\n");
+    fs.writeFileSync(path.join(tempRepo, "dirty-submodule-parent.txt"), "dirty\n");
+
+    const result = runResultWithEnv({ GIT_ALLOW_PROTOCOL: "file" }, "complete", "CA-tx-sub-dirty", "--base", "main", "--preserve-dirty");
 
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /submodules/);
+    assert.match(result.stderr, /submodule.*cambios|cambios.*submodule/i);
     assert.equal(backupRefs(), "");
     assert.equal(fs.existsSync(backupsDir()), false);
-    assert.ok(fs.readFileSync(path.join(tempRepo, "dirty.txt"), "utf8") === "dirty\n");
-    fs.rmSync(upstream, { recursive: true, force: true });
+    assert.equal(fs.existsSync(worktreeFor("CA-tx-sub-dirty")), true);
   });
 
   it("rejects with sparse-checkout active", () => {
