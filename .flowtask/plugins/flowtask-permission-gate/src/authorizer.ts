@@ -172,6 +172,32 @@ function hasEffectFlags(tokens: string[]): boolean {
   return tokens.some((token) => GIT_DIFF_EFFECT_FLAGS.has(token.split("=", 1)[0]));
 }
 
+const BLOCKED_COMMANDS = new Set([
+  "rm", "rmdir", "unlink", "shred", "mv", "cp", "install", "touch", "mkdir", "truncate", "chmod", "chown",
+  "tee", "dd", "sed", "perl", "python", "python3", "ruby", "bash", "sh", "zsh", "node",
+  "npx", "npm", "pnpm", "yarn", "bun", "deno", "make", "makepkg", "pytest", "jest", "vitest",
+  "tsc", "eslint", "biome", "docker", "curl", "wget", "sudo", "eval", "source", "exec", "awk", "gawk",
+  "env", "xargs", "pip", "pip3", "corepack", "webpack", "vite", "rollup",
+]);
+const BLOCKED_EFFECT_FLAGS = new Set([
+  "--force", "-f", "--delete", "--overwrite", "--output", "--exec", "--execute",
+  "--upload-pack", "--receive-pack", "--ext-diff", "--textconv",
+]);
+
+function hasBlockedEffects(tokens: string[]): boolean {
+  const command = tokens[0]?.replaceAll("\\", "/").split("/").at(-1) ?? "";
+  if (BLOCKED_COMMANDS.has(command) || /^(?:python|python\d+(?:\.\d+)*|node\d*|ruby\d*|perl\d*|bash\d*|sh\d*)$/.test(command)) return true;
+  if (command === "git" && tokens.some((token) => BLOCKED_EFFECT_FLAGS.has(token.split("=", 1)[0]))) return true;
+  if (command === "find" && tokens.some((token) => ["-delete", "-exec", "-execdir", "-ok"].includes(token))) return true;
+  if (/\.(?:sh|bash|zsh|py|pyc|rb|pl|js|mjs|cjs|ts|tsx|jsx)$/.test(tokens[0] ?? "")) return true;
+  if (tokens.some((token) => BLOCKED_EFFECT_FLAGS.has(token.split("=", 1)[0]))) return true;
+  if (command === "git") {
+    const verb = tokens[1];
+    if (["checkout", "reset", "clean", "rebase", "cherry-pick", "apply", "am", "stash", "config", "init", "clone", "fetch", "pull", "push", "merge", "add", "commit", "restore", "switch", "tag", "gc", "prune"].includes(verb ?? "")) return true;
+  }
+  return false;
+}
+
 /** Flags read-only adicionales permitidos en git log (no cuentan como límite). */
 const GIT_LOG_READONLY_FLAGS = new Set([
   "--oneline", "--format", "--stat", "--name-only", "--no-merges",
@@ -267,7 +293,7 @@ export function isAuthorizedRunnerCommand(command: string): boolean {
     if (tokens[0] === "ls") return hasFlagsAndPaths(tokens.slice(1));
     if (tokens[0] === "cat") return tokens.length >= 2; // read-only file access for runner diagnostics
     if (tokens[0] === "echo") return true;
-    if (tokens[0] !== "git") return false;
+    if (tokens[0] !== "git") return !hasBlockedEffects(tokens);
     if (tokens[1] === "worktree" && tokens[2] === "list") return hasOnlyFlags(tokens.slice(3));
     if (tokens[1] === "diff") {
       const rest = tokens.slice(2);
@@ -283,6 +309,8 @@ export function isAuthorizedRunnerCommand(command: string): boolean {
      if (tokens[1] === "log") return isAuthorizedGitLog(tokens.slice(2));
     if (tokens[1] === "show") return tokens.length >= 2;
     if (tokens[1] === "rev-parse") return hasFlagsAndPaths(tokens.slice(2));
+    // Git is default-deny: only explicitly reviewed read-only/admin commands
+    // and the existing narrowly-shaped coordination commands are authorized.
     return false;
   });
 }

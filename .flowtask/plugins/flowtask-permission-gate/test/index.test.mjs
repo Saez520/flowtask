@@ -141,6 +141,28 @@ test("authorizes all-safe compounds, including the original management command",
    ]) assert.equal(isAuthorizedRunnerCommand(command), true, command);
 });
 
+test("allows analyzable uncatalogued management and inspection commands", () => {
+  for (const command of ["pwd", "whoami", "date", "find . -maxdepth 2", "rg TODO src", "jq . package.json", "du -sh .", "git status && find . -maxdepth 1"]) {
+    assert.equal(isAuthorizedRunnerCommand(command), true, command);
+  }
+});
+
+test("denies explicit destructive, writing, installing, executing and forced operations", () => {
+  for (const command of [
+    "rm -rf build", "python3 script.py", "./deploy.sh", "npm install", "npm test", "npm run build",
+    `awk 'BEGIN { system("touch /tmp/marker") }'`, `gawk 'BEGIN { system("id") }'`,
+    "chmod +x tool", "git reset --hard", "git clean -fd", "git checkout -- .", "curl https://example.invalid",
+    "find . -delete", "git status && rm file",
+  ]) assert.equal(isAuthorizedRunnerCommand(command), false, command);
+});
+
+test("denies unapproved mutating git subcommands", () => {
+  for (const command of [
+    "git revert HEAD", "git worktree add /tmp/wt", "git worktree remove /tmp/wt",
+    "git worktree move /tmp/wt /tmp/wt2", "git update-ref refs/heads/main HEAD", "git show-ref --heads",
+  ]) assert.equal(isAuthorizedRunnerCommand(command), false, command);
+});
+
 test("authorizes git log con límite ≤ 10 (formas canónicas)", () => {
    for (const command of [
      "git log --oneline -n 10",
@@ -194,7 +216,7 @@ test("rejects malformed, mixed and dangerous commands", () => {
     "git status && git diff > output.txt", "git status `git diff`", "git status $(git diff)",
     "git status (git diff)", "git status << heredoc", "echo ok >>/dev/null", "echo ok < /dev/null",
      "./.opencode/flowtask/scripts/worktree.sh create wt-1",
-     "./.flowtask/scripts/worktree.sh create wt-1", "jq . file",
+      "./.flowtask/scripts/worktree.sh create wt-1",
      "./.flowtask/scripts/worktree.sh --repo /tmp/repo list",
      "./.flowtask/scripts/worktree.sh complete wt-1 --discard",
      "./.flowtask/scripts/worktree.sh cleanup wt-1 --preserve-dirty",
