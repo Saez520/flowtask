@@ -142,7 +142,7 @@ export function copyDirectoryDelta(src, dest, preservePaths = [], visited = new 
 }
 
 /** Verify an installed mirror byte-for-byte, including SHA-256 for every file. */
-export function verifyDirectoryMirror(src, dest) {
+export function verifyDirectoryMirror(src, dest, { expectedExtraFiles = {} } = {}) {
   if (!fs.existsSync(src) || !fs.existsSync(dest)) return false;
   const files = [];
   const destinationFiles = [];
@@ -169,9 +169,19 @@ export function verifyDirectoryMirror(src, dest) {
     }
     return true;
   };
-  if (!collectDestination(dest, dest) || files.length !== destinationFiles.length) return false;
+  if (!collectDestination(dest, dest)) return false;
+  const extras = Object.keys(expectedExtraFiles);
+  if (extras.some((relative) => path.isAbsolute(relative) || relative.split(path.sep).includes(".."))) return false;
+  if (destinationFiles.length !== files.length + extras.length) return false;
   const destinationSet = new Set(destinationFiles);
   if (files.some((relative) => !destinationSet.has(relative))) return false;
+  if (extras.some((relative) => files.includes(relative) || !destinationSet.has(relative))) return false;
+  for (const relative of extras) {
+    const target = path.join(dest, relative);
+    let stat;
+    try { stat = fs.lstatSync(target); } catch { return false; }
+    if (!stat.isFile() || !fs.readFileSync(target).equals(Buffer.from(expectedExtraFiles[relative]))) return false;
+  }
   for (const relative of files) {
     const source = path.join(src, relative);
     const target = path.join(dest, relative);

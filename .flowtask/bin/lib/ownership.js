@@ -209,7 +209,8 @@ export function replaceManagedPackage({ sourceDir, destinationDir, configPath, p
     fs.mkdirSync(stage, { recursive: true });
     copyDirectoryDelta(sourceDir, stage);
     writeMarker(stage);
-    if (!verifyDirectoryMirror(sourceDir, stage)) throw new Error("staged source mirror verification failed");
+    const markerContents = `${JSON.stringify(OWNER_MARKER, null, 2)}\n`;
+    if (!verifyDirectoryMirror(sourceDir, stage, { expectedExtraFiles: { ".flowtask-plugin-owner.json": markerContents } })) throw new Error("staged source mirror verification failed");
     if (faultInjector) faultInjector("STAGE-PUBLISH");
     if (fs.existsSync(destinationDir)) fs.renameSync(destinationDir, backup);
     fs.renameSync(stage, destinationDir);

@@ -53,6 +53,26 @@ test("mirror verification rejects missing, altered, and truncated files", () => 
   assert.equal(verifyDirectoryMirror(source, target), false);
 });
 
+test("mirror verification accepts only the explicitly expected generated owner marker", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-marker-mirror-"));
+  fixtures.push(root);
+  const source = path.join(root, "source");
+  const target = path.join(root, "target");
+  fs.mkdirSync(source);
+  fs.mkdirSync(target);
+  fs.writeFileSync(path.join(source, "index.ts"), "export {};\n");
+  fs.copyFileSync(path.join(source, "index.ts"), path.join(target, "index.ts"));
+  const markerPath = ".flowtask-plugin-owner.json";
+  const marker = '{"managedBy":"flowtask"}\n';
+  fs.writeFileSync(path.join(target, markerPath), marker);
+  assert.equal(verifyDirectoryMirror(source, target, { expectedExtraFiles: { [markerPath]: marker } }), true);
+  fs.writeFileSync(path.join(target, markerPath), '{"managedBy":"other"}\n');
+  assert.equal(verifyDirectoryMirror(source, target, { expectedExtraFiles: { [markerPath]: marker } }), false);
+  fs.writeFileSync(path.join(target, markerPath), marker);
+  fs.writeFileSync(path.join(target, "stale"), "unexpected");
+  assert.equal(verifyDirectoryMirror(source, target, { expectedExtraFiles: { [markerPath]: marker } }), false);
+});
+
 afterEach(() => {
   for (const fixture of fixtures.splice(0)) {
     fs.rmSync(fixture, { recursive: true, force: true });
