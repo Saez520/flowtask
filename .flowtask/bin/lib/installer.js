@@ -437,7 +437,8 @@ function configContainsClassifier(configPath) {
 
   try {
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    return Array.isArray(config.plugin) && config.plugin.some((entry) => {
+    const plugins = Array.isArray(config.plugins) ? config.plugins : config.plugin;
+    return Array.isArray(plugins) && plugins.some((entry) => {
       const pluginPath = typeof entry === "string" ? entry : entry?.path;
       return CLASSIFIER_PLUGIN_NAMES.includes(extractPluginName(pluginPath));
     });
@@ -452,15 +453,16 @@ function removeClassifierEntries(configPath) {
 
   try {
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    if (!Array.isArray(config.plugin)) return false;
+    const pluginKey = Array.isArray(config.plugins) ? "plugins" : "plugin";
+    if (!Array.isArray(config[pluginKey])) return false;
 
-    const originalLength = config.plugin.length;
-    config.plugin = config.plugin.filter((entry) => {
+    const originalLength = config[pluginKey].length;
+    config[pluginKey] = config[pluginKey].filter((entry) => {
       const pluginPath = typeof entry === "string" ? entry : entry?.path;
       return !CLASSIFIER_PLUGIN_NAMES.includes(extractPluginName(pluginPath));
     });
 
-    if (config.plugin.length === originalLength) return false;
+    if (config[pluginKey].length === originalLength) return false;
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
     return true;
   } catch (err) {

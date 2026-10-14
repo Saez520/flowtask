@@ -6,7 +6,7 @@ description: >-
   Runner y ejecuta los artefactos en el orden especificado. No toma decisiones
   de diseño.
 mode: subagent
-hidden: true
+hidden: false
 permission:
    edit: allow
    bash: allow

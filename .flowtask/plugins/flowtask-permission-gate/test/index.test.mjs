@@ -71,7 +71,46 @@ async function runGateWith(hooks, workdir, command, sessionID = "s-bypass") {
   );
 }
 
-// --- Autorización Runner (sin cambios de contrato) ---
+// --- Autorización Runner (contrato OpenCode V2) ---
+
+test("runner autoriza solo subagent V2 con agentes FlowTask y rechaza auto-invocación", async () => {
+  const hooks = await plugin({ directory: process.cwd() });
+  await hooks["chat.message"]({ sessionID: "s-subagent", agent: "flowtask-runner" }, { message: {}, parts: [] });
+
+  for (const agent of ["flowtask-ca-writer", "flowtask-planner", "flowtask-constructor", "flowtask-inspector"]) {
+    await hooks["tool.execute.before"](
+      { tool: "subagent", sessionID: "s-subagent", callID: `c-${agent}` },
+      { args: { agent, prompt: "test", description: "test" } },
+    );
+  }
+
+  for (const args of [
+    { agent: "flowtask-runner", prompt: "self" },
+    { agent: "general", prompt: "fallback" },
+    { subagent_type: "flowtask-ca-writer", prompt: "legacy" },
+    { prompt: "missing agent" },
+  ]) {
+    await assert.rejects(
+      hooks["tool.execute.before"](
+        { tool: "subagent", sessionID: "s-subagent", callID: "c-deny" },
+        { args },
+      ),
+      (error) => error instanceof Error && error.message === RUNNER_DELEGATION_MESSAGE,
+    );
+  }
+});
+
+test("legacy task contract remains blocked under the V2 gate", async () => {
+  const hooks = await plugin({ directory: process.cwd() });
+  await hooks["chat.message"]({ sessionID: "s-task-legacy", agent: "flowtask-runner" }, { message: {}, parts: [] });
+  await assert.rejects(
+    hooks["tool.execute.before"](
+      { tool: "task", sessionID: "s-task-legacy", callID: "c-task-legacy" },
+      { args: { subagent_type: "flowtask-inspector", prompt: "legacy" } },
+    ),
+    (error) => error instanceof Error && error.message === RUNNER_DELEGATION_MESSAGE,
+  );
+});
 
 test("matches canonical Runner commands structurally", () => {
   for (const command of [

@@ -164,8 +164,15 @@ export function registerPluginArrayEntry(configPath, entry, schema = "https://op
     // Ensure base structure
     if (!config.$schema) config.$schema = schema;
 
-    // Initialize plugin array if needed
-    let plugins = Array.isArray(config.plugin) ? config.plugin : [];
+    // OpenCode V2 uses `plugins`; the native TUI manifest still uses `plugin`.
+    const isOpencodeConfig = schema.includes("/config.json") && !schema.includes("/tui.json");
+    const pluginKey = isOpencodeConfig ? "plugins" : "plugin";
+    const legacyPluginKey = isOpencodeConfig ? "plugin" : null;
+    let plugins = Array.isArray(config[pluginKey]) ? config[pluginKey] : [];
+    if (legacyPluginKey && Array.isArray(config[legacyPluginKey])) {
+      plugins = [...config[legacyPluginKey], ...plugins];
+      delete config[legacyPluginKey];
+    }
 
     // Extract plugin name from new entry
     const entryPath = typeof entry === "string" ? entry : entry?.path;
@@ -195,7 +202,7 @@ export function registerPluginArrayEntry(configPath, entry, schema = "https://op
     } else {
       plugins.push(entry);
     }
-    config.plugin = normalizePluginEntries(plugins, []);
+    config[pluginKey] = normalizePluginEntries(plugins, []);
 
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
     const original = fileExists(configPath) ? fs.readFileSync(configPath) : null;
@@ -222,7 +229,8 @@ export function registerPluginArrayEntry(configPath, entry, schema = "https://op
 }
 
 /**
- * Merge FlowTask agent/command/mcp/plugin sections into the IDE's opencode.json.
+ * Merge FlowTask V2 agents/commands/mcp/plugins sections into the IDE's opencode.json.
+ * Legacy singular section names are accepted on input and normalized to V2 names.
  */
 export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
   const flowtaskOpencodePath = findOpencodeConfig(flowtaskDir);
@@ -252,26 +260,40 @@ export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
       ideConfig.default_agent = ftConfig.default_agent;
     }
 
-    for (const section of ["mcp", "agent", "command", "plugin"]) {
-      if (!ftConfig[section]) continue;
-      const adjusted = adjustConfigPaths(ftConfig[section], targetSubDir);
-      if (!ideConfig[section]) {
-        ideConfig[section] = section === "plugin"
-          ? normalizePluginEntries([], Array.isArray(adjusted) ? adjusted : [])
-          : adjusted;
-      } else if (section === "plugin") {
-        const existing = Array.isArray(ideConfig[section]) ? ideConfig[section] : [];
-        const incoming = Array.isArray(adjusted) ? adjusted : [];
-        ideConfig[section] = normalizePluginEntries(existing, incoming);
+    const sections = [
+      { canonical: "mcp", legacy: null, array: false },
+      { canonical: "agents", legacy: "agent", array: false },
+      { canonical: "commands", legacy: "command", array: false },
+      { canonical: "plugins", legacy: "plugin", array: true },
+    ];
+    for (const { canonical, legacy, array } of sections) {
+      const incoming = ftConfig[canonical] ?? (legacy ? ftConfig[legacy] : undefined);
+      if (incoming === undefined) continue;
+      const adjusted = adjustConfigPaths(incoming, targetSubDir);
+      const legacyExisting = legacy && ideConfig[legacy] && typeof ideConfig[legacy] === "object"
+        ? ideConfig[legacy]
+        : {};
+      const canonicalExisting = ideConfig[canonical] && typeof ideConfig[canonical] === "object"
+        ? ideConfig[canonical]
+        : {};
+      if (array) {
+        ideConfig[canonical] = normalizePluginEntries(
+          Array.isArray(legacyExisting) ? legacyExisting : Array.isArray(canonicalExisting) ? canonicalExisting : [],
+          Array.isArray(adjusted) ? adjusted : [],
+        );
       } else {
-        ideConfig[section] = mergeMissingObjects(ideConfig[section], adjusted);
+        ideConfig[canonical] = mergeMissingObjects(
+          mergeMissingObjects(legacyExisting, canonicalExisting),
+          adjusted,
+        );
       }
+      if (legacy) delete ideConfig[legacy];
     }
 
-    // The permission gate is the sole Runner enforcement. Remove the legacy
-    // managed block from existing targets without touching Runner metadata.
-    if (ideConfig.agent?.["flowtask-runner"]) {
-      delete ideConfig.agent["flowtask-runner"].permission;
+    // The permission gate remains the runtime enforcement. Remove only the
+    // legacy nested permission block from existing targets; keep V2 permissions.
+    if (ideConfig.agents?.["flowtask-runner"]) {
+      delete ideConfig.agents["flowtask-runner"].permission;
     }
 
     if (!ideConfig.$schema) ideConfig.$schema = "https://opencode.ai/config.json";

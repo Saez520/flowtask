@@ -7,7 +7,7 @@ description: >-
   niveles del installer (training, junior, mid, senior, custom), asigna
   la personalidad correspondiente y la inyecta en runner.md.
 mode: subagent
-hidden: true
+hidden: false
 permission:
    edit: allow
    bash: allow

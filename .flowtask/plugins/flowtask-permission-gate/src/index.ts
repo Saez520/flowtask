@@ -2,7 +2,11 @@ import type { PluginInput } from "@opencode-ai/plugin";
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand } from "./authorizer.js";
+import {
+  RUNNER_DELEGATION_MESSAGE,
+  isAuthorizedRunnerCommand,
+  isAuthorizedRunnerSubagent,
+} from "./authorizer.js";
 import {
   buildFallback,
   isImageOrPdfOutput,
@@ -39,13 +43,6 @@ type StampPayload = { ts: number; branch: string };
 
 type ParsedStamp = { ok: true; payload: StampPayload } | { ok: false; reason: string };
 
-const RUNNER_TASKS = new Set([
-  "flowtask-ca-writer", "flowtask-planner", "flowtask-plan-auditor", "flowtask-constructor",
-  "flowtask-validator", "flowtask-initializer", "flowtask-logger", "flowtask-tester",
-  "flowtask-review-orchestrator", "flowtask-inspector", "flowtask-onboarder",
-  "flowtask-graphify-docs-media",
-]);
-
 const SESSION_AGENTS = new Map<string, string>();
 
 /**
@@ -80,7 +77,7 @@ function runnerToolAllowed(tool: string, args: Record<string, unknown>): boolean
    // MCP Graphify: única herramienta MCP autorizada para el runner (vía 1 de la cadena de investigación).
    // No ampliar a otros tools graphify — solo el tool enumerado exacto.
    if (tool === "graphify_query_graph") return true;
-   if (tool === "task") return RUNNER_TASKS.has(String(args.subagent_type ?? args.agent ?? args.name ?? ""));
+   if (tool === "subagent") return isAuthorizedRunnerSubagent(args.agent);
    return false;
 }
 

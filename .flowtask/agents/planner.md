@@ -7,7 +7,7 @@ description: >-
   afectadas, artefactos y convenciones del proyecto. No escribe código.
   Su output se guarda en Engram (ca/CA-{ID}/artifact/plan) y el flow state en Engram.
 mode: subagent
-hidden: true
+hidden: false
 permission:
    edit: deny
    bash: deny

@@ -112,30 +112,17 @@ function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
-const canonicalRunnerPermission = {
-  "*": "deny",
-  bash: {
-    "*": "deny",
-    "node .flowtask/bin/flowtask.js graphify *": "allow",
-    "git status": "allow", "git add": "allow", "git restore --staged": "allow",
-    "git commit": "allow", "git push": "allow", "git merge": "allow",
-    "./.flowtask/scripts/worktree.sh create": "allow",
-    "./.flowtask/scripts/worktree.sh complete": "allow",
-    "./.flowtask/scripts/worktree.sh list": "allow",
-  },
-  task: {
-    "*": "deny", "flowtask-ca-writer": "allow", "flowtask-planner": "allow",
-    "flowtask-plan-auditor": "allow", "flowtask-constructor": "allow",
-    "flowtask-validator": "allow", "flowtask-initializer": "allow", "flowtask-logger": "allow",
-    "flowtask-tester": "allow", "flowtask-review-orchestrator": "allow",
-    "flowtask-inspector": "allow", "flowtask-onboarder": "allow",
-    "flowtask-graphify-docs-media": "allow", "flowtask-runner": "deny",
-  },
-  skill: "allow", "engram_*": "allow",
-};
+const canonicalRunnerPermission = [
+  { action: "*", resource: "*", effect: "deny" },
+  { action: "subagent", resource: "flowtask-*", effect: "allow" },
+  { action: "subagent", resource: "flowtask-runner", effect: "deny" },
+  { action: "skill", resource: "*", effect: "allow" },
+  { action: "engram_*", resource: "*", effect: "allow" },
+];
 
 function installedPluginEntries(configPath) {
-  return readJson(configPath).plugin ?? [];
+  const config = readJson(configPath);
+  return config.plugins ?? config.plugin ?? [];
 }
 
 function nativeTuiEntries(root) {
@@ -334,7 +321,7 @@ test("the canonical manifest offers no retired command entry", () => {
   const manifest = JSON.parse(
     fs.readFileSync(fileURLToPath(new URL("../../../opencode.json", import.meta.url)), "utf8"),
   );
-  const offered = Object.keys(manifest.command ?? {});
+  const offered = Object.keys(manifest.commands ?? manifest.command ?? {});
 
   for (const name of ["init", "new-ca", "run", "inspect", "evolve-agent", "status"]) {
     assert.equal(offered.includes(name), false, `retired command still offered by manifest: ${name}`);
@@ -386,7 +373,7 @@ test("update integrates config and cleans legacy scripts into an installed targe
   });
   writeJson(path.join(root, ".flowtask", "opencode.json"), {
     default_agent: "flowtask-runner",
-    agent: { "flowtask-runner": { permission: canonicalRunnerPermission, task: { legacy: "keep" } } },
+    agents: { "flowtask-runner": { permissions: canonicalRunnerPermission, task: { legacy: "keep" } } },
   });
   writeJson(path.join(root, ".opencode", "opencode.json"), {
     $schema: "https://custom/schema.json",
@@ -404,21 +391,23 @@ test("update integrates config and cleans legacy scripts into an installed targe
   assert.equal(result.error, undefined, result.error?.message);
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   const updatedConfig = readJson(path.join(root, ".opencode", "opencode.json"));
-  assert.ok(updatedConfig.agent["flowtask-validator"], "update must merge the new canonical agent");
-  assert.equal(updatedConfig.agent["flowtask-validator"].prompt, "{file:flowtask/agents/validator.md}");
+  assert.ok(updatedConfig.agents["flowtask-validator"], "update must merge the new canonical agent");
+  assert.equal(updatedConfig.agents["flowtask-validator"].system, "{file:flowtask/agents/validator.md}");
   assert.equal(updatedConfig.default_agent, "flowtask-runner");
-  assert.deepEqual(updatedConfig.agent.existing, { description: "manual" });
-  assert.equal(Object.hasOwn(updatedConfig.agent["flowtask-runner"], "permission"), false);
-  assert.ok(updatedConfig.agent["flowtask-runner"]);
-  // The hotfix fixture remains canonical; the CA migration removes it from the installed Runner.
+  assert.deepEqual(updatedConfig.agents.existing, { description: "manual" });
+  assert.equal(Object.hasOwn(updatedConfig.agents["flowtask-runner"], "permission"), false);
+  assert.equal(Object.hasOwn(updatedConfig, "plugin"), false);
+  assert.ok(updatedConfig.agents["flowtask-runner"]);
+  // The V2 runner permissions remain enforced in the installed target.
   const permission = canonicalRunnerPermission;
-  assert.deepEqual(Object.keys(permission), ["*", "bash", "task", "skill", "engram_*"]);
-  assert.equal(Object.keys(permission.bash)[0], "*");
-  assert.equal(Object.keys(permission.task)[0], "*");
-  assert.equal(Object.keys(permission.task).at(-1), "flowtask-runner");
-  assert.equal(permission.skill, "allow");
-  assert.equal(permission["engram_*"], "allow");
-  assert.equal(Object.hasOwn(updatedConfig.agent["flowtask-runner"], "task"), false);
+  assert.equal(updatedConfig.agents["flowtask-runner"].permissions[0].action, permission[0].action);
+  assert.ok(updatedConfig.agents["flowtask-runner"].permissions.some(
+    ({ action, resource, effect }) => action === "subagent" && resource === "flowtask-runner" && effect === "deny",
+  ));
+  assert.ok(updatedConfig.agents["flowtask-runner"].permissions.some(
+    ({ action, resource, effect }) => action === "shell" && resource.startsWith("git status") && effect === "allow",
+  ));
+  assert.equal(Object.hasOwn(updatedConfig.agents["flowtask-runner"], "permission"), false);
   const installedScript = path.join(root, ".opencode", "flowtask", "scripts", "worktree.sh");
   assert.ok(fs.existsSync(installedScript));
   assert.equal(fs.statSync(installedScript).mode & 0o111, 0o111);

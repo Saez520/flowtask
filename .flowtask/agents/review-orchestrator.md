@@ -5,7 +5,7 @@ description: >-
   (diff, rama, archivos), evalúa contexto, carga skills según criterios,
   ejecuta revisión secuencial y reporta hallazgos con severidad. Read-only.
 mode: subagent
-hidden: true
+hidden: false
 permission:
   edit:
     "*": "deny"

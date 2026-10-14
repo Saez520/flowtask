@@ -1,4 +1,14 @@
 export const RUNNER_DELEGATION_MESSAGE = "Recordá que debés delegar esta operación al subagente correspondiente.";
+export const FLOWTASK_SUBAGENTS = new Set([
+    "flowtask-ca-writer", "flowtask-planner", "flowtask-plan-auditor", "flowtask-constructor",
+    "flowtask-validator", "flowtask-initializer", "flowtask-logger", "flowtask-tester",
+    "flowtask-review-orchestrator", "flowtask-inspector", "flowtask-onboarder",
+    "flowtask-graphify-docs-media",
+]);
+/** V2 `subagent` resources the runner may select; the runner itself is never a child. */
+export function isAuthorizedRunnerSubagent(agent) {
+    return typeof agent === "string" && FLOWTASK_SUBAGENTS.has(agent);
+}
 /** Tokenize the small shell grammar used by FlowTask commands. */
 export function tokenizeCommand(command) {
     const tokens = [];

@@ -11,7 +11,7 @@ description: >-
   la conversación para clarificar los cambios, validar tradeoffs y GAPs, y generar
   la SPEC del cambio antes de pasar al planner.
 mode: subagent
-hidden: true
+hidden: false
 permission:
    edit: deny
    bash: deny

@@ -8,7 +8,7 @@ description: >-
   Engram como ca-artifact bajo el namespace de la ejecución y un flow-state
   separado.
 mode: subagent
-hidden: true
+hidden: false
 permission:
    edit: deny
    bash: allow

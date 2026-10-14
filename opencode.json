@@ -19,149 +19,161 @@
       "enabled": true
     }
   },
-  "agent": {
+  "agents": {
     "flowtask-runner": {
       "description": "Orchestrator of FlowTask workflow. Activates subagents, manages state via Engram. Only agent the user talks to directly.",
       "mode": "primary",
-      "prompt": "{file:.flowtask/agents/runner.md}"
+      "hidden": false,
+      "system": "{file:.flowtask/agents/runner.md}",
+      "permissions": [
+        { "action": "*", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "node .flowtask/bin/flowtask.js graphify *", "effect": "allow" },
+        { "action": "shell", "resource": "git status *", "effect": "allow" },
+        { "action": "shell", "resource": "git add *", "effect": "allow" },
+        { "action": "shell", "resource": "git restore --staged *", "effect": "allow" },
+        { "action": "shell", "resource": "git commit *", "effect": "allow" },
+        { "action": "shell", "resource": "git push *", "effect": "allow" },
+        { "action": "shell", "resource": "git merge *", "effect": "allow" },
+        { "action": "shell", "resource": "./.flowtask/scripts/worktree.sh *", "effect": "allow" },
+        { "action": "shell", "resource": "./.opencode/flowtask/scripts/worktree.sh *", "effect": "allow" },
+        { "action": "subagent", "resource": "flowtask-*", "effect": "allow" },
+        { "action": "subagent", "resource": "flowtask-runner", "effect": "deny" },
+        { "action": "skill", "resource": "*", "effect": "allow" },
+        { "action": "engram_*", "resource": "*", "effect": "allow" }
+      ]
     },
     "flowtask-ca-writer": {
       "description": "Guides requirement clarification through conversation. Helps user clarify what they need before formalizing CA. Never writes code or plans.",
       "mode": "subagent",
-      "hidden": true,
-      "prompt": "{file:.flowtask/agents/ca-writer.md}",
-      "permission": {
-        "edit": "deny",
-        "bash": "deny"
-      }
+      "hidden": false,
+      "system": "{file:.flowtask/agents/ca-writer.md}",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" }
+      ]
     },
     "flowtask-planner": {
       "description": "Analyzes requirements and generates implementation plans. Never writes code. Activated only through runner.",
       "mode": "subagent",
-      "hidden": true,
-      "prompt": "{file:.flowtask/agents/planner.md}",
-      "permission": {
-        "edit": "deny",
-        "bash": "deny"
-      }
+      "hidden": false,
+      "system": "{file:.flowtask/agents/planner.md}",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" }
+      ]
     },
     "flowtask-constructor": {
       "description": "Implements plans following project conventions retrieved from Engram. Never makes design decisions. Activated only through runner.",
       "mode": "subagent",
-      "hidden": true,
-      "prompt": "{file:.flowtask/agents/constructor.md}",
-      "permission": {
-        "edit": "allow",
-        "bash": "allow"
-      }
+      "hidden": false,
+      "system": "{file:.flowtask/agents/constructor.md}",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "allow" }
+      ]
     },
     "flowtask-validator": {
       "description": "Validates implementation against plan and project conventions. Never writes code. Activated only through runner.",
       "mode": "subagent",
-      "hidden": true,
-      "prompt": "{file:.flowtask/agents/validator.md}",
-      "permission": {
-        "edit": "deny",
-        "bash": "deny"
-      }
+      "hidden": false,
+      "system": "{file:.flowtask/agents/validator.md}",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" }
+      ]
     },
     "flowtask-initializer": {
       "description": "Scans project and populates Engram with project context. Activated by the initialization flow and layer commands.",
       "mode": "subagent",
-      "hidden": true,
-      "prompt": "{file:.flowtask/agents/initializer.md}",
-      "permission": {
-        "edit": "allow",
-        "bash": "allow"
-      }
+      "hidden": false,
+      "system": "{file:.flowtask/agents/initializer.md}",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "allow" }
+      ]
     },
     "flowtask-logger": {
       "description": "Instruments code with logging. Never modifies business logic. Activated by runner when logging is needed.",
       "mode": "subagent",
-      "hidden": true,
-      "prompt": "{file:.flowtask/agents/logger.md}",
-      "permission": {
-        "edit": "allow",
-        "bash": "allow"
-      }
+      "hidden": false,
+      "system": "{file:.flowtask/agents/logger.md}",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "allow" }
+      ]
     },
     "flowtask-tester": {
       "description": "Generates tests for implemented code. Never modifies production code. Activated by runner when tests are needed.",
       "mode": "subagent",
-      "hidden": true,
-      "prompt": "{file:.flowtask/agents/tester.md}",
-      "permission": {
-        "edit": "allow",
-        "bash": "allow"
-      }
+      "hidden": false,
+      "system": "{file:.flowtask/agents/tester.md}",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "allow" }
+      ]
     },
     "flowtask-plan-auditor": {
       "description": "Plan reviewer. Verifies plans are executable and references are valid. Auto-activates for plans with >5 tasks.",
       "mode": "subagent",
-      "hidden": true,
-      "prompt": "{file:.flowtask/agents/plan-auditor.md}",
-      "permission": {
-        "edit": "deny",
-        "bash": "deny"
-      }
+      "hidden": false,
+      "system": "{file:.flowtask/agents/plan-auditor.md}",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" }
+      ]
     },
     "flowtask-review-orchestrator": {
       "description": "Orquestador de revisión de código 4R Lenses. Recibe scope del runner, evalúa contexto, carga skills según criterios, reporta hallazgos con severidad. Read-only.",
       "mode": "subagent",
-      "hidden": true,
-      "prompt": "{file:.flowtask/agents/review-orchestrator.md}",
-      "permission": {
-        "edit": {
-          "**": "deny",
-          ".flowtask/config/.review-stamp": "allow",
-          ".opencode/flowtask/config/.review-stamp": "allow",
-          "*/.flowtask/config/.review-stamp": "allow"
-        },
-        "bash": {
-          "**": "deny",
-          "git diff": "allow",
-          "git status": "allow",
-          "git branch": "allow",
-          "git log": "allow",
-          "git rev-parse": "allow",
-          "git show": "allow",
-          "gh pr diff": "allow",
-          "gh pr view": "allow"
-        }
-      }
+      "hidden": false,
+      "system": "{file:.flowtask/agents/review-orchestrator.md}",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "edit", "resource": "*.flowtask/config/.review-stamp", "effect": "allow" },
+        { "action": "edit", "resource": "*.opencode/flowtask/config/.review-stamp", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "git diff *", "effect": "allow" },
+        { "action": "shell", "resource": "git status *", "effect": "allow" },
+        { "action": "shell", "resource": "git branch *", "effect": "allow" },
+        { "action": "shell", "resource": "git log *", "effect": "allow" },
+        { "action": "shell", "resource": "git rev-parse *", "effect": "allow" },
+        { "action": "shell", "resource": "git show *", "effect": "allow" },
+        { "action": "shell", "resource": "gh pr diff *", "effect": "allow" },
+        { "action": "shell", "resource": "gh pr view *", "effect": "allow" }
+      ]
     },
     "flowtask-inspector": {
       "description": "Explore and validate any aspect of the project without creating a CA. Presents tradeoffs and GAPs.",
       "mode": "subagent",
-      "hidden": true,
-      "prompt": "{file:.flowtask/agents/inspector.md}",
-      "permission": {
-        "edit": "deny",
-        "bash": "deny"
-      }
+      "hidden": false,
+      "system": "{file:.flowtask/agents/inspector.md}",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" }
+      ]
     },
     "flowtask-onboarder": {
       "description": "Evaluates developer experience level through a technical quiz based on the project stack and assigns a runner personality.",
       "mode": "subagent",
-      "hidden": true,
-      "prompt": "{file:.flowtask/agents/onboarder.md}",
-      "permission": {
-        "edit": "allow",
-        "bash": "allow"
-      }
+      "hidden": false,
+      "system": "{file:.flowtask/agents/onboarder.md}",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "allow" }
+      ]
     },
     "flowtask-graphify-docs-media": {
       "description": "Generates documentation and media for Graphify. Background agent activated after acceptance.",
       "mode": "subagent",
-      "hidden": true,
-      "prompt": "{file:.flowtask/agents/graphify-docs-media.md}",
-      "permission": {
-        "edit": "allow",
-        "bash": "allow"
-      }
+      "hidden": false,
+      "system": "{file:.flowtask/agents/graphify-docs-media.md}",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "allow" }
+      ]
     }
   },
-  "command": {
+  "commands": {
     "init-types": {
       "description": "Scan and index only types/models layer into Engram",
       "template": "Scan the types/models layer of this project:\n1. Find all type definitions (models, interfaces, schemas, types)\n2. Extract naming conventions and structure\n3. Save to Engram with topic_key: project/types\n$ARGUMENTS",
@@ -204,5 +216,6 @@
       "agent": "flowtask-initializer",
       "subtask": true
     }
-  }
+  },
+  "plugins": []
 }

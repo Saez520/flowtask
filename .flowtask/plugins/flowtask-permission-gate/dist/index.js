@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand } from "./authorizer.js";
+import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, } from "./authorizer.js";
 import { buildFallback, isImageOrPdfOutput, loadContextBudgetConfig, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
 /**
  * Rutas candidatas de configuración, probadas en orden dentro de cada directorio.
@@ -16,12 +16,6 @@ const CONFIG_CANDIDATES = [
 const DEFAULT_STAMP_TTL_MINUTES = 30;
 /** Criterio de trivialidad para el bypass --no-verify: cambios con ≤ TRIVIAL_CHANGE_LINES líneas. */
 const TRIVIAL_CHANGE_LINES = 5;
-const RUNNER_TASKS = new Set([
-    "flowtask-ca-writer", "flowtask-planner", "flowtask-plan-auditor", "flowtask-constructor",
-    "flowtask-validator", "flowtask-initializer", "flowtask-logger", "flowtask-tester",
-    "flowtask-review-orchestrator", "flowtask-inspector", "flowtask-onboarder",
-    "flowtask-graphify-docs-media",
-]);
 const SESSION_AGENTS = new Map();
 /**
  * Acumulado por turno del runner (GAP-002): turno = ciclo entre `chat.message`
@@ -55,8 +49,8 @@ function runnerToolAllowed(tool, args) {
     // No ampliar a otros tools graphify — solo el tool enumerado exacto.
     if (tool === "graphify_query_graph")
         return true;
-    if (tool === "task")
-        return RUNNER_TASKS.has(String(args.subagent_type ?? args.agent ?? args.name ?? ""));
+    if (tool === "subagent")
+        return isAuthorizedRunnerSubagent(args.agent);
     return false;
 }
 function runnerBlocked() { throw new Error(RUNNER_DELEGATION_MESSAGE); }

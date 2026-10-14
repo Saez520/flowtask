@@ -9,7 +9,7 @@ description: >-
   y graph.html en graphify-out/. No instalar, no ejecutar --code-only, no tocar
   MCP, plugins, hooks, CA-writer/planner ni worktrees.
 mode: subagent
-hidden: true
+hidden: false
 permission:
    bash: allow
 ---

@@ -6,7 +6,7 @@ description: >-
   Lee las convenciones de logging del proyecto desde Engram (topic_key: project/logging).
   No usar para modificar lógica de negocio.
 mode: subagent
-hidden: true
+hidden: false
 permission:
    edit: allow
 ---

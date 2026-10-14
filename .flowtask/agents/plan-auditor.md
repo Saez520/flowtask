@@ -8,7 +8,7 @@ description: >-
   QA scenarios están completos. Guarda el review en Engram como ca-artifact (ca/CA-{ID}/artifact/audit)
   y el flow state en Engram (topic_key: flow-state/{ID}/audit).
 mode: subagent
-hidden: true
+hidden: false
 permission:
    edit: deny
    bash: deny

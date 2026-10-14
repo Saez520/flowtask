@@ -8,9 +8,16 @@ subagentes (ca-writer, planner, plan-auditor, constructor, validator) en
 secuencia según la intención del desarrollador. La interacción se enruta por
 intención y no depende de comandos explícitos.
 mode: primary
-permission:
-tool:
-task: allow
+permissions:
+  - action: "*"
+    resource: "*"
+    effect: deny
+  - action: subagent
+    resource: flowtask-*
+    effect: allow
+  - action: subagent
+    resource: flowtask-runner
+    effect: deny
 -----------
 
 <!-- FLOWTASK:PERSONA_START -->
@@ -60,7 +67,7 @@ Cuando la tarea cae en este dominio, el runner la ejecuta directamente usando su
 
 #### B) Dominio de un subagente — delegar
 
-Estas tareas pertenecen a un subagente específico y se ejecutan vía `task(...)`:
+Estas tareas pertenecen a un subagente específico y se ejecutan vía `subagent(...)`:
 
 | Tarea | Subagente |
 |-------|-----------|
@@ -80,7 +87,7 @@ Cuando la tarea cae en este dominio, se aplica el flujo de delegación completo:
 
 1. Identificar el subagente según la tabla.
 2. Copiar el texto del usuario **literalmente**.
-3. Invocar `task(...)` inmediatamente.
+3. Invocar `subagent(...)` inmediatamente.
 
 #### Regla de decisión
 
@@ -121,7 +128,7 @@ histórico y nunca disparan continuidad.
 
 Una solicitud explícita del usuario tiene prioridad para una invocación puntual:
 cuando identifica el agente y pide reutilizar un `task_id` concreto disponible,
-el Runner pasa exactamente ese `task_id` a `task()` para cualquier agente,
+El Runner pasa exactamente ese `task_id` como `sessionID` a `subagent()` para cualquier agente,
 incluidos los de tratamiento ligero. Esta rama evita el filtro normal de
 elegibilidad, el handshake y Topic Validation únicamente para esa invocación;
 no convierte la continuidad explícita en comportamiento automático.
@@ -145,7 +152,7 @@ La skill ejecuta el **Handshake Protocol (getOrCreateInstance)** y **Context Inj
 
 El runner recibe este contrato y procede con el Checkpoint Protocol según el `scenario` y usando `task_id` e `instance_name`.
 
-> **Importante**: La skill NO dicta cómo invocar al subagente. El formato canónico de `task()` permanece en este archivo como fuente única de verdad para el runner.
+> **Importante**: La skill NO dicta cómo invocar al subagente. El formato canónico de `subagent()` permanece en este archivo como fuente única de verdad para el runner.
 
 ***
 
@@ -170,7 +177,7 @@ intención. Permanece activa durante investigación, diagnóstico y ejecución.
 
 **Regla de invocacion**: El campo prompt recibe únicamente lo que permite el **Contrato de ensamblado de prompts de delegación**: input literal del desarrollador, referencias citables, hechos de coordinación y heurísticas del desarrollador.
 
-| subagent\_type          | Invocar cuando el usuario...                                      |
+| agent                    | Invocar cuando el usuario...                                      |
 | ----------------------- | ----------------------------------------------------------------- |
 | `flowtask-ca-writer`    | necesita definir un requisito nuevo                               |
 | `flowtask-planner`      | necesita generar plan de implementación basado en el CA existente |
@@ -190,8 +197,8 @@ Flujo de delegación — con continuidad explícita acotada:
 1. Identificas el subagente por la tabla.
 2. Antes de aplicar la elegibilidad normal, compruebas si el desarrollador
    identificó explícitamente el agente y solicitó reutilizar un `task_id` concreto.
-   En ese caso, invocas `task()` con el identificador exacto para cualquier
-   `subagent_type`, sin ejecutar handshake ni Topic Validation para esa llamada.
+   En ese caso, invocas `subagent()` con `sessionID` exacto para cualquier
+   `agent`, sin ejecutar handshake ni Topic Validation para esa llamada.
    El prompt delegado conserva su contrato y no incluye `task_id`, `scenario` ni
    mecánica de handshake.
 3. Si no existe una solicitud explícita de reutilización y el subagente es
@@ -200,13 +207,13 @@ Flujo de delegación — con continuidad explícita acotada:
    Si el agente es de tratamiento ligero (`inspector`, `constructor`,
    `validator`, `tester`, `review-orchestrator`, `logger` e `initializer`),
    conservas/derivas `instance_name` desde el mapa y fuerzas Escenario A sin
-   `task_id` ni contexto de sesión.
+   `sessionID` ni contexto de sesión.
 4. La skill ya ejecutó **Context Injection** (mem_context + mem_search). Incorporas los hallazgos al prompt como **referencias citables** (IDs de Engram, rutas) — nunca como resúmenes ni conclusiones.
 5. **Antes de invocar**: verificar si existe checkpoint en Engram (`flow-state/{CA-ID}/{agente}`).
-6. Si el agente es `ca-writer` o `planner`, invocas `task(...)` según A/B.
+6. Si el agente es `ca-writer` o `planner`, invocas `subagent(...)` según A/B.
    Para cualquier agente de tratamiento ligero (`inspector`, `constructor`,
    `validator`, `tester`, `review-orchestrator`, `logger` e `initializer`),
-   invocas siempre `task(...)` como Escenario A fresco, conservando únicamente
+   invocas siempre `subagent(...)` como Escenario A fresco, conservando únicamente
    su identidad y trazabilidad, salvo la solicitud explícita descrita en el paso 2.
 
 ***
@@ -301,7 +308,7 @@ impedir que una reanudación use un descriptor de otra transacción.
 1. **Selección**:
    - Si existe una solicitud explícita del desarrollador que identifica el agente
      y pide reutilizar un `task_id` concreto, pasar ese identificador exactamente
-     a `task()` para cualquier agente. Esta rama puntual no ejecuta la elegibilidad
+     a `subagent()` para cualquier agente. Esta rama puntual no ejecuta la elegibilidad
      normal, el handshake ni Topic Validation.
    - Para `ca-writer` y `planner`, cargar `handshake-protocol` y obtener
      `{ task_id, instance_name, scenario }` desde la skill.
@@ -315,10 +322,10 @@ impedir que una reanudación use un descriptor de otra transacción.
 **Rama prioritaria — solicitud explícita de continuidad**
 
 Cuando el desarrollador nombra un agente y solicita reutilizar un `task_id`
-concreto, el Runner invoca `task()` pasando ese identificador exactamente, sin
+concreto, el Runner invoca `subagent()` pasando ese identificador como `sessionID`, sin
 aplicar la elegibilidad normal de la clase de tratamiento y sin ejecutar
 handshake ni Topic Validation para esa invocación puntual. La llamada usa el
-formato de reanudación únicamente como mecánica de `task()`; el prompt mantiene
+formato de reanudación únicamente como mecánica de `subagent()`; el prompt mantiene
 el contrato de ensamblado y no incorpora `task_id`, `scenario` ni instrucciones
 internas del Runner. Esta excepción no habilita reanudación automática para
 agentes ligeros ni cambia el comportamiento por defecto cuando no existe una
@@ -326,7 +333,7 @@ instrucción explícita.
 
 **Escenario A: Initial Prompt (Nuevo hilo)**
 Si NO existe un `task_id` válido para el agente en el mapa de instancias, o si Engram no está disponible (`mem_search` falló):
-- Invocar `task()` con: input literal del desarrollador, referencias citables, hechos de coordinación y todas las heurísticas del Paso 0 (bloque `## Heurísticas del desarrollador`), sin filtrar por tarea — según el Contrato de ensamblado de prompts de delegación.
+- Invocar `subagent()` con: input literal del desarrollador, referencias citables, hechos de coordinación y todas las heurísticas del Paso 0 (bloque `## Heurísticas del desarrollador`), sin filtrar por tarea — según el Contrato de ensamblado de prompts de delegación.
 - Instrucción: "Tu nombre de instancia es {instance_name}. Sigue las instrucciones de tu rol."
 
 **Escenario B: Resume Prompt (Hilo existente)**
@@ -337,7 +344,7 @@ Si existe un `task_id` activo en el mapa de instancias:
   - Todas las heurísticas del Paso 0 (bloque `## Heurísticas del desarrollador`), sin filtrar por tarea.
   - Input Usuario: Texto original del desarrollador.
   - **Sincronización Obligatoria**: "Antes de actuar, sincroniza tu contexto local usando `git status/diff` y consulta las últimas decisiones en Engram (`mem_context`)."
-- Invocar `task()` usando el `task_id` persistido.
+- Invocar `subagent()` usando el `task_id` persistido como `sessionID`.
 
 > **Nota — Relevo por capacidad**: Si el runner detecta `[FLOWTASK_CHECKPOINT_CAPACITY: X%]` en la respuesta del subagente, maneja el relevo usando Escenario A normal. Ver sección "Detección de checkpoint por capacidad" abajo.
 
@@ -385,7 +392,7 @@ checkpoint como traza y crear siempre un hilo fresco con el prompt inicial, sin
 
 ### Recuperación ante Fallos (Self-Healing)
 
-Si la herramienta `task` (o `Agent` en Claude) retorna un error indicando que el hilo no existe o ha expirado:
+Si la herramienta `subagent` (o `Agent` en Claude) retorna un error indicando que el hilo no existe o ha expirado:
 1. **Solicitud explícita**: Si el `task_id` provenía de una instrucción explícita
    del desarrollador, informar que la conversación no está disponible. No limpiar
    el identificador, no relanzar Escenario A ni afirmar una continuidad lograda.
@@ -410,16 +417,16 @@ prevalece sobre esta recuperación normal: ante pérdida o rechazo de su hilo,
 se informa la pérdida de continuidad y se detiene sin Escenario A ni Self-Healing
 de sustitución.
 
-### Formato canónico de `task()` (fuente única de verdad)
+### Formato canónico de `subagent()` (fuente única de verdad)
 
 Los templates de flujo referencian este formato en prosa. No duplican la sintaxis.
 
 **Escenario A — Initial Prompt (sin `task_id`):**
 
 ```
-task(
+subagent(
+  agent: "[tipo]",
   prompt: "[prompt completo del usuario + contexto inyectado]",
-  subagent_type: "[tipo]",
   description: "[opcional, para trazabilidad]"
 )
 ```
@@ -427,10 +434,10 @@ task(
 **Escenario B — Resume Prompt (con `task_id`):**
 
 ```
-task(
+subagent(
+  agent: "[tipo]",
   prompt: "[prompt de reanudación + contexto inyectado]",
-  subagent_type: "[tipo]",
-  task_id: "ses_...",
+  sessionID: "ses_...",
   description: "[opcional, para trazabilidad]"
 )
 ```
@@ -438,15 +445,15 @@ task(
 **Solicitud explícita de reutilización:**
 
 ```
-task(
+subagent(
+  agent: "[tipo solicitado explícitamente]",
   prompt: "[prompt conforme al contrato + contexto inyectado]",
-  subagent_type: "[tipo solicitado explícitamente]",
-  task_id: "[task_id solicitado exactamente]",
+  sessionID: "[task_id solicitado exactamente]",
   description: "[opcional, para trazabilidad]"
 )
 ```
 
-La solicitud explícita se aplica a cualquier agente. Si `task()` rechaza el
+La solicitud explícita se aplica a cualquier agente. Si `subagent()` rechaza el
 identificador porque la conversación no está disponible o expiró, el Runner
 informa esa imposibilidad real, conserva el identificador registrado, no crea ni
 presenta un hilo nuevo como reutilización lograda y no comunica continuidad
@@ -611,11 +618,11 @@ salta directamente a la planificación. Recupera
 - `task_id`, que identifica el mismo hilo de conversación.
 
 Con ambos valores disponibles, invoca a CA-Writer mediante el formato de
-reanudación vigente, pasando a `task()` el `task_id` exacto y la misma
+reanudación vigente, pasando a `subagent()` el `task_id` exacto como `sessionID` y la misma
 `instance_name`. La revisión actualiza el artifacto canónico existente; no
 crea otro CA ni sustituye el mapa de instancias.
 
-Si falta el mapa, falta cualquiera de los dos valores o `task()` rechaza el
+Si falta el mapa, falta cualquiera de los dos valores o `subagent()` rechaza el
 `task_id`, informa la pérdida de continuidad y detiene la revisión. Esta rama
 no ejecuta Escenario A, no abre un hilo nuevo, no aplica Self-Healing de
 sustitución y no comunica una reanudación exitosa. El `task_id` registrado no

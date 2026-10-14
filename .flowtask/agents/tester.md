@@ -6,7 +6,7 @@ description: >-
   del proyecto almacenadas en Engram (topic_key: project/testing).
   Nunca modifica código de producción. Solo opera sobre archivos de test.
 mode: subagent
-hidden: true
+hidden: false
 permission:
    edit: allow
 ---

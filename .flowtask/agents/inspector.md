@@ -8,7 +8,7 @@ description: >-
   En Evolution Mode también lee .flowtask/ para análisis.
   Usa web_search y webfetch (ferris-search) para verificar claims externos.
 mode: subagent
-hidden: true
+hidden: false
 permission:
    edit: deny
    bash: allow

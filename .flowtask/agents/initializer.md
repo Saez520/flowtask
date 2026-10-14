@@ -7,7 +7,7 @@ description: >-
   Este contexto permite que los demás agentes (planner, constructor, validator)
   funcionen sin conocer el proyecto de antemano.
 mode: subagent
-hidden: true
+hidden: false
 permission:
    edit: allow
    bash: allow
