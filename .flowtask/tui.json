@@ -4,7 +4,5 @@
     "input_submit": "return"
   },
   "$schema": "https://opencode.ai/tui.json",
-  "plugin": [
-    "./plugins/flowtask-model-selector/dist/tui.js"
-  ]
+  "plugin": []
 }

@@ -205,12 +205,18 @@ export function buildVariantOptions(
   const modelId = modelRef.slice(separator + 1);
   const provider = providers.find((item) => item?.id === providerId);
   const variants = provider?.models?.[modelId]?.variants;
-  if (!variants || typeof variants !== "object" || Array.isArray(variants)) {
+  if (!variants || typeof variants !== "object") {
     return [];
   }
 
-  return Object.keys(variants).map((name) => {
-    const details = variants[name];
+  const entries: [string, any][] = Array.isArray(variants)
+    ? variants.flatMap((variant) => {
+        if (!variant || typeof variant !== "object" || typeof variant.id !== "string" || !variant.id) return [];
+        return [[variant.id, variant.settings] as [string, any]];
+      })
+    : Object.entries(variants);
+
+  return entries.map(([name, details]) => {
     const description =
       details && typeof details === "object"
         ? Object.entries(details)

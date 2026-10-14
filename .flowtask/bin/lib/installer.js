@@ -636,6 +636,52 @@ export function regenerateCanonicalTui(projectDir, flowtaskDir, manifest) {
   return destination;
 }
 
+/** Regenerate the project CLI plugin declaration while preserving unrelated settings. */
+export function regenerateCanonicalCli(projectDir, flowtaskDir, manifest) {
+  const destination = path.join(flowtaskDir, "cli.json");
+  let config = {};
+  if (fileExists(destination)) {
+    try {
+      config = JSON.parse(fs.readFileSync(destination, "utf8"));
+      if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("root must be an object");
+    } catch (err) { throw new Error(`invalid CLI config ${destination}: ${err.message}`); }
+  }
+  const managedNames = new Set((manifest ?? []).filter((entry) => entry?.destinations?.includes("opencode")).map((entry) => entry.name));
+  const plugins = (Array.isArray(config.plugins) ? config.plugins : []).filter((item) => {
+    const name = extractPluginName(typeof item === "string" ? item : item?.path);
+    return !name || !managedNames.has(name);
+  });
+  for (const entry of manifest ?? []) {
+    if (entry?.kind !== "cli" || !entry.destinations?.includes("opencode")) continue;
+    const sourceEntrypoint = path.join(flowtaskDir, "plugins", entry.path, entry.entrypoint);
+    if (!fileExists(sourceEntrypoint)) continue;
+    let relative = path.relative(path.dirname(destination), sourceEntrypoint).split(path.sep).join("/");
+    if (!relative.startsWith(".")) relative = `./${relative}`;
+    plugins.push(relative);
+  }
+  const next = { ...config, $schema: config.$schema || "https://opencode.ai/cli.json", plugins };
+  if (!writeBytesIfChanged(destination, `${JSON.stringify(next, null, 2)}\n`)) throw new Error(`could not write CLI config ${destination}`);
+  const runtimeConfig = path.join(projectDir, ".opencode", "cli.json");
+  let existingRuntime = {};
+  if (fileExists(runtimeConfig)) {
+    try { existingRuntime = JSON.parse(fs.readFileSync(runtimeConfig, "utf8")); } catch { throw new Error(`invalid CLI config ${runtimeConfig}`); }
+    if (!existingRuntime || typeof existingRuntime !== "object" || Array.isArray(existingRuntime)) throw new Error(`invalid CLI config ${runtimeConfig}`);
+  }
+  const runtimePlugins = (Array.isArray(existingRuntime?.plugins) ? existingRuntime.plugins : []).filter((item) => {
+    const name = extractPluginName(typeof item === "string" ? item : item?.path);
+    return !name || !managedNames.has(name);
+  });
+  for (const entry of manifest ?? []) {
+    if (entry?.kind !== "cli" || !entry.destinations?.includes("opencode")) continue;
+    const installedEntrypoint = path.join(projectDir, ".opencode", "plugins", entry.name, entry.entrypoint);
+    if (!fileExists(installedEntrypoint)) continue;
+    runtimePlugins.push(calculatePluginRelativePath(runtimeConfig, projectDir, entry.name, entry.entrypoint));
+  }
+  const runtime = { ...existingRuntime, $schema: existingRuntime.$schema || "https://opencode.ai/cli.json", plugins: runtimePlugins };
+  if (!writeBytesIfChanged(runtimeConfig, `${JSON.stringify(runtime, null, 2)}\n`)) throw new Error(`could not write CLI config ${runtimeConfig}`);
+  return destination;
+}
+
 export function removeLegacyConsumerFiles(projectDir, fileNames = ["tui.json", "CLAUDE.md"]) {
   let success = true;
   for (const fileName of fileNames) {
@@ -757,7 +803,13 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
       continue;
     }
 
-    if (entry.kind === "tui") {
+    if (entry.kind === "cli") {
+      const cliPath = path.join(projectDir, ".opencode", "cli.json");
+      const pluginRuntimePath = calculatePluginRelativePath(cliPath, projectDir, entry.name, entry.entrypoint);
+      if (!registerPluginArrayEntry(cliPath, pluginRuntimePath, "https://opencode.ai/cli.json")) {
+        throw new Error(`No se pudo actualizar ${cliPath}`);
+      }
+    } else if (entry.kind === "tui") {
       const installationRuntimePath = calculatePluginRelativePath(nativeTuiPath, projectDir, entry.name, entry.entrypoint);
       if (!registerPluginArrayEntry(nativeTuiPath, installationRuntimePath, "https://opencode.ai/tui.json")) {
         throw new Error(`No se pudo escribir el registro TUI nativo ${nativeTuiPath}`);
@@ -802,6 +854,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
   }
 
   cleanupDisabledClassifier(projectDir, manifest, preflight?.classifierOwnership ?? null);
+  if (manifest.some((entry) => entry?.kind === "cli")) regenerateCanonicalCli(projectDir, flowtaskDir, manifest);
 }
 
 // ─── Migration & Cleanup ──────────────────────────────────────────────────────
@@ -1166,6 +1219,8 @@ ${COLORS.blue}╔═════════════════════
   }
 
   try {
+    regenerateCanonicalCli(projectDir, flowtaskDir, manifest);
+    logSuccess("Declaración CLI canónica regenerada");
     regenerateCanonicalTui(projectDir, flowtaskDir, manifest);
     logSuccess("Declaración TUI canónica regenerada");
     // The canonical destination is verified before deleting the legacy source.

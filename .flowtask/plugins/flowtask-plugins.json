@@ -20,7 +20,7 @@
   {
     "name": "flowtask-model-selector",
     "path": "flowtask-model-selector",
-    "kind": "tui",
+    "kind": "cli",
     "destinations": ["opencode"],
     "entrypoint": "dist/tui.js"
   },

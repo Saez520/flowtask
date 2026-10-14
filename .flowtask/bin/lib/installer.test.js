@@ -10,6 +10,7 @@ import {
   migrateProfileLocation,
   syncTargetConfig,
   regenerateCanonicalTui,
+  regenerateCanonicalCli,
   removeLegacyConsumerFiles,
   prepareInstallation,
   ASSETS,
@@ -240,6 +241,22 @@ test("disabled default does not install classifier plugins", () => {
   assert.deepEqual(nativeTuiEntries(root), [
     "./plugins/flowtask-model-selector/dist/tui.js",
   ]);
+});
+
+test("CLI plugin installation writes V2 cli config and canonical declaration", () => {
+  const { root, flowtaskDir } = createFixture();
+  const manifest = [{ name: "flowtask-model-selector", path: "flowtask-model-selector", kind: "cli", destinations: ["opencode"], entrypoint: "dist/tui.js" }];
+  createSources(flowtaskDir, manifest);
+  fs.mkdirSync(path.join(root, ".opencode"), { recursive: true });
+  writeJson(path.join(root, ".opencode", "cli.json"), { $schema: "https://opencode.ai/cli.json", plugins: ["./plugins/user-cli/index.js"] });
+  installManifestPlugins(root, manifest, flowtaskDir);
+  assert.deepEqual(readJson(path.join(root, ".opencode", "cli.json")).plugins, [
+    "./plugins/user-cli/index.js", "./plugins/flowtask-model-selector/dist/tui.js",
+  ]);
+  assert.deepEqual(readJson(path.join(flowtaskDir, "cli.json")).plugins, [
+    "./plugins/flowtask-model-selector/dist/tui.js",
+  ]);
+  assert.equal(fs.existsSync(path.join(root, ".opencode", "tui.json")), false);
 });
 
 test("enabled pair installs and registers both classifier plugins", () => {

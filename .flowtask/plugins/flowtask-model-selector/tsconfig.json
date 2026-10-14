@@ -11,5 +11,5 @@
     "outDir": "./dist",
     "rootDir": "."
   },
-  "include": ["tui.tsx", "lib/**/*.ts"]
+  "include": ["tui.tsx", "lib/selector-core.ts"]
 }

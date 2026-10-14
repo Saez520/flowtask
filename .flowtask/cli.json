@@ -1,0 +1,6 @@
+{
+  "$schema": "https://opencode.ai/cli.json",
+  "plugins": [
+    "./plugins/flowtask-model-selector/dist/tui.js"
+  ]
+}

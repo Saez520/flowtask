@@ -1,12 +1,5 @@
 // tui.tsx
-import { createTextNode as _$createTextNode } from "@opentui/solid";
-import { createComponent as _$createComponent } from "@opentui/solid";
-import { effect as _$effect } from "@opentui/solid";
-import { insertNode as _$insertNode } from "@opentui/solid";
-import { memo as _$memo } from "@opentui/solid";
-import { insert as _$insert } from "@opentui/solid";
-import { setProp as _$setProp } from "@opentui/solid";
-import { createElement as _$createElement } from "@opentui/solid";
+import { Plugin } from "@opencode/plugin/tui";
 
 // lib/selector-core.ts
 import * as fs from "fs";
@@ -132,11 +125,14 @@ function buildVariantOptions(modelRef, providers) {
   const modelId = modelRef.slice(separator + 1);
   const provider = providers.find((item) => item?.id === providerId);
   const variants = provider?.models?.[modelId]?.variants;
-  if (!variants || typeof variants !== "object" || Array.isArray(variants)) {
+  if (!variants || typeof variants !== "object") {
     return [];
   }
-  return Object.keys(variants).map((name) => {
-    const details = variants[name];
+  const entries = Array.isArray(variants) ? variants.flatMap((variant) => {
+    if (!variant || typeof variant !== "object" || typeof variant.id !== "string" || !variant.id) return [];
+    return [[variant.id, variant.settings]];
+  }) : Object.entries(variants);
+  return entries.map(([name, details]) => {
     const description = details && typeof details === "object" ? Object.entries(details).map(([key, value]) => `${key}: ${String(value)}`).join(", ") : "";
     return { title: name, value: name, description };
   });
@@ -235,388 +231,107 @@ function buildAgentModelPatch(agentName, modelRef, variant) {
 
 // tui.tsx
 import * as fs2 from "fs";
-var tui = async (api) => {
-  try {
-    let agentSelectorState = null;
-    let modelSelectorState = null;
-    let navLayerUnregister = null;
-    const teardownSelector = (state) => {
-      if (!state || state._teardown) return;
-      state._teardown = true;
-      state.popMode();
-      if (navLayerUnregister) {
-        navLayerUnregister();
-        navLayerUnregister = null;
-      }
-      if (state === agentSelectorState) agentSelectorState = null;
-      if (state === modelSelectorState) modelSelectorState = null;
-    };
-    const closeSelector = (state) => {
-      teardownSelector(state);
-      api.ui.dialog.clear();
-    };
-    const moveSection = (state, delta, renderFn) => {
-      if (!state) return;
-      const next = Math.max(0, Math.min(state.sections.length - 1, state.idx + delta));
-      if (next === state.idx) return;
-      state.idx = next;
-      api.ui.dialog.replace(renderFn);
-    };
-    const registerNavLayer = () => {
-      if (navLayerUnregister) return;
-      const layerResult = api.keymap.registerLayer({
-        mode: "modal",
-        commands: [{
-          name: "flowtask.section.prev",
-          title: "Secci\xF3n anterior",
-          category: "FlowTask",
-          namespace: "flowtask",
-          run: () => {
-            if (!agentSelectorState && !modelSelectorState) return;
-            const s = agentSelectorState ?? modelSelectorState;
-            moveSection(s, -1, s === agentSelectorState ? renderAgentDialog : renderModelDialog);
-          }
-        }, {
-          name: "flowtask.section.next",
-          title: "Secci\xF3n siguiente",
-          category: "FlowTask",
-          namespace: "flowtask",
-          run: () => {
-            if (!agentSelectorState && !modelSelectorState) return;
-            const s = agentSelectorState ?? modelSelectorState;
-            moveSection(s, 1, s === agentSelectorState ? renderAgentDialog : renderModelDialog);
-          }
-        }],
-        bindings: [{
-          key: "left",
-          cmd: "flowtask.section.prev",
-          desc: "Secci\xF3n anterior"
-        }, {
-          key: "right",
-          cmd: "flowtask.section.next",
-          desc: "Secci\xF3n siguiente"
-        }]
+function readConfig() {
+  const file = resolveGlobalConfigFile();
+  if (!fs2.existsSync(file)) return {};
+  return JSON.parse(stripJsonBom(fs2.readFileSync(file, "utf8")));
+}
+function writeConfig(config) {
+  atomicWriteFile(resolveGlobalConfigFile(), JSON.stringify(config, null, 2));
+}
+var tui_default = Plugin.define({
+  id: "flowtask-model-selector",
+  setup(context) {
+    const location = context.location ?? context.data.location.default();
+    const selectSectionItem = async (title, sections) => {
+      const sectionOptions = sections.map((section) => ({
+        title: section.label,
+        value: section.id,
+        description: `${section.items.length} opciones`
+      }));
+      const sectionID = sections.length === 1 ? sections[0].id : await context.ui.dialog.select({
+        title: `${title}: secci\xF3n`,
+        options: sectionOptions
       });
-      navLayerUnregister = typeof layerResult === "function" ? layerResult : layerResult && typeof layerResult.unregister === "function" ? layerResult.unregister : null;
-    };
-    const renderAgentDialog = () => {
-      const state = agentSelectorState;
-      if (!state) return null;
-      const section = state.sections[state.idx];
-      return (() => {
-        var _el$ = _$createElement("box"), _el$2 = _$createElement("box");
-        _$insertNode(_el$, _el$2);
-        _$setProp(_el$, "flexDirection", "column");
-        _$setProp(_el$2, "flexDirection", "row");
-        _$setProp(_el$2, "paddingLeft", 4);
-        _$setProp(_el$2, "gap", 1);
-        _$insert(_el$2, () => state.sections.map((s, i) => (() => {
-          var _el$3 = _$createElement("box"), _el$4 = _$createElement("text");
-          _$insertNode(_el$3, _el$4);
-          _$setProp(_el$3, "paddingLeft", 1);
-          _$setProp(_el$3, "paddingRight", 1);
-          _$insert(_el$4, () => s.label, null);
-          _$insert(_el$4, () => i < state.sections.length - 1 ? " \xB7 " : "", null);
-          _$effect((_p$) => {
-            var _v$ = i === state.idx ? api.theme.current.backgroundElement : void 0, _v$2 = i === state.idx ? api.theme.current.accent : api.theme.current.textMuted;
-            _v$ !== _p$.e && (_p$.e = _$setProp(_el$3, "backgroundColor", _v$, _p$.e));
-            _v$2 !== _p$.t && (_p$.t = _$setProp(_el$4, "fg", _v$2, _p$.t));
-            return _p$;
-          }, {
-            e: void 0,
-            t: void 0
-          });
-          return _el$3;
-        })()));
-        _$insert(_el$, (() => {
-          var _c$ = _$memo(() => section.items.length > 0);
-          return () => _c$() ? _$createComponent(api.ui.DialogSelect, {
-            title: "Select Agent",
-            placeholder: "Buscar...",
-            get options() {
-              return section.items;
-            },
-            onSelect: (item) => {
-              const selectedValue = item.value;
-              closeSelector(agentSelectorState);
-              showModelDialog(selectedValue);
-            }
-          }) : (() => {
-            var _el$5 = _$createElement("box"), _el$6 = _$createElement("text");
-            _$insertNode(_el$5, _el$6);
-            _$insertNode(_el$6, _$createTextNode(`Sin opciones`));
-            return _el$5;
-          })();
-        })(), null);
-        return _el$;
-      })();
-    };
-    const renderModelDialog = () => {
-      const state = modelSelectorState;
-      if (!state) return null;
-      const section = state.sections[state.idx];
-      return (() => {
-        var _el$8 = _$createElement("box"), _el$9 = _$createElement("box");
-        _$insertNode(_el$8, _el$9);
-        _$setProp(_el$8, "flexDirection", "column");
-        _$setProp(_el$9, "flexDirection", "row");
-        _$setProp(_el$9, "paddingLeft", 4);
-        _$setProp(_el$9, "gap", 1);
-        _$insert(_el$9, () => state.sections.map((s, i) => (() => {
-          var _el$0 = _$createElement("box"), _el$1 = _$createElement("text");
-          _$insertNode(_el$0, _el$1);
-          _$setProp(_el$0, "paddingLeft", 1);
-          _$setProp(_el$0, "paddingRight", 1);
-          _$insert(_el$1, () => s.label, null);
-          _$insert(_el$1, () => i < state.sections.length - 1 ? " \xB7 " : "", null);
-          _$effect((_p$) => {
-            var _v$3 = i === state.idx ? api.theme.current.backgroundElement : void 0, _v$4 = i === state.idx ? api.theme.current.accent : api.theme.current.textMuted;
-            _v$3 !== _p$.e && (_p$.e = _$setProp(_el$0, "backgroundColor", _v$3, _p$.e));
-            _v$4 !== _p$.t && (_p$.t = _$setProp(_el$1, "fg", _v$4, _p$.t));
-            return _p$;
-          }, {
-            e: void 0,
-            t: void 0
-          });
-          return _el$0;
-        })()));
-        _$insert(_el$8, (() => {
-          var _c$2 = _$memo(() => section.items.length > 0);
-          return () => _c$2() ? _$createComponent(api.ui.DialogSelect, {
-            get title() {
-              return `Modelo para ${state.agentName}`;
-            },
-            placeholder: "Buscar...",
-            get options() {
-              return section.items;
-            },
-            onSelect: (item) => {
-              const selectedValue = item.value;
-              const agentName = state.agentName;
-              closeSelector(modelSelectorState);
-              if (selectedValue === CLEAR_SENTINEL) {
-                applySelection(agentName, selectedValue);
-                return;
-              }
-              const providers = api.state.provider ?? [];
-              const variants = buildVariantOptions(selectedValue, providers);
-              if (variants.length === 0) {
-                applySelection(agentName, selectedValue);
-                return;
-              }
-              api.ui.dialog.replace(() => _$createComponent(api.ui.DialogSelect, {
-                title: `Variant para ${agentName}`,
-                placeholder: "Buscar...",
-                options: variants,
-                onSelect: (variant) => {
-                  applySelection(agentName, selectedValue, variant.value);
-                }
-              }), () => teardownSelector(modelSelectorState));
-            }
-          }) : (() => {
-            var _el$10 = _$createElement("box"), _el$11 = _$createElement("text");
-            _$insertNode(_el$10, _el$11);
-            _$insertNode(_el$11, _$createTextNode(`Sin opciones`));
-            return _el$10;
-          })();
-        })(), null);
-        return _el$8;
-      })();
+      const selectedSection = sections.find((section) => section.id === sectionID);
+      if (!selectedSection) return void 0;
+      return await context.ui.dialog.select({
+        title: `${title} \u2014 ${selectedSection.label}`,
+        options: selectedSection.items
+      });
     };
     const openSelector = async () => {
       try {
-        const sections = buildAgentSections(api.state.config);
-        const providers = api.state.provider ?? [];
-        if (sections[0].items.length === 0) {
-          api.ui.toast({
+        await Promise.all([context.data.location.agent.sync(location), context.data.location.provider.sync(location)]);
+        const agents = context.data.location.agent.list(location) ?? [];
+        const providers = context.data.location.provider.list(location) ?? [];
+        const config = readConfig();
+        const agentConfig = Object.fromEntries(agents.map((agent) => [agent.name ?? agent.id, agent]));
+        const agentName = await selectSectionItem("Select Agent", buildAgentSections({
+          ...config,
+          agent: agentConfig
+        }));
+        if (!agentName) return;
+        const modelRef = await selectSectionItem("Modelo", buildModelSections(providers));
+        if (modelRef === void 0) return;
+        if (modelRef === CLEAR_SENTINEL) {
+          writeConfig(removeAgentModel(readConfig(), agentName));
+          context.ui.toast.show({
             title: "FlowTask Model",
-            message: "No hay agentes definidos en opencode.json",
-            variant: "error"
-          });
-          return;
-        }
-        if (providers.length === 0) {
-          api.ui.toast({
-            title: "FlowTask Model",
-            message: "OpenCode no expone providers (\xBFinstancia no conectada?)",
-            variant: "error"
-          });
-          return;
-        }
-        const popMode = api.mode.push("flowtask-model-selector");
-        registerNavLayer();
-        agentSelectorState = {
-          sections,
-          idx: 0,
-          popMode
-        };
-        api.ui.dialog.replace(renderAgentDialog, () => teardownSelector(agentSelectorState));
-      } catch (error) {
-        api.ui.toast({
-          title: "FlowTask Model",
-          message: `Error al abrir selector: ${error instanceof Error ? error.message : "desconocido"}`,
-          variant: "error"
-        });
-      }
-    };
-    const showModelDialog = (agentName) => {
-      try {
-        const providers = api.state.provider ?? [];
-        const sections = buildModelSections(providers);
-        const popMode = api.mode.push("flowtask-model-selector");
-        registerNavLayer();
-        modelSelectorState = {
-          sections,
-          idx: 0,
-          popMode,
-          agentName
-        };
-        api.ui.dialog.replace(renderModelDialog, () => teardownSelector(modelSelectorState));
-      } catch (error) {
-        api.ui.toast({
-          title: "FlowTask Model",
-          message: `Error al cargar modelos: ${error instanceof Error ? error.message : "desconocido"}`,
-          variant: "error"
-        });
-      }
-    };
-    const applySelection = async (agentName, value, variant) => {
-      try {
-        if (value === CLEAR_SENTINEL) {
-          const file = resolveGlobalConfigFile();
-          if (!fs2.existsSync(file)) {
-            api.ui.toast({
-              title: "FlowTask Model",
-              message: "No hay override que limpiar",
-              variant: "info"
-            });
-            api.ui.dialog.clear();
-            return;
-          }
-          let rawContent;
-          try {
-            rawContent = fs2.readFileSync(file, "utf-8");
-          } catch (e) {
-            api.ui.toast({
-              title: "FlowTask Model",
-              message: "No se pudo leer opencode.json global",
-              variant: "error"
-            });
-            return;
-          }
-          let cfg;
-          try {
-            const cleaned = stripJsonBom(rawContent);
-            cfg = JSON.parse(cleaned);
-          } catch (e) {
-            api.ui.toast({
-              title: "FlowTask Model",
-              message: "opencode.json global inv\xE1lido",
-              variant: "error"
-            });
-            return;
-          }
-          const next = removeAgentModel(cfg, agentName);
-          try {
-            atomicWriteFile(file, JSON.stringify(next, null, 2));
-          } catch (e) {
-            api.ui.toast({
-              title: "FlowTask Model",
-              message: `Error al escribir override: ${e instanceof Error ? e.message : "desconocido"}`,
-              variant: "error"
-            });
-            return;
-          }
-          api.ui.toast({
-            title: "FlowTask Model",
-            message: `Override de ${agentName} eliminado \u2014 hereda del runner (aplica en la pr\xF3xima recarga de instancia)`,
+            message: `Override de ${agentName} eliminado`,
             variant: "success"
           });
-        } else {
-          if (!api.client?.global?.config?.update) {
-            api.ui.toast({
-              title: "FlowTask Model",
-              message: "OpenCode no soporta config update (versi\xF3n incompatible)",
-              variant: "error"
-            });
-            return;
-          }
-          const patch = buildAgentModelPatch(agentName, value, variant);
-          const result = await api.client.global.config.update({
-            config: patch
-          });
-          if (result?.error) {
-            api.ui.toast({
-              title: "FlowTask Model",
-              message: `Error al guardar: ${result.error.message || "desconocido"}`,
-              variant: "error"
-            });
-            return;
-          }
-          if (variant === void 0) {
-            const file = resolveGlobalConfigFile();
-            if (fs2.existsSync(file)) {
-              try {
-                const rawContent = fs2.readFileSync(file, "utf-8");
-                const cfg = JSON.parse(stripJsonBom(rawContent));
-                const next = JSON.parse(JSON.stringify(cfg));
-                if (next.agent?.[agentName]) {
-                  delete next.agent[agentName].variant;
-                  atomicWriteFile(file, JSON.stringify(next, null, 2));
-                }
-              } catch (error) {
-                api.ui.toast({
-                  title: "FlowTask Model",
-                  message: `Error al limpiar variant anterior: ${error instanceof Error ? error.message : "desconocido"}`,
-                  variant: "error"
-                });
-                return;
-              }
+          return;
+        }
+        const variants = buildVariantOptions(modelRef, providers);
+        const variant = variants.length ? await context.ui.dialog.select({
+          title: `Variant para ${agentName}`,
+          options: variants
+        }) : void 0;
+        if (variants.length && variant === void 0) return;
+        const current = readConfig();
+        const patch = buildAgentModelPatch(agentName, modelRef, variant);
+        const next = {
+          ...current,
+          agent: {
+            ...current.agent ?? {},
+            [agentName]: {
+              ...current.agent?.[agentName] ?? {},
+              ...patch.agent[agentName]
             }
           }
-          api.ui.toast({
-            title: "FlowTask Model",
-            message: `${agentName} \u2192 ${value} (aplica en la pr\xF3xima invocaci\xF3n)`,
-            variant: "success"
-          });
-        }
-        api.ui.dialog.clear();
-      } catch (error) {
-        api.ui.toast({
+        };
+        writeConfig(next);
+        context.ui.toast.show({
           title: "FlowTask Model",
-          message: `Error inesperado: ${error instanceof Error ? error.message : "desconocido"}`,
+          message: `${agentName} \u2192 ${modelRef}`,
+          variant: "success"
+        });
+      } catch (error) {
+        context.ui.toast.show({
+          title: "FlowTask Model",
+          message: `Error: ${error instanceof Error ? error.message : "desconocido"}`,
           variant: "error"
         });
       }
     };
-    api.keymap.registerLayer({
-      mode: "base",
+    context.keymap.layer(() => ({
+      mode: "global",
       commands: [{
-        name: "flowtask.model.open",
+        id: "flowtask.model.open",
         title: "FlowTask: Model per Agent",
-        category: "FlowTask",
-        namespace: "palette",
-        slashName: "flowtask-model",
+        group: "FlowTask",
+        bind: "alt+m",
+        palette: true,
+        slash: {
+          name: "flowtask-model"
+        },
         run: openSelector
       }],
-      bindings: [{
-        key: "alt+m",
-        cmd: "flowtask.model.open",
-        desc: "FlowTask model selector"
-      }, {
-        key: "super+m",
-        cmd: "flowtask.model.open",
-        desc: "FlowTask model selector"
-      }]
-    });
-  } catch (error) {
-    console.error("FlowtaskModelSelector initialization error:", error);
+      bindings: ["flowtask.model.open"]
+    }));
   }
-};
-var tui_default = {
-  id: "flowtask-model-selector",
-  tui
-};
+});
 export {
   tui_default as default
 };

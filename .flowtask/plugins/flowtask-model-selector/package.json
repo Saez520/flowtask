@@ -2,13 +2,17 @@
   "name": "flowtask-model-selector",
   "version": "0.1.2",
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./dist/tui.js",
   "exports": {
-    ".": "./dist/index.js",
+    ".": "./dist/tui.js",
     "./tui": "./dist/tui.js"
   },
   "scripts": {
-    "build": "tsup"
+    "build": "tsup",
+    "test": "bun test lib/*.test.ts"
+  },
+  "dependencies": {
+    "@opencode/plugin": "2.0.29"
   },
   "devDependencies": {
     "@opentui/solid": "0.4.2",

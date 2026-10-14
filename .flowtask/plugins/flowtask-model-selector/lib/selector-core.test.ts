@@ -187,6 +187,18 @@ test("buildVariantOptions: returns no options for missing or unsupported variant
   expect(buildVariantOptions("anthropic/opus/high", providers)).toEqual([]);
 });
 
+test("buildVariantOptions: resolves V2 variant arrays and skips malformed entries", () => {
+  const providers = [{ id: "openai", models: { gpt: { variants: [
+    { id: "fast", settings: { temperature: 0.2 } },
+    { id: "deep", settings: { reasoningEffort: "high" } },
+    { settings: { ignored: true } }, null,
+  ] } } }];
+  expect(buildVariantOptions("openai/gpt", providers)).toEqual([
+    { title: "fast", value: "fast", description: "temperature: 0.2" },
+    { title: "deep", value: "deep", description: "reasoningEffort: high" },
+  ]);
+});
+
 test("readAgentModel: reads explicit model and optional variant only", () => {
   const config = { agent: { build: { model: "anthropic/opus", variant: "high" } } };
   expect(readAgentModel(config, "build")).toEqual({ model: "anthropic/opus", variant: "high" });
