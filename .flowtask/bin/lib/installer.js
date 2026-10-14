@@ -10,6 +10,83 @@ import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
 import { generateClaudeAgents, generateClaudeCommands, generateClaudeMd, mergeClaudeSettings, mergeClaudeMcpConfig } from "./claude.js";
 import { showInteractiveSelector } from "./ui.js";
 import { coordinateGraphify } from "./graphify.js";
+import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA, classifyOwnership, replaceManagedPackage } from "./ownership.js";
+import { ensureCanonicalSubmodule } from "./submodule-publication.js";
+
+export const INSTALLER_WRITERS = Object.freeze([
+  "W01 removeLegacyConsumerFiles", "W02 migrateProfileLocation", "W03 promptFerrisSearch",
+  "W04 root migration", "W05 target creation", "W06 asset copy/mirror", "W07 OpenCode skills/config",
+  "W08 plugin copy/register", "W09 markers", "W10 runner/persona/sync config", "W11 Claude outputs",
+  "W12 TUI canonical/legacy", "W13 classifier cleanup", "W14 legacy scripts/consumers",
+  "W15 root cleanup", "W16 Graphify", "W17 JSON/file primitives",
+]);
+
+/** Single read-only validation barrier shared by install and update. */
+export async function prepareInstallation(flowtaskDir, projectDir, mode = "install", options = {}) {
+  const manifest = loadPluginManifest(flowtaskDir, { required: true });
+  const configPath = path.join(projectDir, ".opencode", "opencode.json");
+  let config = {};
+  if (fs.existsSync(configPath)) {
+    try { config = JSON.parse(fs.readFileSync(configPath, "utf8")); }
+    catch { throw new Error(`invalid OpenCode config: ${configPath}`); }
+    if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error(`invalid OpenCode config: ${configPath}`);
+    for (const key of ["plugin", "plugins"]) {
+      if (config[key] !== undefined && !Array.isArray(config[key])) throw new Error(`invalid OpenCode config: ${key} must be an array`);
+    }
+  }
+  const pluginEntry = manifest.find((entry) => entry.name === CONTEXT_CHECKPOINT_NAME);
+  if (!pluginEntry) throw new Error(`required plugin manifest entry missing: ${CONTEXT_CHECKPOINT_NAME}`);
+  for (const entry of manifest) {
+    const resolved = path.resolve(flowtaskDir, "plugins", entry.path);
+    const pluginRoot = path.resolve(flowtaskDir, "plugins");
+    if (resolved !== pluginRoot && !resolved.startsWith(`${pluginRoot}${path.sep}`)) {
+      throw new Error(`plugin manifest path escapes plugin root: ${entry.name}`);
+    }
+    const entrypoint = path.resolve(resolved, entry.entrypoint);
+    if (entrypoint !== resolved && !entrypoint.startsWith(`${resolved}${path.sep}`)) {
+      throw new Error(`plugin manifest entrypoint escapes source: ${entry.name}`);
+    }
+  }
+  if (!pluginEntry.destinations.includes("opencode") || pluginEntry.kind !== "server") {
+    throw new Error(`required plugin manifest entry has incompatible destination/kind: ${CONTEXT_CHECKPOINT_NAME}`);
+  }
+  const pluginDir = path.join(projectDir, ".opencode", "plugins", CONTEXT_CHECKPOINT_NAME);
+  const ownership = classifyOwnership(pluginDir, { config });
+  if (!["ABSENT", "MANAGED_V1", "MANAGED_V2"].includes(ownership.state)) {
+    throw new Error(`ownership-${ownership.state.toLowerCase()}: ${pluginDir}`);
+  }
+  const classifierOwnership = [];
+  for (const name of CLASSIFIER_PLUGIN_NAMES) {
+    const classifierDir = path.join(projectDir, ".opencode", "plugins", name);
+    const decision = classifyOwnership(classifierDir, { config });
+    // Classifier cleanup is a destructive writer; only absent or explicitly
+    // FlowTask-managed directories may be removed by the installation flow.
+    if (!["ABSENT", "MANAGED_V1", "MANAGED_V2"].includes(decision.state)) {
+      throw new Error(`ownership-${decision.state.toLowerCase()}: ${classifierDir}`);
+    }
+    classifierOwnership.push(decision);
+  }
+  // Do any potentially mutating source materialization only after all other
+  // read-only preflight checks have passed, so bad config/ownership/manifest
+  // cannot leave a newly materialized source behind.
+  const source = await (options.ensureSource ?? ensureCanonicalSubmodule)(flowtaskDir);
+  const sourceDigest = source.sourceCommit;
+  if (sourceDigest !== CONTEXT_CHECKPOINT_SHA) throw new Error(`unexpected context-checkpoint source SHA: ${sourceDigest}`);
+  for (const entry of manifest) {
+    const resolved = path.resolve(flowtaskDir, "plugins", entry.path);
+    const entrypoint = path.resolve(resolved, entry.entrypoint);
+    if (!fs.existsSync(resolved) || !fs.existsSync(entrypoint)) {
+      throw new Error(`plugin manifest source/entrypoint missing: ${entry.name}`);
+    }
+  }
+  const targets = options.targets ?? [];
+  const descriptor = {
+    txID: `install-${process.pid}-${Date.now()}`, mode, strictManifest: true,
+    targets, sourceDigest, sourceDir: source.sourceDir, manifest, configPath,
+    ownership, classifierOwnership, writers: INSTALLER_WRITERS, allowedWrites: [], preDigest: null,
+  };
+  return Object.freeze(descriptor);
+}
 
 // ─── Asset map ────────────────────────────────────────────────────────────────
 // Defines exactly what gets copied into each target directory.
@@ -370,16 +447,21 @@ export async function resolvePersonaSelection(projectDir, readline, options = {}
  * Each entry: { name, path, kind, destinations, entrypoint }
  * - path is relative to the manifest's own directory (i.e. flowtaskDir/plugins/<path>).
  */
-export function loadPluginManifest(flowtaskDir) {
+export function loadPluginManifest(flowtaskDir, { required = false } = {}) {
   const manifestPath = path.join(flowtaskDir, "plugins", "flowtask-plugins.json");
   try {
     if (!fileExists(manifestPath)) {
+      if (required) throw new Error(`required plugin manifest not found at ${manifestPath}`);
       logWarn(`Plugin manifest not found at ${manifestPath}`);
       return [];
     }
     const content = fs.readFileSync(manifestPath, "utf8");
-    return JSON.parse(content);
+    const manifest = JSON.parse(content);
+    if (!Array.isArray(manifest)) throw new Error("plugin manifest must be an array");
+    if (required && manifest.some((entry) => !validateManifestEntry(entry))) throw new Error("plugin manifest contains an invalid entry");
+    return manifest;
   } catch (err) {
+    if (required) throw new Error(`Failed to load required plugin manifest: ${err.message}`, { cause: err });
     logError(`Failed to load plugin manifest: ${err.message}`);
     return [];
   }
@@ -571,13 +653,15 @@ export function removeLegacyConsumerFiles(projectDir, fileNames = ["tui.json", "
   return success;
 }
 
-function removeClassifierDirectories(projectDir) {
+function removeClassifierDirectories(projectDir, preparedDecisions = null) {
   let removed = false;
   const pluginsDir = path.join(projectDir, ".opencode", "plugins");
 
   for (const name of CLASSIFIER_PLUGIN_NAMES) {
     const pluginDir = path.join(pluginsDir, name);
     if (!fileExists(pluginDir)) continue;
+    const decision = preparedDecisions?.find((item) => item.path === pluginDir);
+    if (preparedDecisions && !["MANAGED_V1", "MANAGED_V2"].includes(decision?.state)) continue;
     try {
       fs.rmSync(pluginDir, { recursive: true, force: true });
       removed = true;
@@ -588,7 +672,7 @@ function removeClassifierDirectories(projectDir) {
   return removed;
 }
 
-function cleanupDisabledClassifier(projectDir, manifest) {
+function cleanupDisabledClassifier(projectDir, manifest, preparedDecisions = null) {
   if (isClassifierEnabled(manifest)) return;
 
   const tuiConfigPath = path.join(projectDir, ".opencode", "tui.json");
@@ -597,7 +681,7 @@ function cleanupDisabledClassifier(projectDir, manifest) {
     fileExists(path.join(projectDir, ".opencode", "plugins", name))
   ) || configContainsClassifier(tuiConfigPath) || configContainsClassifier(serverConfigPath);
 
-  const removedDirectory = removeClassifierDirectories(projectDir);
+  const removedDirectory = removeClassifierDirectories(projectDir, preparedDecisions);
   const removedServerEntry = removeClassifierEntries(serverConfigPath);
 
   if (hasInstallation || removedDirectory || removedServerEntry) {
@@ -615,7 +699,7 @@ function cleanupDisabledClassifier(projectDir, manifest) {
  *    - kind "tui"    → .opencode/tui.json (via registerPluginArrayEntry)
  *    - kind "server" → .opencode/opencode.json (via registerPluginArrayEntry)
  */
-export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
+export function installManifestPlugins(projectDir, manifest, flowtaskDir, preflight = null) {
   if (!Array.isArray(manifest) || manifest.length === 0) {
     logInfo("No plugins to install from manifest");
     return;
@@ -649,6 +733,14 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
       continue;
     }
     const destDir = path.join(opencodePluginsDir, entry.name);
+
+    if (entry.name === CONTEXT_CHECKPOINT_NAME) {
+      const sourceDir = path.join(flowtaskDir, "plugins", entry.path);
+      replaceManagedPackage({ sourceDir, destinationDir: destDir,
+        configPath: path.join(projectDir, ".opencode", "opencode.json"), sourceCommit: CONTEXT_CHECKPOINT_SHA,
+        ownershipDecision: preflight?.ownership?.path === destDir ? preflight.ownership : undefined });
+      continue;
+    }
 
     try {
       copyDirectoryDelta(srcDir, destDir);
@@ -709,7 +801,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir) {
     }
   }
 
-  cleanupDisabledClassifier(projectDir, manifest);
+  cleanupDisabledClassifier(projectDir, manifest, preflight?.classifierOwnership ?? null);
 }
 
 // ─── Migration & Cleanup ──────────────────────────────────────────────────────
@@ -789,6 +881,8 @@ ${COLORS.blue}╔═════════════════════
   const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
 
   const projectDir = process.cwd();
+  const preflight = targets.some(({ id }) => id === "opencode")
+    ? await prepareInstallation(flowtaskDir, projectDir, "install", { targets }) : null;
   const targetDirs = targets.map(({ targetSubDir }) => path.join(projectDir, targetSubDir));
   if (!migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
     throw new Error("No se pudo migrar profile.json; se conserva el origen. Verifica permisos/espacio y reintenta con flowtask update.");
@@ -883,8 +977,8 @@ ${COLORS.blue}╔═════════════════════
       // or .opencode/opencode.json (kind server).
       if (id === "opencode") {
         logStep(5, "Installing plugins from manifest...");
-        const manifest = loadPluginManifest(flowtaskDir);
-        installManifestPlugins(projectDir, manifest, flowtaskDir);
+        const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
+        installManifestPlugins(projectDir, preflight?.manifest ?? manifest, flowtaskDir, preflight);
       }
 
       // ── Step 6: Write installation marker ───────────────────────────────
@@ -929,8 +1023,6 @@ ${COLORS.blue}╔═════════════════════
 
   const readline = await import("readline");
   const projectDir = process.cwd();
-  const legacyCleanupOk = removeLegacyConsumerFiles(projectDir, ["CLAUDE.md"]);
-  if (!legacyCleanupOk) logWarn("La limpieza de CLAUDE.md no fue completa; el resultado debe revisarse.");
   // ── Step 1: Detect installed targets ────────────────────────────────────
   logStep(1, "Detecting installed targets...");
   const possibleTargets = [
@@ -956,6 +1048,11 @@ ${COLORS.blue}╔═════════════════════
     logError("No FlowTask installation found. Run 'flowtask install' first.");
     return;
   }
+
+  const preflight = targets.some(({ id }) => id === "opencode")
+    ? await prepareInstallation(flowtaskDir, projectDir, "update", { targets }) : null;
+  const legacyCleanupOk = removeLegacyConsumerFiles(projectDir, ["CLAUDE.md"]);
+  if (!legacyCleanupOk) logWarn("La limpieza de CLAUDE.md no fue completa; el resultado debe revisarse.");
 
   const targetDirs = targets.map(({ subDir }) => path.join(projectDir, subDir));
   if (!migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
@@ -983,7 +1080,7 @@ ${COLORS.blue}╔═════════════════════
   // ── Step 2: Delta sync each target ──────────────────────────────────────
   const preservePaths = ["CA-", "workspace", ".workspace", ".installation-method"];
   const results = [];
-  const manifest = loadPluginManifest(flowtaskDir);
+  const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
 
   for (const { id, subDir, ideDir, previousMethod } of targets) {
     const TARGET_DIR = path.join(projectDir, subDir);
@@ -1023,7 +1120,7 @@ ${COLORS.blue}╔═════════════════════
 
       // ── Re-install plugins from manifest (OpenCode only) ─────────────────
       if (id === "opencode") {
-        installManifestPlugins(projectDir, manifest, flowtaskDir);
+        installManifestPlugins(projectDir, manifest, flowtaskDir, preflight);
       }
 
       // ── Inject persona into runner.md ───────────────────────────────

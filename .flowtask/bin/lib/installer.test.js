@@ -11,12 +11,14 @@ import {
   syncTargetConfig,
   regenerateCanonicalTui,
   removeLegacyConsumerFiles,
+  prepareInstallation,
   ASSETS,
 } from "./installer.js";
 import { showInteractiveSelector } from "./ui.js";
 import { registerPluginArrayEntry } from "./opencode.js";
 import { generateClaudeCommands } from "./claude.js";
 import { verifyDirectoryMirror } from "./copy.js";
+import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA } from "./ownership.js";
 
 const fixtures = [];
 const FLOWTASK_CLI = fileURLToPath(new URL("../flowtask.js", import.meta.url));
@@ -111,6 +113,80 @@ function createSources(flowtaskDir, manifest) {
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
+
+function treeDigest(root) {
+  const rows = [];
+  const walk = (current, relative = "") => {
+    if (!fs.existsSync(current)) { rows.push(`${relative}|absent`); return; }
+    const stat = fs.lstatSync(current);
+    if (stat.isSymbolicLink()) { rows.push(`${relative}|link|${fs.readlinkSync(current)}`); return; }
+    if (stat.isFile()) {
+      rows.push(`${relative}|file|${stat.mode & 0o7777}|${fs.readFileSync(current).toString("base64")}`);
+      return;
+    }
+    rows.push(`${relative}|dir|${stat.mode & 0o7777}`);
+    for (const name of fs.readdirSync(current).sort()) walk(path.join(current, name), path.posix.join(relative, name));
+  };
+  walk(root);
+  return rows.join("\n");
+}
+
+function createPreflightFixture({ manifest = true, config, owner = "absent" } = {}) {
+  const { root, flowtaskDir } = createFixture();
+  const source = path.join(flowtaskDir, "plugins", CONTEXT_CHECKPOINT_NAME);
+  fs.mkdirSync(source, { recursive: true });
+  writeJson(path.join(source, "package.json"), { dependencies: { "@opencode/plugin": "2.0.27" } });
+  fs.writeFileSync(path.join(source, "index.ts"), "export {}\n");
+  if (manifest) writeJson(path.join(flowtaskDir, "plugins", "flowtask-plugins.json"), [{
+    name: CONTEXT_CHECKPOINT_NAME, path: CONTEXT_CHECKPOINT_NAME, kind: "server",
+    destinations: ["opencode"], entrypoint: "index.ts",
+  }]);
+  if (config !== undefined) writeJson(path.join(root, ".opencode", "opencode.json"), config);
+  const dest = path.join(root, ".opencode", "plugins", CONTEXT_CHECKPOINT_NAME);
+  if (owner === "ambiguous") {
+    fs.mkdirSync(dest, { recursive: true });
+    writeJson(path.join(dest, ".flowtask-plugin-owner.json"), { managedBy: "someone-else" });
+  } else if (owner === "external") {
+    fs.mkdirSync(dest, { recursive: true });
+    fs.writeFileSync(path.join(dest, "user.txt"), "preserve me");
+  }
+  return { root, flowtaskDir };
+}
+
+test("install/update preflight rejects invalid inputs without mutating the sandbox", async (t) => {
+  const cases = [
+    ["missing manifest", { manifest: false }, /manifest/i],
+    ["invalid manifest shape", { manifest: "invalid" }, /array/i],
+    ["malformed config", { config: { plugins: "not-an-array" } }, /config/i],
+    ["ambiguous ownership", { owner: "ambiguous" }, /ownership-ambiguous/i],
+    ["external ownership", { owner: "external" }, /ownership-external/i],
+  ];
+  for (const [label, fixtureOptions, expected] of cases) {
+    await t.test(label, async () => {
+      const { root, flowtaskDir } = createPreflightFixture(fixtureOptions);
+      if (fixtureOptions.manifest === "invalid") {
+        writeJson(path.join(flowtaskDir, "plugins", "flowtask-plugins.json"), { not: "an array" });
+      }
+      const before = treeDigest(root);
+      for (const mode of ["install", "update"]) {
+        await assert.rejects(() => prepareInstallation(flowtaskDir, root, mode, {
+          ensureSource: async () => ({ sourceCommit: CONTEXT_CHECKPOINT_SHA, sourceDir: path.join(flowtaskDir, "plugins", CONTEXT_CHECKPOINT_NAME) }),
+        }), expected);
+        assert.equal(treeDigest(root), before, `${mode} changed sandbox after ${label}`);
+      }
+    });
+  }
+  await t.test("unavailable source", async () => {
+    const { root, flowtaskDir } = createPreflightFixture();
+    const before = treeDigest(root);
+    for (const mode of ["install", "update"]) {
+      await assert.rejects(() => prepareInstallation(flowtaskDir, root, mode, {
+        ensureSource: async () => { throw new Error("source unavailable"); },
+      }), /source unavailable/);
+      assert.equal(treeDigest(root), before, `${mode} changed sandbox after source failure`);
+    }
+  });
+});
 
 const canonicalRunnerPermission = [
   { action: "*", resource: "*", effect: "deny" },
@@ -414,7 +490,7 @@ test("update integrates config and cleans legacy scripts into an installed targe
   assert.equal(fs.existsSync(path.join(root, ".flowtask", "scripts")), false);
 });
 
-test("update preserves source scripts when the project uses its canonical .flowtask directory", () => {
+test("update fails closed before writers when canonical source has no Git publication metadata", () => {
   const { root } = createFixture();
   const flowtaskDir = path.join(root, ".flowtask");
   fs.cpSync(path.resolve(path.dirname(FLOWTASK_CLI), ".."), flowtaskDir, { recursive: true });
@@ -449,20 +525,13 @@ test("update preserves source scripts when the project uses its canonical .flowt
   });
 
   assert.equal(result.error, undefined, result.error?.message);
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(`${result.stdout}\n${result.stderr}`, /not a git repository|no es un repositorio git/i);
   assert.ok(fs.existsSync(path.join(root, ".flowtask", "scripts")));
   assert.equal(fs.readFileSync(path.join(root, ".flowtask", "scripts", "worktree.sh"), "utf8"), "source\n");
-  assert.equal(fs.readFileSync(path.join(targetDir, "scripts", "worktree.sh"), "utf8"), "source\n");
+  assert.equal(fs.readFileSync(path.join(targetDir, "scripts", "worktree.sh"), "utf8"), "stale\n");
   assert.equal(fs.readFileSync(path.join(flowtaskDir, "scripts", "lib", "worktree-manager-core.sh"), "utf8"), "canonical-core\n");
-  assert.equal(fs.readFileSync(path.join(targetDir, "scripts", "lib", "worktree-manager-core.sh"), "utf8"), "canonical-core\n");
-  const canonicalRunner = fs.readFileSync(path.join(flowtaskDir, "agents", "runner.md"), "utf8");
-  const installedRunner = fs.readFileSync(path.join(targetDir, "agents", "runner.md"), "utf8");
-  assert.match(canonicalRunner, /--init-submodules/);
-  assert.match(installedRunner, /--init-submodules/);
-  const normalizeRunner = (content) => content
-    .replaceAll("./.opencode/flowtask/scripts", "./.flowtask/scripts")
-    .replace(/<!-- FLOWTASK:PERSONA_START -->[\s\S]*?<!-- FLOWTASK:PERSONA_END -->/, "<!-- FLOWTASK:PERSONA_START -->\n<!-- FLOWTASK:PERSONA_END -->");
-  assert.equal(normalizeRunner(installedRunner), normalizeRunner(canonicalRunner));
+  assert.equal(fs.readFileSync(path.join(targetDir, "scripts", "lib", "worktree-manager-core.sh"), "utf8"), "stale-core\n");
   assert.doesNotMatch(result.stdout, /Legacy scripts cleaned/);
 });
 
