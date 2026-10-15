@@ -18,6 +18,19 @@ flowchart TD
     VALIDATOR -->|"REJECTED"| CONSTRUCTOR
 ```
 
+FlowTask consume el gestor mediante `.flowtask/bin/lib/worktree-consumer-adapter.js`;
+el contrato de validación y normalización está en
+`.flowtask/bin/lib/worktree-consumer-contract.js`. El consumidor debe seleccionar
+explícitamente `cli` o `mcp` y proporcionar una raíz de repositorio absoluta,
+una base explícita o detectable y un work-id genérico. El adapter valida rutas,
+calcula identidad esperada y no cambia de transporte ante un error.
+
+Para `create`, la asociación efectiva se persiste antes de despachar trabajo.
+Si el gestor confirmó la creación pero Engram falla, el recurso se conserva y
+el dispatch queda bloqueado. Una respuesta incierta requiere reconciliación y
+no se reintenta automáticamente. El adapter no replica el lifecycle: CLI/MCP
+y el gestor standalone siguen siendo autoridad para las operaciones Git.
+
 La rama base se detecta en el orden `development → main → trunk`; si ninguna
 existe, se usa `main` como fallback, y el runner la pasa explícitamente. Si el
 worktree o la rama ya existen por una interrupción, no se crea otro: se

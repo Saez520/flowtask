@@ -27,6 +27,7 @@
       "system": "{file:.flowtask/agents/runner.md}",
       "permissions": [
         { "action": "*", "resource": "*", "effect": "deny" },
+        { "action": "tool", "resource": "flowtask_worktree_consume", "effect": "allow" },
         { "action": "shell", "resource": "node .flowtask/bin/flowtask.js graphify *", "effect": "allow" },
         { "action": "shell", "resource": "git status *", "effect": "allow" },
         { "action": "shell", "resource": "git add *", "effect": "allow" },
@@ -217,5 +218,5 @@
       "subtask": true
     }
   },
-  "plugins": []
+  "plugins": ["./.opencode/plugins/flowtask-permission-gate.js"]
 }

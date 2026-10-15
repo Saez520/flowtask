@@ -678,12 +678,48 @@ Escenario A, sin `task_id`, Resume Prompt, Topic Validation ni contexto de
 sesión anterior.
 Prompt: flow state del plan desde Engram y contexto actual del CA.
 
-### Política de worktrees — obligatorio por CA
+### Política de worktrees — adapter consumidor obligatorio por CA
 
-1. **Todo CA crea su worktree** en Paso 4, sin condiciones ni excepciones. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh create <CA-ID> --base {base_branch_detectada}` y agrega `--init-submodules` sólo si el requisito lo pide explícitamente. La rama base se detecta con orden `development → main → trunk → main`, y el runner la pasa explícitamente.
-2. Si el worktree o la rama `worktree/<CA-ID>` ya existen (sesión interrumpida, reanudación), el script `create` fallará. En ese caso, NO invoques `create` de nuevo: reutiliza el worktree existente y continúa.
-3. Persiste en `flow-state/CA-{ID}/instances` el campo `constructor.worktree = { path, branch, base_branch, init_submodules, init_submodules_result }`. La ausencia de `init_submodules` equivale a `false`; la reanudación conserva la intención y el resultado emitido por el script.
-4. Al despachar el constructor, incluye en el prompt el contexto del worktree (path y branch).
+El gestor standalone es la autoridad única del lifecycle. El Runner selecciona
+la configuración y coordina persistencia/dispatch mediante
+`.flowtask/bin/lib/worktree-consumer-adapter.js`; no ejecuta Git ni mantiene
+journals, locks, backups o lógica de recuperación propia.
+
+1. **Selección antes de mutación:** determina `repo_root` como ruta absoluta
+   existente del repositorio objetivo (nunca lo sustituyas por `cwd`), detecta
+   la base local en orden `development → main → trunk → main` salvo que el
+   usuario indique una base explícita, y resuelve `worktrees_dir` y
+   `branch_prefix` desde la configuración vigente (defaults `.worktrees` y
+   `worktree/`). Valida el `work_id` genérico según el contrato del adapter;
+   no lo conviertas en un CA ID. La elección de transporte `cli` o `mcp` es
+   obligatoria y explícita; registra cuál se eligió y no hagas fallback entre
+   transportes.
+2. El adapter valida repo/base/paths/work-id y opciones antes de invocar al
+   gestor. Para toda operación de lifecycle permitida (`create`, `complete`,
+   `cleanup`, `recover`, `list`, `prune`), delega exclusivamente en el
+   transporte seleccionado. No repitas una operación si su resultado es
+   `uncertain`: primero reconcilia con el gestor y Engram. `blocked`,
+   `intervention_required`, `failure` y `no_pending_work` no son éxito de
+   creación ni autorizan dispatch.
+3. En `create`, Engram debe confirmar la asociación efectiva del worktree en
+   `flow-state/{work-id}/instances` antes de despachar Constructor. Conserva
+   `{ repo_root, work_id, path, branch, base_branch, transport,
+   init_submodules, init_submodules_result }`; la asociación debe coincidir
+   con la respuesta del gestor y con cualquier asociación previa. Si Engram
+   falla antes de la mutación, no invoques el gestor; si falla después de un
+   efecto confirmado o el resultado es incierto, conserva recursos y bloquea
+   dispatch/cierre hasta reconciliar. No uses memoria local ni limpiezas para
+   simular atomicidad.
+4. Sólo después de la confirmación durable, persiste la asociación efectiva
+   en el mapa de instancias y pasa a Constructor y Validator esa misma
+   identidad y registro. Conserva los límites de contexto existentes de ambos
+   agentes. Reanudación sólo reutiliza un worktree si la identidad del gestor
+   coincide exactamente con Engram; discrepancias bloquean y conservan los
+   recursos.
+5. `init_submodules`, `prepare` y `verify` se habilitan únicamente por
+   intención explícita. `preserve_dirty` y `discard` requieren el
+   consentimiento humano aplicable; `--auto` sólo omite confirmaciones
+   humanas ordinarias y nunca concede esos permisos.
 
 ***
 
@@ -701,16 +737,18 @@ Prompt: flow state del plan desde Engram y contexto actual del CA.
 
 ### Cierre exitoso con worktree
 
-Cuando el validator apruebe y el CA tenga worktree asociado:
+Cuando el validator apruebe y el CA tenga worktree asociado, el Runner solicita
+al adapter la operación `complete` con la misma identidad, base y transporte
+registrados. El gestor standalone ejecuta el lifecycle; antes de completarlo:
 
 1. Hacé el commit antes de `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID> --base {base_branch_detectada}`.
-2. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID> --base {base_branch_detectada}` y agrega `--init-submodules` sólo para reanudar o solicitar esa intención explícita.
-3. Si completa bien, el script hace squash-merge a la rama base detectada y limpia el worktree/branch.
+2. El adapter invoca `complete` en el transporte seleccionado (sin fallback), con la base previamente registrada.
+3. Si completa bien, el gestor hace squash-merge a la rama base detectada y limpia el worktree/branch.
 4. Si `complete` falla por conflicto, **no limpies** el worktree.
 5. Si `complete` rechaza porque **el destino tiene cambios sin commitear**, no intentes limpiar el destino ni crear stashes: el rechazo es seguro y dejó todo intacto. Escala al desarrollador mostrando el motivo genérico del script; solo si el desarrollador consiente explícitamente, reinvoca `complete` con `--preserve-dirty`.
 6. `--preserve-dirty` es una transacción opt-in: captura los cambios elegibles del destino en refs privadas (`refs/flowtask/backups/<tx-id>`, jamás en la lista pública de stashes), registra cada fase en `.flowtask/backups/<tx-id>/journal` y restaura el estado fino al final. Ofrecélo **SOLO ante instrucción humana explícita** — jamás por defecto ni en flujos automáticos. La config persistida (`.flowtask/config/worktree.json` con `"preserveDirty": true`) cuenta como consentimiento humano explícito y el script nunca la escribe.
 7. Si un cierre con preservación se interrumpe, reanudalo con `worktree.sh recover [<tx-id>]` (sin argumento toma la pendiente más reciente); repetirlo es seguro e idempotente. Si la restauración quedó pendiente-manual, mostrale al desarrollador las instrucciones seguras impresas por el script: la resolución manual nunca se automatiza.
-8. El Runner solo invoca las formas canónicas del gate (`create|complete <id> --base <branch>` y el opt-in `--init-submodules`). No pasa `--repo`, `--config`, `--prepare`, `--verify` ni `--discard`; el modo `--auto` no sustituye el consentimiento humano para preservar o descartar.
+8. El Runner sólo solicita al adapter las opciones expresamente habilitadas por el gate y consentimiento aplicable. No deriva ni ejecuta comandos Git/lifecycle por fuera del gestor; `--auto` no sustituye consentimiento para preservar o descartar.
 9. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
 
 ***
@@ -727,19 +765,17 @@ Revisa la validación en Engram y el código.
 ***
 ## Reconciliación post-compaction
 
-Si el runner pierde contexto o se reinicia:
-
-1. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh list` como fuente de verdad del filesystem.
-2. Cruza esa salida con `flow-state/*/instances` para detectar `constructor.worktree`.
-3. Si hay worktrees en disco sin correspondencia en Engram, repórtalos como huérfanos.
+Si el Runner pierde contexto o se reinicia, solicita `list` al gestor mediante
+el adapter y cruza su salida con `flow-state/*/instances`. Si Engram no está
+disponible o la lectura del gestor es ilegible, falla cerrado: no inventes un
+inventario vacío ni hagas cambios. Reporta como huérfanos los worktrees sin
+asociación durable; no los borres automáticamente.
 
 ## Mantenimiento de huérfanos
 
-Durante mantenimiento explícito:
-
-1. Ejecuta `${FLOWTASK_SCRIPTS}/worktree.sh prune`.
-2. Usa su salida para decidir si limpiar huérfanos.
-3. `prune` no borra worktrees huérfanos; solo limpia metadata stale de Git y reporta directorios no asociados.
+Durante mantenimiento explícito, solicita `prune` mediante el adapter y usa la
+respuesta del gestor para reportar metadata stale y directorios no asociados.
+No borres worktrees huérfanos automáticamente.
 
 ***
 

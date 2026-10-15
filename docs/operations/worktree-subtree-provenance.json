@@ -1,0 +1,16 @@
+{
+  "snapshot": {
+    "path": "/private/tmp/worktree-manager-phase-6-snapshot-final-20261015",
+    "head": "d34fa1b3c3379a6b1f13004e562254c668d243e6",
+    "branch": "worktree/CA-worktree-manager-phase-6",
+    "capture_utc": "2026-10-15T13:18:45Z",
+    "materialized_snapshot_predecessor": "d34fa1b3c3379a6b1f13004e562254c668d243e6"
+  },
+  "preparation_commit": "records the complete inherited snapshot state on the temporary reconstruction branch before subtree integration",
+  "source": "/Users/saez/Proyects/worktree-manager",
+  "ref": "444440aa5139ae92ffcc680c6f805a9393f937f9",
+  "successor_ref": "083420860c9abf6c485d7a9fc3e6ad65ad8a2953",
+  "prefix": ".flowtask/vendor/worktree-manager",
+  "sync_mode": "squash",
+  "protected_inherited_content": [".flowtask/agents/runner.md", "opencode.json"]
+}

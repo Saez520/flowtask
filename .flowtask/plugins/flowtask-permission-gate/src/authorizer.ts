@@ -1,4 +1,14 @@
 export const RUNNER_DELEGATION_MESSAGE = "Recordá que debés delegar esta operación al subagente correspondiente.";
+export const WORKTREE_CONSUMER_TOOL = "flowtask_worktree_consume";
+
+/** The worktree bridge is available only to the exact FlowTask runner identity. */
+export function isAuthorizedWorktreeConsumer(agent: unknown, tool: unknown): boolean {
+  return typeof agent === "string" && normalizeRunner(agent) && tool === WORKTREE_CONSUMER_TOOL;
+}
+
+function normalizeRunner(agent: string): boolean {
+  return agent.trim().toLowerCase().replace(/_/g, "-").replace(/\s+/g, "-") === "flowtask-runner";
+}
 
 export const FLOWTASK_SUBAGENTS = new Set([
   "flowtask-ca-writer", "flowtask-planner", "flowtask-plan-auditor", "flowtask-constructor",

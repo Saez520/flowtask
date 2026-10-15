@@ -31,6 +31,7 @@ Comandos del entorno instalado: `/init-types`, `/init-data`, `/init-business`, `
 ## Límites importantes
 
 - `flowtask graphify query` es un shim histórico: no consulta localmente. La vía vigente es Graphify por MCP; si no está disponible, el flujo declara degradación y usa búsqueda normal.
+- Antes de delegar, el Runner debe evaluate the sufficiency of the evidence already gathered; si queda un GAP concreto que la evidencia no resuelve, puede delegate to the Inspector for the concrete GAP.
 - Los artifacts nuevos se persisten en Engram; los archivos locales antiguos son compatibilidad histórica.
 - La documentación editorial no reemplaza los contratos ejecutables bajo `.flowtask`.
 
