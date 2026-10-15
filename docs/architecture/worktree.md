@@ -1,17 +1,39 @@
-# Arquitectura del gestor de worktrees
+# Integración del gestor de worktrees
 
-## Componentes
+## Fuente de verdad
 
-`.flowtask/scripts/worktree-manager/` es el único propietario de la implementación Bash. `worktree.sh` delega a `worktree-adapter.sh`, que conserva compatibilidad del consumidor y traduce registros legacy solo al recuperar. No hay copia fallback. El instalador valida el checkout frente al gitlink y materializa el submodule; excluye el gestor de la copia genérica de assets.
+La implementación vive en el repositorio standalone
+[`worktree-manager`](https://github.com/Saez520/worktree-manager) y se integra
+en FlowTask como submodule en `.flowtask/scripts/worktree-manager/`. El checkout
+integrado debe coincidir con el gitlink registrado por FlowTask; no debe
+mantenerse una copia del core en `.flowtask/scripts/lib/`.
 
-El repositorio standalone contiene lifecycle parent-only, configuración genérica y target-direct. No depende de rutas FlowTask, mecanismos de coordinación, almacenamiento legacy ni transporte externo.
+Para conocer la arquitectura, configuración, comandos, target-direct,
+recuperación y contrato de salida, consultar el
+[README del repositorio origen](https://github.com/Saez520/worktree-manager) y
+[`docs/cli-contract-v1.md`](https://github.com/Saez520/worktree-manager/blob/main/docs/cli-contract-v1.md).
+Este documento describe únicamente la integración con FlowTask.
 
-## Parent-only y target-direct
+## Adaptador de FlowTask
 
-Parent-only gestiona lifecycle y transacciones en el repositorio seleccionado. La configuración define rutas de worktrees, estado, backups, refs y locks. Journals y validaciones permiten reanudar operaciones; ante conflicto, drift o corrupción se preservan recursos.
+`.flowtask/scripts/worktree.sh` es el entrypoint consumidor y delega en
+`.flowtask/scripts/worktree-adapter.sh`. El adaptador conserva compatibilidad
+con invocaciones y registros legacy de FlowTask, y traduce esos registros solo
+durante la recuperación. El standalone no conoce FlowTask ni inspecciona sus
+rutas o refs heredadas.
 
-Target-direct opera sobre un repositorio submodule explícito. El descriptor valida identidades y fases, y conserva snapshot del índice. El parent solo puede recibir el gitlink staged mediante `staged-only`: no se crea worktree, commit, merge ni push del parent. Git 2.54.0 es requisito exacto.
+El instalador valida el gitlink, materializa el submodule antes de copiar
+assets y excluye el gestor de la copia genérica. Si la fuente no está
+disponible, la instalación o actualización falla con diagnóstico; no crea una
+copia alternativa.
 
-## Bootstrap local y publicación
+## Límites de responsabilidad
 
-El bootstrap provisional usa `/Users/saez/Proyects/worktree-manager/` como fuente Git local. El gitlink en `.flowtask/scripts/worktree-manager/` fija el commit consumido; la URL local de `.gitmodules` no es portable ni constituye publicación. Publicar y sustituir la URL por una fuente distribuible está fuera de esta etapa. El installer no publica ni crea commits del consumidor; la entrega mantiene su worktree y branch para revisión.
+- El standalone posee lifecycle parent-only, configuración genérica,
+  transacciones, locks, journals y target-direct.
+- FlowTask aporta el entrypoint compatible, el adaptador y la integración como
+  submodule.
+- El adaptador no hace commit, merge ni push por cuenta del repositorio
+  consumidor.
+- La URL local histórica de `.gitmodules` solo sirve para el bootstrap de este
+  checkout y no es una referencia portable de distribución.

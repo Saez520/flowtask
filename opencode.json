@@ -24,23 +24,7 @@
       "description": "Orchestrator of FlowTask workflow. Activates subagents, manages state via Engram. Only agent the user talks to directly.",
       "mode": "primary",
       "hidden": false,
-      "system": "{file:.flowtask/agents/runner.md}",
-      "permissions": [
-        { "action": "*", "resource": "*", "effect": "deny" },
-        { "action": "shell", "resource": "node .flowtask/bin/flowtask.js graphify *", "effect": "allow" },
-        { "action": "shell", "resource": "git status *", "effect": "allow" },
-        { "action": "shell", "resource": "git add *", "effect": "allow" },
-        { "action": "shell", "resource": "git restore --staged *", "effect": "allow" },
-        { "action": "shell", "resource": "git commit *", "effect": "allow" },
-        { "action": "shell", "resource": "git push *", "effect": "allow" },
-        { "action": "shell", "resource": "git merge *", "effect": "allow" },
-        { "action": "shell", "resource": "./.flowtask/scripts/worktree.sh *", "effect": "allow" },
-        { "action": "shell", "resource": "./.opencode/flowtask/scripts/worktree.sh *", "effect": "allow" },
-        { "action": "subagent", "resource": "flowtask-*", "effect": "allow" },
-        { "action": "subagent", "resource": "flowtask-runner", "effect": "deny" },
-        { "action": "skill", "resource": "*", "effect": "allow" },
-        { "action": "engram_*", "resource": "*", "effect": "allow" }
-      ]
+      "system": "{file:.flowtask/agents/runner.md}"
     },
     "flowtask-ca-writer": {
       "description": "Guides requirement clarification through conversation. Helps user clarify what they need before formalizing CA. Never writes code or plans.",
@@ -79,7 +63,8 @@
       "system": "{file:.flowtask/agents/validator.md}",
       "permissions": [
         { "action": "edit", "resource": "*", "effect": "deny" },
-        { "action": "shell", "resource": "*", "effect": "deny" }
+        { "action": "shell", "resource": "*", "effect": "allow" },
+        { "action": "bash", "resource": "*", "effect": "allow" }
       ]
     },
     "flowtask-initializer": {
