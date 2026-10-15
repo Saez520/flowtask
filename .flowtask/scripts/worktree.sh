@@ -3,9 +3,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# Keep the public entrypoint intentionally small: distributions copy scripts/
-# recursively, so the portable implementation travels with this wrapper.
-# shellcheck source=/dev/null
-source "$SCRIPT_DIR/lib/worktree-manager-core.sh"
+# The checkout is a required runtime dependency; there is no local lifecycle
+# implementation to fall back to.
+MANAGER="$SCRIPT_DIR/worktree-manager/worktree.sh"
+if [[ ! -x "$MANAGER" ]]; then
+  printf '%s\n' "Worktree Manager standalone ausente o no inicializado: $MANAGER" >&2
+  exit 1
+fi
 
-worktree_manager_main "$@"
+exec "$SCRIPT_DIR/worktree-adapter.sh" "$@"

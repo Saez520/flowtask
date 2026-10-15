@@ -1,3 +1,6 @@
 [submodule ".flowtask/plugins/flowtask-context-checkpoint"]
 	path = .flowtask/plugins/flowtask-context-checkpoint
 	url = git@github.com:Saez520/flowtask-context-checkpoint.git
+[submodule ".flowtask/scripts/worktree-manager"]
+	path = .flowtask/scripts/worktree-manager
+	url = /Users/saez/Proyects/worktree-manager

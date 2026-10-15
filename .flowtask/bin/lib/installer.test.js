@@ -18,7 +18,7 @@ import {
 import { showInteractiveSelector } from "./ui.js";
 import { registerPluginArrayEntry } from "./opencode.js";
 import { generateClaudeCommands } from "./claude.js";
-import { verifyDirectoryMirror } from "./copy.js";
+import { verifyDirectoryMirror, copyDirectoryDelta } from "./copy.js";
 import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA } from "./ownership.js";
 
 const fixtures = [];
@@ -563,7 +563,7 @@ test("update fails closed before writers when canonical source has no Git public
 
   assert.equal(result.error, undefined, result.error?.message);
   assert.notEqual(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.match(`${result.stdout}\n${result.stderr}`, /not a git repository|no es un repositorio git/i);
+  assert.match(`${result.stdout}\n${result.stderr}`, /Worktree Manager submodule unavailable/i);
   assert.ok(fs.existsSync(path.join(root, ".flowtask", "scripts")));
   assert.equal(fs.readFileSync(path.join(root, ".flowtask", "scripts", "worktree.sh"), "utf8"), "source\n");
   assert.equal(fs.readFileSync(path.join(targetDir, "scripts", "worktree.sh"), "utf8"), "stale\n");
@@ -886,9 +886,7 @@ test("canonical TUI bytes remain identical on a second regeneration", () => {
   assert.deepEqual(fs.readFileSync(path.join(flowtaskDir, "tui.json")), first);
 });
 
-// La extracción del núcleo depende de que `scripts/` se distribuya completo:
-// el wrapper público es inocuo sin `lib/worktree-manager-core.sh`.
-test("scripts distribution carries the wrapper and its portable core together", () => {
+test("scripts distribution carries the wrapper and adapter without legacy implementations", () => {
   const source = path.resolve(path.dirname(FLOWTASK_CLI), "..");
   assert.ok(
     ASSETS.opencode.some(({ src, dest }) => src === "scripts" && dest === "scripts"),
@@ -897,15 +895,18 @@ test("scripts distribution carries the wrapper and its portable core together", 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-scripts-dist-"));
   fixtures.push(root);
   const flowtaskDir = path.join(root, "flowtask");
-  fs.cpSync(path.join(source, "scripts"), path.join(flowtaskDir, "scripts"), { recursive: true });
+  copyDirectoryDelta(path.join(source, "scripts"), path.join(flowtaskDir, "scripts"));
 
   const wrapper = path.join(flowtaskDir, "scripts", "worktree.sh");
-  const core = path.join(flowtaskDir, "scripts", "lib", "worktree-manager-core.sh");
+  const adapter = path.join(flowtaskDir, "scripts", "worktree-adapter.sh");
   assert.ok(fs.existsSync(wrapper), "el wrapper público debe distribuirse");
-  assert.ok(fs.existsSync(core), "el núcleo portable debe distribuirse junto al wrapper");
+  assert.ok(fs.existsSync(adapter), "el adapter debe distribuirse junto al wrapper");
+  assert.equal(fs.existsSync(path.join(flowtaskDir, "scripts", "lib", "worktree-manager-core.sh")), false);
+  assert.equal(fs.existsSync(path.join(flowtaskDir, "scripts", "lib", "worktree-manager-target-direct.sh")), false);
+  assert.equal(fs.existsSync(path.join(flowtaskDir, "scripts", "worktree-manager")), false,
+    "el gitlink se materializa desde la fuente canónica, no como una copia del payload");
 
-  // El wrapper instalado debe ser funcional, no solo presente.
   const usage = spawnSync(wrapper, ["--help"], { encoding: "utf8" });
-  assert.equal(usage.status, 0, usage.stderr);
-  assert.match(usage.stdout, /create <work-id>/);
+  assert.notEqual(usage.status, 0);
+  assert.match(usage.stderr, /standalone ausente o no inicializado/);
 });

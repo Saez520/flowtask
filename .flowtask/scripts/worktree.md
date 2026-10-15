@@ -1,105 +1,21 @@
-# Arquitectura documental del gestor de worktrees
+# Gestor de worktrees
 
-> Documento auxiliar: describe el gestor, pero no es un entrypoint ejecutable.
-> La implementación canónica está en los scripts y módulos indicados abajo.
+## Arquitectura
 
-## Relación entre los componentes
+La implementación canónica es el repositorio Bash standalone materializado como submodule Git en `.flowtask/scripts/worktree-manager/`. `worktree.sh` delega a `worktree-adapter.sh`; el adapter conserva compatibilidad y traduce registros legacy durante la recuperación. El standalone no conoce FlowTask ni inspecciona rutas o refs heredadas. Los archivos legacy en `scripts/lib/` se retiraron; el instalador excluye esos nombres y el submodule del payload.
 
-El entrypoint público es `.flowtask/scripts/worktree.sh`. Es un wrapper
-pequeño que carga `.flowtask/scripts/lib/worktree-manager-core.sh` en el mismo
-proceso de shell.
+El instalador verifica el gitlink y materializa el submodule antes de copiar assets. El gestor no se copia como árbol alternativo; si la fuente no está disponible, instalación y actualización fallan con diagnóstico.
 
-El core implementa el lifecycle parent-only: `create`, `complete`, `cleanup`,
-`recover`, `prune` y `list`, además de locks, journals y preservación
-transaccional. Al final de su carga, el core incorpora
-`.flowtask/scripts/lib/worktree-manager-target-direct.sh`, que mantiene aislado
-el lifecycle especial para operar directamente sobre un submodule.
+## Configuración y lifecycle
 
-La relación con el transporte JavaScript es indirecta y deliberada:
+La configuración validada permite seleccionar `worktrees_dir`, `state_dir`, `backup_dir`, `backup_ref_prefix`, `branch_prefix` y `lock_dir`. Sus valores son datos `key=value`, nunca código shell. Parent-only admite `create`, `complete`, `cleanup`, `recover`, `prune` y `list`, con locks, journals, recuperación y preservación explícita.
 
-1. `worktree.sh` carga el core.
-2. El core carga `worktree-manager-target-direct.sh`.
-3. La variante target-direct selecciona el adaptador
-   `.flowtask/bin/lib/runner-constructor-target-direct.js`.
-4. Ese adaptador importa `.flowtask/bin/lib/target-direct-transport.js`, que
-   valida, serializa y rehidrata el descriptor persistido entre Runner y
-   Constructor.
+`complete` conserva recursos ante conflictos o drift. `cleanup` no integra; retirar cambios no integrados exige `--discard`. La preservación requiere opt-in y conflictos de restauración quedan para intervención humana.
 
-Por tanto, el shell target-direct no carga directamente
-`target-direct-transport.js`; llega a él a través del adaptador
-`runner-constructor-target-direct.js`. Este archivo Markdown tampoco sustituye
-ninguno de esos componentes.
+## Target-direct
 
-## Detección de la rama base
+Target-direct opera en el repositorio submodule indicado y no crea worktree del parent ni modifica su HEAD. Requiere identidad explícita de target/parent, ruta submodule y `--link-parent staged-only`. `create` prepara el worktree del target; `link-parent` registra únicamente el gitlink en el índice. `abort`, `complete` y `recover` conservan snapshot y journal, y se detienen ante drift ambiguo. Requiere exactamente Git 2.54.0.
 
-Cuando no se especifica `--base`, el código busca ramas locales en el orden
-`development → main → trunk`; si ninguna existe, usa `main` como fallback. El
-runner puede pasar una rama explícita y, en ese caso, el gestor valida que
-exista.
+## Bootstrap y distribución
 
-## Lifecycle parent-only
-
-La forma general es:
-
-```text
-.flowtask/scripts/worktree.sh create <work-id> --base <branch>
-  → .worktrees/<work-id>/ y branch worktree/<work-id>
-  → Constructor implementa
-  → Validator verifica
-  → worktree.sh complete <work-id> --base <branch>
-```
-
-`create` valida el repositorio, el identificador, la rama base, la branch de
-trabajo, la ruta y la identidad Git antes de crear recursos. La preparación y
-la verificación de comandos son opt-in mediante la configuración admitida y
-sus flags explícitos.
-
-## `complete`, `cleanup` y `recover`
-
-`complete` hace un cierre verificado: comprueba identidad, estado, commits,
-submodules y destino; realiza el squash; valida el commit resultante; registra
-las fases del journal; deinitializa submodules cuando corresponde; retira el
-worktree y elimina la branch mediante una actualización condicionada al SHA
-esperado.
-
-Después de validar identidad, estado, de-inicialización y fase del journal, la
-ruta interna de cierre usa:
-
-```text
-git worktree remove --force <worktree-cerrado>
-```
-
-Ese uso interno verificado de `--force` no convierte a `complete` en la vía
-pública de descarte: `complete` no expone `--discard` ni `git branch -D`. Si
-hay conflicto o estado ambiguo, conserva los recursos y detiene el avance.
-
-`cleanup` no hace merge. Sin `--discard` solo retira un worktree y branch que
-no conservan cambios locales, commits propios ni estado pendiente. La vía
-pública para retirar trabajo no integrado es `cleanup --discard`, que requiere
-autorización explícita y usa la retirada forzada del worktree y la eliminación
-forzada de la branch.
-
-`recover` reanuda transacciones de `--preserve-dirty` según su journal. Usa
-locks y conserva backups ante drift o una restauración `pending_manual`; no
-retira automáticamente recursos por la ruta interna de cierre.
-
-## Lifecycle target-direct
-
-La variante target-direct exige un target submodule explícito mediante
-`--repo`, `--parent-repo`, `--target submodule`, `--submodule-path` y
-`--link-parent staged-only`. El worktree se crea en la raíz Git del submodule,
-no en el parent. El parent solo puede recibir el gitlink staged esperado; esta
-ruta no hace commit, merge ni push del parent.
-
-El descriptor persistido contiene la identidad del target, parent, gitlink,
-branch, worktree, namespace y fase. Antes de entregarlo al Constructor, el
-adaptador JavaScript y el transporte validan claves, duplicados, campos,
-paths absolutos normalizados, SHA, fases, operación, namespace y formato
-UTF-8/LF. Ante drift del parent, del gitlink o del índice, la operación se
-detiene y conserva la evidencia.
-
-## Portabilidad
-
-Las rutas de este documento son relativas al repositorio. No dependen de una
-ruta absoluta concreta del entorno ni de la salida de una ejecución local de
-`worktree.sh list`.
+El bootstrap actual usa `/Users/saez/Proyects/worktree-manager/`; `.gitmodules` conserva esa URL local provisional y el índice registra un gitlink. No representa una publicación. Publicar el repositorio y cambiar el remote para distribución portable son trabajos posteriores. La entrega conserva su worktree/branch de revisión: no se automatiza commit ni integración del repositorio consumidor.

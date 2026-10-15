@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { execFileSync } from "child_process";
 import {
   COLORS, log, logStep, logSuccess, logError, logWarn, logInfo,
   isBinaryInstalled, getVersion, fileExists,
@@ -20,6 +21,29 @@ export const INSTALLER_WRITERS = Object.freeze([
   "W12 TUI canonical/legacy", "W13 classifier cleanup", "W14 legacy scripts/consumers",
   "W15 root cleanup", "W16 Graphify", "W17 JSON/file primitives",
 ]);
+
+function ensureWorktreeManagerSubmodule(flowtaskDir) {
+  const managerDir = path.join(flowtaskDir, "scripts", "worktree-manager");
+  const manager = path.join(managerDir, "worktree.sh");
+  try {
+    const gitRoot = execFileSync("git", ["-C", flowtaskDir, "rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const relative = path.relative(gitRoot, managerDir);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("manager path is outside the FlowTask checkout");
+    try {
+      execFileSync("git", ["-C", gitRoot, "submodule", "update", "--init", "--", relative], { stdio: "ignore" });
+    } catch (error) {
+      throw new Error(`cannot materialize Worktree Manager submodule (${relative}): ${error.message}`);
+    }
+    const indexEntry = execFileSync("git", ["-C", gitRoot, "ls-files", "--stage", "--", relative], { encoding: "utf8" }).trim();
+    const match = indexEntry.match(/^160000 ([0-9a-f]{40,64}) 0\t/);
+    if (!match) throw new Error("Worktree Manager path is not a staged submodule gitlink");
+    const expected = match[1];
+    const actual = execFileSync("git", ["-C", path.dirname(manager), "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    if (expected !== actual || !fs.statSync(manager).isFile()) throw new Error("Worktree Manager checkout does not match the recorded gitlink");
+  } catch (error) {
+    throw new Error(`Worktree Manager submodule unavailable: ${error.message}`);
+  }
+}
 
 /** Single read-only validation barrier shared by install and update. */
 export async function prepareInstallation(flowtaskDir, projectDir, mode = "install", options = {}) {
@@ -908,6 +932,7 @@ function cleanupOrphanedClaudeAssets(projectDir) {
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir, options = {}) {
+  ensureWorktreeManagerSubmodule(flowtaskDir);
   console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
 ║        FlowTask Installation Wizard       ║
@@ -1068,6 +1093,7 @@ ${COLORS.blue}╔═════════════════════
 // ─── Update ───────────────────────────────────────────────────────────────────
 
 export async function update(flowtaskDir, options = {}) {
+  ensureWorktreeManagerSubmodule(flowtaskDir);
   console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
 ║        FlowTask Update Wizard (Delta)     ║

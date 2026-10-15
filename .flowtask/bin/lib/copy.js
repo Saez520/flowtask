@@ -3,7 +3,8 @@ import path from "path";
 import { logSuccess } from "./logger.js";
 import crypto from "crypto";
 
-const SKIP_DIRS = new Set(["node_modules", ".git"]);
+const SKIP_DIRS = new Set(["node_modules", ".git", "worktree-manager"]);
+const SKIP_FILES = new Set(["worktree-manager-core.sh", "worktree-manager-target-direct.sh"]);
 
 /**
  * Copy a directory recursively with a progress bar, skipping node_modules and .git.
@@ -22,7 +23,7 @@ export function copyWithProgress(src, dest, label, readline) {
     if (visited.has(realDir)) return;
     visited.add(realDir);
     fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
-      if (SKIP_DIRS.has(entry.name)) return;
+      if (SKIP_DIRS.has(entry.name) || SKIP_FILES.has(entry.name)) return;
       const fullPath = path.join(dir, entry.name);
       if (entry.isSymbolicLink()) {
         // Keep links as links, but never allow an installer payload to point
@@ -102,7 +103,7 @@ export function copyDirectoryDelta(src, dest, preservePaths = [], visited = new 
   let skipped = 0;
 
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    if (SKIP_DIRS.has(entry.name)) { skipped++; continue; }
+    if (SKIP_DIRS.has(entry.name) || SKIP_FILES.has(entry.name)) { skipped++; continue; }
 
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
@@ -148,7 +149,7 @@ export function verifyDirectoryMirror(src, dest, { expectedExtraFiles = {} } = {
   const destinationFiles = [];
   const collect = (dir, root) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (SKIP_DIRS.has(entry.name)) continue;
+      if (SKIP_DIRS.has(entry.name) || SKIP_FILES.has(entry.name)) continue;
       const source = path.join(dir, entry.name);
       const relative = path.relative(root, source);
       if (entry.isDirectory()) { if (!collect(source, root)) return false; }
@@ -160,7 +161,7 @@ export function verifyDirectoryMirror(src, dest, { expectedExtraFiles = {} } = {
   if (!collect(src, src)) return false;
   const collectDestination = (dir, root) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (SKIP_DIRS.has(entry.name)) continue;
+      if (SKIP_DIRS.has(entry.name) || SKIP_FILES.has(entry.name)) continue;
       const target = path.join(dir, entry.name);
       const relative = path.relative(root, target);
       if (entry.isDirectory()) { if (!collectDestination(target, root)) return false; }
