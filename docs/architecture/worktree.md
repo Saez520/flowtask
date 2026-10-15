@@ -1,39 +1,40 @@
-# Integración del gestor de worktrees
+# Worktree Manager Integration
 
-## Fuente de verdad
+## Source of truth
 
-La implementación vive en el repositorio standalone
-[`worktree-manager`](https://github.com/Saez520/worktree-manager) y se integra
-en FlowTask como submodule en `.flowtask/scripts/worktree-manager/`. El checkout
-integrado debe coincidir con el gitlink registrado por FlowTask; no debe
-mantenerse una copia del core en `.flowtask/scripts/lib/`.
+The implementation lives in the standalone
+[`worktree-manager`](https://github.com/Saez520/worktree-manager) and is
+integrated into FlowTask as a submodule at
+`.flowtask/scripts/worktree-manager/`. The integrated checkout must match the
+gitlink registered by FlowTask; a copy of the core must not be maintained in
+`.flowtask/scripts/lib/`.
 
-Para conocer la arquitectura, configuración, comandos, target-direct,
-recuperación y contrato de salida, consultar el
-[README del repositorio origen](https://github.com/Saez520/worktree-manager) y
+For the architecture, configuration, commands, target-direct behavior,
+recovery, and output contract, see the
+[source repository README](https://github.com/Saez520/worktree-manager) and
 [`docs/cli-contract-v1.md`](https://github.com/Saez520/worktree-manager/blob/main/docs/cli-contract-v1.md).
-Este documento describe únicamente la integración con FlowTask.
+This document describes only the integration with FlowTask.
 
-## Adaptador de FlowTask
+## FlowTask Adapter
 
-`.flowtask/scripts/worktree.sh` es el entrypoint consumidor y delega en
-`.flowtask/scripts/worktree-adapter.sh`. El adaptador conserva compatibilidad
-con invocaciones y registros legacy de FlowTask, y traduce esos registros solo
-durante la recuperación. El standalone no conoce FlowTask ni inspecciona sus
-rutas o refs heredadas.
+`.flowtask/scripts/worktree.sh` is the consumer entrypoint and delegates to
+`.flowtask/scripts/worktree-adapter.sh`. The adapter preserves compatibility
+with legacy FlowTask invocations and records, and translates those records
+only during recovery. The standalone does not know about FlowTask or inspect
+its legacy paths or refs.
 
-El instalador valida el gitlink, materializa el submodule antes de copiar
-assets y excluye el gestor de la copia genérica. Si la fuente no está
-disponible, la instalación o actualización falla con diagnóstico; no crea una
-copia alternativa.
+The installer validates the gitlink, materializes the submodule before copying
+assets, and excludes the manager from the generic copy. If the source is not
+available, installation or updating fails with a diagnostic; it does not
+create an alternative copy.
 
-## Límites de responsabilidad
+## Responsibility boundaries
 
-- El standalone posee lifecycle parent-only, configuración genérica,
-  transacciones, locks, journals y target-direct.
-- FlowTask aporta el entrypoint compatible, el adaptador y la integración como
-  submodule.
-- El adaptador no hace commit, merge ni push por cuenta del repositorio
-  consumidor.
-- La URL local histórica de `.gitmodules` solo sirve para el bootstrap de este
-  checkout y no es una referencia portable de distribución.
+- The standalone owns the parent-only lifecycle, generic configuration,
+  transactions, locks, journals, and target-direct behavior.
+- FlowTask provides the compatible entrypoint, the adapter, and the submodule
+  integration.
+- The adapter does not commit, merge, or push on behalf of the consumer
+  repository.
+- The historical local URL in `.gitmodules` is only used to bootstrap this
+  checkout and is not a portable distribution reference.
