@@ -6,7 +6,7 @@ import {
   COLORS, log, logStep, logSuccess, logError, logWarn, logInfo,
   isBinaryInstalled, getVersion, fileExists,
 } from "./logger.js";
-import { copyWithProgress, copyDirectoryDelta, verifyDirectoryMirror } from "./copy.js";
+import { copyWithProgress, copyDirectoryDelta, pruneDirectoryExtras, verifyDirectoryMirror } from "./copy.js";
 import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
 import { generateClaudeAgents, generateClaudeCommands, generateClaudeMd, mergeClaudeSettings, mergeClaudeMcpConfig } from "./claude.js";
 import { showInteractiveSelector } from "./ui.js";
@@ -1026,8 +1026,9 @@ ${COLORS.blue}╔═════════════════════
         const srcDir = path.join(flowtaskDir, src);
         if (!fileExists(srcDir)) { logWarn(`Source not found, skipping: ${src}`); continue; }
         const destDir = path.join(TARGET_DIR, dest);
+        const pruned = pruneDirectoryExtras(srcDir, destDir);
         copyWithProgress(srcDir, destDir, src, readline);
-        if (!verifyDirectoryMirror(srcDir, destDir)) throw new Error(`Mirror verification failed for ${src}`);
+        if (!verifyDirectoryMirror(srcDir, destDir, { ignorePaths: pruned.preserved })) throw new Error(`Mirror verification failed for ${src}`);
       }
 
       // ── Inject persona into runner.md ───────────────────────────────
@@ -1195,9 +1196,10 @@ ${COLORS.blue}╔═════════════════════
         if (!fileExists(srcDir)) continue;
         const destDir = path.join(TARGET_DIR, dest);
         const stats = copyDirectoryDelta(srcDir, destDir, preservePaths);
+        const pruned = pruneDirectoryExtras(srcDir, destDir, { preservePaths });
         totalCopied += stats.copied;
         totalSkipped += stats.skipped;
-        if (!verifyDirectoryMirror(srcDir, destDir)) throw new Error(`Mirror verification failed for ${src}`);
+        if (!verifyDirectoryMirror(srcDir, destDir, { ignorePaths: pruned.preserved })) throw new Error(`Mirror verification failed for ${src}`);
       }
 
       if (id !== "standalone") cleanupLegacyScripts(projectDir, TARGET_DIR, flowtaskDir);

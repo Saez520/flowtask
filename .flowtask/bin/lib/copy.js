@@ -54,6 +54,10 @@ export function copyWithProgress(src, dest, label, readline) {
     const destDir = path.dirname(destPath);
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
     const stat = fs.lstatSync(file);
+    const existing = fs.lstatSync(destPath, { throwIfNoEntry: false });
+    if (existing && (stat.isSymbolicLink() !== existing.isSymbolicLink() || stat.isFile() !== existing.isFile())) {
+      if (!removeEntryPreserving(destPath, relative, [])) return;
+    }
     if (stat.isSymbolicLink()) {
       if (fs.existsSync(destPath) || fs.lstatSync(destPath, { throwIfNoEntry: false })) fs.rmSync(destPath, { recursive: true, force: true });
       fs.symlinkSync(fs.readlinkSync(file), destPath);
@@ -92,6 +96,10 @@ export function isFileChanged(srcPath, destPath) {
  * @returns {{ copied: number, skipped: number }}
  */
 export function copyDirectoryDelta(src, dest, preservePaths = [], visited = new Set(), rootSrc = null) {
+  const destStat = fs.lstatSync(dest, { throwIfNoEntry: false });
+  if (destStat && (!destStat.isDirectory() || destStat.isSymbolicLink())) {
+    if (!removeEntryPreserving(dest, path.basename(dest), preservePaths)) return { copied: 0, skipped: 1 };
+  }
   if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
   if (!rootSrc) rootSrc = src;
 
@@ -109,6 +117,14 @@ export function copyDirectoryDelta(src, dest, preservePaths = [], visited = new 
     const destPath = path.join(dest, entry.name);
 
     if (preservePaths.some((p) => destPath.includes(p))) { skipped++; continue; }
+
+    const sourceStat = fs.lstatSync(srcPath);
+    const destinationStat = fs.lstatSync(destPath, { throwIfNoEntry: false });
+    const sourceIsDirectory = sourceStat.isDirectory() && !sourceStat.isSymbolicLink();
+    const destinationIsDirectory = destinationStat?.isDirectory() && !destinationStat.isSymbolicLink();
+    if (destinationStat && sourceIsDirectory !== destinationIsDirectory) {
+      if (!removeEntryPreserving(destPath, path.relative(rootSrc, srcPath), preservePaths)) { skipped++; continue; }
+    }
 
     // Security: skip symlinks that escape source tree
     let realSrcPath;
@@ -142,9 +158,92 @@ export function copyDirectoryDelta(src, dest, preservePaths = [], visited = new 
   return { copied, skipped };
 }
 
+/** Remove an entry only when doing so cannot remove skipped or preserved data. */
+function removeEntryPreserving(target, relative, preservePaths) {
+  const stat = fs.lstatSync(target, { throwIfNoEntry: false });
+  if (!stat) return true;
+  const normalize = (value) => value.split(/[\\/]/).filter(Boolean).join("/");
+  const current = normalize(relative);
+  const protectedPath = (candidate) => {
+    const item = normalize(candidate);
+    return item && (current.includes(item) || current.startsWith(`${item}/`) || item.startsWith(`${current}/`));
+  };
+  if (SKIP_DIRS.has(path.basename(target)) || SKIP_FILES.has(path.basename(target)) || preservePaths.some(protectedPath)) return false;
+  if (stat.isDirectory() && !stat.isSymbolicLink()) {
+    for (const child of fs.readdirSync(target)) {
+      if (!removeEntryPreserving(path.join(target, child), path.join(relative, child), preservePaths)) return false;
+    }
+    fs.rmdirSync(target);
+  } else {
+    fs.rmSync(target, { force: true });
+  }
+  return true;
+}
+
 /** Verify an installed mirror byte-for-byte, including SHA-256 for every file. */
-export function verifyDirectoryMirror(src, dest, { expectedExtraFiles = {} } = {}) {
+export function pruneDirectoryExtras(src, dest, { preservePaths = [] } = {}) {
+  let removed = 0;
+  const preserved = [];
+  if (!fs.existsSync(src) || !fs.existsSync(dest)) return { removed, preserved };
+  const normalize = (value) => value.split(path.sep).join("/");
+  const isPreserved = (relative) => preservePaths.some((fragment) => {
+    const normalized = normalize(fragment);
+    return normalized && (normalize(relative).includes(normalized));
+  });
+  const removeSafely = (destPath, relative) => {
+    if (removeEntryPreserving(destPath, relative, preservePaths)) removed++;
+    else {
+      const collectPreserved = (target, current) => {
+        if (isPreserved(current)) { preserved.push(current); return; }
+        const stat = fs.lstatSync(target, { throwIfNoEntry: false });
+        if (stat?.isDirectory() && !stat.isSymbolicLink()) {
+          for (const name of fs.readdirSync(target)) collectPreserved(path.join(target, name), path.join(current, name));
+        }
+      };
+      collectPreserved(destPath, relative);
+    }
+  };
+  const prune = (sourceDir, destDir, relativeDir = "") => {
+    for (const entry of fs.readdirSync(destDir, { withFileTypes: true })) {
+      const relative = path.join(relativeDir, entry.name);
+      if (SKIP_DIRS.has(entry.name) || SKIP_FILES.has(entry.name)) continue;
+      const sourcePath = path.join(sourceDir, entry.name);
+      const destPath = path.join(destDir, entry.name);
+      const sourceStat = fs.lstatSync(sourcePath, { throwIfNoEntry: false });
+      if (isPreserved(relative)) { preserved.push(relative); continue; }
+      const destStat = fs.lstatSync(destPath);
+      const sourceDirectory = sourceStat?.isDirectory() ?? false;
+      if (!sourceStat && destStat.isDirectory() && !destStat.isSymbolicLink()) {
+        pruneDestinationOnly(destPath, relative);
+        continue;
+      }
+       if (!sourceStat || sourceStat.isSymbolicLink() !== destStat.isSymbolicLink() || sourceDirectory !== destStat.isDirectory()) {
+        removeSafely(destPath, relative); continue;
+      }
+      if (destStat.isDirectory()) prune(sourcePath, destPath, relative);
+    }
+  };
+  const pruneDestinationOnly = (destDir, relativeDir) => {
+    for (const entry of fs.readdirSync(destDir, { withFileTypes: true })) {
+      const relative = path.join(relativeDir, entry.name);
+      if (SKIP_DIRS.has(entry.name) || SKIP_FILES.has(entry.name)) continue;
+      const destPath = path.join(destDir, entry.name);
+      if (isPreserved(relative)) { preserved.push(relative); continue; }
+      removeSafely(destPath, relative);
+    }
+  };
+  if (fs.lstatSync(src).isDirectory() && fs.lstatSync(dest).isDirectory()) prune(src, dest);
+  return { removed, preserved: [...new Set(preserved)] };
+}
+
+export function verifyDirectoryMirror(src, dest, { expectedExtraFiles = {}, ignorePaths = [] } = {}) {
   if (!fs.existsSync(src) || !fs.existsSync(dest)) return false;
+  const validRelative = (value) => typeof value === "string" && !path.isAbsolute(value) && !value.split(/[\\/]/).includes("..") && value !== ".";
+  if (!ignorePaths.every(validRelative)) return false;
+  const ignored = (relative) => ignorePaths.some((item) => {
+    const normalized = item.split(/[\\/]/).join(path.sep);
+    return relative === normalized || relative.startsWith(`${normalized}${path.sep}`);
+  });
   const files = [];
   const destinationFiles = [];
   const collect = (dir, root) => {
@@ -165,7 +264,7 @@ export function verifyDirectoryMirror(src, dest, { expectedExtraFiles = {} } = {
       const target = path.join(dir, entry.name);
       const relative = path.relative(root, target);
       if (entry.isDirectory()) { if (!collectDestination(target, root)) return false; }
-       else if (entry.isFile() || entry.isSymbolicLink()) destinationFiles.push(relative);
+       else if (entry.isFile() || entry.isSymbolicLink()) { if (!ignored(relative)) destinationFiles.push(relative); }
       else return false;
     }
     return true;

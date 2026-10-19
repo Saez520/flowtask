@@ -18,7 +18,7 @@ import {
 import { showInteractiveSelector } from "./ui.js";
 import { registerPluginArrayEntry } from "./opencode.js";
 import { generateClaudeCommands } from "./claude.js";
-import { verifyDirectoryMirror, copyDirectoryDelta } from "./copy.js";
+import { verifyDirectoryMirror, copyDirectoryDelta, copyWithProgress, pruneDirectoryExtras } from "./copy.js";
 import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA } from "./ownership.js";
 
 const fixtures = [];
@@ -72,6 +72,122 @@ test("mirror verification accepts only the explicitly expected generated owner m
   fs.writeFileSync(path.join(target, markerPath), marker);
   fs.writeFileSync(path.join(target, "stale"), "unexpected");
   assert.equal(verifyDirectoryMirror(source, target, { expectedExtraFiles: { [markerPath]: marker } }), false);
+});
+
+test("prunes a destination-only worktree.md and verifies the mirror", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-prune-")); fixtures.push(root);
+  const source = path.join(root, "source"), target = path.join(root, "target");
+  fs.mkdirSync(source); fs.mkdirSync(target);
+  fs.writeFileSync(path.join(target, "worktree.md"), "stale");
+  pruneDirectoryExtras(source, target);
+  assert.equal(fs.existsSync(path.join(target, "worktree.md")), false);
+  assert.equal(verifyDirectoryMirror(source, target), true);
+});
+
+test("prunes homonymous files inside destination-only directories", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-prune-nested-")); fixtures.push(root);
+  const source = path.join(root, "source"), target = path.join(root, "target");
+  fs.mkdirSync(source); fs.mkdirSync(path.join(target, "orphan"), { recursive: true });
+  fs.writeFileSync(path.join(source, "same.txt"), "current");
+  fs.copyFileSync(path.join(source, "same.txt"), path.join(target, "same.txt"));
+  fs.writeFileSync(path.join(target, "orphan", "same.txt"), "stale");
+  assert.ok(pruneDirectoryExtras(source, target).removed > 0);
+  assert.equal(fs.existsSync(path.join(target, "orphan", "same.txt")), false);
+  assert.equal(verifyDirectoryMirror(source, target), true);
+});
+
+test("install and update production-order asset sync resolve both file-directory type changes", () => {
+  for (const mode of ["install", "update"]) {
+    for (const direction of ["file-to-directory", "directory-to-file"]) {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), `flowtask-${mode}-${direction}-`)); fixtures.push(root);
+      const source = path.join(root, "source"), target = path.join(root, "target");
+      fs.mkdirSync(source); fs.mkdirSync(target);
+      if (direction === "file-to-directory") {
+        fs.mkdirSync(path.join(source, "typechange"), { recursive: true });
+        fs.writeFileSync(path.join(source, "typechange", "new"), "fresh");
+        fs.writeFileSync(path.join(target, "typechange"), "old file");
+      } else {
+        fs.writeFileSync(path.join(source, "typechange"), "fresh file");
+        fs.mkdirSync(path.join(target, "typechange"), { recursive: true });
+        fs.writeFileSync(path.join(target, "typechange", "old"), "stale");
+      }
+
+      let pruned;
+      if (mode === "install") {
+        pruned = pruneDirectoryExtras(source, target);
+        copyWithProgress(source, target, "test", { cursorTo() {}, clearLine() {} });
+      } else {
+        fs.writeFileSync(path.join(target, "orphan-destination-only"), "stale");
+        copyDirectoryDelta(source, target, []);
+        pruned = pruneDirectoryExtras(source, target);
+      }
+      assert.equal(verifyDirectoryMirror(source, target, { ignorePaths: pruned.preserved }), true, `${mode} ${direction}`);
+    }
+  }
+});
+
+test("preserves and ignores a matching preservePaths fragment", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-prune-preserve-")); fixtures.push(root);
+  const source = path.join(root, "source"), target = path.join(root, "target");
+  fs.mkdirSync(source); fs.mkdirSync(target);
+  fs.writeFileSync(path.join(target, "local-preserved.txt"), "local");
+  const result = pruneDirectoryExtras(source, target, { preservePaths: ["preserved.txt"] });
+  assert.equal(fs.readFileSync(path.join(target, "local-preserved.txt"), "utf8"), "local");
+  assert.deepEqual(result.preserved, ["local-preserved.txt"]);
+  assert.equal(verifyDirectoryMirror(source, target, { ignorePaths: result.preserved }), true);
+});
+
+test("does not remove SKIP_FILES or SKIP_DIRS entries", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-prune-skip-")); fixtures.push(root);
+  const source = path.join(root, "source"), target = path.join(root, "target");
+  fs.mkdirSync(source); fs.mkdirSync(target);
+  fs.mkdirSync(path.join(target, "node_modules")); fs.writeFileSync(path.join(target, "node_modules", "keep"), "skip");
+  fs.writeFileSync(path.join(target, "worktree-manager-core.sh"), "skip");
+  pruneDirectoryExtras(source, target);
+  assert.equal(fs.readFileSync(path.join(target, "node_modules", "keep"), "utf8"), "skip");
+  assert.equal(fs.readFileSync(path.join(target, "worktree-manager-core.sh"), "utf8"), "skip");
+});
+
+test("removes an external destination symlink without touching its target", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-prune-link-")); fixtures.push(root);
+  const source = path.join(root, "source"), target = path.join(root, "target"), outside = path.join(root, "outside");
+  fs.mkdirSync(source); fs.mkdirSync(target);
+  fs.writeFileSync(outside, "external"); fs.symlinkSync(outside, path.join(target, "external-link"));
+  pruneDirectoryExtras(source, target);
+  assert.equal(fs.existsSync(path.join(target, "external-link")), false);
+  assert.equal(fs.readFileSync(outside, "utf8"), "external");
+  assert.equal(verifyDirectoryMirror(source, target), true);
+});
+
+test("prunes stale contents on an incompatible file-to-directory type change", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-prune-type-")); fixtures.push(root);
+  const source = path.join(root, "source"), target = path.join(root, "target");
+  fs.mkdirSync(source); fs.writeFileSync(path.join(source, "nested"), "source file");
+  fs.mkdirSync(path.join(target, "nested", "fresh"), { recursive: true });
+  fs.writeFileSync(path.join(target, "nested", "fresh", "old"), "stale");
+  fs.mkdirSync(path.join(target, "nested", "node_modules"), { recursive: true });
+  fs.writeFileSync(path.join(target, "nested", "node_modules", "keep"), "skip");
+  fs.writeFileSync(path.join(target, "nested", "fresh", "local.txt"), "preserve");
+  const result = pruneDirectoryExtras(source, target, { preservePaths: ["local.txt"] });
+  assert.equal(fs.readFileSync(path.join(target, "nested", "node_modules", "keep"), "utf8"), "skip");
+  assert.equal(fs.readFileSync(path.join(target, "nested", "fresh", "old"), "utf8"), "stale");
+  assert.equal(fs.readFileSync(path.join(target, "nested", "fresh", "local.txt"), "utf8"), "preserve");
+  assert.deepEqual(result.preserved, [path.join("nested", "fresh", "local.txt")]);
+});
+
+test("fails closed on type conflicts containing nested preserved data", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-preserved-type-conflict-")); fixtures.push(root);
+  const source = path.join(root, "source"), target = path.join(root, "target");
+  fs.mkdirSync(source, { recursive: true });
+  fs.writeFileSync(path.join(source, "workspace"), "source file");
+  fs.mkdirSync(path.join(target, "workspace", "state"), { recursive: true });
+  fs.writeFileSync(path.join(target, "workspace", "state", "keep.json"), "local data");
+
+  const pruned = pruneDirectoryExtras(source, target, { preservePaths: ["workspace/state"] });
+  assert.equal(fs.existsSync(path.join(target, "workspace", "state", "keep.json")), true);
+  copyDirectoryDelta(source, target, ["workspace/state"]);
+  assert.equal(fs.readFileSync(path.join(target, "workspace", "state", "keep.json"), "utf8"), "local data");
+  assert.equal(verifyDirectoryMirror(source, target, { ignorePaths: pruned.preserved }), false);
 });
 
 afterEach(() => {
@@ -575,6 +691,7 @@ test("update fails closed before writers when canonical source has no Git public
   fs.cpSync(path.resolve(path.dirname(FLOWTASK_CLI), ".."), flowtaskDir, { recursive: true });
   fs.mkdirSync(path.join(flowtaskDir, "scripts"), { recursive: true });
   fs.writeFileSync(path.join(flowtaskDir, "scripts", "worktree.sh"), "source\n", "utf8");
+  fs.mkdirSync(path.join(flowtaskDir, "scripts", "lib"), { recursive: true });
   fs.writeFileSync(path.join(flowtaskDir, "scripts", "lib", "worktree-manager-core.sh"), "canonical-core\n", "utf8");
 
   const targetDir = path.join(root, ".opencode", "flowtask");
