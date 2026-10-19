@@ -1,6 +1,6 @@
 # Instalación y actualización
 
-Guía operativa de FlowTask 1.23.0. La fuente del CLI es `.flowtask/bin/flowtask.js` y el instalador/actualizador está en `.flowtask/bin/lib/installer.js`.
+Guía operativa de FlowTask. La fuente del CLI es `.flowtask/bin/flowtask.js` y el instalador/actualizador está en `.flowtask/bin/lib/installer.js`.
 
 ## Requisitos
 

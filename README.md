@@ -4,7 +4,7 @@ FlowTask es un sistema de workflow de desarrollo asistido por IA. Un runner reci
 
 No es un chatbot aislado: combina memoria persistente, ejecución aislada mediante Git worktrees, validación y una integración instalable para OpenCode, Claude Code y VS Code.
 
-Versión actual: 1.23.0 (fuente: `.flowtask/package.json`).
+Versión actual: consultar `flowtask --version` (fuente: `.flowtask/package.json`).
 
 ## Qué resuelve
 
