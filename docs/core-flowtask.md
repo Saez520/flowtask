@@ -279,3 +279,7 @@ Manifest: `"deprecated": true`, `"enabled": false` — no se instalan.
 
 - `flowtask-classifier-hook` (server) — inyectaba `FLOWTASK_CLASSIFICATION`
 - `flowtask-classifier-tui` (tui) — indicador visual del clasificador
+
+---
+## Evolución planificada
+El plan de implementación del Agent Loop y Hermes, con fases, dependencias y gates, vive en [roadmap/agent-loop-hermes.md](./roadmap/agent-loop-hermes.md). Las etiquetas F0–F4 son de planificación y no se usan en mensajes de commit. Los commits describen qué se hizo.

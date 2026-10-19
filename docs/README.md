@@ -17,6 +17,10 @@ Esta carpeta separa operación vigente de diseños retirados. La fuente de verda
 - [Worktree Manager documentation](./worktree-manager/README.md) — English inventory, interfaces, operations, compatibility, and release procedure.
 - [Skills](./architecture/integracion-skills.md)
 
+## Roadmap
+
+- [Plan de implementación — Agent Loop y Hermes](./roadmap/agent-loop-hermes.md) — fases, dependencias, gates de Hermes y convención de commits.
+
 ## Histórico
 
 - [Historial](./project-history.md)
