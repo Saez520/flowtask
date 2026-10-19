@@ -51,7 +51,7 @@ export function buildAgentOptions(
  * Build model options from providers (flattened) + prepend CLEAR_SENTINEL option.
  */
 export function buildModelOptions(
-  providers: any[]
+  models: any[], providers: any[] = []
 ): { title: string; value: string; description: string }[] {
   const options: { title: string; value: string; description: string }[] = [
     {
@@ -61,20 +61,12 @@ export function buildModelOptions(
     },
   ];
 
-  // Flatten providers → models
-  for (const provider of providers) {
-    const providerName = provider.name ?? provider.id;
-    const models = provider.models ?? {};
-
-    for (const modelId of Object.keys(models)) {
-      const model = models[modelId];
-      const modelName = model.name ?? modelId;
-      options.push({
-        title: modelName,
-        value: `${provider.id}/${modelId}`,
-        description: providerName,
-      });
-    }
+  const providerNames = new Map(providers.map((p) => [p.id, p.name ?? p.id]));
+  for (const model of models ?? []) {
+    const providerID = model?.providerID;
+    const id = model?.id ?? model?.modelID;
+    if (typeof providerID !== "string" || !providerID || typeof id !== "string" || !id) continue;
+    options.push({ title: model.name ?? model.modelID ?? model.id, value: `${providerID}/${id}`, description: providerNames.get(providerID) ?? providerID });
   }
 
   return options;
@@ -150,8 +142,8 @@ export function buildAgentSections(config: any): Section<string>[] {
  * Always returns an "all" section first (includes CLEAR_SENTINEL),
  * followed by provider sections sorted alphabetically by provider name.
  */
-export function buildModelSections(providers: any[]): Section<string>[] {
-  const allOptions = buildModelOptions(providers);
+export function buildModelSections(models: any[], providers: any[] = []): Section<string>[] {
+  const allOptions = buildModelOptions(models, providers);
 
   const allSection: Section<string> = {
     id: "all",
@@ -162,24 +154,16 @@ export function buildModelSections(providers: any[]): Section<string>[] {
 
   const providerSections: Section<string>[] = [];
 
-  for (const provider of providers) {
-    const models = provider.models ?? {};
-    const modelKeys = Object.keys(models);
-    if (modelKeys.length === 0) continue;
-
-    const providerName = provider.name ?? provider.id;
-    const items = modelKeys.map((modelId) => {
-      const model = models[modelId];
-      const modelName = model.name ?? modelId;
-      return {
-        title: modelName,
-        value: `${provider.id}/${modelId}`,
-        description: providerName,
-      };
-    });
+  const groups = new Map<string, typeof allOptions>();
+  for (const option of allOptions.slice(1)) {
+    const providerID = option.value.split("/")[0];
+    groups.set(providerID, [...(groups.get(providerID) ?? []), option]);
+  }
+  for (const [providerID, items] of groups) {
+    const providerName = providers.find((p) => p.id === providerID)?.name ?? providerID;
 
     providerSections.push({
-      id: `provider:${provider.id}`,
+      id: `provider:${providerID}`,
       label: providerName,
       kind: "provider",
       items,
@@ -196,15 +180,15 @@ export function buildModelSections(providers: any[]): Section<string>[] {
  */
 export function buildVariantOptions(
   modelRef: string,
-  providers: any[]
+  models: any[]
 ): { title: string; value: string; description: string }[] {
   const separator = modelRef.indexOf("/");
   if (separator <= 0 || separator === modelRef.length - 1) return [];
 
   const providerId = modelRef.slice(0, separator);
   const modelId = modelRef.slice(separator + 1);
-  const provider = providers.find((item) => item?.id === providerId);
-  const variants = provider?.models?.[modelId]?.variants;
+  const model = models.find((item) => item?.providerID === providerId && (item?.id === modelId || item?.modelID === modelId));
+  const variants = model?.variants;
   if (!variants || typeof variants !== "object") {
     return [];
   }
@@ -237,7 +221,9 @@ export function readAgentModel(
   const agent = config?.agent?.[agentName];
   const result: { model?: string; variant?: string } = {};
   if (typeof agent?.model === "string") result.model = agent.model;
+  else if (agent?.model && typeof agent.model === "object" && typeof agent.model.providerID === "string" && typeof (agent.model.id ?? agent.model.model) === "string") result.model = `${agent.model.providerID}/${agent.model.id ?? agent.model.model}`;
   if (typeof agent?.variant === "string") result.variant = agent.variant;
+  else if (typeof agent?.model?.variant === "string") result.variant = agent.model.variant;
   return result;
 }
 

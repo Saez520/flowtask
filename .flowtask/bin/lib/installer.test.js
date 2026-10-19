@@ -259,6 +259,48 @@ test("CLI plugin installation writes V2 cli config and canonical declaration", (
   assert.equal(fs.existsSync(path.join(root, ".opencode", "tui.json")), false);
 });
 
+test("CLI installation removes a stale TUI registration for the same plugin", () => {
+  const { root, flowtaskDir } = createFixture();
+  const manifest = [{ name: "flowtask-model-selector", path: "flowtask-model-selector", kind: "cli", destinations: ["opencode"], entrypoint: "dist/tui.js" }];
+  createSources(flowtaskDir, manifest);
+  writeJson(path.join(root, ".opencode", "tui.json"), {
+    $schema: "https://opencode.ai/tui.json",
+    plugin: ["./plugins/user-tui/index.js", "./plugins/flowtask-model-selector/dist/tui.js"],
+    plugins: ["./plugins/user-tui/index.js", "./plugins/flowtask-model-selector/dist/tui.js"],
+    keybinds: { input_submit: "return" },
+  });
+
+  installManifestPlugins(root, manifest, flowtaskDir);
+
+  const tuiConfig = readJson(path.join(root, ".opencode", "tui.json"));
+  assert.deepEqual(tuiConfig.plugin, ["./plugins/user-tui/index.js"]);
+  assert.deepEqual(tuiConfig.plugins, ["./plugins/user-tui/index.js"]);
+  assert.deepEqual(tuiConfig.keybinds, { input_submit: "return" });
+  assert.ok(readJson(path.join(root, ".opencode", "cli.json")).plugins.includes("./plugins/flowtask-model-selector/dist/tui.js"));
+  assert.ok(fs.existsSync(path.join(root, ".opencode", "plugins", "flowtask-model-selector", "dist", "tui.js")));
+});
+
+test("TUI installation removes a stale CLI registration for the same plugin", () => {
+  const { root, flowtaskDir } = createFixture();
+  const manifest = [{ name: "flowtask-model-selector", path: "flowtask-model-selector", kind: "tui", destinations: ["opencode"], entrypoint: "dist/tui.js" }];
+  createSources(flowtaskDir, manifest);
+  writeJson(path.join(root, ".opencode", "cli.json"), {
+    $schema: "https://opencode.ai/cli.json",
+    plugins: ["./plugins/user-cli/index.js", "./plugins/flowtask-model-selector/dist/tui.js"],
+    plugin: ["./plugins/user-cli/index.js", "./plugins/flowtask-model-selector/dist/tui.js"],
+    custom: { keep: true },
+  });
+
+  installManifestPlugins(root, manifest, flowtaskDir);
+
+  const cliConfig = readJson(path.join(root, ".opencode", "cli.json"));
+  assert.deepEqual(cliConfig.plugins, ["./plugins/user-cli/index.js"]);
+  assert.deepEqual(cliConfig.plugin, ["./plugins/user-cli/index.js"]);
+  assert.deepEqual(cliConfig.custom, { keep: true });
+  assert.ok(readJson(path.join(root, ".opencode", "tui.json")).plugin.includes("./plugins/flowtask-model-selector/dist/tui.js"));
+  assert.ok(fs.existsSync(path.join(root, ".opencode", "plugins", "flowtask-model-selector", "dist", "tui.js")));
+});
+
 test("enabled pair installs and registers both classifier plugins", () => {
   const { root, flowtaskDir } = createFixture();
   const manifest = createManifest({ hookEnabled: true, tuiEnabled: true });

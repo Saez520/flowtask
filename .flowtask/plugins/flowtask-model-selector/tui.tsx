@@ -52,15 +52,17 @@ export default Plugin.define({
         await Promise.all([
           context.data.location.agent.sync(location),
           context.data.location.provider.sync(location),
+          context.data.location.model.sync(location),
         ]);
         const agents = context.data.location.agent.list(location) ?? [];
         const providers = context.data.location.provider.list(location) ?? [];
+        const models = context.data.location.model.list(location) ?? [];
         const config = readConfig();
-        const agentConfig = Object.fromEntries(agents.map((agent: any) => [agent.name ?? agent.id, agent]));
+        const agentConfig = Object.fromEntries(agents.map((agent: any) => [agent.name ?? agent.id, { ...config.agent?.[agent.name ?? agent.id], model: agent.model ?? config.agent?.[agent.name ?? agent.id]?.model }]));
         const agentName = await selectSectionItem<string>("Select Agent", buildAgentSections({ ...config, agent: agentConfig }));
         if (!agentName) return;
 
-        const modelRef = await selectSectionItem<string>("Modelo", buildModelSections(providers));
+        const modelRef = await selectSectionItem<string>("Modelo", buildModelSections(models, providers));
         if (modelRef === undefined) return;
         if (modelRef === CLEAR_SENTINEL) {
           writeConfig(removeAgentModel(readConfig(), agentName));
@@ -68,7 +70,7 @@ export default Plugin.define({
           return;
         }
 
-        const variants = buildVariantOptions(modelRef, providers);
+        const variants = buildVariantOptions(modelRef, models);
         const variant = variants.length
           ? await context.ui.dialog.select({ title: `Variant para ${agentName}`, options: variants })
           : undefined;

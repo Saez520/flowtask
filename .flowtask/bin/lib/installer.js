@@ -833,6 +833,8 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
       if (!registerPluginArrayEntry(cliPath, pluginRuntimePath, "https://opencode.ai/cli.json")) {
         throw new Error(`No se pudo actualizar ${cliPath}`);
       }
+      removePluginFromConfigArrays(nativeTuiPath, entry.name);
+      removePluginFromConfigArrays(projectTuiPath, entry.name);
     } else if (entry.kind === "tui") {
       const installationRuntimePath = calculatePluginRelativePath(nativeTuiPath, projectDir, entry.name, entry.entrypoint);
       if (!registerPluginArrayEntry(nativeTuiPath, installationRuntimePath, "https://opencode.ai/tui.json")) {
@@ -844,6 +846,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
         return pluginPath === installationRuntimePath;
       });
       if (!registered) throw new Error(`No se pudo verificar la ruta TUI ${installationRuntimePath}`);
+      removePluginFromConfigArrays(path.join(projectDir, ".opencode", "cli.json"), entry.name);
       if (legacyTui) {
         legacyTui.plugins.forEach((plugin, index) => {
           const pluginPath = typeof plugin === "string" ? plugin : plugin?.path;
@@ -879,6 +882,21 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
 
   cleanupDisabledClassifier(projectDir, manifest, preflight?.classifierOwnership ?? null);
   if (manifest.some((entry) => entry?.kind === "cli")) regenerateCanonicalCli(projectDir, flowtaskDir, manifest);
+}
+
+function removePluginFromConfigArrays(configPath, pluginName) {
+  if (!fileExists(configPath)) return;
+  let config;
+  try { config = JSON.parse(fs.readFileSync(configPath, "utf8")); } catch { return; }
+  if (!config || typeof config !== "object") return;
+  let changed = false;
+  const next = { ...config };
+  for (const key of ["plugin", "plugins"]) {
+    if (!Array.isArray(config[key])) continue;
+    next[key] = config[key].filter((item) => extractPluginName(typeof item === "string" ? item : item?.path) !== pluginName);
+    changed ||= next[key].length !== config[key].length;
+  }
+  if (changed) writeJsonVerified(configPath, next);
 }
 
 // ─── Migration & Cleanup ──────────────────────────────────────────────────────

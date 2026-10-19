@@ -21,7 +21,7 @@ function buildAgentOptions(config) {
   });
   return options;
 }
-function buildModelOptions(providers) {
+function buildModelOptions(models, providers = []) {
   const options = [
     {
       title: "(hereda del runner \u2014 sin override)",
@@ -29,18 +29,12 @@ function buildModelOptions(providers) {
       description: "elimina agent.{name}.model"
     }
   ];
-  for (const provider of providers) {
-    const providerName = provider.name ?? provider.id;
-    const models = provider.models ?? {};
-    for (const modelId of Object.keys(models)) {
-      const model = models[modelId];
-      const modelName = model.name ?? modelId;
-      options.push({
-        title: modelName,
-        value: `${provider.id}/${modelId}`,
-        description: providerName
-      });
-    }
+  const providerNames = new Map(providers.map((p) => [p.id, p.name ?? p.id]));
+  for (const model of models ?? []) {
+    const providerID = model?.providerID;
+    const id = model?.id ?? model?.modelID;
+    if (typeof providerID !== "string" || !providerID || typeof id !== "string" || !id) continue;
+    options.push({ title: model.name ?? model.modelID ?? model.id, value: `${providerID}/${id}`, description: providerNames.get(providerID) ?? providerID });
   }
   return options;
 }
@@ -85,8 +79,8 @@ function buildAgentSections(config) {
   familySections.sort((a, b) => a.label.localeCompare(b.label));
   return [allSection, ...familySections];
 }
-function buildModelSections(providers) {
-  const allOptions = buildModelOptions(providers);
+function buildModelSections(models, providers = []) {
+  const allOptions = buildModelOptions(models, providers);
   const allSection = {
     id: "all",
     label: "All",
@@ -94,22 +88,15 @@ function buildModelSections(providers) {
     items: allOptions
   };
   const providerSections = [];
-  for (const provider of providers) {
-    const models = provider.models ?? {};
-    const modelKeys = Object.keys(models);
-    if (modelKeys.length === 0) continue;
-    const providerName = provider.name ?? provider.id;
-    const items = modelKeys.map((modelId) => {
-      const model = models[modelId];
-      const modelName = model.name ?? modelId;
-      return {
-        title: modelName,
-        value: `${provider.id}/${modelId}`,
-        description: providerName
-      };
-    });
+  const groups = /* @__PURE__ */ new Map();
+  for (const option of allOptions.slice(1)) {
+    const providerID = option.value.split("/")[0];
+    groups.set(providerID, [...groups.get(providerID) ?? [], option]);
+  }
+  for (const [providerID, items] of groups) {
+    const providerName = providers.find((p) => p.id === providerID)?.name ?? providerID;
     providerSections.push({
-      id: `provider:${provider.id}`,
+      id: `provider:${providerID}`,
       label: providerName,
       kind: "provider",
       items
@@ -118,13 +105,13 @@ function buildModelSections(providers) {
   providerSections.sort((a, b) => a.label.localeCompare(b.label));
   return [allSection, ...providerSections];
 }
-function buildVariantOptions(modelRef, providers) {
+function buildVariantOptions(modelRef, models) {
   const separator = modelRef.indexOf("/");
   if (separator <= 0 || separator === modelRef.length - 1) return [];
   const providerId = modelRef.slice(0, separator);
   const modelId = modelRef.slice(separator + 1);
-  const provider = providers.find((item) => item?.id === providerId);
-  const variants = provider?.models?.[modelId]?.variants;
+  const model = models.find((item) => item?.providerID === providerId && (item?.id === modelId || item?.modelID === modelId));
+  const variants = model?.variants;
   if (!variants || typeof variants !== "object") {
     return [];
   }
@@ -141,7 +128,9 @@ function readAgentModel(config, agentName) {
   const agent = config?.agent?.[agentName];
   const result = {};
   if (typeof agent?.model === "string") result.model = agent.model;
+  else if (agent?.model && typeof agent.model === "object" && typeof agent.model.providerID === "string" && typeof (agent.model.id ?? agent.model.model) === "string") result.model = `${agent.model.providerID}/${agent.model.id ?? agent.model.model}`;
   if (typeof agent?.variant === "string") result.variant = agent.variant;
+  else if (typeof agent?.model?.variant === "string") result.variant = agent.model.variant;
   return result;
 }
 function resolveGlobalConfigFile() {
@@ -262,17 +251,21 @@ var tui_default = Plugin.define({
     };
     const openSelector = async () => {
       try {
-        await Promise.all([context.data.location.agent.sync(location), context.data.location.provider.sync(location)]);
+        await Promise.all([context.data.location.agent.sync(location), context.data.location.provider.sync(location), context.data.location.model.sync(location)]);
         const agents = context.data.location.agent.list(location) ?? [];
         const providers = context.data.location.provider.list(location) ?? [];
+        const models = context.data.location.model.list(location) ?? [];
         const config = readConfig();
-        const agentConfig = Object.fromEntries(agents.map((agent) => [agent.name ?? agent.id, agent]));
+        const agentConfig = Object.fromEntries(agents.map((agent) => [agent.name ?? agent.id, {
+          ...config.agent?.[agent.name ?? agent.id],
+          model: agent.model ?? config.agent?.[agent.name ?? agent.id]?.model
+        }]));
         const agentName = await selectSectionItem("Select Agent", buildAgentSections({
           ...config,
           agent: agentConfig
         }));
         if (!agentName) return;
-        const modelRef = await selectSectionItem("Modelo", buildModelSections(providers));
+        const modelRef = await selectSectionItem("Modelo", buildModelSections(models, providers));
         if (modelRef === void 0) return;
         if (modelRef === CLEAR_SENTINEL) {
           writeConfig(removeAgentModel(readConfig(), agentName));
@@ -283,7 +276,7 @@ var tui_default = Plugin.define({
           });
           return;
         }
-        const variants = buildVariantOptions(modelRef, providers);
+        const variants = buildVariantOptions(modelRef, models);
         const variant = variants.length ? await context.ui.dialog.select({
           title: `Variant para ${agentName}`,
           options: variants

@@ -91,120 +91,40 @@ test("buildAgentOptions: description with inheritance (no model anywhere)", () =
   ]);
 });
 
-test("buildModelOptions: CLEAR_SENTINEL is first", () => {
-  const providers = [
-    {
-      id: "anthropic",
-      name: "Anthropic",
-      models: {
-        "claude-opus": { id: "claude-opus", name: "Claude Opus" },
-      },
-    },
+test("buildModelOptions: v2 models flatten and providers without models are valid", () => {
+  const providers = [{ id: "anthropic", name: "Anthropic" }, { id: "openai", name: "OpenAI" }];
+  const models = [
+    { providerID: "anthropic", id: "claude-opus", name: "Claude Opus" },
+    { providerID: "anthropic", id: "claude-sonnet", name: "Claude Sonnet" },
+    { providerID: "openai", id: "gpt-4", name: "GPT-4" },
   ];
-  const result = buildModelOptions(providers);
+  const result = buildModelOptions(models, providers);
   expect(result[0].value).toBe(CLEAR_SENTINEL);
-  expect(result[0].title).toContain("hereda del runner");
+  expect(result).toHaveLength(4);
+  expect(result[1]).toEqual({ title: "Claude Opus", value: "anthropic/claude-opus", description: "Anthropic" });
+  expect(buildModelSections(models, providers)).toHaveLength(3);
 });
 
-test("buildModelOptions: flatten multi-provider", () => {
-  const providers = [
-    {
-      id: "anthropic",
-      name: "Anthropic",
-      models: {
-        "claude-opus": { id: "claude-opus", name: "Claude Opus" },
-        "claude-sonnet": { id: "claude-sonnet", name: "Claude Sonnet" },
-      },
-    },
-    {
-      id: "openai",
-      name: "OpenAI",
-      models: {
-        "gpt-4": { id: "gpt-4", name: "GPT-4" },
-      },
-    },
-  ];
-  const result = buildModelOptions(providers);
-  // 1 CLEAR_SENTINEL + 2 anthropic + 1 openai = 4 total
-  expect(result.length).toBe(4);
-  expect(result[1]).toEqual({
-    title: "Claude Opus",
-    value: "anthropic/claude-opus",
-    description: "Anthropic",
-  });
-  expect(result[3]).toEqual({
-    title: "GPT-4",
-    value: "openai/gpt-4",
-    description: "OpenAI",
-  });
-});
-
-test("buildModelOptions: fallback to model id if name is missing", () => {
-  const providers = [
-    {
-      id: "custom",
-      name: "Custom",
-      models: {
-        "model-without-name": { id: "model-without-name" },
-      },
-    },
-  ];
-  const result = buildModelOptions(providers);
-  expect(result[1].title).toBe("model-without-name");
-});
-
-test("buildVariantOptions: resolves variants and preserves order", () => {
-  const providers = [
-    {
-      id: "anthropic",
-      models: {
-        opus: {
-          variants: {
-            low: { reasoningEffort: "low" },
-            high: { reasoningEffort: "high", textVerbosity: "detailed" },
-          },
-        },
-      },
-    },
-  ];
-  expect(buildVariantOptions("anthropic/opus", providers)).toEqual([
-    { title: "low", value: "low", description: "reasoningEffort: low" },
-    {
-      title: "high",
-      value: "high",
-      description: "reasoningEffort: high, textVerbosity: detailed",
-    },
-  ]);
-});
-
-test("buildVariantOptions: returns no options for missing or unsupported variants", () => {
-  const providers = [
-    { id: "anthropic", models: { opus: {}, plain: { variants: [] } } },
-  ];
-  expect(buildVariantOptions("anthropic/missing", providers)).toEqual([]);
-  expect(buildVariantOptions("anthropic/opus", providers)).toEqual([]);
-  expect(buildVariantOptions("anthropic/plain", providers)).toEqual([]);
-  expect(buildVariantOptions("anthropic/opus/high", providers)).toEqual([]);
+test("buildModelOptions: falls back to modelID when id is missing", () => {
+  expect(buildModelOptions([{ providerID: "custom", modelID: "fallback-model" }])[1]).toEqual({ title: "fallback-model", value: "custom/fallback-model", description: "custom" });
 });
 
 test("buildVariantOptions: resolves V2 variant arrays and skips malformed entries", () => {
-  const providers = [{ id: "openai", models: { gpt: { variants: [
+  const models = [{ providerID: "openai", id: "gpt", variants: [
     { id: "fast", settings: { temperature: 0.2 } },
     { id: "deep", settings: { reasoningEffort: "high" } },
     { settings: { ignored: true } }, null,
-  ] } } }];
-  expect(buildVariantOptions("openai/gpt", providers)).toEqual([
+  ] }];
+  expect(buildVariantOptions("openai/gpt", models)).toEqual([
     { title: "fast", value: "fast", description: "temperature: 0.2" },
     { title: "deep", value: "deep", description: "reasoningEffort: high" },
   ]);
 });
 
-test("readAgentModel: reads explicit model and optional variant only", () => {
-  const config = { agent: { build: { model: "anthropic/opus", variant: "high" } } };
-  expect(readAgentModel(config, "build")).toEqual({ model: "anthropic/opus", variant: "high" });
-  expect(readAgentModel({ agent: { build: { model: "anthropic/opus" } } }, "build")).toEqual({
-    model: "anthropic/opus",
-  });
+test("readAgentModel: reads string and Model.Ref overrides", () => {
+  expect(readAgentModel({ agent: { build: { model: "anthropic/opus", variant: "high" } } }, "build")).toEqual({ model: "anthropic/opus", variant: "high" });
+  expect(readAgentModel({ agent: { build: { model: { id: "opus", providerID: "anthropic", variant: "high" } } } }, "build")).toEqual({ model: "anthropic/opus", variant: "high" });
+  expect(readAgentModel({ agent: { build: { model: { model: "opus", providerID: "anthropic", variant: "high" } } } }, "build")).toEqual({ model: "anthropic/opus", variant: "high" });
 });
 
 test("stripJsonBom: removes UTF-8 BOM", () => {
@@ -380,11 +300,9 @@ test("buildAgentSections: family sections sorted alphabetically", () => {
 // --- buildModelSections tests ---
 
 test("buildModelSections: All includes CLEAR_SENTINEL, provider sections do not", () => {
-  const providers = [
-    { id: "anthropic", name: "Anthropic", models: { opus: {} } },
-    { id: "openai", name: "OpenAI", models: { gpt4: {} } },
-  ];
-  const sections = buildModelSections(providers);
+  const providers = [{ id: "anthropic", name: "Anthropic" }, { id: "openai", name: "OpenAI" }];
+  const models = [{ providerID: "anthropic", id: "opus" }, { providerID: "openai", id: "gpt4" }];
+  const sections = buildModelSections(models, providers);
   expect(sections[0].id).toBe("all");
   expect(sections[0].items[0].value).toBe(CLEAR_SENTINEL);
 
@@ -394,11 +312,9 @@ test("buildModelSections: All includes CLEAR_SENTINEL, provider sections do not"
 });
 
 test("buildModelSections: providers sorted alphabetically", () => {
-  const providers = [
-    { id: "openai", name: "OpenAI", models: { gpt4: {} } },
-    { id: "anthropic", name: "Anthropic", models: { opus: {} } },
-  ];
-  const sections = buildModelSections(providers);
+  const providers = [{ id: "openai", name: "OpenAI" }, { id: "anthropic", name: "Anthropic" }];
+  const models = [{ providerID: "openai", id: "gpt4" }, { providerID: "anthropic", id: "opus" }];
+  const sections = buildModelSections(models, providers);
   expect(sections[1].label).toBe("Anthropic");
   expect(sections[2].label).toBe("OpenAI");
 });
@@ -412,11 +328,8 @@ test("buildModelSections: empty providers → only All with CLEAR_SENTINEL", () 
 });
 
 test("buildModelSections: provider without models does not create section", () => {
-  const providers = [
-    { id: "anthropic", name: "Anthropic", models: { opus: {} } },
-    { id: "empty", name: "Empty", models: {} },
-  ];
-  const sections = buildModelSections(providers);
+  const providers = [{ id: "anthropic", name: "Anthropic" }, { id: "empty", name: "Empty" }];
+  const sections = buildModelSections([{ providerID: "anthropic", id: "opus" }], providers);
   expect(sections.length).toBe(2); // All + anthropic
   expect(sections.find((s) => s.id === "provider:empty")).toBeUndefined();
 });
