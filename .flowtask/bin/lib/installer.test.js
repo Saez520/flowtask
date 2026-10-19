@@ -614,17 +614,17 @@ test("update fails closed before writers when canonical source has no Git public
   assert.doesNotMatch(result.stdout, /Legacy scripts cleaned/);
 });
 
-test("Runner worktree contract keeps init opt-in and excludes CA2 routing", () => {
+test("Runner delegates worktree lifecycle through the consumer adapter", () => {
   const source = path.resolve(path.dirname(FLOWTASK_CLI), "..", "agents", "runner.md");
   const runner = fs.readFileSync(source, "utf8");
-  const invocations = runner.match(/\$\{FLOWTASK_SCRIPTS\}\/worktree\.sh (?:create|complete)[^\n]*/g) ?? [];
-  assert.ok(invocations.length >= 2);
-  for (const invocation of invocations) {
-    assert.match(invocation, /--base/);
-    assert.doesNotMatch(invocation, /--(?:target|repo|parent-repo)|link-parent/);
-  }
+  assert.match(runner, /worktree-consumer-adapter\.js/);
+  assert.match(runner, /`cli` o `mcp`[\s\S]*?obligatoria y explícita/);
+  assert.match(runner, /Engram debe confirmar la asociación efectiva[\s\S]*?antes de despachar Constructor/);
+  assert.match(runner, /No repitas una operación[\s\S]*?`uncertain`/);
+  assert.doesNotMatch(runner, /Ejecuta `\$\{FLOWTASK_SCRIPTS\}\/worktree\.sh/);
+  assert.match(runner, /no ejecuta Git ni mantiene/i);
   assert.match(runner, /init_submodules/);
-  assert.match(runner, /--init-submodules/);
+  assert.match(runner, /`--auto` sólo omite confirmaciones\s+humanas ordinarias/i);
 });
 
 test("writes TUI only in the native consumer manifest", () => {

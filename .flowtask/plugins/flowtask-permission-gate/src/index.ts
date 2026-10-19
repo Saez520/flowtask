@@ -1,12 +1,17 @@
 import type { PluginInput } from "@opencode-ai/plugin";
+import { tool } from "@opencode-ai/plugin";
 import { execFileSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import {
   RUNNER_DELEGATION_MESSAGE,
   isAuthorizedRunnerCommand,
   isAuthorizedRunnerSubagent,
+  isAuthorizedWorktreeConsumer,
+  WORKTREE_CONSUMER_TOOL,
 } from "./authorizer.js";
+import { createWorktreeConsumerBridge } from "./worktree-consumer-bridge.js";
+import { createConfiguredEngramInvoker } from "./engram-mcp.js";
 import {
   buildFallback,
   isImageOrPdfOutput,
@@ -72,6 +77,7 @@ function isRunner(agent: unknown): boolean {
 }
 
 function runnerToolAllowed(tool: string, args: Record<string, unknown>): boolean {
+   if (tool === WORKTREE_CONSUMER_TOOL) return isAuthorizedWorktreeConsumer(args.agent, tool);
    if (tool === "bash") return isAuthorizedRunnerCommand(String(args.command ?? ""));
    if (tool === "read" || tool === "glob" || tool === "grep" || tool === "skill" || tool.startsWith("engram_")) return true;
    // MCP Graphify: única herramienta MCP autorizada para el runner (vía 1 de la cadena de investigación).
@@ -315,7 +321,45 @@ function readStatSizeSafe(args: Record<string, unknown>): number | undefined {
 
 export default async function (input: PluginInput) {
   const sessionDir = input.directory;
+  let dispatchSessionID = "";
+  const worktreeConsumer = createWorktreeConsumerBridge({
+    invokeEngram: createConfiguredEngramInvoker(sessionDir),
+    isDirectory: (path) => { try { return statSync(path).isDirectory(); } catch { return false; } },
+    listLocalBranches: (repoRoot) => execFileSync("git", ["branch", "--format=%(refname:short)"], { cwd: repoRoot, encoding: "utf8" }).split(/\r?\n/).filter(Boolean),
+    invokeManager: async ({ repoRoot, args }) => {
+      const script = resolve(repoRoot, ".flowtask/scripts/worktree.sh");
+      if (!existsSync(script)) throw new Error("worktree manager is unavailable");
+      return { output: execFileSync("bash", [script, ...args], { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }) };
+    },
+    dispatchConstructor: async (record) => input.client.session.prompt({
+      path: { id: dispatchSessionID },
+      body: { agent: "flowtask-constructor", parts: [{ type: "text", text: `Implement the confirmed worktree association: ${JSON.stringify(record)}` }] },
+      query: { directory: sessionDir },
+    }),
+    dispatchValidator: async (record) => input.client.session.prompt({
+      path: { id: dispatchSessionID },
+      body: { agent: "flowtask-validator", parts: [{ type: "text", text: `Validate the confirmed worktree association: ${JSON.stringify(record)}` }] },
+      query: { directory: sessionDir },
+    }),
+  });
   return {
+    tool: {
+      [WORKTREE_CONSUMER_TOOL]: tool({
+        description: "Create and dispatch a worktree consumer operation for the authorized FlowTask runner.",
+        args: {
+          agent: tool.schema.string(), operation: tool.schema.enum(["create", "complete", "cleanup", "recover", "list", "prune"]),
+          repo_root: tool.schema.string(), path: tool.schema.string().optional(), branch: tool.schema.string().optional(),
+          base_branch: tool.schema.string(), work_id: tool.schema.string(), init_submodules: tool.schema.boolean().optional(),
+          preserve_dirty: tool.schema.boolean().optional(), discard: tool.schema.boolean().optional(), prepare: tool.schema.boolean().optional(), verify: tool.schema.boolean().optional(),
+        },
+        async execute(args, context) {
+          if (!isAuthorizedWorktreeConsumer(args.agent, WORKTREE_CONSUMER_TOOL)) throw new Error("worktree consumer denied");
+          if (context.agent !== "flowtask-runner") throw new Error("worktree consumer denied");
+          dispatchSessionID = context.sessionID;
+          return JSON.stringify(await worktreeConsumer.execute(args));
+        },
+      }),
+    },
     "chat.message": async (hookInput: { sessionID: string; agent?: string }) => {
       // GATE: SESSION_AGENTS solo registra la personalidad flowtask-runner;
       // cualquier otra identidad expuesta como `agent` se ignora para no

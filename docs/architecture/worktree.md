@@ -6,8 +6,7 @@ The implementation lives in the standalone
 [`worktree-manager`](https://github.com/Saez520/worktree-manager) and is
 integrated into FlowTask as a submodule at
 `.flowtask/scripts/worktree-manager/`. The integrated checkout must match the
-gitlink registered by FlowTask; a copy of the core must not be maintained in
-`.flowtask/scripts/lib/`.
+gitlink registered by FlowTask; a local copy of the core must not be maintained.
 
 For the architecture, configuration, commands, target-direct behavior,
 recovery, and output contract, see the
@@ -16,6 +15,8 @@ recovery, and output contract, see the
 This document describes only the integration with FlowTask.
 
 ## FlowTask Adapter
+
+The consumer implementation is `.flowtask/bin/lib/worktree-consumer-adapter.js`; its validation contract is `.flowtask/bin/lib/worktree-consumer-contract.js`.
 
 `.flowtask/scripts/worktree.sh` is the consumer entrypoint and delegates to
 `.flowtask/scripts/worktree-adapter.sh`. The adapter preserves compatibility
