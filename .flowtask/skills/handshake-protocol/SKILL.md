@@ -41,7 +41,7 @@ El orquestador debe proveer a la skill los siguientes parámetros:
 
 ### Elegibilidad de agentes
 
-Este protocolo aplica únicamente a los agentes de tratamiento completo (`ca-writer` y `planner`), que participan de reanudación (Escenario B) y Topic Validation. El contrato de checkpoint que estos agentes usan está definido en `.flowtask/skills/checkpoint-mixin/SKILL.md`. Los agentes de tratamiento ligero (`inspector`, `constructor`, `validator`, `tester`, `review-orchestrator`, `logger`, `initializer`) no pasan por este protocolo: su invocación es siempre Escenario A (hilo fresco), su `instance_name` se deriva del mapa de instancias únicamente como traza, y sus checkpoints nunca habilitan continuidad.
+Este protocolo aplica a los agentes de tratamiento completo (`ca-writer` y `planner`) y, con una excepción acotada, al `constructor`. Constructor puede reanudar automáticamente solo un fallo operativo o interrupción recuperable si su identidad, `task_id` y checkpoint siguen disponibles y válidos. Los demás agentes ligeros (`inspector`, `validator`, `tester`, `review-orchestrator`, `logger`, `initializer`) siempre reciben hilo fresco; sus checkpoints no habilitan continuidad automática. El contrato de checkpoint está definido en `.flowtask/skills/checkpoint-mixin/SKILL.md`.
 
 ---
 
@@ -170,8 +170,8 @@ Antes de determinar el escenario, la skill valida si el nuevo prompt del desarro
 ### Algoritmo
 
 1. **Recuperar último checkpoint**: `mem_search(query: "flow-state/{ca_id}/{agente}")` desde Engram. Si el agente es de tratamiento ligero y no hay CA, el namespace alternativo es `flow-state/no-ca/{agente}/{operation-id}`.
-2. **Si no hay checkpoint previo**: Asumir mismo tema → continuar a Escenario B (conservador). Un agente recién creado no tiene historial contra qué comparar.
-3. **Si el checkpoint NO tiene `topic_signature`**: Forzar **Escenario A** — no podemos adivinar el tema anterior. El `task_id` se marca como `abandoned` en el mapa de instancias.
+2. **Si no hay checkpoint previo**: para `constructor`, informar pérdida de continuidad y detenerse; no asignar Escenario B ni reanudar sin estado restaurable. Para los agentes de tratamiento completo, asumir mismo tema → continuar a Escenario B (conservador). Un agente recién creado no tiene historial contra qué comparar.
+3. **Si el checkpoint NO tiene `topic_signature`**: Para `constructor`, reanudar automáticamente solo si identidad, `task_id` y checkpoint válido/restaurable confirman la misma sesión; si no, informar pérdida y detenerse. Para los demás casos, forzar **Escenario A** — no podemos adivinar el tema anterior. El `task_id` se marca como `abandoned` en el mapa de instancias.
 4. **Si ambos tienen `topic_signature`**: Comparar `topic_signature` actual (del prompt) vs `topic_signature` del checkpoint (según el schema definido en `.flowtask/skills/checkpoint-mixin/SKILL.md`):
 
    a. **Matching exacto de IDs**: Si hay al menos un ID coincidente entre `ids_actual` y `ids_checkpoint` → **mismo tema** (Escenario B). Los IDs incluyen: CA-ID, nombres de archivo (sin extensión), nombres de skill.
@@ -203,9 +203,18 @@ Antes de determinar el escenario, la skill valida si el nuevo prompt del desarro
 La skill determina si la invocación es un hilo nuevo o una reanudación, considerando tanto la existencia de `task_id` como la validación de tema (ver Paso 5):
 
 - **Escenario A (Initial Prompt)**: No existe `task_id` válido para el `agent_type` en el mapa de instancias, Engram no está disponible, **o el Topic Validation determinó que el tema cambió**. Se debe invocar al subagente con un prompt nuevo (sin `task_id`).
-- **Escenario B (Resume Prompt)**: Existe `task_id` activo en el mapa de instancias para el `agent_type` **y el Topic Validation confirmó que es el mismo tema** (o no había checkpoint previo). Se debe invocar al subagente reanudando la sesión existente (usando el `task_id` persistido).
+- **Escenario B (Resume Prompt)**: Existe `task_id` activo en el mapa de instancias para el `agent_type` **y el Topic Validation confirmó que es el mismo tema**. Para `constructor`, además deben existir identidad y checkpoint válido/restaurable; sin cualquiera de ellos se informa pérdida de continuidad y se detiene, nunca se reanuda sin checkpoint. Se invoca la sesión existente usando el `task_id` persistido. La ausencia de checkpoint nunca habilita Escenario B para Constructor.
 
 > **Nota — Relevo por capacidad**: Si el runner detecta `[FLOWTASK_CHECKPOINT_CAPACITY: X%]` en la respuesta del subagente, el runner maneja el relevo por su cuenta: crea una nueva instancia vía Escenario A e incluye en el prompt instrucciones para restaurar el estado desde el checkpoint en Engram. Esto no requiere un escenario nuevo en esta skill — el contrato de salida sigue siendo A o B.
+
+**Cierre de Escenario A para Constructor:** Escenario A solo es admisible cuando el flujo
+autoriza una ejecución nueva o un relevo/restauración en hilo nuevo; no sustituye una
+continuidad automática que perdió sus prerrequisitos. Si Constructor está en una ruta de
+reanudación y falta cualquiera de estos elementos —identidad existente, `task_id` válido
+o checkpoint válido/restaurable—, no se reanuda ni se crea un hilo sustituto: informar
+bloqueo/pérdida de continuidad y detenerse. No asignar una identidad alternativa ni
+inventar un `task_id`. Los demás agentes ligeros conservan su comportamiento de hilo
+fresco; esta excepción aplica únicamente a Constructor.
 
 ---
 
@@ -221,7 +230,7 @@ La skill entrega al orquestador un objeto con exactamente 3 campos:
 
 > **La skill NO dicta cómo invocar al subagente.** El orquestador recibe este contrato y decide el formato de llamada (`task()`, API REST, CLI, etc.).
 
-> **Agentes de tratamiento ligero**: el handshake no se ejecuta para ellos. Reciben `instance_name` por derivación del mapa de instancias del runner, con `task_id = null` y `scenario = "A"` por construcción.
+> **Agentes ligeros sin excepción**: no ejecutan handshake para continuidad; reciben `instance_name` como traza, con `task_id = null` y `scenario = "A"`.
 
 ---
 
@@ -231,5 +240,5 @@ La skill entrega al orquestador un objeto con exactamente 3 campos:
 - **Sin cobertura operacional**: Esta skill NO implementa Checkpoint Protocol, Self-Healing ante `task_id` expirados, ni purga de `task_id` huérfanos. Esas responsabilidades son del orquestador.
 - **Unicidad de orquestador**: La skill asume un único orquestador por proyecto sobre el mismo Engram.
 - **Acoplamiento a Engram**: La skill usa Engram como storage exclusivo.
-- **Topic Validation con keyword extraction delegada**: La skill no extrae el `topic_signature` del prompt — recibe el valor ya calculado como parámetro desde el orquestador. Si el orquestador no provee `topic_signature` (porque la extracción falló o no está implementada), la skill trata `topic_signature` como `null`. En ese caso, si hay un checkpoint con `topic_signature`, se fuerza Escenario A (no se puede validar). Si el checkpoint tampoco tiene `topic_signature`, se asume mismo tema (degradación graceful, Escenario B).
+- **Topic Validation con keyword extraction delegada**: La skill no extrae el `topic_signature` del prompt — recibe el valor ya calculado como parámetro desde el orquestador. Si el orquestador no provee `topic_signature` (porque la extracción falló o no está implementada), la skill trata `topic_signature` como `null`. En ese caso, si hay un checkpoint con `topic_signature`, se fuerza Escenario A (no se puede validar). Si el checkpoint tampoco tiene `topic_signature`, la degradación a mismo tema aplica a tratamiento completo; para `constructor` no elimina el requisito de checkpoint válido, identidad y `task_id` disponibles.
 - **Matching por keywords**: El matching con umbral 50% puede producir falsos positivos (temas distintos con vocabulario similar) o falsos negativos (mismo tema con vocabulario diferente).

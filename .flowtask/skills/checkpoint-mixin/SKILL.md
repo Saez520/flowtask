@@ -26,7 +26,7 @@ El comportamiento de continuidad depende de la clase de tratamiento del agente:
 | Clase | Agentes | Comportamiento |
 |-------|---------|----------------|
 | **Completo** | `ca-writer`, `planner` | Continuidad vía checkpoint del mismo CA. Si existe checkpoint activo y `state != "completed"`, se reanuda la sesión previa (Escenario B). |
-| **Ligero** | `inspector`, `constructor`, `validator`, `tester`, `review-orchestrator`, `logger`, `initializer` | Hilo nuevo siempre. Si existe checkpoint previo, se restaura explícitamente el estado como insumo, pero la ejecución NO es continuación técnica de la anterior. Nunca se reutiliza `task_id` ni identidad previa. |
+| **Ligero** | `inspector`, `constructor`, `validator`, `tester`, `review-orchestrator`, `logger`, `initializer` | Por defecto, hilo nuevo. Excepción: constructor puede reanudar automáticamente un fallo/interrupción recuperable si identidad, `task_id` y checkpoint siguen válidos; en relevo/rechazo usa hilo nuevo con restauración explícita. Los demás ligeros nunca reanudan automáticamente. |
 
 ## Schema normativo del checkpoint
 
@@ -111,15 +111,18 @@ mem_save(
 
 ### Tratamiento ligero (inspector, constructor, validator, tester, review-orchestrator, logger, initializer)
 
+Constructor conserva `treatment_class: "light"`. Ante fallo operativo/interrupción recuperable, la continuidad automática es únicamente restaurar su misma sesión cuando identidad y `task_id` están disponibles y el checkpoint es válido; si no, informar pérdida y detener, sin sustituto silencioso. Un relevo por capacidad o recuperación tras rechazo inicia hilo nuevo y restaura explícitamente el checkpoint, artifact y motivo. Registrar en `flow_state` fase, acciones confirmadas, resultados, siguiente acción segura, efectos externos inciertos y motivo de bloqueo. No repetir una acción cuyo efecto sea incierto y no idempotente. Esta excepción no modifica la política de los demás agentes ligeros.
+
 **Al inicio:**
 
 ```
 1. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/{sufijo}")
    (o flow-state/no-ca/{agente}/{operation-id} si no hay CA)
-2. Si existe checkpoint previo:
+2. Para `constructor`, reanudar la misma sesión automáticamente únicamente si identidad, `task_id` y checkpoint válido están disponibles; si falta cualquiera, informar pérdida de continuidad y detenerse. En relevo por capacidad o rechazo, iniciar hilo nuevo y restaurar explícitamente checkpoint, artifact y motivo.
+3. Para los demás agentes ligeros, si existe checkpoint previo:
    - Restaurar explícitamente el estado como insumo (temas explorados, tradeoffs, gaps)
    - La nueva ejecución NO es continuación técnica de la anterior
-3. Siempre crear hilo nuevo (Escenario A, task_id = null)
+4. Para los demás agentes ligeros, siempre crear hilo nuevo (Escenario A, task_id = null)
 ```
 
 **Durante ejecución — guardar checkpoint (con CA):**
@@ -235,7 +238,9 @@ El `topic_key` sigue uno de dos patrones según el contexto operacional:
 
 El runner es responsable de:
 - Mantener el mapa de instancias en `flow-state/{CA-ID}/instances`.
-- Ejecutar el handshake (solo para agentes de tratamiento completo).
+- Ejecutar el handshake para agentes completos y evaluar la excepción acotada del
+  Constructor. Esta evaluación no habilita continuidad automática para los demás
+  agentes ligeros, que conservan su política de hilo fresco.
 - Detectar el tag `[FLOWTASK_CHECKPOINT_CAPACITY: X%]` y gestionar el relevo.
 - Purgar `task_id` huérfanos (solo tratamiento completo).
 

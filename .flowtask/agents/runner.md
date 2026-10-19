@@ -122,24 +122,29 @@ Los agentes de tratamiento completo (`ca-writer` y `planner`) ejecutan el
 Handshake Protocol vía la skill `handshake-protocol`: getOrCreateInstance +
 Context Injection, con Escenario A/B según `task_id` y Topic Validation.
 
-Los agentes de tratamiento ligero (`inspector`, `constructor`, `validator`,
-`tester`, `review-orchestrator`, `logger` e `initializer`) se invocan siempre
-en Escenario A (hilo fresco): su `instance_name` derivado del mapa se conserva
-únicamente como traza operativa; no se reutiliza `task_id`, no se reanuda
-sesión previa, no se ejecuta Topic Validation, no se construye Resume Prompt y
-no se inyecta contexto de sesión anterior. Sus checkpoints se conservan como
-histórico y nunca disparan continuidad.
+Constructor conserva tratamiento ligero, pero puede reanudar automáticamente
+un fallo operativo o interrupción recuperable con identidad, `task_id` válido
+y checkpoint restaurable. Si falta cualquiera, informa pérdida de continuidad
+y se detiene; no usa sustituto silencioso. Relevo por capacidad y recuperación
+tras rechazo usan hilo nuevo con restauración explícita del checkpoint, artifact
+y motivo. Los demás agentes ligeros (`inspector`, `validator`, `tester`,
+`review-orchestrator`, `logger` e `initializer`) siguen siempre en Escenario A:
+sin reutilizar `task_id`, Topic Validation ni contexto de sesión anterior.
+Sus checkpoints son históricos y no habilitan continuidad automática.
 
 Una solicitud explícita del usuario tiene prioridad para una invocación puntual:
 cuando identifica el agente y pide reutilizar un `task_id` concreto disponible,
 El Runner pasa exactamente ese `task_id` como `sessionID` a `subagent()` para cualquier agente,
-incluidos los de tratamiento ligero. Esta rama evita el filtro normal de
-elegibilidad, el handshake y Topic Validation únicamente para esa invocación;
-no convierte la continuidad explícita en comportamiento automático.
+incluidos los de tratamiento ligero. Si ese identificador exacto no existe o
+expiró, informar la pérdida y detener; nunca sustituirlo. Esta rama evita el
+filtro normal de elegibilidad, el handshake y Topic Validation únicamente para
+esa invocación; no convierte la continuidad explícita en comportamiento
+automático.
 
 ### Uso
 
-Antes de invocar `ca-writer` o `planner`, el runner DEBE cargar la skill:
+Antes de invocar `ca-writer`, `planner` o `constructor` cuando se evalúe continuidad,
+el runner DEBE cargar la skill:
 ```
 skill({ name: "handshake-protocol" })
 ```
@@ -206,19 +211,18 @@ Flujo de delegación — con continuidad explícita acotada:
    El prompt delegado conserva su contrato y no incluye `task_id`, `scenario` ni
    mecánica de handshake.
 3. Si no existe una solicitud explícita de reutilización y el subagente es
-   `ca-writer` o `planner`, cargas `handshake-protocol` y
+    `ca-writer`, `planner` o `constructor`, cargas `handshake-protocol` y
    ejecutas el Handshake para obtener `{ task_id, instance_name, scenario }`.
-   Si el agente es de tratamiento ligero (`inspector`, `constructor`,
-   `validator`, `tester`, `review-orchestrator`, `logger` e `initializer`),
+    Si el agente es de tratamiento ligero excepto `constructor` (`inspector`,
+    `validator`, `tester`, `review-orchestrator`, `logger` e `initializer`),
    conservas/derivas `instance_name` desde el mapa y fuerzas Escenario A sin
    `sessionID` ni contexto de sesión.
 4. La skill ya ejecutó **Context Injection** (mem_context + mem_search). Incorporas los hallazgos al prompt como **referencias citables** (IDs de Engram, rutas) — nunca como resúmenes ni conclusiones.
 5. **Antes de invocar**: verificar si existe checkpoint en Engram (`flow-state/{CA-ID}/{agente}`).
 6. Si el agente es `ca-writer` o `planner`, invocas `subagent(...)` según A/B.
-   Para cualquier agente de tratamiento ligero (`inspector`, `constructor`,
-   `validator`, `tester`, `review-orchestrator`, `logger` e `initializer`),
-   invocas siempre `subagent(...)` como Escenario A fresco, conservando únicamente
-   su identidad y trazabilidad, salvo la solicitud explícita descrita en el paso 2.
+    Para `constructor`, aplicas la rama A/B de continuidad limitada y el
+    checkpoint restaurable. Para los demás agentes ligeros, invocas siempre
+    Escenario A fresco, salvo solicitud explícita descrita en el paso 2.
 
 ***
 
@@ -316,11 +320,9 @@ impedir que una reanudación use un descriptor de otra transacción.
      normal, el handshake ni Topic Validation.
    - Para `ca-writer` y `planner`, cargar `handshake-protocol` y obtener
      `{ task_id, instance_name, scenario }` desde la skill.
-   - Para agentes de tratamiento ligero (`inspector`, `constructor`,
-     `validator`, `tester`, `review-orchestrator`, `logger` e `initializer`),
-     conservar/derivar `instance_name` y consultar el estado/checkpoint solo
-     para trazabilidad; no cargar la skill para decidir reanudación; forzar
-     Escenario A con `task_id = null`.
+   - Para `constructor`, evaluar la continuidad acotada mediante handshake y
+     checkpoint. Para los demás agentes ligeros, conservar/derivar `instance_name`
+     como traza y forzar Escenario A con `task_id = null`.
 2. **Bifurcación de Escenario**:
 
 **Rama prioritaria — solicitud explícita de continuidad**
@@ -337,6 +339,12 @@ instrucción explícita.
 
 **Escenario A: Initial Prompt (Nuevo hilo)**
 Si NO existe un `task_id` válido para el agente en el mapa de instancias, o si Engram no está disponible (`mem_search` falló):
+- **Constructor en ruta de reanudación:** no tratar la ausencia/indisponibilidad de
+  identidad, `task_id` válido o checkpoint válido/restaurable como autorización para
+  Escenario A. Reportar pérdida de continuidad/bloqueo y detener; no reanudar, no crear
+  identidad sustituta ni inventar `task_id`. Escenario A para Constructor solo procede
+  cuando el flujo autoriza una tarea realmente nueva o un relevo con restauración
+  explícita del checkpoint.
 - Invocar `subagent()` con: input literal del desarrollador, referencias citables, hechos de coordinación y todas las heurísticas del Paso 0 (bloque `## Heurísticas del desarrollador`), sin filtrar por tarea — según el Contrato de ensamblado de prompts de delegación.
 - Instrucción: "Tu nombre de instancia es {instance_name}. Sigue las instrucciones de tu rol."
 
@@ -373,11 +381,10 @@ Después de que un subagente responde, el runner DEBE verificar si la respuesta 
 
 #### Relanzamiento por capacidad
 
-Esta mecánica de `task_id` y reanudación aplica solo a `ca-writer` y `planner`.
-Si el agente es de tratamiento ligero (`inspector`, `constructor`, `validator`,
-`tester`, `review-orchestrator`, `logger` e `initializer`), conservar el
-checkpoint como traza y crear siempre un hilo fresco con el prompt inicial, sin
-`task_id`, Resume Prompt, Topic Validation ni contexto de sesión anterior.
+Para `constructor`, crear hilo fresco con restauración explícita del checkpoint,
+artifact y motivo del relevo. No presentarlo como continuidad técnica. Los demás
+agentes ligeros conservan el checkpoint como traza y reciben hilo fresco. Para
+los agentes completos rigen sus reglas de continuidad.
 
 1. **Recuperar mapa**: `mem_search(query: "flow-state/{CA-ID}/instances")`.
 2. **Contar relanzamientos previos**: leer `relaunch_count` del agente en el mapa. Si no existe, asumir 0.
@@ -403,15 +410,13 @@ Si la herramienta `subagent` (o `Agent` en Claude) retorna un error indicando qu
 2. **Limpieza normal**: Para `ca-writer` y `planner`, ejecutar `mem_save` para
    eliminar el `task_id` fallido del mapa de instancias en
    `flow-state/{CA-ID}/instances`. En el tratamiento ligero (`inspector`,
-   `constructor`, `validator`, `tester`, `review-orchestrator`, `logger` e
-   `initializer`) no se reutiliza ni se purga un `task_id`; se conserva el
-   registro histórico.
+   `validator`, `tester`, `review-orchestrator`, `logger` e `initializer`) no
+   se reutiliza ni se purga un `task_id`; se conserva el registro histórico.
 3. **Reintento normal**: Para `ca-writer` y `planner`, relanzar automáticamente usando
    el flujo del **Escenario A (Initial Prompt)**. Para agentes de tratamiento
-   ligero (`inspector`, `constructor`, `validator`, `tester`,
-   `review-orchestrator`, `logger` e `initializer`), crear siempre un hilo
-   fresco; nunca reutilizar ni limpiar un `task_id` como mecanismo de
-   reanudación.
+   `constructor`, reanudar la misma sesión solo cuando identidad, `task_id` y
+   checkpoint sean recuperables; si no, informar pérdida y detener. Los demás
+   ligeros reciben hilo fresco.
 4. No es necesario pedir confirmación al desarrollador para este reintento técnico
    cuando se trata de la recuperación normal; la rama de solicitud explícita no
    se reintenta con un hilo sustituto.
@@ -672,11 +677,9 @@ Invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/CA-{ID}
 
 ### Paso 4 — Constructor
 
-Invoca constructor usando el formato canónico. Constructor pertenece al
-tratamiento ligero (`inspector`, `constructor`, `validator`, `tester`,
-`review-orchestrator`, `logger` e `initializer`): su invocación es siempre
-Escenario A, sin `task_id`, Resume Prompt, Topic Validation ni contexto de
-sesión anterior.
+Invoca constructor usando el formato canónico y aplica continuidad automática
+acotada ante fallo/interrupción recuperable. Relevo o recuperación tras rechazo
+inicia hilo nuevo con restauración explícita.
 Prompt: flow state del plan desde Engram y contexto actual del CA.
 
 ### Política de worktrees — adapter consumidor obligatorio por CA
@@ -727,7 +730,7 @@ journals, locks, backups o lógica de recuperación propia.
 ### Paso 5 — Validator
 
 Invoca validator usando el formato canónico. Validator pertenece al
-tratamiento ligero (`inspector`, `constructor`, `validator`, `tester`,
+tratamiento ligero (`inspector`, `validator`, `tester`,
 `review-orchestrator`, `logger` e `initializer`): su invocación es siempre
 Escenario A, sin `task_id`, Resume Prompt, Topic Validation ni contexto de
 sesión anterior.
@@ -888,7 +891,7 @@ La purga de `task_id` y la gestión de worktrees son independientes: un `task_id
 
 - **Si Engram no está disponible**: La purga se omite. Los `task_id` huérfanos persisten hasta la próxima sesión con Engram funcional.
 - **Self-Healing reactivo**: El manejo de errores en la invocación normal (línea 196-201) sigue activo y es el mecanismo primario de detección durante la operación.
-- **Relanzamiento por capacidad**: Para agentes de tratamiento completo (`ca-writer`, `planner`), el contador `relaunch_count` persiste en el mapa de instancias. Para el tratamiento ligero (`inspector`, `constructor`, `validator`, `tester`, `review-orchestrator`, `logger` e `initializer`), el checkpoint solo es traza y nunca provoca reanudación ni reutilización de `task_id`.
+- **Relanzamiento por capacidad**: Para agentes completos persiste `relaunch_count`. Constructor inicia un hilo nuevo con restauración explícita del checkpoint/artifact/motivo, nunca como continuidad técnica falsa. Para los demás ligeros el checkpoint solo es traza.
 
 ## Cierre del CA — Marcar como completado
 
