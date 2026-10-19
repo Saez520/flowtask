@@ -47,7 +47,7 @@ Inferí routing y defaults operativos solo con evidencia disponible; registrá l
 - NUNCA escribas código, archivos de producto ni configuración — la investigación y el diagnóstico son read-only
 - NUNCA saltes el checkpoint del Paso 3 sin `--auto`
 - NUNCA actives el constructor sin plan en Engram (ca/CA-{ID}/artifact/plan o hotfix/{id}/artifact/plan)
-- NUNCA continúes si el validator rechaza más de 2 veces — escala al desarrollador
+- Ante rechazos del Validator, continúa según el Loop de validación; pausa únicamente por las condiciones allí definidas y respeta cualquier límite expreso propio de la ejecución.
 - NUNCA tomes decisiones de diseño — delega al planner
 
 ## NUNCA ROMPER ESTA REGLA (MANDATORIA, SIN EXCEPCIONES)
@@ -585,8 +585,9 @@ base branch.
 ### Paso 3 — Validator y cierre
 
 Despacha el Validator con el mismo contexto. El Validator persiste
-`hotfix/{id}/artifact/validacion` y su flow-state separado. Un rechazo vuelve al
-Constructor hasta dos intentos; después escala. Con APPROVED hacé el commit antes de
+`hotfix/{id}/artifact/validacion` y su flow-state separado. Los rechazos siguen el
+Loop de validación común, incluidos el diagnóstico posterior, la pausa por sus
+condiciones y cualquier límite expreso propio de la ejecución. Con APPROVED hacé el commit antes de
 `${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch} [--init-submodules]`.
 Un conflicto conserva worktree y branch y se escala sin limpiar; un rechazo por
 destino con cambios sin commitear también conserva todo intacto, se escala al
@@ -733,7 +734,9 @@ sesión anterior.
 Prompt: flow state del plan desde Engram y contexto actual del CA.
 
 **APPROVED** → finaliza el flujo.
-**RECHAZADO** → vuelve al Paso 4 (máximo 2 intentos).
+**REJECTED** → continúa según «Loop de validación».
+**OPERATIONAL_FAILURE** → no es rechazo funcional: conserva estado e historial,
+recupera la comprobación si es posible y pausa/escalá si no.
 
 ### Cierre exitoso con worktree
 
@@ -753,14 +756,19 @@ registrados. El gestor standalone ejecuta el lifecycle; antes de completarlo:
 
 ***
 
-### Paso 6 — Límite de reintentos
+### Loop de validación
 
-Si el validator rechaza 2 veces consecutivas:
+Este loop común aplica a CAs y hotfixes solo después de que el trabajo esté documentado y el Runner haya emitido una señal explícita y observable de inicio. La existencia de un artifacto, worktree o rechazo previo no activa el loop por sí sola. En CA permanecen obligatorios el Gate de Ejecución y la auditoría; en hotfix se conserva el flujo aislado y su evento literal `ejecutar`.
 
-```
-⛔ RECHAZADO 2 veces consecutivas.
-Revisa la validación en Engram y el código.
-```
+En cada ronda, el Runner entrega al Constructor el plan vigente, el resultado del Validator y el historial pertinente. Tras el primer rechazo funcional, solicita al Constructor la corrección fundada en la evidencia. Tras un segundo rechazo funcional sin aprobación, y en cada rechazo posterior, solicita a un Inspector nuevo un diagnóstico usando el patrón de fallos y el historial completo; después despacha al Constructor con ese diagnóstico. Cambiar de Inspector no borra intentos, fallos ni enfoques descartados.
+
+Una nueva ronda después del diagnóstico requiere una hipótesis fundada, distinta o respaldada por evidencia nueva, y una comprobación observable. Si no hay hipótesis/progreso verificable, falta autoridad para continuar, hay un límite expreso, un fallo irrecuperable o se requiere cambiar alcance, pausa y explica motivo, estado conservado y condición de reanudación. No hay máximo global de rondas: el loop no se detiene por un número fijo de rechazos.
+
+Un fallo operativo (comando fallido, herramienta/servicio indisponible o limitación externa) no es rechazo funcional y no incrementa rondas. Conserva worktree, cambios, artifacts e historial; intenta recuperación operativa pertinente o pausa si no puede verificar. Nunca interpretes el fallo como aprobación.
+
+La replanificación autónoma solo puede reorganizar la implementación dentro de la finalidad, alcance, criterios de aceptación, permisos y restricciones ya aprobados. No altera requisitos ni autoriza un cambio de alcance: si hace falta, pausa y solicita decisión humana. El cambio de Inspector no reinicia contadores ni habilita repetir enfoques descartados sin evidencia nueva.
+
+Solo `APPROVED` explícito del Validator cierra la validación y habilita el cierre normal. El Runner informa por ronda el incumplimiento, la novedad y el resultado; al pausar informa motivo y condición de reanudación. El trabajo y su historial se conservan durante pausas.
 
 ***
 ## Reconciliación post-compaction

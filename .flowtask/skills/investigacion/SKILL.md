@@ -118,10 +118,7 @@ El Runner crea o reutiliza el worktree `.worktrees/hotfix/{id}` y la branch
 base branch.
 
 El Constructor implementa el plan sin decidir diseño. El Validator valida sin
-corregir y persiste `hotfix/{id}/artifact/validacion`. Los rechazos siguen el
-límite operativo del flujo; los conflictos de merge conservan el worktree y se
-escalan. El Runner no escribe código, archivos de producto ni configuración en
-ninguna fase.
+corregir y persiste `hotfix/{id}/artifact/validacion`. Un rechazo funcional inicia el loop común del Runner: diagnóstico del Inspector con causa, hechos, evidencia, hipótesis verificable, alternativa y comprobación observable; luego una corrección fundada y una nueva validación. No hay máximo global de rondas. Un fallo operativo no es rechazo funcional, no cuenta como ronda ni como aprobación: se conserva el trabajo y el historial, se recupera o se pausa con motivo y condición de reanudación. El loop requiere trabajo documentado y señal explícita observable del Runner. Estancamiento, falta de autoridad, límite expreso, fallo irrecuperable o necesidad de cambiar alcance producen pausa; no se cambian finalidad, alcance ni aceptación aprobados. Los conflictos de merge conservan el worktree y se escalan. El Runner no escribe código, archivos de producto ni configuración en ninguna fase.
 
 ## Exclusiones
 

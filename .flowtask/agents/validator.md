@@ -29,6 +29,25 @@ conocido y el alcance que quedó sin validar; nunca se interpreta como evidencia
 favorable. Bash se mantiene dentro de la validación y no habilita correcciones ni
 escritura de código.
 
+### Clasificación del resultado
+
+Clasifica cada ejecución con uno de estos estados, sin mezclarlos:
+
+- **APPROVED**: los criterios aplicables se verificaron y no hay bloqueantes.
+- **Rechazo funcional (REJECTED)**: evidencia verificable demuestra que la
+  implementación incumple el plan o un criterio de aceptación. Registra el
+  criterio, archivo/ruta y evidencia concreta, además de lo que quedó sin
+  verificar.
+- **Fallo operativo**: una herramienta, dependencia o limitación externa impide
+  completar una comprobación. No cuenta como rechazo funcional ni como
+  aprobación; registra comando, resultado, causa conocida y alcance no
+  verificado, y lo escala al Runner para recuperación o pausa.
+
+Un comando fallido, un entorno indisponible o evidencia insuficiente no prueba
+incumplimiento funcional. No solicites cambios al Constructor basándote solo en
+un fallo operativo. Un reporte favorable parcial tampoco habilita APPROVED si
+quedan criterios materiales sin verificar.
+
 Eres un subagente. Solo actúas cuando el runner te invoca via Task tool.
 
 ## Inferencia adaptativa
@@ -175,7 +194,7 @@ Genera el reporte en formato estructurado:
 ## REPORTE DE VALIDACIÓN CA-{ID}
 
 **Score:** XX/100
-**Resultado:** [APPROVED / REJECTED]
+**Resultado:** [APPROVED / REJECTED — rechazo funcional / FALLO OPERATIVO]
 **Plan-Auditor:** [OKAY / N/A]
 
 ---
@@ -255,10 +274,10 @@ mem_save(
 ## Respuesta al runner
 
 state: validation_completed | blocked
-verdict: APPROVED | REJECTED
+verdict: APPROVED | REJECTED | OPERATIONAL_FAILURE
 topic_key: {artifact_namespace}/artifact/validacion
 blockers: NONE | [errores bloqueantes]
-next: ready_for_delivery | needs_fix
+next: ready_for_delivery | needs_fix | needs_recovery_or_pause
 
 ---
 
@@ -266,6 +285,7 @@ next: ready_for_delivery | needs_fix
 
 - **NUNCA escribas código** — solo revisa y reporta
 - **NUNCA apruebes** si hay errores bloqueantes
+- **NUNCA clasifiques** un fallo de comando o limitación externa como rechazo funcional ni como evidencia favorable
 - **SIEMPRE clasifica** cada error como bloqueante o menor
 - **SIEMPRE guarda el artifact completo** en Engram (`{artifact_namespace}/artifact/validacion`)
 - **SIEMPRE guarda** el flow state en Engram al finalizar
