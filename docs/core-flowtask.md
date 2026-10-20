@@ -120,7 +120,7 @@ input del dev: CHANGE_REQUEST · CA_MENTION · CA-{ID}
 ▼
 RUNNER clasifica ── ¿existe el CA en Engram?
 │
-├─ no existe ──▶ [1] CA-WRITER
+├─ no existe ──▶ [1] ESCRITOR DEL CA
 │                 conversación de clarificación: comportamiento observable,
 │                 condiciones de fallo, reglas de negocio, tradeoffs y GAPs
 │                 salida: ca/CA-{ID}/artifact/ca
@@ -157,13 +157,22 @@ RUNNER clasifica ── ¿existe el CA en Engram?
             flow-state: flow-state/CA-{ID}/construct
               │
               ▼
-        [8] VALIDATOR ── N1: cumplimiento del plan
+        [8] VALIDATOR ── validación en caliente
+            N1: cumplimiento del plan
             N2: convenciones del proyecto
-            salida: ca/CA-{ID}/artifact/validacion (score /100)
+            N3: higiene de coordinación (escáner de referencias)
+            comprobaciones ejecutadas con comando y resultado
+            ronda: closure (cierra) | intermediate (verifica lo alcanzado)
+            veredicto único: APPROVED | REJECTED | OPERATIONAL_FAILURE
+            evidencia reutilizable: ca/CA-{ID}/artifact/validacion
               │
-              ├─ REJECTED ──▶ vuelve a [7] · máximo 2 intentos → escala al dev
+              ├─ REJECTED ──▶ vuelve a [7] con la evidencia del rechazo
+              │              segundo rechazo → Inspector → vuelve a [7]
               │
-              ▼ APPROVED
+              ├─ OPERATIONAL_FAILURE ──▶ conserva estado e historial
+              │                          recuperación operativa o pausa
+              │
+              ▼ APPROVED con final=true
         [9] CIERRE ── commit → worktree.sh complete (squash-merge a la base)
              → ca_status: closed + purga de task_id huérfanos + session summary
 ```
@@ -220,7 +229,7 @@ conserva lo esencial —investigación persistida, plan mínimo, worktree aislad
 validación y cierre por squash-merge— pero NO crea CA ni invoca
 `ca-writer`/`planner`/`plan-auditor`.
 
-> **Origen:** CA-HOTFIX-MODE (12-ago-2026).
+> **Origen:** flujo de hotfix, introducido como segundo camino acotado en agosto de 2026.
 > **Tradeoff asumido:** segundo flujo y contrato de persistencia a cambio de menos fricción.
 > **Garantía:** aunque no haya CA, ningún hotfix pierde investigación, plan mínimo, worktree ni validación.
 
@@ -235,13 +244,14 @@ validación y cierre por squash-merge— pero NO crea CA ni invoca
     → .worktrees/hotfix/{id} · branch worktree/hotfix/{id}
 [4] CONSTRUCTOR ── implementa el plan mínimo (execution_id=hotfix/{id})
 [5] VALIDATOR ── → hotfix/{id}/artifact/validacion (no pasa por plan-auditor)
-    REJECTED → vuelve a [4] · máximo 2 intentos → escala
+    REJECTED → vuelve a [4] con la evidencia del rechazo
+              segundo rechazo → Inspector → vuelve a [4]
 [6] CIERRE ── commit → worktree.sh complete (squash-merge a la base)
 ```
 
-**Ejemplo real:** `HF-diagramas-architecture-md` (23-sep-2026) convirtió los 14
+**Ejemplo real:** un hotfix de diagramas (23-sep-2026) convirtió los 14
 diagramas de `docs/architecture/` de `.txt` (CP1252 roto) a `.md` UTF-8 con Mermaid.
-Squash-merge a `main` en `198cf54` — es el HF que produjo ESTE archivo.
+Squash-merge a `main` en `198cf54` — es el hotfix que produjo ESTE archivo.
 
 ---
 

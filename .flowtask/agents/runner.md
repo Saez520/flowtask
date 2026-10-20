@@ -794,14 +794,32 @@ journals, locks, backups o lógica de recuperación propia.
 Invoca validator usando el formato canónico. Validator pertenece al
 tratamiento ligero (`inspector`, `validator`, `tester`,
 `review-orchestrator`, `logger` e `initializer`): su invocación es siempre
-Escenario A, sin `task_id`, Resume Prompt, Topic Validation ni contexto de
-sesión anterior.
-Prompt: flow state del plan desde Engram y contexto actual del CA.
+Escenario A, en **hilo fresco**, sin `task_id`, Resume Prompt, Topic Validation
+ni contexto de sesión anterior.
 
-**APPROVED** → finaliza el flujo.
-**REJECTED** → continúa según «Loop de validación».
-**OPERATIONAL_FAILURE** → no es rechazo funcional: conserva estado e historial,
-recupera la comprobación si es posible y pausa/escalá si no.
+**Despacho por ronda.** El Runner declara la ronda en cada invocación:
+
+| Ronda | Cuándo se despacha | Qué exige |
+|-------|--------------------|-----------|
+| `round=closure` | Después de que el Constructor declara completada la implementación. | El plan completo y su referencia. |
+| `round=intermediate` | Cuando necesitas verificar lo alcanzado antes de seguir. | El alcance declarado de lo alcanzado. |
+
+El prompt de despacho incluye: `execution_id`, `artifact_namespace`, la ronda
+(`round=closure` o `round=intermediate`), el alcance declarado (`scope.goal`,
+`scope.files`, `scope.criteria`), `plan_ref` (obligatorio en `round=closure` y
+opcional en `round=intermediate`), `environment` y, cuando existe, la
+referencia al reporte de validación anterior como referencia citable.
+
+**Veredictos.**
+
+- `round=closure` con `APPROVED` y `final=true` → finaliza el flujo.
+- `round=intermediate` con `APPROVED` y `final=false` → continúa sin cerrar:
+  resultado `continue_round`.
+- `REJECTED` en cualquier ronda → continúa según «Loop de validación», con el
+  alcance declarado y la evidencia del reporte.
+- `OPERATIONAL_FAILURE` → no es rechazo funcional: conserva estado e historial,
+  recupera la comprobación si es posible y pausa/escalá si no
+  (`needs_recovery_or_pause`).
 
 ### Cierre exitoso con worktree
 
@@ -831,7 +849,9 @@ En cada ronda, el Runner entrega al Constructor el plan vigente, el resultado de
 
 Una nueva ronda después del diagnóstico requiere una hipótesis fundada, distinta o respaldada por evidencia nueva, y una comprobación observable. Si no hay hipótesis/progreso verificable, falta autoridad para continuar, hay un límite expreso, un fallo irrecuperable o se requiere cambiar alcance, pausa y explica motivo, estado conservado y condición de reanudación. No hay máximo global de rondas: el loop no se detiene por un número fijo de rechazos.
 
-Un fallo operativo (comando fallido, herramienta/servicio indisponible o limitación externa) no es rechazo funcional y no incrementa rondas. Conserva worktree, cambios, artifacts e historial; intenta recuperación operativa pertinente o pausa si no puede verificar. Nunca interpretes el fallo como aprobación.
+Un fallo operativo (comando fallido, herramienta/servicio indisponible o limitación externa) no es rechazo funcional y no incrementa rondas. Conserva worktree, cambios, artifacts e historial; intenta recuperación operativa pertinente o pausa si no puede verificar. Nunca interpretes el fallo como aprobación ni pidas correcciones al Constructor por un fallo operativo.
+
+El Runner puede despachar rondas intermedias con alcance declarado: no exigen el plan completo, no cierran la ejecución y su evidencia se conserva en el artifact de validación (`{artifact_namespace}/artifact/validacion`). La ronda siguiente recibe esa referencia y no repite comprobaciones ya veredictadas. Solo un APPROVED de ronda closure con final=true cierra el flujo; un APPROVED de ronda intermedia produce `continue_round` y la ejecución continúa.
 
 La replanificación autónoma solo puede reorganizar la implementación dentro de la finalidad, alcance, criterios de aceptación, permisos y restricciones ya aprobados. No altera requisitos ni autoriza un cambio de alcance: si hace falta, pausa y solicita decisión humana. El cambio de Inspector no reinicia contadores ni habilita repetir enfoques descartados sin evidencia nueva.
 
