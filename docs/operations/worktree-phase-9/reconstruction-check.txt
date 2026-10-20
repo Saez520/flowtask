@@ -1,0 +1,206 @@
+Reconstruction check — withdrawal of the legacy coupling of the worktree manager
+===========================================================================
+
+Every command below is read-only and runs from the root of the consumer
+repository. The values are the ones observed when this evidence was produced.
+No path of an external directory and no temporary path is required to
+reproduce them: the temporary locations are written as placeholders.
+
+1. Identity of the source
+-------------------------
+
+$ git rev-parse bd3eab2
+bd3eab24c6687a7fbed69be7f807c169ba01d34b
+
+$ git rev-parse refs/heads/worktree/CA-worktree-manager-phase-8
+bd3eab24c6687a7fbed69be7f807c169ba01d34b
+
+$ git rev-parse main
+3314ed4c20a1606f428d1c12fdd1329afd26e39b
+
+$ git merge-base --is-ancestor bd3eab2 refs/heads/worktree/CA-worktree-manager-phase-9 ; echo $?
+0
+
+Result: the delivery descends from the frozen base of the previous phase. The
+observed main differs from the value recorded by the plan of the phase and
+from the value published by the evidence of the previous phase; the main is
+not used as a base.
+
+2. Digests of the previous phase
+--------------------------------
+
+$ cd docs/operations/worktree-phase-8
+$ shasum -a 256 -c SHA256SUMS
+README.md: OK
+final-snapshot.json: OK
+mcp-matrix-evidence.json: OK
+phase7-provenance.json: OK
+provenance.md: OK
+reconstruction-check.txt: OK
+
+$ cd <repository-root>
+$ git diff bd3eab2..HEAD -- docs/operations/worktree-phase-8
+(no differences)
+
+3. Submodule and gitlink
+------------------------
+
+$ git ls-tree HEAD -- .flowtask/scripts/worktree-manager
+160000 commit a4b4782236407d4c6067344218f7b3e43c9b4ecf	.flowtask/scripts/worktree-manager
+
+$ git -C .flowtask/scripts/worktree-manager rev-parse HEAD
+a4b4782236407d4c6067344218f7b3e43c9b4ecf
+
+$ git -C .flowtask/scripts/worktree-manager tag --points-at a4b4782
+phase-9
+
+$ git diff bd3eab2..HEAD -- .gitmodules
+(no differences)
+
+Result: the registered gitlink and the head of the materialised submodule are
+the same commit, the checkout is detached, the local tag points at it and the
+submodule declaration did not change.
+
+4. Standalone manager references
+--------------------------------
+
+$ git -C .flowtask/scripts/worktree-manager rev-parse refs/remotes/origin/main
+091d5db120a8b779931ac9c802526550e617d231
+
+$ git -C .flowtask/scripts/worktree-manager rev-parse refs/heads/integration/phase-9
+a4b4782236407d4c6067344218f7b3e43c9b4ecf
+
+Result: the build tip is available in the local build clone and in the
+materialised submodule, and it is not published in the standalone origin.
+
+5. Read-only reconstruction of the source
+-----------------------------------------
+
+$ git worktree add --detach <scratch> bd3eab2
+$ git -C <scratch> ls-tree HEAD -- .flowtask/scripts/worktree-manager
+160000 commit d948dc4295cdc644ef69a0ec9f9c6b9eb1660da4	.flowtask/scripts/worktree-manager
+
+$ ls <scratch>/docs/operations/worktree-phase-8
+README.md  SHA256SUMS  final-snapshot.json  mcp-matrix-evidence.json
+phase7-provenance.json  provenance.md  reconstruction-check.txt
+
+$ cd <scratch>/docs/operations/worktree-phase-8 && shasum -a 256 -c SHA256SUMS
+(six files OK)
+
+$ git archive d948dc4 | tar -x -C <scratch-standalone>
+$ cd <scratch-standalone> && PYTHONPATH=. python3 -m worktree_manager --version
+1.0.0
+
+$ cd <scratch-standalone> && PYTHONPATH=. python3 - <<'PY'
+... initialize and tools/list over the stdio transport ...
+PY
+initialize serverInfo: {"name": "worktree-manager", "version": "1.0.0"}
+tools/list count: 7
+tools: worktree_cleanup,worktree_complete,worktree_create,worktree_list,
+worktree_prune,worktree_recover,worktree_status
+
+$ git worktree remove --force <scratch>
+
+Result: the documented paths of the source phase are present, its six digests
+verify, the standalone answers the version and publishes the seven tools
+without the consumer, without Engram and without a consumer checkout, and the
+scratch locations are removed.
+
+6. Suites of the standalone manager
+-----------------------------------
+
+$ cd .flowtask/scripts/worktree-manager
+$ PYTHONPATH=. python3 -m unittest discover -s tests
+Ran 67 tests in 20.371s
+OK
+
+$ PYTHONPATH=. python3 -m unittest discover -s tests -p 'test_mcp_matrix.py'
+Ran 3 tests in 11.203s
+OK
+
+$ bash tests/cli-json.sh
+CLI JSON tests passed
+
+$ bash tests/cli-usage.sh
+CLI usage tests passed
+
+$ bash tests/compatibility.sh
+worktree compatibility checks passed
+
+$ bash tests/smoke.sh
+standalone smoke tests passed
+
+$ bash tests/parity.sh
+Canonical Python CLI cwd-resolution parity passed.
+
+7. Suites of the consumer repository
+------------------------------------
+
+$ node --test .flowtask/bin/lib/worktree-consumer-adapter.test.js
+tests 25 / pass 25 / fail 0
+
+$ node --test .flowtask/bin/test/worktree-adapter-compat.test.js
+tests 8 / pass 8 / fail 0
+
+$ node --test .flowtask/bin/test/worktree-consumer-matrix.test.js
+tests 58 / pass 58 / fail 0
+48 cells published, all of them ok
+
+$ node --test .flowtask/bin/test/worktree-hotfix.test.js
+tests 19 / pass 19 / fail 0
+the sentinel of the fifteen mandatory cases is observed
+
+$ node --test .flowtask/bin/lib/target-direct-transport.test.js
+tests 2 / pass 2 / fail 0
+
+$ node --test .flowtask/bin/lib/installer.test.js
+tests 66 / pass 65 / fail 1
+Failing test: update integrates config and cleans legacy scripts into an
+installed target (TypeError at installer.test.js:678). The failure is present
+before this increment.
+
+$ node --test .flowtask/bin/lib/opencode.test.js
+tests 6 / pass 5 / fail 1
+Failing test: canonical child agent frontmatter remains selectable in the
+materialized V2 config. The failure is present before this increment.
+
+$ cd .flowtask/plugins/flowtask-permission-gate && bun test
+60 pass / 0 fail / Ran 60 tests across 3 files
+
+$ node --test .flowtask/bin/test/worktree-phase9-evidence.test.js
+tests 8 / pass 8 / fail 0
+
+8. Verification of the digests of this phase
+--------------------------------------------
+
+$ cd docs/operations/worktree-phase-9
+$ shasum -a 256 -c SHA256SUMS
+README.md: OK
+compatibility-evidence.json: OK
+entry-integrity.json: OK
+final-snapshot.json: OK
+provenance.md: OK
+reconstruction-check.txt: OK
+
+A broken digest or a missing file invalidates the evidence: the reconstruction
+is not declared.
+
+9. Check of the coordination identifiers
+-----------------------------------------
+
+$ grep -rn "CA-worktree-manager-phase-9" docs/operations/worktree-phase-9/
+(no matches)
+
+$ grep -rn "<absolute-directory-pattern>" docs/operations/worktree-phase-9/
+(no matches)
+
+The only literals that contain a coordination marker inside this directory are
+the historical ref names that identify the base commits, which are required to
+locate them.
+
+10. Delivery
+------------
+
+delivery_main_sync = pending
+No publication was performed on the consumer repository, on the standalone
+origin or on the tag.

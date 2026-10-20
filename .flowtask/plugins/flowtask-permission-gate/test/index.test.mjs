@@ -221,6 +221,10 @@ test("rejects malformed, mixed and dangerous commands", () => {
      "./.flowtask/scripts/worktree.sh complete wt-1 --discard",
      "./.flowtask/scripts/worktree.sh cleanup wt-1 --preserve-dirty",
      "./.flowtask/scripts/worktree.sh create wt-1 --base main --prepare",
+     // El protocolo de request es exclusivo del consumidor: el runner no lo publica.
+     "./.flowtask/scripts/worktree.sh --request-json -",
+     "./.flowtask/scripts/worktree.sh list --request-json /tmp/request.json",
+     "./.opencode/flowtask/scripts/worktree.sh --request-json /tmp/request.json",
   ]) {
     assert.equal(isAuthorizedRunnerCommand(command), false, command);
   }

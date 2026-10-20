@@ -1,11 +1,78 @@
 import { tool } from "@opencode-ai/plugin";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, isAuthorizedWorktreeConsumer, WORKTREE_CONSUMER_TOOL, } from "./authorizer.js";
 import { createWorktreeConsumerBridge } from "./worktree-consumer-bridge.js";
 import { createConfiguredEngramInvoker } from "./engram-mcp.js";
+import { createWorktreeMcpClient } from "./worktree-mcp.js";
 import { buildFallback, isImageOrPdfOutput, loadContextBudgetConfig, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
+/** The nine keys published by the worktree manager for every accepted and rejected request. */
+const PROTOCOL_KEYS = [
+    "contract_version", "tool_version", "operation", "repository",
+    "result", "data", "warnings", "error", "transaction_id",
+];
+/** A document is a protocol envelope only when it publishes every key of the contract. */
+function isProtocolEnvelope(value) {
+    if (!value || typeof value !== "object")
+        return false;
+    const keys = Object.keys(value);
+    return PROTOCOL_KEYS.every((key) => keys.includes(key));
+}
+/**
+ * Client of the worktree manager command line.
+ *
+ * The request travels as one canonical document over `--request-json`; the
+ * legacy argument form is never used, and the manager always answers with the
+ * same envelope, accepted or rejected.
+ */
+export function createWorktreeCliClient(options) {
+    const python = options.python ?? "python3";
+    const managerDirectory = options.managerDirectory;
+    const env = { ...process.env, PYTHONPATH: [managerDirectory, process.env.PYTHONPATH].filter(Boolean).join(":") };
+    function run(request) {
+        const result = spawnSync(python, ["-m", "worktree_manager", "--request-json", "-"], {
+            cwd: managerDirectory,
+            input: JSON.stringify(request),
+            encoding: "utf8",
+            env,
+            timeout: options.timeoutMs ?? 60000,
+        });
+        if (result.error) {
+            const code = result.error.code;
+            // A timeout means the request was delivered but the answer was lost.
+            return { sent: code === "ETIMEDOUT", cause: result.error.message };
+        }
+        let parsed = null;
+        const stdout = (result.stdout ?? "").trim();
+        if (stdout) {
+            try {
+                parsed = JSON.parse(stdout);
+            }
+            catch {
+                parsed = null;
+            }
+        }
+        if (!isProtocolEnvelope(parsed)) {
+            const stderr = (result.stderr ?? "").trim().split("\n").slice(-2).join(" ").trim();
+            return { sent: false, cause: stderr || "the worktree manager does not publish the request protocol" };
+        }
+        return { envelope: parsed, sent: true };
+    }
+    return {
+        async detect() {
+            // The probe is rejected by the protocol itself and never touches the
+            // repository, so the detection stays read-only.
+            const outcome = run({ operation: "worktree_list" });
+            if (outcome.sent && outcome.envelope)
+                return { available: true };
+            return { available: false, cause: outcome.cause };
+        },
+        async invoke(request) {
+            return run(request);
+        },
+    };
+}
 /**
  * Rutas candidatas de configuración, probadas en orden dentro de cada directorio.
  * Precedencia: workdir del commit primero; sessionDir solo como fallback para
@@ -265,6 +332,17 @@ function readStatSizeSafe(args) {
 export default async function (input) {
     const sessionDir = input.directory;
     let dispatchSessionID = "";
+    /**
+     * The standalone checkout that serves the target repository. The target
+     * repository owns its own copy; the session copy is the fallback for a
+     * repository that does not carry the manager.
+     */
+    const managerDirectoryFor = (repoRoot) => {
+        const local = resolve(repoRoot, ".flowtask/scripts/worktree-manager");
+        if (existsSync(local))
+            return local;
+        return resolve(sessionDir, ".flowtask/scripts/worktree-manager");
+    };
     const worktreeConsumer = createWorktreeConsumerBridge({
         invokeEngram: createConfiguredEngramInvoker(sessionDir),
         isDirectory: (path) => { try {
@@ -274,12 +352,17 @@ export default async function (input) {
             return false;
         } },
         listLocalBranches: (repoRoot) => execFileSync("git", ["branch", "--format=%(refname:short)"], { cwd: repoRoot, encoding: "utf8" }).split(/\r?\n/).filter(Boolean),
-        invokeManager: async ({ repoRoot, args }) => {
-            const script = resolve(repoRoot, ".flowtask/scripts/worktree.sh");
-            if (!existsSync(script))
-                throw new Error("worktree manager is unavailable");
-            return { output: execFileSync("bash", [script, ...args], { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }) };
+        detectTransport: async ({ repoRoot }) => {
+            const managerDirectory = managerDirectoryFor(repoRoot);
+            const cli = await createWorktreeCliClient({ managerDirectory }).detect();
+            const mcp = await createWorktreeMcpClient({ managerDirectory }).detect();
+            return {
+                cli: { available: cli.available, cause: cli.cause },
+                mcp: { available: mcp.available, cause: mcp.cause },
+            };
         },
+        invokeCli: async ({ repoRoot, request }) => createWorktreeCliClient({ managerDirectory: managerDirectoryFor(repoRoot) }).invoke(request),
+        invokeMcp: async ({ repoRoot, tool, request }) => createWorktreeMcpClient({ managerDirectory: managerDirectoryFor(repoRoot) }).invoke(tool, request),
         dispatchConstructor: async (record) => input.client.session.prompt({
             path: { id: dispatchSessionID },
             body: { agent: "flowtask-constructor", parts: [{ type: "text", text: `Implement the confirmed worktree association: ${JSON.stringify(record)}` }] },
@@ -296,10 +379,15 @@ export default async function (input) {
             [WORKTREE_CONSUMER_TOOL]: tool({
                 description: "Create and dispatch a worktree consumer operation for the authorized FlowTask runner.",
                 args: {
-                    agent: tool.schema.string(), operation: tool.schema.enum(["create", "complete", "cleanup", "recover", "list", "prune"]),
+                    agent: tool.schema.string(), operation: tool.schema.enum(["create", "complete", "cleanup", "recover", "list", "prune", "status"]),
+                    transport: tool.schema.enum(["cli", "mcp"]).optional(),
                     repo_root: tool.schema.string(), path: tool.schema.string().optional(), branch: tool.schema.string().optional(),
-                    base_branch: tool.schema.string(), work_id: tool.schema.string(), init_submodules: tool.schema.boolean().optional(),
-                    preserve_dirty: tool.schema.boolean().optional(), discard: tool.schema.boolean().optional(), prepare: tool.schema.boolean().optional(), verify: tool.schema.boolean().optional(),
+                    base_branch: tool.schema.string().optional(), work_id: tool.schema.string().optional(), init_submodules: tool.schema.boolean().optional(),
+                    preserve_dirty: tool.schema.boolean().optional(), discard: tool.schema.boolean().optional(), discard_consent: tool.schema.boolean().optional(),
+                    prepare: tool.schema.boolean().optional(), verify: tool.schema.boolean().optional(),
+                    confirm: tool.schema.boolean().optional(), transaction_id: tool.schema.string().optional(), plan_hash: tool.schema.string().optional(),
+                    dry_run: tool.schema.boolean().optional(), target_direct: tool.schema.boolean().optional(),
+                    parent_repo: tool.schema.string().optional(), submodule_path: tool.schema.string().optional(),
                 },
                 async execute(args, context) {
                     if (!isAuthorizedWorktreeConsumer(args.agent, WORKTREE_CONSUMER_TOOL))

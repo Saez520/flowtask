@@ -1,6 +1,13 @@
 import { createWorktreeConsumerAdapter } from "../../../bin/lib/worktree-consumer-adapter.js";
 export const WORKTREE_CONSUMER_TOOL = "flowtask_worktree_consume";
 const ENGRAM_METHODS = new Set(["mem_search", "mem_get_observation", "mem_save"]);
+/** Fields of the canonical request the bridge forwards to the consumer. */
+const REQUEST_FIELDS = [
+    "operation", "transport", "repo_root", "work_id", "base", "worktrees_dir", "branch_prefix",
+    "confirm", "authorization", "transaction_id", "plan_hash", "dry_run", "target_direct",
+    "parent_repo", "submodule_path", "discard_consent", "discard", "init_submodules",
+    "prepare", "verify", "preserve_dirty",
+];
 function resultText(result) {
     if (typeof result === "string")
         return result;
@@ -9,6 +16,22 @@ function resultText(result) {
     if (Array.isArray(result?.content))
         return result.content.map((part) => part?.text ?? "").join("\n");
     throw new Error("Engram response is unreadable");
+}
+/**
+ * Keep only the canonical request fields. The tool arguments also carry the
+ * caller identity and derived paths, and none of them reaches the manager.
+ */
+function sanitize(input) {
+    const request = {};
+    for (const field of REQUEST_FIELDS) {
+        if (input?.[field] !== undefined)
+            request[field] = input[field];
+    }
+    if (request.base === undefined && typeof input?.base_branch === "string")
+        request.base = input.base_branch;
+    if (request.operation === undefined)
+        request.operation = "create";
+    return request;
 }
 export function createWorktreeConsumerBridge(deps) {
     if (!deps || typeof deps.invokeEngram !== "function")
@@ -21,8 +44,9 @@ export function createWorktreeConsumerBridge(deps) {
     const adapter = createWorktreeConsumerAdapter({
         isDirectory: deps.isDirectory,
         listLocalBranches: deps.listLocalBranches,
-        invokeCli: deps.invokeManager,
-        invokeMcp: deps.invokeManager,
+        detectTransport: deps.detectTransport,
+        invokeCli: deps.invokeCli,
+        invokeMcp: deps.invokeMcp,
         async findAssociation(workId) {
             const preview = await callEngram("mem_search", { query: workId, scope: "project", limit: 10 });
             const text = resultText(preview);
@@ -53,7 +77,10 @@ export function createWorktreeConsumerBridge(deps) {
     });
     return {
         async execute(input) {
-            return adapter.createAndDispatch({ ...input, transport: "cli" }, async (record) => {
+            const request = sanitize(input);
+            if (request.operation !== "create")
+                return adapter.execute(request);
+            return adapter.createAndDispatch(request, async (record) => {
                 const constructor = await deps.dispatchConstructor(record);
                 const validator = await deps.dispatchValidator(record);
                 return { constructor, validator };
