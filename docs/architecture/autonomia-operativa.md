@@ -10,6 +10,10 @@ de la implementación siguen siendo obligatorios. Lo que se elimina es la confir
 rutinaria posterior al gate: la orden original del desarrollador que autoriza el trabajo y el
 resultado `PASS` del gate son la señal de inicio.
 
+El paralelismo acotado no relaja estos controles: cada trabajo conserva su Gate, auditoría,
+decisión de pruebas y consentimientos; la integración se serializa y el gasto se atribuye por
+ejecución.
+
 ## Transición automática tras el gate
 
 - **Gate `PASS`** habilita la construcción. El runner informa el resultado en una línea,
