@@ -10,8 +10,10 @@ and no second lifecycle. The retired shell files `lib/worktree-manager-core.sh` 
 `lib/worktree-manager-target-direct.sh` do not exist in the standalone checkout
 and they are not a supported alternative to the package.
 
-The package uses only the Python standard library and centralizes every Git
-subprocess call in one module.
+The package uses only the Python standard library. `worktree_manager.git_repository`
+is the shared Git access point for the lifecycle modules; `cli`, `state_digest`,
+`target_direct_adapter` and `worktree_lifecycle` also invoke `git` directly
+where they need a subprocess outside that wrapper.
 
 ## Module map
 
@@ -21,7 +23,7 @@ subprocess call in one module.
 | `worktree_manager.configuration` | Reading and validation of the `key=value` configuration |
 | `worktree_manager.models` | Shared domain values: results, errors and identities |
 | `worktree_manager.output` | Publication of the result as human-readable text or as JSON |
-| `worktree_manager.git_repository` | Access to Git from a single point |
+| `worktree_manager.git_repository` | Shared Git access for the lifecycle modules |
 | `worktree_manager.worktree_lifecycle` | `create`, `complete`, `cleanup` and `prune` |
 | `worktree_manager.target_direct_adapter` | `target-direct` operations over a submodule |
 | `worktree_manager.recovery_manager` | Recovery of pending transactions |

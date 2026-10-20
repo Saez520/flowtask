@@ -5,7 +5,7 @@
 The standalone entrypoint is `worktree.sh`, a POSIX script that runs
 `python3 -m worktree_manager`. The global options are `--repo ABS`,
 `--config ABS`, `--json` and `--version`. `--version` prints the tool version
-`1.0.0` and rejects any additional argument with exit code `2`.
+`1.0.0`; it accepts `--json` and rejects any other argument with exit code `2`.
 
 The parent-only commands are `create`, `complete`, `cleanup`, `recover`,
 `list`, and `prune`:
@@ -116,10 +116,10 @@ code and does not parse the message.
 ## Request protocol
 
 `--request-json <file|->` reads one canonical request document and publishes
-the nine-key envelope, with or without `--json`. The option must be used
-alone: any other argument, including a subcommand, is rejected as
-`usage_error` with exit code `2`. The source is a file path or `-`, which
-reads the document from standard input.
+the nine-key envelope. The option accepts only the optional `--json`; any other
+argument, including a subcommand, is rejected as `usage_error` with exit code
+`2`. `--json` does not change the published document. The source is a file path
+or `-`, which reads the document from standard input.
 
 The request document names the tool in its `operation` field, with or without
 the `worktree_` prefix, and the envelope publishes the absolute repository path
@@ -157,12 +157,11 @@ is rejected, in both cases before any effect. `dry_run`, `discard`,
 `base`, `transaction_id`, `authorization`, `parent_repo` and `submodule_path`
 are strings.
 
-`confirm` is the canonical confirmation. A destructive operation requires it
-and the manager derives the authorization from it. `authorization` is the
-literal `I_AUTHORIZE_THIS_CALL` and it is not retained between requests. A
-confirmation that disagrees with an authorization is rejected as
-`authorization_mismatch`. A discard requires the separate `discard_consent`
-boolean.
+A destructive execute requires the literal `authorization`, sent directly or
+derived from `confirm: true`. Sending `confirm: false` with the literal is
+rejected as `authorization_mismatch`. The literal is `I_AUTHORIZE_THIS_CALL`
+and it is not retained between requests. A dry run is exempt. A discard
+requires `discard_consent`.
 
 `plan_hash` is the SHA-256 of the canonical plan of the request, published as
 64 hexadecimal characters, and any other form is rejected as

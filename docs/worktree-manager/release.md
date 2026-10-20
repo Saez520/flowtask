@@ -17,18 +17,20 @@ recorded as a gap.
   the later language phase.
 - [ ] Confirm the previous phase artifacts and the protected artifacts of the
   other phases are untouched.
+- [ ] Confirm that the published tags and the transition history are the only
+  trace of the purged evidence.
 
 ## Source gate
 
 - [ ] Confirm the base commit, the registered gitlink and the head of the
   materialized submodule are the ones declared by the phase, and that they did
   not move.
-- [ ] Confirm the digests of the phase evidence verify with
-  `shasum -a 256 -c SHA256SUMS` before the comparison.
+- [ ] Confirm that the registered gitlink and the head of the materialized
+  submodule are the same commit, and that the commit exists on the remote.
 - [ ] Confirm every source consulted for the comparison is available in this
-  checkout: the standalone entrypoint, the package, the standalone contracts,
-  the consumer entrypoint, the adapter, the integration document and the
-  evidence of the phases.
+  checkout: the standalone entrypoint, the package, the manager contracts and
+  the transition history, the consumer entrypoint, the adapter and the
+  integration document.
 - [ ] Record every unavailable source as a named gap instead of replacing it
   with an inferred behavior.
 
@@ -90,8 +92,8 @@ recorded as a gap.
 - [ ] Confirm that a mismatch between a document and a source is resolved in
   the document or recorded as a gap; the publication does not continue with a
   known mismatch.
-- [ ] Confirm that the digests of the phase evidence still verify after the
-  change.
+- [ ] Confirm that the published tags and the transition history remain the
+  only trace of the purged evidence, and that no phase digest is republished.
 
 ## Publication and rollback gate
 

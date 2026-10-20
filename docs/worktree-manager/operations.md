@@ -27,13 +27,14 @@ backup and transaction evidence remain for human intervention.
 No documentation procedure should imply implicit discard, automatic merge,
 automatic push, or recovery that silently removes state.
 
-The manager publishes the consent of a call in the request itself. A destructive
-operation requires the canonical confirmation, and the manager derives the
-authorization from it. The authorization value is the literal
-`I_AUTHORIZE_THIS_CALL` and it is not retained between requests. A discard
-requires a separate `discard_consent` boolean, and a confirmation that
-disagrees with an authorization is rejected as `authorization_mismatch`. A
-confirmation and an authorization are never resolved silently.
+The manager publishes the consent of a call in the request itself. A
+destructive execute requires the literal `authorization`, sent directly or
+derived from `confirm: true`. The authorization value is the literal
+`I_AUTHORIZE_THIS_CALL` and it is not retained between requests. A dry run is
+exempt. A discard requires a separate `discard_consent` boolean, and a
+confirmation that disagrees with an authorization is rejected as
+`authorization_mismatch`. A confirmation and an authorization are never
+resolved silently.
 
 ## Validation before the lock
 

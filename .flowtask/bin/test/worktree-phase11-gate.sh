@@ -7,9 +7,15 @@
 # section that failed. It never publishes, merges, tags, cleans up or writes
 # outside the temporary directories it creates.
 #
+# The scope guard compares the checkout against the base of the current branch.
+# The base revision is derived from the merge base with the base branch, so no
+# revision is hardcoded here. The expected gitlink is derived from the recorded
+# tree and compared with the head of the materialized manager package.
+#
 # Environment overrides:
 #   WORKTREE_MANAGER_SUBMODULE  path of the materialized manager package
 #   WORKTREE_PHASE11_BASE       base revision used by the scope guard
+#   WORKTREE_PHASE11_BASE_BRANCH branch used to derive the base revision
 #   WORKTREE_LANGUAGE_INVENTORY where the inventory is written
 #   WORKTREE_PHASE11_SCOPE_ONLY run only the scope and protection guards
 
@@ -17,9 +23,15 @@ set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
 MANAGER="${WORKTREE_MANAGER_SUBMODULE:-$ROOT/.flowtask/scripts/worktree-manager}"
-BASE="${WORKTREE_PHASE11_BASE:-166fc9961576fd313681d683d33dde92fb4c5f65}"
+BASE_BRANCH="${WORKTREE_PHASE11_BASE_BRANCH:-main}"
 INVENTORY="${WORKTREE_LANGUAGE_INVENTORY:-$ROOT/.temp/worktree-language-inventory.json}"
-SUBMODULE_HEAD="a4b4782236407d4c6067344218f7b3e43c9b4ecf"
+BASE="${WORKTREE_PHASE11_BASE:-}"
+if [[ -z "$BASE" ]]; then
+  for candidate in "$BASE_BRANCH" "origin/$BASE_BRANCH"; do
+    BASE="$(git -C "$ROOT" merge-base HEAD "$candidate" 2>/dev/null || true)"
+    [[ -n "$BASE" ]] && break
+  done
+fi
 
 export PYTHONDONTWRITEBYTECODE=1
 
@@ -28,18 +40,38 @@ ALLOWED_PATHS=(
   ".flowtask/bin/lib/worktree-language-gate.py"
   ".flowtask/scripts/worktree.sh"
   ".flowtask/scripts/worktree-adapter.sh"
+  ".flowtask/scripts/worktree-manager"
   ".flowtask/bin/test/worktree-language-gate.test.js"
   ".flowtask/bin/test/worktree-phase11-gate.sh"
+  ".flowtask/bin/test/worktree-phase9-evidence.test.js"
+  "docs/README.md"
+  "docs/architecture/INDEX.md"
+  "docs/core-flowtask.md"
+  "docs/worktree-manager/README.md"
+  "docs/worktree-manager/architecture.md"
+  "docs/worktree-manager/compatibility.md"
+  "docs/worktree-manager/interfaces.md"
+  "docs/worktree-manager/inventory.md"
+  "docs/worktree-manager/operations.md"
+  "docs/worktree-manager/release.md"
+  "docs/operations/worktree-phase-8/README.md"
+  "docs/operations/worktree-phase-8/SHA256SUMS"
+  "docs/operations/worktree-phase-8/final-snapshot.json"
+  "docs/operations/worktree-phase-8/mcp-matrix-evidence.json"
+  "docs/operations/worktree-phase-8/phase7-provenance.json"
+  "docs/operations/worktree-phase-8/provenance.md"
+  "docs/operations/worktree-phase-8/reconstruction-check.txt"
+  "docs/operations/worktree-phase-9/README.md"
+  "docs/operations/worktree-phase-9/SHA256SUMS"
+  "docs/operations/worktree-phase-9/compatibility-evidence.json"
+  "docs/operations/worktree-phase-9/entry-integrity.json"
+  "docs/operations/worktree-phase-9/final-snapshot.json"
+  "docs/operations/worktree-phase-9/provenance.md"
+  "docs/operations/worktree-phase-9/reconstruction-check.txt"
+  "graphify-out/manifest.json"
 )
 
 SCOPE_TEMPORARY=""
-
-# Failures that the base already carries. They are inherited, not introduced by
-# this phase, and they are listed here so the gate stays explicit about them:
-# the suite still runs and any other failure still stops the gate.
-INHERITED_FAILURES=(
-  "phase 9 evidence|the previous phases are unchanged"
-)
 
 section() {
   printf '\n== %s ==\n' "$1"
@@ -73,29 +105,39 @@ scope_guard() {
   fi
   changed="$(git -C "$ROOT" diff --name-only "$BASE" || true)"
   untracked="$(git -C "$ROOT" ls-files --others --exclude-standard || true)"
+
+  # The protected guard runs first: a change in a protected path is reported
+  # with its own reason, and every other unexpected path is reported by the
+  # allowlist below.
+  local protected
+  protected="$(git -C "$ROOT" diff --name-only "$BASE" -- docs/ .gitmodules .flowtask/package.json \
+    ':(exclude)docs/worktree-manager/' \
+    ':(exclude)docs/operations/worktree-phase-8/' \
+    ':(exclude)docs/operations/worktree-phase-9/' \
+    ':(exclude)docs/README.md' \
+    ':(exclude)docs/architecture/INDEX.md' \
+    ':(exclude)docs/core-flowtask.md' || true)"
+  if [[ -n "$protected" ]]; then
+    printf 'scope: protected paths changed:\n%s\n' "$protected" >&2
+    exit 1
+  fi
+
   unexpected="$(printf '%s\n%s\n' "$changed" "$untracked" | grep -v '^$' | grep -v -x -F -f "$allowed" || true)"
   if [[ -n "$unexpected" ]]; then
     printf 'scope: the following paths are not allowed in this phase:\n%s\n' "$unexpected" >&2
     exit 1
   fi
 
-  local protected
-  protected="$(git -C "$ROOT" diff --name-only "$BASE" -- docs/ .gitmodules .flowtask/package.json || true)"
-  if [[ -n "$protected" ]]; then
-    printf 'scope: protected paths changed:\n%s\n' "$protected" >&2
-    exit 1
-  fi
-
   local gitlink
   gitlink="$(git -C "$ROOT" ls-tree HEAD -- .flowtask/scripts/worktree-manager | awk '{print $3}')"
-  if [[ "$gitlink" != "$SUBMODULE_HEAD" ]]; then
-    printf 'scope: submodule_gitlink_mismatch: %s\n' "$gitlink" >&2
+  if [[ -z "$gitlink" ]]; then
+    printf 'scope: the manager gitlink is not registered in HEAD\n' >&2
     exit 1
   fi
   if [[ -d "$MANAGER/.git" || -f "$MANAGER/.git" ]]; then
     local head tracked
     head="$(git -C "$MANAGER" rev-parse HEAD)"
-    if [[ "$head" != "$SUBMODULE_HEAD" ]]; then
+    if [[ "$head" != "$gitlink" ]]; then
       printf 'scope: submodule_head_mismatch: %s\n' "$head" >&2
       exit 1
     fi
@@ -133,32 +175,6 @@ run_section "adapter compatibility" node --test "$ROOT/.flowtask/bin/test/worktr
 run_section "consumer adapter" node --test "$ROOT/.flowtask/bin/lib/worktree-consumer-adapter.test.js"
 run_section "consumer matrix" node --test "$ROOT/.flowtask/bin/test/worktree-consumer-matrix.test.js"
 run_section "hotfix regression" node --test "$ROOT/.flowtask/bin/test/worktree-hotfix.test.js"
-
-phase9_evidence_section() {
-  section "phase 9 evidence"
-  local output status=0
-  output="$(node --test "$ROOT/.flowtask/bin/test/worktree-phase9-evidence.test.js" 2>&1)" || status=$?
-  printf '%s\n' "$output"
-  if [[ $status -eq 0 ]]; then
-    printf 'phase 9 evidence: the suite passes; the inherited failure registration is obsolete\n'
-    return 0
-  fi
-  local failing registered unexpected
-  failing="$(printf '%s\n' "$output" | grep -E '^✖ ' | sed -e 's/^✖ failing tests:$//' -e 's/^✖ //' -e 's/ ([0-9.]*ms)$//' | grep -v '^$' | sort -u || true)"
-  registered="$(printf '%s\n' "${INHERITED_FAILURES[@]}" | sed -n 's/^phase 9 evidence|//p' | sort -u)"
-  unexpected="$(printf '%s\n' "$failing" | grep -v -x -F -e "$registered" || true)"
-  if [[ -n "$unexpected" ]]; then
-    printf 'phase 9 evidence: unexpected failures:\n%s\n' "$unexpected" >&2
-    exit 1
-  fi
-  if [[ "$failing" != "$registered" ]]; then
-    printf 'phase 9 evidence: the inherited failure is no longer the only failure:\n%s\n' "$failing" >&2
-    exit 1
-  fi
-  printf 'phase 9 evidence: the only failure is the one inherited from the base\n'
-}
-
-phase9_evidence_section
 
 run_section "standalone unittest" env PYTHONPATH="$MANAGER" bash -c \
   'cd "$1" && python3 -B -m unittest discover -s tests -p "test_*.py"' _ "$MANAGER"

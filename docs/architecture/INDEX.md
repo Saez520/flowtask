@@ -9,7 +9,6 @@ Este índice contiene referencias actuales, no un snapshot Repomix. Los diseños
 - [validacion.md](./validacion.md) — validación en caliente, evidencia ejecutada y veredicto único; contrastar con `.flowtask/agents/validator.md` y `validation-contract`.
 - [verificacion-material.md](./verificacion-material.md) — verificación material, evidencia citable y herencia entre roles; contrastar con `.flowtask/skills/zero-assumptions/SKILL.md`.
 - [worktree.md](./worktree.md) — create, complete, cleanup, recover, prune, list y target-direct; contrastar con `.flowtask/scripts/worktree.sh` y `.flowtask/scripts/worktree-manager/`.
-- [Evidencia de la retirada del acoplamiento legacy](../operations/worktree-phase-9/README.md) — gate de entrada, compatibilidad declarada, snapshot y digests de la fase.
 - [integracion-skills.md](./integracion-skills.md) — carga directa desde `.flowtask/skills` mediante `skill({ name: ... })`.
 - [Worktree Manager documentation](../worktree-manager/README.md) — English architecture and release documentation for the implemented manager.
 

@@ -207,8 +207,9 @@ La ruta CA2 target-direct requiere target explícito (`--repo` del submodule,
 `--parent-repo`, `--target submodule` y `--submodule-path`). El parent sólo
 puede recibir un gitlink staged mediante `link-parent --link-parent staged-only`;
 no se crea un worktree parent ni se hace commit, push o merge. `abort` usa el
-snapshot binario del índice y bloquea ante drift ajeno. Esta ruta exige
-exactamente Git 2.54.0; parent-only conserva su contrato anterior.
+snapshot binario del índice y bloquea ante drift ajeno. El gestor requiere Git
+2.17.0 o posterior (`git worktree remove`); la versión no se comprueba en
+tiempo de ejecución. Parent-only conserva su contrato anterior.
 
 ---
 

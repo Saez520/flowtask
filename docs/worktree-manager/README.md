@@ -18,10 +18,6 @@ exit codes, and other technical literals remain exactly as implemented.
 5. [Compatibility](compatibility.md) — standalone and consumer-facing matrices
    of compatibility and deprecation.
 6. [Release](release.md) — publication gates and rollback handling.
-7. [Phase evidence](../operations/worktree-phase-9/README.md) — provenance,
-   snapshot, compatibility matrix, and digests of the phase that retired the
-   legacy coupling, with the [integration phase evidence](../operations/worktree-phase-8/README.md)
-   of the previous phase.
 
 ## Source policy
 
