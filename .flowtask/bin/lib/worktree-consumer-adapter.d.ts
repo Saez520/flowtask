@@ -1,8 +1,25 @@
+export type WorktreeConsumerTransportOutcome = {
+  envelope?: unknown;
+  sent?: boolean;
+  cause?: string;
+};
+
+export type WorktreeConsumerTransportAvailability = {
+  available: boolean;
+  cause?: string;
+};
+
+export type WorktreeConsumerTransportDetection = {
+  mcp?: boolean | WorktreeConsumerTransportAvailability;
+  cli?: boolean | WorktreeConsumerTransportAvailability;
+};
+
 export type WorktreeConsumerDependencies = {
   isDirectory(path: string): boolean;
   listLocalBranches(repoRoot: string): string[];
-  invokeCli(input: { repoRoot: string; args: string[] }): Promise<unknown>;
-  invokeMcp(input: { repoRoot: string; tool: string; args: string[] }): Promise<unknown>;
+  detectTransport(input: { repoRoot: string }): Promise<WorktreeConsumerTransportDetection>;
+  invokeCli(input: { repoRoot: string; request: Record<string, unknown> }): Promise<WorktreeConsumerTransportOutcome>;
+  invokeMcp(input: { repoRoot: string; tool: string; request: Record<string, unknown> }): Promise<WorktreeConsumerTransportOutcome>;
   findAssociation?(workId: string): Promise<Record<string, unknown> | null>;
   persistAssociation(record: Record<string, unknown>): Promise<void>;
 };

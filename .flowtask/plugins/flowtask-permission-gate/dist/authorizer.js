@@ -334,6 +334,10 @@ export function isAuthorizedRunnerCommand(command) {
             return tokens.length > 3;
         const worktreeScript = tokens[0].replaceAll("\\", "/");
         if (worktreeScript === "./.flowtask/scripts/worktree.sh" || worktreeScript.endsWith("/flowtask/scripts/worktree.sh")) {
+            // The request protocol is reserved for the consumer: the runner never
+            // publishes a canonical request through the shell.
+            if (tokens.includes("--request-json"))
+                return false;
             if (tokens.length === 2 && ["list", "prune"].includes(tokens[1]))
                 return true;
             if (tokens[1] === "recover" && tokens.length <= 3)
