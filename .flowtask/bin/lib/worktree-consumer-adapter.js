@@ -9,6 +9,13 @@ import {
 
 const REQUIRED = ["isDirectory", "listLocalBranches", "detectTransport", "invokeCli", "invokeMcp", "persistAssociation"];
 
+/** The safe continuation the operator has to take after each failed phase. */
+const NEXT_ACTION = Object.freeze({
+  uncertain: "reconcile the operation before any retry",
+  rejected: "resolve the reported cause and plan the request again",
+  unavailable: "make a transport available and plan the request again",
+});
+
 /** Normalize the detection report published by the host of the consumer. */
 function normalizeDetection(detected) {
   const read = (value) => {
@@ -106,8 +113,8 @@ export function createWorktreeConsumerAdapter(deps) {
 
   async function resolveSecondary(request, primary, detection) {
     const other = primary === "mcp" ? "cli" : "mcp";
-    const detected = detection ?? await detect(request.repo_root);
-    return detected[other].available ? other : null;
+    const observed = detection ?? await detect(request.repo_root);
+    return { secondary: observed[other].available ? other : null, detection: observed };
   }
 
   /**
@@ -116,11 +123,14 @@ export function createWorktreeConsumerAdapter(deps) {
    */
   async function attemptWithFallback(request, selection) {
     const primary = selection.primary;
-    if (!primary) return { attempt: null, attempts: [], transport: null };
+    if (!primary) {
+      const detection = selection.detection ?? await detect(request.repo_root);
+      return { attempt: null, attempts: [], transport: null, detection };
+    }
     const first = await runOperation(primary, request);
     if (first.attempt.status !== "unavailable") return { ...first, transport: primary };
-    const secondary = await resolveSecondary(request, primary, selection.detection);
-    if (!secondary) return { ...first, transport: primary };
+    const { secondary, detection } = await resolveSecondary(request, primary, selection.detection);
+    if (!secondary) return { ...first, transport: primary, detection };
     const second = await runOperation(secondary, request);
     return {
       attempt: second.attempt,
@@ -181,6 +191,7 @@ export function createWorktreeConsumerAdapter(deps) {
         effective_transport: outcome.transport ?? selection.primary ?? undefined,
         attempts: outcome.attempts,
       };
+      if (outcome.detection) summary.detection = outcome.detection;
       if (outcome.fallback_reason) {
         summary.fallback_reason = outcome.fallback_reason;
         summary.fallback_from = outcome.fallback_from;
@@ -188,17 +199,34 @@ export function createWorktreeConsumerAdapter(deps) {
 
       const attempt = outcome.attempt;
       if (!attempt) {
-        return { ...summary, status: "blocked", reason: "no worktree transport is available" };
+        return { ...summary, status: "blocked", reason: "no worktree transport is available", next_action: NEXT_ACTION.unavailable };
       }
       if (attempt.status === "unavailable") {
-        return { ...summary, status: "blocked", reason: `worktree transport is unavailable: ${attempt.cause ?? "unknown cause"}` };
+        return {
+          ...summary,
+          status: "blocked",
+          reason: `worktree transport is unavailable: ${attempt.cause ?? "unknown cause"}`,
+          next_action: NEXT_ACTION.unavailable,
+        };
       }
       if (attempt.status === "uncertain") {
-        return { ...summary, status: "uncertain", reason: "transport outcome is unknown; reconcile before retry", error: attempt.cause };
+        return {
+          ...summary,
+          status: "uncertain",
+          reason: "transport outcome is unknown; reconcile before retry",
+          next_action: NEXT_ACTION.uncertain,
+          error: attempt.cause,
+        };
       }
       if (attempt.status === "rejected") {
         const error = attempt.envelope.error ?? {};
-        return { ...summary, status: statusForErrorCode(error.code), reason: error.message, error };
+        return {
+          ...summary,
+          status: statusForErrorCode(error.code),
+          reason: error.message,
+          next_action: NEXT_ACTION.rejected,
+          error,
+        };
       }
 
       const envelope = attempt.envelope;

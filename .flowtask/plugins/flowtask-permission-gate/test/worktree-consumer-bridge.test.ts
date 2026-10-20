@@ -122,3 +122,18 @@ test("does not dispatch when the operation is not successful", async () => {
   assert.equal(result.status, "blocked");
   assert.equal(result.dispatch_result, undefined);
 });
+
+test("publishes the report of a rejected phase with its cause and its next action", async () => {
+  const { bridge } = fixture({
+    invokeCli: async () => ({
+      envelope: envelope({ result: "failure", error: { code: "plan_mismatch", message: "Repository state or request changed since preflight", exit_code: 5 } }),
+      sent: true,
+    }),
+  });
+  const result = await bridge.execute({ operation: "cleanup", repo_root: "/repo", work_id: "alpha", confirm: true });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.error.code, "plan_mismatch");
+  assert.equal(result.reason, "Repository state or request changed since preflight");
+  assert.ok(result.next_action);
+  assert.equal(result.transaction_id, undefined);
+});

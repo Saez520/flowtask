@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createWorktreeConsumerAdapter } from "./worktree-consumer-adapter.js";
 
 const PLAN_HASH = "a".repeat(64);
@@ -285,4 +288,85 @@ test("dispatches only after a confirmed association", async () => {
   });
   assert.equal(result.status, "success");
   assert.equal(dispatched, true);
+});
+
+test("names the next action of every failed phase", async () => {
+  const rejected = fixture({
+    invokeMcp: async () => ({
+      envelope: envelope({ result: "failure", error: { code: "plan_mismatch", message: "Repository state or request changed since preflight", exit_code: 5 } }),
+      sent: true,
+    }),
+  });
+  const rejectedResult = await rejected.adapter.execute(input({ transport: "mcp" }));
+  assert.equal(rejectedResult.status, "blocked");
+  assert.ok(rejectedResult.next_action);
+  assert.match(rejectedResult.next_action, /plan the request again/);
+
+  const uncertain = fixture({
+    invokeMcp: async () => { throw Object.assign(new Error("connection reset"), { sent: true }); },
+  });
+  const uncertainResult = await uncertain.adapter.execute(input({ transport: "mcp" }));
+  assert.equal(uncertainResult.status, "uncertain");
+  assert.match(uncertainResult.next_action, /reconcile/);
+
+  const unavailable = fixture({
+    invokeMcp: async () => ({ envelope: null, sent: false, cause: "mcp server is unavailable" }),
+    detectTransport: async () => ({
+      mcp: { available: true, cause: "mcp server is unavailable" },
+      cli: { available: false, cause: "the worktree manager does not support the request protocol" },
+    }),
+  });
+  const unavailableResult = await unavailable.adapter.execute(input({ transport: "mcp" }));
+  assert.equal(unavailableResult.status, "blocked");
+  assert.match(unavailableResult.next_action, /make a transport available/);
+});
+
+test("reports the cause of every transport when the chosen one cannot take the request", async () => {
+  const { adapter } = fixture({
+    invokeMcp: async () => ({ envelope: null, sent: false, cause: "mcp server is unavailable" }),
+    detectTransport: async () => ({
+      mcp: { available: true, cause: "mcp server is unavailable" },
+      cli: { available: false, cause: "the worktree manager does not support the request protocol" },
+    }),
+  });
+  const result = await adapter.execute(input({ transport: "mcp" }));
+  assert.equal(result.status, "blocked");
+  assert.match(result.reason, /mcp server is unavailable/);
+  assert.equal(result.detection.cli.available, false);
+  assert.equal(result.detection.cli.cause, "the worktree manager does not support the request protocol");
+  assert.equal(result.detection.mcp.cause, "mcp server is unavailable");
+});
+
+test("keeps the identity of a repository that is reached through a symbolic link", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "wt-consumer-"));
+  const repository = path.join(root, "repository");
+  const link = path.join(root, "link");
+  fs.mkdirSync(repository);
+  fs.symlinkSync(repository, link);
+
+  const worktree = path.join(fs.realpathSync(repository), ".worktrees", "alpha_1");
+  const associations = new Map();
+  const { adapter } = fixture({
+    isDirectory: (target) => { try { return fs.statSync(target).isDirectory(); } catch { return false; } },
+    invokeCli: async ({ request }) => ({
+      envelope: envelope({
+        operation: request.operation,
+        data: request.dry_run === true
+          ? { plan_hash: PLAN_HASH }
+          : { path: worktree, branch: "worktree/alpha_1", base_branch: "main" },
+      }),
+      sent: true,
+    }),
+    persistAssociation: async (record) => { associations.set(record.work_id, record); },
+    findAssociation: async (workId) => associations.get(workId) ?? null,
+  });
+
+  const created = await adapter.execute({ operation: "create", repo_root: link, work_id: "alpha_1" });
+  assert.equal(created.status, "success");
+  assert.equal(associations.get("alpha_1").repo_root, fs.realpathSync(repository));
+
+  // The same work, addressed through the symbolic link, is the same work.
+  const status = await adapter.execute({ operation: "status", repo_root: link, work_id: "alpha_1" });
+  assert.equal(status.status, "success");
+  fs.rmSync(root, { recursive: true, force: true });
 });

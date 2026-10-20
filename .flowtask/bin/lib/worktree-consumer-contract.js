@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 const WORK_ID_SEGMENT = /^[A-Za-z0-9._-]+$/;
@@ -75,6 +76,17 @@ function requireIdentifier(request, key) {
 }
 
 /**
+ * The real path of a directory.
+ *
+ * The manager resolves the repository and publishes the paths it derives from
+ * it, so the consumer compares the same identity and never reports a mismatch
+ * for a repository that is reached through a symbolic link.
+ */
+function resolveRealPath(target) {
+  try { return fs.realpathSync(target); } catch { return target; }
+}
+
+/**
  * Validate the single canonical consumer request and normalize it into the
  * frozen shape used by the adapter, the bridge and the transport mapping.
  */
@@ -90,7 +102,7 @@ export function validateWorktreeRequest(request, deps) {
   if (typeof repoRoot !== "string" || !path.isAbsolute(repoRoot) || !deps.isDirectory(repoRoot)) {
     throw new TypeError("repo_root must be an existing absolute directory");
   }
-  const resolvedRepo = path.resolve(repoRoot);
+  const resolvedRepo = resolveRealPath(path.resolve(repoRoot));
 
   const transport = request.transport ?? undefined;
   if (transport !== undefined && transport !== "cli" && transport !== "mcp") throw new TypeError("transport must be cli or mcp");
