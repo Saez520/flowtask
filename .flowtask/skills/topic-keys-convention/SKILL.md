@@ -41,6 +41,10 @@ Cada topic_key tiene un **owner** que es el único agente (o grupo) autorizado a
 | `flow-state/{ID}/init` | Initializer | Estado del flujo Initializer | Runner |
 | `flow-state/CA-{ID}/inspect` | Inspector | Estado del flujo Inspector | Runner |
 | `flow-state/CA-{ID}/instances` | Runner | Mapa de instancias del CA | Runner (escritura exclusiva) |
+| `flow-state/{execution_id}/progress` | Runner | Registro de progreso verificable por ronda | Todos (read-only) |
+| `flow-state/{execution_id}/termination` | Runner | Registro de pausas, reanudaciones y cierres | Todos (read-only) |
+| `flow-state/{execution_id}/idempotency` | Runner y Constructor (secuencial por ejecución) | Ledger de idempotencia: identidad, intentos y constancias | Runner, Constructor, Validator, Inspector |
+| `flow-state/{execution_id}/budget` | Runner | Registro de gasto por objetivo | Todos (read-only) |
 | `flow-state/no-ca/{agente}/{operation-id}` | Agentes ligeros sin CA | Estado de operación independiente | Runner |
 | `project/stack` | Initializer (owner) / onboarder (excepción) | Stack tecnológico del proyecto | Todos (read-only) |
 | `project/conventions` | Initializer | Convenciones generales del proyecto | Todos (read-only) |
@@ -58,6 +62,8 @@ Cada topic_key tiene un **owner** que es el único agente (o grupo) autorizado a
 
 > **Nota — Pendientes**: La escritura compartida de `pending/*` es cooperativa por responsabilidad. Cada escritor actualiza únicamente el slug que creó o que está tratando en su contexto; no se sobreescriben pendientes ajenos sin coordinación explícita. Al promover un pendiente a un CA, se conserva `pending/{slug}` como registro separado y se crea o actualiza el artifacto canónico `ca/CA-{ID}/artifact/{filename}`; la promoción no elimina ni migra el registro pendiente.
 
+> **Nota — Registros de ejecución**: los cuatro namespaces `flow-state/{execution_id}/{sufijo}` son registros operativos de una ejecución: **no son checkpoints de subagente**, no habilitan la reanudación y no sustituyen el estado por subagente. Los contextos, checks y reportes de invariantes se adjuntan al resultado durable de la ronda y no tienen `topic_key` propio.
+
 ---
 
 ## Excepción de Ownership: `project/stack` para Onboarder
@@ -70,7 +76,7 @@ Esta excepción está documentada en `memory-contract` y el onboarder la referen
 
 ## flow-state Sub-namespaces
 
-`flow-state/{CA-ID}` **NUNCA** se usa directamente. SIEMPRE se usa con un sub-namespace del agente:
+`flow-state/{CA-ID}` y `flow-state/{execution_id}` **NUNCA** se usan directamente. Siempre se usan con un sub-namespace: el del agente cuando el registro es el estado de un agente, o el del registro de ejecución cuando el registro es operativo de una ejecución.
 
 | Sub-namespace | Agente que escribe | Ejemplo |
 |---------------|--------------------|---------|
@@ -84,6 +90,12 @@ Esta excepción está documentada en `memory-contract` y el onboarder la referen
 | `flow-state/{ID}/logging` | Logger | `flow-state/CA-021/logging` |
 | `flow-state/{ID}/init` | Initializer | `flow-state/CA-021/init` |
 | `flow-state/CA-{ID}/inspect` | Inspector | `flow-state/CA-021/inspect` |
+| `flow-state/{execution_id}/progress` | Runner | `flow-state/CA-021-20261019T193000Z/progress` |
+| `flow-state/{execution_id}/termination` | Runner | `flow-state/CA-021-20261019T193000Z/termination` |
+| `flow-state/{execution_id}/idempotency` | Runner y Constructor (secuencial por ejecución) | `flow-state/CA-021-20261019T193000Z/idempotency` |
+| `flow-state/{execution_id}/budget` | Runner | `flow-state/CA-021-20261019T193000Z/budget` |
+
+Los sufijos `progress`, `termination`, `idempotency` y `budget` no son sub-namespaces de agente: registran la ejecución. El `execution_id` no es un `task_id` ni un checkpoint.
 
 **Regla**: Cada agente escribe SOLO a su sub-namespace. Runner lee todos.
 
@@ -129,6 +141,9 @@ La herramienta te sugerirá un topic_key estable y apropiado.
 
 - **NUNCA** escribas a `project/{layer}` si no eres Initializer
 - **NUNCA** uses `flow-state/{CA-ID}` sin sub-namespace de agente
+- **NUNCA** uses `flow-state/{execution_id}` sin sufijo
+- **NUNCA** escribas en un registro de ejecución si tu rol no es su owner
+- **NUNCA** trates un registro de ejecución como checkpoint
 - **NUNCA** compartas un topic_key entre agentes sin verificar ownership primero
 - **SIEMPRE** busca (`mem_search`) antes de asumir que un topic_key está libre
 - **SIEMPRE** usa `mem_suggest_topic_key` cuando tengas dudas sobre la key correcta

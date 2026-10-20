@@ -22,7 +22,7 @@ Para el protocolo de uso específico de checkpoints, cargá `checkpoint-mixin`.
 
 ## Namespaces Canónicos
 
-Todo `topic_key` sigue el formato `{namespace}/CA-{ID}[/{sub-namespace}]`.
+Todo `topic_key` sigue una de estas formas: `{namespace}/CA-{ID}[/{sub-namespace}]`, `flow-state/{execution_id}/{sufijo}` o `pending/{slug}`.
 
 | Namespace | Owner | Lectores | Tipo de payload |
 |-----------|-------|----------|-----------------|
@@ -44,6 +44,10 @@ Todo `topic_key` sigue el formato `{namespace}/CA-{ID}[/{sub-namespace}]`.
 | `flow-state/{ID}/init` | initializer | Runner | `decision` |
 | `flow-state/CA-{ID}/inspect` | inspector | Runner | `decision` |
 | `flow-state/CA-{ID}/instances` | runner | Runner (escritura exclusiva) | `decision` |
+| `flow-state/{execution_id}/progress` | runner | Todos (read-only) | `decision` |
+| `flow-state/{execution_id}/termination` | runner | Todos (read-only) | `decision` |
+| `flow-state/{execution_id}/idempotency` | runner y constructor (secuencial por ejecución) | Runner, Constructor, Validator, Inspector | `decision` |
+| `flow-state/{execution_id}/budget` | runner | Todos (read-only) | `decision` |
 | `flow-state/no-ca/{agente}/{operation-id}` | agentes ligeros sin CA | Runner | `decision` |
 | `project/stack` | initializer (owner) / onboarder (excepción: snapshot vigente) | Todos (read-only) | `config` |
 | `project/conventions` | initializer | Todos (read-only) | `pattern` |
@@ -58,9 +62,12 @@ Todo `topic_key` sigue el formato `{namespace}/CA-{ID}[/{sub-namespace}]`.
 | `pending/{slug}` | runner, ca-writer, inspector (escritura compartida) | Agentes que necesiten conocer pendientes | `pending` |
 
 **Reglas**:
-- Prefijo `CA-` obligatorio en el ID (ej: `flow-state/CA-search-integration/plan`).
+- Prefijo `CA-` obligatorio en el ID (ej: `flow-state/CA-search-integration/plan`), con excepción para `flow-state/{execution_id}/*` y `pending/{slug}`.
+- `execution_id` tiene la forma `{work_id}-{YYYYMMDDTHHMMSSZ}` en UTC, con `work_id` `CA-{ID}` o `HF-{slug}`.
 - `pending/{slug}` es una excepción explícita al prefijo `CA-` obligatorio.
-- `flow-state/{CA-ID}` **NUNCA** se usa sin sub-namespace de agente.
+- `flow-state/{CA-ID}` y `flow-state/{execution_id}` **NUNCA** se usan sin sub-namespace.
+- Los sub-namespaces `progress`, `termination`, `idempotency` y `budget` son registros operativos de una ejecución: no son checkpoints y no habilitan la continuidad de subagentes.
+- Los contextos, verificaciones y reportes de invariantes se adjuntan al resultado durable de la ronda y no tienen `topic_key` propio.
 - Cada agente escribe **SOLO** sus namespaces autorizados.
 
 ---
@@ -133,6 +140,19 @@ interface SessionSummary {
 ```
 
 El contrato completo de `mem_session_summary` vive en este skill. Los agentes lo invocan sin redefinirlo.
+
+### Registros operativos del Agent Loop
+
+Los registros operativos del Agent Loop se persisten también como observaciones `decision`. Este contrato fija su nombre, owner, lectores y tipo; los schemas pertenecen a la skill que los define.
+
+| Registro | Schema | Documento | Skill que lo define |
+|----------|--------|-----------|---------------------|
+| Progreso | `agent-loop-progress/v1` | `ProgressRecord v1` | `agent-loop-progress` |
+| Terminación | `agent-loop-termination/v1` | `TerminationRecord v1` | `agent-loop-termination` |
+| Idempotencia | `agent-loop-idempotency/v1` | `IdempotencyRecord v1` | `agent-loop-idempotency` |
+| Gasto | `agent-loop-budget/v1` | `BudgetRecord v1` | `agent-loop-budget` |
+
+Los contextos, verificaciones y reportes de invariantes no aparecen en esta tabla: se adjuntan al resultado durable de la ronda y no poseen namespace propio.
 
 ---
 

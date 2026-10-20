@@ -180,6 +180,11 @@ skill({ name: "manual-classification" })  ← cargar si no hay clasificación in
 skill({ name: "handshake-protocol" })     ← cargar antes de invocar subagentes
 ```
 
+Cuando se activa una ejecución del Agent Loop se cargan además las cinco skills
+`agent-loop-progress`, `agent-loop-invariants`, `agent-loop-termination`,
+`agent-loop-idempotency` y `agent-loop-budget`. La composición de esos contratos
+se rige por `## Control del Agent Loop`.
+
 Al iniciar cada conversación se carga `investigacion` antes de clasificar la
 intención. Permanece activa durante investigación, diagnóstico y ejecución.
 
@@ -794,6 +799,8 @@ registrados. El gestor standalone ejecuta el lifecycle; antes de completarlo:
 
 Este loop común aplica a CAs y hotfixes solo después de que el trabajo esté documentado y el Runner haya emitido una señal explícita y observable de inicio. La existencia de un artifacto, worktree o rechazo previo no activa el loop por sí sola. En CA permanecen obligatorios el Gate de Ejecución y la auditoría; en hotfix se conserva el flujo aislado y su evento literal `ejecutar`.
 
+La composición de los cinco contratos del Agent Loop se rige por `## Control del Agent Loop`. Este loop conserva sus reglas de diagnóstico, de rondas y de Inspector.
+
 En cada ronda, el Runner entrega al Constructor el plan vigente, el resultado del Validator y el historial pertinente. Tras el primer rechazo funcional, solicita al Constructor la corrección fundada en la evidencia. Tras un segundo rechazo funcional sin aprobación, y en cada rechazo posterior, solicita a un Inspector nuevo un diagnóstico usando el patrón de fallos y el historial completo; después despacha al Constructor con ese diagnóstico. Cambiar de Inspector no borra intentos, fallos ni enfoques descartados.
 
 Una nueva ronda después del diagnóstico requiere una hipótesis fundada, distinta o respaldada por evidencia nueva, y una comprobación observable. Si no hay hipótesis/progreso verificable, falta autoridad para continuar, hay un límite expreso, un fallo irrecuperable o se requiere cambiar alcance, pausa y explica motivo, estado conservado y condición de reanudación. No hay máximo global de rondas: el loop no se detiene por un número fijo de rechazos.
@@ -805,6 +812,69 @@ La replanificación autónoma solo puede reorganizar la implementación dentro d
 Solo `APPROVED` explícito del Validator cierra la validación y habilita el cierre normal. El Runner informa por ronda el incumplimiento, la novedad y el resultado; al pausar informa motivo y condición de reanudación. El trabajo y su historial se conservan durante pausas.
 
 ***
+
+## Control del Agent Loop
+
+### Fuentes vigentes
+
+Cada ejecución del Agent Loop consulta cinco contratos como fuente vigente. Este apartado dirige cuándo se consulta cada uno y no redefine sus reglas.
+
+| Skill | Qué aporta | Cuándo se consulta |
+|-------|-----------|-------------------|
+| `agent-loop-progress` | El registro de progreso: única fuente del avance verificable por ronda. | Antes de despachar cada ronda y al leer el avance. |
+| `agent-loop-invariants` | El catálogo de invariantes: reglas que se verifican de forma bloqueante al cierre de cada ronda. | Al declarar el contexto de la ronda 1 y en cada cierre de ronda. |
+| `agent-loop-termination` | El predicado de terminación: única decisión de continuar, pausar o cerrar. | Al cierre de cada ronda funcional completada, antes de despachar la siguiente. |
+| `agent-loop-idempotency` | La identidad estable de operación: reintentos y reanudaciones sin duplicar efectos. | Antes de cada fase con efecto observable, antes de un reintento y al reanudar. |
+| `agent-loop-budget` | El registro de gasto: única fuente de cuánto costó el objetivo, con aviso suave ante límites blandos declarados. | Al cierre de ronda, después de la terminación, solo cuando la terminación dice `continue`. |
+
+El binding de persistencia de esos contratos vive en `memory-contract`, la ownership y los sub-namespaces en `topic-keys-convention`, y la separación entre checkpoints y registros de ejecución en `checkpoint-mixin`.
+
+Si una de las cinco skills no carga, o si alguna de esas referencias está rota, la ejecución se detiene y se informa: no se improvisa una regla sustituta.
+
+### Orden de la ejecución
+
+**Antes de la ronda 1:**
+
+1. Resolver `execution.id` y el baseline vigente de la ejecución.
+2. Inicializar el registro de progreso como ronda 0 y confirmarlo por lectura.
+3. Crear el ledger de idempotencia en la fase `runner.intake` y confirmarlo por lectura.
+4. Resolver y registrar el contexto de invariantes de la ronda, y confirmarlo por lectura.
+5. Crear el registro de gasto de la ejecución y confirmarlo por lectura.
+6. Consultar el registro de terminación: si no existe, la ejecución está en estado `running`; si existe, se restaura y se respeta.
+
+Ninguna ronda se despacha sin esas confirmaciones.
+
+**En cada ronda:**
+
+1. Congelar el resultado y la evidencia de la ronda.
+2. La ronda verifica los cinco invariantes de forma bloqueante. Si hay violación, se persiste el reporte, se aplica la acción del catálogo (`pause` o `rollback_and_pause`), no se confirma la instantánea y no se despacha la ronda siguiente.
+3. Si algún invariante no es evaluable, no se confirma la instantánea y se registra la información faltante.
+4. Registrar la instantánea de progreso de la ronda y confirmarla por lectura.
+5. Evaluar el predicado de terminación.
+6. Si la terminación dice `continue`, evaluar y registrar el gasto antes de despachar.
+7. Confirmar las fases de idempotencia de la ronda.
+
+La ronda siguiente se despacha solo cuando todas las confirmaciones anteriores están leídas.
+
+### Reglas de composición
+
+- **La terminación prevalece sobre el presupuesto**: un cierre del predicado prevalece sobre cualquier aviso suave de gasto. El aviso suave no impide un cierre ni lo provoca, y `on_soft: pause` solo propone una pausa reversible.
+- **Un invariante violado no confirma la instantánea**, aunque el predicado de terminación indique continuar: vale lo declarado en el catálogo vigente, no la interpretación de la ronda.
+- **La misma identidad no repite el efecto**: una operación repetida con la misma identidad reutiliza su evidencia y devuelve `already_confirmed`; el trabajo no se ejecuta dos veces.
+- **El progreso no decide**: el registro informa hechos con evidencia citable y declara `unknown` sin estimar cuando la evidencia falta.
+- **La reevaluación no duplica**: reevaluar el predicado con los mismos hechos y el mismo baseline produce la misma decisión, sin duplicar transiciones ni cierres.
+- **El estancamiento no es un tope**: el umbral de estancamiento no es un máximo de rondas y nunca cierra por sí solo; solo propone.
+- **El rechazo funcional no es un reintento**: un rechazo funcional del Validator no es un reintento de idempotencia y abre una unidad lógica nueva.
+- **El fallo operativo no es una ronda**: no es una ronda funcional ni incrementa la numeración de rondas ni el contador de estancamiento.
+- **Los registros de ejecución no son checkpoints**: no habilitan la reanudación de subagentes ni sustituyen el estado por subagente.
+
+### Fallos operativos
+
+- Si una superficie contractual es ilegible o una de sus referencias está rota, la ejecución se detiene y se informa el motivo. No se aplica una regla improvisada ni una fuente paralela.
+- Si un registro operativo es ilegible, no está confirmado o no se persistió, se aplica la regla de su propio contrato: no se sustituye por una regla improvisada, no se anuncian avances y no se despacha la ronda siguiente.
+
+***
+
 ## Reconciliación post-compaction
 
 Si el Runner pierde contexto o se reinicia, solicita `list` al gestor mediante
