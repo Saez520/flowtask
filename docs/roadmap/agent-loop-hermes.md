@@ -1,6 +1,6 @@
 # Plan de implementación — Agent Loop y Hermes
 
-**Estado:** aprobado el 2026-10-19. F0 completada. F1 siguiente.
+**Estado:** aprobado el 2026-10-19. F0 y F1 completadas. F2 siguiente. GATE HERMES H0 abierto.
 **Alcance:** evolución de FlowTask/Flotas hacia un motor de desarrollo autónomo y Hermes como producto generalista.
 **Frontera:** OpenCode V2 es el harness/runtime; FlowTask es el control plane; Hermes es el producto. No se forkeará OpenCode.
 
@@ -24,6 +24,15 @@ F0 completada:
 - E2E de task_id con planner y ca-writer — flow-state/CA-task-id-e2e/instances (#9594).
 - Documentación sin versión hardcodeada — dcb03db.
 
+F1 completada:
+- F1.2 Variables de progreso — 0f522a7.
+- F1.4 Invariantes — 3510b2c.
+- F1.3 Terminación — e986bd5.
+- F1.5 Idempotencia — 1db9197.
+- F1.6a Observabilidad del presupuesto — 3274881.
+- Integración de control — 761004f.
+- F1.1 AgentRun con F1.6b freno declarado — 712b89f.
+
 ## F0 — Integración y base (completada)
 
 | Punto | Qué se hizo | Evidencia |
@@ -36,16 +45,20 @@ F0 completada:
 
 Objetivo: definir el controlador, el progreso, la terminación, los invariantes y la idempotencia.
 
-| Punto | Estado | Dependencias / paralelo |
-|---|---|---|
-| F1.2 Variables de progreso | Aprobado | Paralelo con F1.3, F1.4, F1.5, F1.6 |
-| F1.3 Terminación | Aprobado | Depende de F1.2; paralelo con F1.4/F1.5 |
-| F1.4 Invariantes | Aprobado | Paralelo con F1.2/F1.3/F1.5 |
-| F1.5 Idempotencia | Aprobado | Paralelo con F1.2/F1.3/F1.4 |
-| F1.6 Presupuesto | Análisis | Paralelo; no aprobado |
-| F1.1 AgentRun | Análisis | Depende de F1.2–F1.5 |
+| Punto | Estado | Dependencias / paralelo | Merge |
+|---|---|---|---|
+| F1.2 Variables de progreso | Implementado y validado | Paralelo con F1.3, F1.4, F1.5, F1.6 | 0f522a7 |
+| F1.4 Invariantes | Implementado y validado | Paralelo con F1.2/F1.3/F1.5 | 3510b2c |
+| F1.3 Terminación | Implementado y validado | Depende de F1.2; paralelo con F1.4/F1.5 | e986bd5 |
+| F1.5 Idempotencia | Implementado y validado | Paralelo con F1.2/F1.3/F1.4 | 1db9197 |
+| F1.6a Presupuesto — observabilidad | Implementado y validado | Paralelo | 3274881 |
+| F1.6b Presupuesto — freno declarado | Implementado y validado | Vive dentro de AgentRun (F1.1) | 712b89f |
+| F1.1 AgentRun | Implementado y validado | Depende de F1.2–F1.5 | 712b89f |
+| Integración de control | Implementado y validado | Consolida el control de F1.2–F1.6 | 761004f |
 
-Gate Hermes H0: cuando el contrato de F1.1 esté validado, se puede iniciar H0 en paralelo con F1.
+Orden de merge aplicado: progreso → invariantes → terminación → idempotencia → presupuesto → integración → AgentRun.
+
+GATE HERMES H0 — ABIERTO: el contrato de F1.1 fue validado.
 
 ## F2 — Autonomía operativa
 
@@ -94,7 +107,7 @@ Gate Hermes H2: H1 + permisos de dominio (F4.8) + F3 + auditoría/rollback.
 | H2 Hermes generalista | Archivos, apps, terminal, navegador, automatizaciones | H1 + F4.8 + F3 + auditoría/rollback |
 
 Gates:
-- GATE HERMES H0 — se puede iniciar en paralelo con F1.
+- GATE HERMES H0 — ABIERTO: el contrato de F1.1 fue validado.
 - GATE HERMES H1 — se puede iniciar en paralelo con F3.
 - GATE HERMES H2 — se puede iniciar.
 
