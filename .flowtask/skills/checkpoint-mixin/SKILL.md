@@ -25,7 +25,7 @@ El comportamiento de continuidad depende de la clase de tratamiento del agente:
 
 | Clase | Agentes | Comportamiento |
 |-------|---------|----------------|
-| **Completo** | `ca-writer`, `planner` | Continuidad vía checkpoint del mismo CA. Si existe checkpoint activo y `state != "completed"`, se reanuda la sesión previa (Escenario B). |
+| **Completo** | `ca-writer`, `planner` | Continuidad vía checkpoint del mismo CA. Si existe checkpoint activo y `state != "completed"`, se intenta la continuidad de la sesión previa (Escenario B). Si la herramienta rechaza la relación de padre (`is not a child of the current session`), la continuidad se materializa en un child nuevo con restauración del checkpoint. |
 | **Ligero** | `inspector`, `constructor`, `validator`, `tester`, `review-orchestrator`, `logger`, `initializer` | Por defecto, hilo nuevo. Excepción: constructor puede reanudar automáticamente un fallo/interrupción recuperable si identidad, `task_id` y checkpoint siguen válidos; en relevo/rechazo usa hilo nuevo con restauración explícita. Los demás ligeros nunca reanudan automáticamente. |
 
 ## Schema normativo del checkpoint

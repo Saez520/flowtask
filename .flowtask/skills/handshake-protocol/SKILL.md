@@ -14,7 +14,7 @@ description: >-
 Esta skill implementa el **Handshake Protocol core** que todo orquestador debe ejecutar antes de invocar un subagente. Sus responsabilidades son:
 
 1. **Asignar identidad**: determinar o recuperar el `BaseName` y construir el `instance_name` correcto.
-2. **Gestionar `task_id`**: verificar si el agente ya tiene una sesión activa en Engram y recuperar su `task_id`.
+2. **Gestionar `task_id`**: recuperar el identificador histórico del hilo registrado en Engram y distinguirlo de un `sessionID` que la herramienta de subagentes admita desde el padre actual.
 3. **Determinar escenario**: decidir si la invocación es un hilo nuevo (Escenario A) o una reanudación (Escenario B).
 4. **Inyectar contexto**: consultar la memoria del proyecto y entregar los hallazgos en un bloque `<project_context>`.
 
@@ -202,8 +202,10 @@ Antes de determinar el escenario, la skill valida si el nuevo prompt del desarro
 
 La skill determina si la invocación es un hilo nuevo o una reanudación, considerando tanto la existencia de `task_id` como la validación de tema (ver Paso 5):
 
-- **Escenario A (Initial Prompt)**: No existe `task_id` válido para el `agent_type` en el mapa de instancias, Engram no está disponible, **o el Topic Validation determinó que el tema cambió**. Se debe invocar al subagente con un prompt nuevo (sin `task_id`).
+- **Escenario A (Initial Prompt)**: No existe `task_id` válido para el `agent_type` en el mapa de instancias, Engram no está disponible, **o el Topic Validation determinó que el tema cambió**. Se debe invocar al subagente con un prompt nuevo (sin `task_id`). Este escenario es también el destino del fallback por parent mismatch, siempre que el flujo autorice la restauración del checkpoint.
 - **Escenario B (Resume Prompt)**: Existe `task_id` activo en el mapa de instancias para el `agent_type` **y el Topic Validation confirmó que es el mismo tema**. Para `constructor`, además deben existir identidad y checkpoint válido/restaurable; sin cualquiera de ellos se informa pérdida de continuidad y se detiene, nunca se reanuda sin checkpoint. Se invoca la sesión existente usando el `task_id` persistido. La ausencia de checkpoint nunca habilita Escenario B para Constructor.
+
+**Parent mismatch — clase de error propia**: el `task_id` identifica el hilo histórico; solo se pasa como `sessionID` si la herramienta admite la relación con el padre actual. Si la herramienta informa que la sesión no es hija del padre actual (`is not a child of the current session`), el rechazo es un parent mismatch y no una sesión inexistente o expirada: el orquestador abre un child nuevo en Escenario A y restaura el estado desde el checkpoint de Engram, sin reintentar el mismo `sessionID` y sin presentar el child nuevo como reanudación literal.
 
 > **Nota — Relevo por capacidad**: Si el runner detecta `[FLOWTASK_CHECKPOINT_CAPACITY: X%]` en la respuesta del subagente, el runner maneja el relevo por su cuenta: crea una nueva instancia vía Escenario A e incluye en el prompt instrucciones para restaurar el estado desde el checkpoint en Engram. Esto no requiere un escenario nuevo en esta skill — el contrato de salida sigue siendo A o B.
 
@@ -224,7 +226,7 @@ La skill entrega al orquestador un objeto con exactamente 3 campos:
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
-| `task_id` | `string \| null` | `task_id` existente para reanudación (Escenario B), o `null` para nuevo hilo (Escenario A) |
+| `task_id` | `string \| null` | Identificador histórico del hilo (Escenario B), o `null` para nuevo hilo (Escenario A). No garantiza que la herramienta lo admita como `sessionID` desde el padre actual. |
 | `instance_name` | `string` | Nombre de instancia asignado (ej: `Lyra-planner`) |
 | `scenario` | `string` | `"A"` para nuevo hilo (Initial Prompt), `"B"` para reanudación (Resume Prompt) |
 
@@ -237,7 +239,7 @@ La skill entrega al orquestador un objeto con exactamente 3 campos:
 ## Limitaciones conocidas
 
 - **Dependencia de Engram**: Si Engram no está disponible (`mem_search` falla), la skill trata todo como Caso C (Nuevo CA) y Escenario A (Initial Prompt). No existe mecanismo de fallback alternativo. Los `task_id` y `instance_name` no se persisten hasta que Engram vuelva a estar disponible.
-- **Sin cobertura operacional**: Esta skill NO implementa Checkpoint Protocol, Self-Healing ante `task_id` expirados, ni purga de `task_id` huérfanos. Esas responsabilidades son del orquestador.
+- **Sin cobertura operacional**: Esta skill NO implementa Checkpoint Protocol, Self-Healing ante `task_id` expirados, el fallback por parent mismatch, ni purga de `task_id` huérfanos. Esas responsabilidades son del orquestador.
 - **Unicidad de orquestador**: La skill asume un único orquestador por proyecto sobre el mismo Engram.
 - **Acoplamiento a Engram**: La skill usa Engram como storage exclusivo.
 - **Topic Validation con keyword extraction delegada**: La skill no extrae el `topic_signature` del prompt — recibe el valor ya calculado como parámetro desde el orquestador. Si el orquestador no provee `topic_signature` (porque la extracción falló o no está implementada), la skill trata `topic_signature` como `null`. En ese caso, si hay un checkpoint con `topic_signature`, se fuerza Escenario A (no se puede validar). Si el checkpoint tampoco tiene `topic_signature`, la degradación a mismo tema aplica a tratamiento completo; para `constructor` no elimina el requisito de checkpoint válido, identidad y `task_id` disponibles.

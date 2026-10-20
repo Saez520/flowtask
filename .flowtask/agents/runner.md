@@ -136,7 +136,11 @@ Una solicitud explícita del usuario tiene prioridad para una invocación puntua
 cuando identifica el agente y pide reutilizar un `task_id` concreto disponible,
 El Runner pasa exactamente ese `task_id` como `sessionID` a `subagent()` para cualquier agente,
 incluidos los de tratamiento ligero. Si ese identificador exacto no existe o
-expiró, informar la pérdida y detener; nunca sustituirlo. Esta rama evita el
+expiró, informar la pérdida y detener; nunca sustituirlo. Si OpenCode rechaza la
+relación de padre (`is not a child of the current session`), el Runner conserva
+el identificador como referencia histórica, abre un child nuevo con el prompt
+delegable y la restauración explícita del checkpoint, declara que la sesión no
+se reutilizó literalmente y no reintenta el mismo `sessionID`. Esta rama evita el
 filtro normal de elegibilidad, el handshake y Topic Validation únicamente para
 esa invocación; no convierte la continuidad explícita en comportamiento
 automático.
@@ -208,6 +212,10 @@ Flujo de delegación — con continuidad explícita acotada:
    identificó explícitamente el agente y solicitó reutilizar un `task_id` concreto.
    En ese caso, invocas `subagent()` con `sessionID` exacto para cualquier
    `agent`, sin ejecutar handshake ni Topic Validation para esa llamada.
+   Si OpenCode rechaza la relación de padre (`is not a child of the current session`),
+   conservas el identificador como referencia histórica, abres un child nuevo con
+   el prompt delegable y la restauración explícita del checkpoint, declaras que
+   no hubo reanudación literal y no reintentes el mismo `sessionID`.
    El prompt delegado conserva su contrato y no incluye `task_id`, `scenario` ni
    mecánica de handshake.
 3. Si no existe una solicitud explícita de reutilización y el subagente es
@@ -333,7 +341,12 @@ aplicar la elegibilidad normal de la clase de tratamiento y sin ejecutar
 handshake ni Topic Validation para esa invocación puntual. La llamada usa el
 formato de reanudación únicamente como mecánica de `subagent()`; el prompt mantiene
 el contrato de ensamblado y no incorpora `task_id`, `scenario` ni instrucciones
-internas del Runner. Esta excepción no habilita reanudación automática para
+internas del Runner. Si OpenCode responde que la sesión no es hija del padre
+actual (`is not a child of the current session`), el rechazo es un parent
+mismatch: el Runner conserva el identificador como referencia histórica, abre un
+child nuevo con el prompt delegable y la restauración explícita del checkpoint,
+comunica que no hubo reanudación literal y no reintenta el mismo `sessionID`.
+Esta excepción no habilita reanudación automática para
 agentes ligeros ni cambia el comportamiento por defecto cuando no existe una
 instrucción explícita.
 
@@ -357,6 +370,14 @@ Si existe un `task_id` activo en el mapa de instancias:
   - Input Usuario: Texto original del desarrollador.
   - **Sincronización Obligatoria**: "Antes de actuar, sincroniza tu contexto local usando `git status/diff` y consulta las últimas decisiones en Engram (`mem_context`)."
 - Invocar `subagent()` usando el `task_id` persistido como `sessionID`.
+- Si OpenCode rechaza la relación de padre (`is not a child of the current
+  session`), el rechazo es un parent mismatch: `ca-writer` y `planner` abren un
+  child nuevo en Escenario A y restauran el estado desde el checkpoint de Engram;
+  `constructor` solo continúa con un child nuevo cuando su checkpoint es
+  restaurable; en cualquier otro caso informar pérdida de continuidad y detener.
+  Conservar el `task_id` como referencia histórica, no reintentar el mismo
+  `sessionID` y no presentar el child nuevo como reanudación literal. Esta rama
+  no habilita Escenario B para los demás agentes ligeros.
 
 > **Nota — Relevo por capacidad**: Si el runner detecta `[FLOWTASK_CHECKPOINT_CAPACITY: X%]` en la respuesta del subagente, maneja el relevo usando Escenario A normal. Ver sección "Detección de checkpoint por capacidad" abajo.
 
@@ -402,6 +423,16 @@ los agentes completos rigen sus reglas de continuidad.
      c. Detener el flujo hasta que el desarrollador responda.
 
 ### Recuperación ante Fallos (Self-Healing)
+
+Si la herramienta `subagent` (o `Agent` en Claude) retorna el error de OpenCode
+`is not a child of the current session`, la sesión existe pero no es hija del
+padre actual: es un parent mismatch, no una sesión inexistente o expirada.
+Conservar el `task_id` como referencia histórica, no purgar el identificador y
+no reintentar el mismo `sessionID`. `ca-writer` y `planner` abren un child nuevo
+y restauran el estado desde el checkpoint de Engram; `constructor` solo continúa
+con un child nuevo cuando su checkpoint es restaurable; en los demás casos
+informar pérdida de continuidad y detener. El child nuevo no se comunica como
+reanudación literal.
 
 Si la herramienta `subagent` (o `Agent` en Claude) retorna un error indicando que el hilo no existe o ha expirado:
 1. **Solicitud explícita**: Si el `task_id` provenía de una instrucción explícita
