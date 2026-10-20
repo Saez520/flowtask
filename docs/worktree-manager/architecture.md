@@ -44,3 +44,30 @@ transaction evidence needed for safe continuation or intervention.
 The installer validates and materializes the submodule before copying assets
 and excludes the manager from generic copies. If the source is unavailable,
 installation fails rather than creating an alternative implementation.
+
+## Consumer transport boundary
+
+FlowTask reaches the manager through a bridge that exposes one tool,
+`flowtask_worktree_consume`, restricted to the FlowTask runner identity. The
+bridge reduces the tool arguments to the canonical request fields before they
+cross the boundary and owns the durable association of every worktree.
+
+Two transports implement the same request and publish the same nine-key
+envelope: the stdio service of the manager and its `--request-json` command
+line. The transport is selected with an explicit precedence — an explicit
+choice, the transport persisted with the worktree, and the read-only detection
+— and the selection is persisted with the worktree.
+
+The other transport is used once, and only when the request was never
+delivered. A rejection, a contract error, lock contention, a timeout and a
+lost answer are reported without a second attempt, because the outcome of a
+delivered request is unknown. The manager owns the plan digest, the planned
+transaction identifier, the locks, the journal and the reconciliation; the
+consumer only plans, replays the plan and reports.
+
+## Submodule boundary
+
+The manager is consumed as a submodule and the registered gitlink is the single
+reference of its version. A vendored copy of the manager core is not
+maintained in the consumer repository, and the manager is never copied into an
+installed target.

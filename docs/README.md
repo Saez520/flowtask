@@ -15,6 +15,7 @@ Esta carpeta separa operación vigente de diseños retirados. La fuente de verda
 - [Handshake](./architecture/handshake.md)
 - [Worktrees](./architecture/worktree.md)
 - [Worktree Manager documentation](./worktree-manager/README.md) — English inventory, interfaces, operations, compatibility, and release procedure.
+- [Evidencia del gestor de worktrees](./operations/worktree-phase-8/README.md) — procedencia, snapshot, matriz de transporte y digests.
 - [Skills](./architecture/integracion-skills.md)
 
 ## Histórico

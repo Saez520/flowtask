@@ -6,12 +6,26 @@ submodule, or protected Phase 8/9 artifacts.
 
 ## Preparation
 
-- [ ] Confirm the candidate diff contains only `docs/worktree-manager/` and
-  additive links in `docs/README.md` and `docs/architecture/INDEX.md`.
+- [ ] Confirm the candidate diff contains only the documentation paths of this
+  section and the additive links in `docs/README.md` and
+  `docs/architecture/INDEX.md`.
 - [ ] Confirm the standalone source and FlowTask integration source are
   available for comparison.
 - [ ] Confirm the inventory names an owner, source status, document, and
   executable checklist for every required topic.
+
+## Submodule reference
+
+- [ ] Confirm the manager is consumed as a submodule and that the registered
+  gitlink is the single reference of its version.
+- [ ] Confirm no vendored copy of the manager core is introduced and that the
+  manager is not copied into an installed target.
+- [ ] Confirm the version of the consumer lives in `.flowtask/package.json`
+  only, that the version of the manager is not duplicated in the documentation
+  of the consumer, and that the two versions are independent.
+- [ ] Record the gitlink before and after, the head of the materialised
+  submodule and the state of the publication of the standalone origin in the
+  evidence of the phase.
 
 ## Contract verification
 
@@ -22,8 +36,10 @@ submodule, or protected Phase 8/9 artifacts.
   distinct.
 - [ ] Confirm `data.output` is not introduced and JSON is never described as
   implicit.
-- [ ] Confirm MCP is reported only as verified when an implementation contract
-  exists; otherwise retain the explicit gap.
+- [ ] Confirm the seven tools, the request protocol and the nine-key envelope
+  are published as implemented.
+- [ ] Confirm the pre-lock validation, the plan and execution pair, the
+  reconciliation and the transport fallback are described as implemented.
 
 ## Safety and compatibility review
 
@@ -46,6 +62,23 @@ submodule, or protected Phase 8/9 artifacts.
   Phase 8/9 paths and reject any out-of-scope change.
 - [ ] Record every unavailable source as a named gap; do not fill it with an
   inferred capability.
+
+## Delivery
+
+The integration of the manager into the consumer repository and the publication
+of the standalone origin are separate steps, and each one requires its own
+authorization.
+
+- [ ] Record the gitlink of the branch that carries the integration and the
+  head of the materialised submodule.
+- [ ] Record the delivery state as `pending` until the integration in the
+  consumer branch and the synchronization of the origin are authorized and
+  performed.
+- [ ] Confirm that the branch used as the base is still the declared base; a
+  moved base requires a rebase and a complete revalidation of the suites
+  before the delivery.
+- [ ] Confirm that the evidence of the phase is published with the diff and
+  that its digests verify.
 
 ## Publication and rollback
 

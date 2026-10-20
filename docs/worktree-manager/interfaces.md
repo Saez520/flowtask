@@ -55,8 +55,60 @@ for usage, `3` for invalid configuration/identity, `4` for resource lock, `5`
 for conflict/intervention, and `6` for access/dependency. Contract version and
 tool version are independent.
 
-## MCP evidence status
+## MCP transport
 
-`opencode.json` configures MCP servers for FlowTask, but no implemented
-Worktree Manager MCP schema is present in the reviewed sources. This document
-therefore makes no MCP capability claim.
+The standalone publishes a standard service over stdio:
+
+```sh
+python3 -m worktree_manager.mcp_transport
+```
+
+It implements `initialize`, `ping`, `tools/list` and `tools/call`, and it
+publishes exactly seven tools: `worktree_create`, `worktree_complete`,
+`worktree_cleanup`, `worktree_recover`, `worktree_list`, `worktree_prune` and
+`worktree_status`. A call requires an absolute path of an existing repository;
+the working directory of the process is never used as a repository default.
+Unknown arguments are rejected, and a rejected call publishes the same
+nine-key envelope as an accepted one.
+
+A client starts the service, reads the published tools and closes the session
+as soon as the answer is read. The consumer in FlowTask starts the service with
+the standalone checkout on the Python path.
+
+## Request protocol
+
+Both transports publish the same nine-key envelope: `contract_version`,
+`tool_version`, `operation`, `repository`, `result`, `data`, `warnings`, `error`
+and `transaction_id`. A rejected request publishes the same shape, so a client
+never parses two document formats.
+
+The request is canonical and it is sent the same way over both transports: as a
+single JSON document with `--request-json <file|->` on the command line, and as
+the arguments of a `tools/call` on the stdio service. A request is never
+expressed as the arguments of the lifecycle commands, and it is never combined
+with a subcommand or with another flag.
+
+| Operation | Tool | Fields |
+|---|---|---|
+| `create` | `worktree_create` | `repo`, `work_id`, `base`, `dry_run`, `parent_repo`, `submodule_path`, `confirm`, `plan_hash`, `init_submodules`, `prepare`, `verify` |
+| `complete` | `worktree_complete` | `repo`, `work_id`, `base`, `dry_run`, `authorization`, `confirm`, `plan_hash`, `transaction_id`, `preserve_dirty`, `target_direct`, `parent_repo` |
+| `cleanup` | `worktree_cleanup` | `repo`, `work_id`, `base`, `dry_run`, `authorization`, `confirm`, `plan_hash`, `discard`, `discard_consent` |
+| `recover` | `worktree_recover` | `repo`, `transaction_id`, `dry_run`, `authorization`, `confirm`, `target_direct`, `parent_repo` |
+| `list` | `worktree_list` | `repo` |
+| `prune` | `worktree_prune` | `repo`, `dry_run`, `authorization`, `confirm`, `plan_hash` |
+| `status` | `worktree_status` | `repo`, `work_id` |
+
+`repo` is always the absolute path of an existing repository. A field outside
+its row is rejected as an unknown field, and a missing required field is
+rejected, in both cases before any effect.
+
+`confirm` is the canonical confirmation. A destructive operation requires it
+and the manager derives the authorization from it. `authorization` is the
+literal `I_AUTHORIZE_THIS_CALL` and it is not retained between requests. A
+discard requires the separate `discard_consent` boolean.
+
+`plan_hash` is the SHA-256 of the canonical plan of the request. The manager
+publishes it in the preflight of a mutating operation and rejects an execute
+whose plan digest or whose planned transaction identifier does not match that
+preflight. A completion publishes the planned transaction identifier and
+reuses it.

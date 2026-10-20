@@ -13,6 +13,8 @@ exit codes, and other technical literals remain exactly as implemented.
 4. [Operations](operations.md) — consent, safety, transactions, and recovery.
 5. [Compatibility](compatibility.md) — standalone and consumer-facing matrices.
 6. [Release](release.md) — publication gates and rollback handling.
+7. [Phase evidence](../operations/worktree-phase-8/README.md) — provenance,
+   snapshot, transport matrix, and digests of the integration phase.
 
 ## Source policy
 

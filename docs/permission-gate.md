@@ -152,6 +152,55 @@ sin `agent` conserva el valor previo de la sesión. No se infiere identidad desd
 el texto del comando; si no hay identidad registrada, la regla específica del
 Runner se degrada sin aplicar y permanece el gate universal de commits.
 
+## Worktree Manager
+
+El gate no expone el gestor de worktrees al shell. El Runner consume el gestor
+con la herramienta `flowtask_worktree_consume`, disponible solo para la
+identidad exacta `flowtask-runner`; cualquier otra identidad recibe
+`worktree consumer denied`.
+
+### Campos de la solicitud
+
+La herramienta `flowtask_worktree_consume` acepta `operation`, `transport`,
+`repo_root`, `path`, `branch`, `base_branch`, `work_id`, `init_submodules`,
+`prepare`, `verify`, `preserve_dirty`, `discard`, `discard_consent`, `confirm`,
+`transaction_id`, `plan_hash`, `dry_run`, `target_direct`, `parent_repo` y
+`submodule_path`. El consumidor conserva de ese conjunto los campos canónicos
+de la solicitud y deriva el resto; un campo canónico con tipo o valor inválido
+se rechaza antes de cualquier efecto.
+
+- `operation` admite `create`, `complete`, `cleanup`, `recover`, `list`,
+  `prune` y `status`.
+- `transport` es opcional y admite `cli` o `mcp`. Si no se declara, se usa el
+  transporte persistido con el worktree y, si no hay, la detección de solo
+  lectura, que prefiere MCP.
+- `init_submodules`, `prepare` y `verify` son válidos únicamente en `create`.
+- `preserve_dirty` es válido únicamente en `complete`.
+- `discard` es válido únicamente en `cleanup` y exige `discard_consent: true`.
+
+### Confirmación y descarte
+
+`complete`, `cleanup`, `prune` y `recover` son operaciones destructivas: exigen
+`confirm: true`. Una confirmación y una autorización que discrepan se rechazan
+como `authorization_mismatch`. Descartar trabajo no integrado exige además
+`discard_consent: true`, un consentimiento separado que no se hereda entre
+solicitudes. La autorización del gestor no se conserva entre solicitudes.
+
+### Transporte y fallback
+
+El otro transporte se usa una sola vez y solo cuando la solicitud nunca llegó
+al gestor. Una denegación, un error de contrato, un lock ocupado, un timeout o
+una respuesta perdida no se reintentan por la otra vía: el resultado es
+incierto y la siguiente acción es reconciliar la operación antes de cualquier
+nuevo intento. El reporte de cada fase nombra la operación, el trabajo, el
+repositorio, la vía, el resultado, la causa y la siguiente acción.
+
+### Protocolo de request por shell
+
+`--request-json` no está autorizado por shell: `${FLOWTASK_SCRIPTS}/worktree.sh`
+se rechaza cuando incluye ese flag. El protocolo de request canónico está
+reservado al consumidor y la allowlist de bash no se amplía para admitirlo.
+
 ## Diagnóstico
 
 Después de actualizar, comprobar que existe

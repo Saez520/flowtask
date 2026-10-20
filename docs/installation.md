@@ -1,10 +1,10 @@
 # Instalación y actualización
 
-Guía operativa de FlowTask 1.23.0. La fuente del CLI es `.flowtask/bin/flowtask.js` y el instalador/actualizador está en `.flowtask/bin/lib/installer.js`.
+Guía operativa de FlowTask. La versión vigente vive en `.flowtask/package.json`. La fuente del CLI es `.flowtask/bin/flowtask.js` y el instalador/actualizador está en `.flowtask/bin/lib/installer.js`.
 
 ## Requisitos
 
-Git, Node.js, npm y un terminal interactivo. OpenCode, Claude Code o VS Code solo son necesarios para el target elegido. Engram es comprobado y advertido por el instalador, pero no se instala automáticamente.
+Git, Node.js, npm y un terminal interactivo. OpenCode, Claude Code o VS Code solo son necesarios para el target elegido. Engram es comprobado y advertido por el instalador, pero no se instala automáticamente. El gestor de worktrees requiere Python 3.9 o superior.
 
 ## Instalar el CLI
 
@@ -46,6 +46,49 @@ flowtask update --persona senior
 ```
 
 `update` detecta markers `.installation-method`, sincroniza delta, conserva rutas preservables, reinstala plugins, regenera configuración y coordina Graphify. Sin marker, ejecutar `install` primero. En target Claude regenera `CLAUDE.md`; en OpenCode regenera la declaración TUI y limpia el `tui.json` legacy cuando verifica el destino.
+
+## Worktree Manager
+
+El gestor de worktrees se integra como submódulo en
+`.flowtask/scripts/worktree-manager/`. El gitlink registrado en el árbol del
+consumidor es la referencia: no se mantiene una copia local del núcleo y el
+gestor no se copia al target instalado.
+
+El instalador verifica el gitlink y los entrypoints obligatorios antes de
+copiar recursos: `worktree.sh` y `worktree_manager/__main__.py` para la línea de
+comandos, y `mcp_transport.py`, `mcp_server.py`, `mcp_contract.py` y
+`mcp_operations.py` para el transporte MCP. Si el checkout no coincide con el
+gitlink o le falta un entrypoint, la instalación falla con un diagnóstico; no
+se crea una copia alternativa.
+
+El instalador sondea dos capacidades y las reporta por separado:
+
+| Capacidad | Sonda de solo lectura | Resultado esperado |
+| --- | --- | --- |
+| CLI | `python3 -m worktree_manager --version` | versión del gestor |
+| MCP | `python3 -m worktree_manager.mcp_transport` con `initialize` y `tools/list` | las siete tools: `worktree_create`, `worktree_complete`, `worktree_cleanup`, `worktree_recover`, `worktree_list`, `worktree_prune`, `worktree_status` |
+
+La sonda es local, no escribe en el checkout, no instala dependencias y
+dispone de un límite de 5 segundos por detección.
+
+- **Ambas operativas:** la instalación continúa y las dos vías quedan
+  disponibles.
+- **Una sola operativa:** la instalación continúa y se reporta la capacidad
+  ausente con su causa; el consumidor sigue operando por la vía disponible.
+- **Ninguna operativa:** la instalación falla antes de escribir en el target y
+  informa la causa de cada vía.
+
+`install` y `update` son idempotentes respecto del gestor: repiten la
+verificación del checkout sin duplicar nada y preservan `.worktree-manager.conf`,
+`opencode.json`, los servidores ajenos, `.worktrees`, los journals, los backups
+y las asociaciones registradas.
+
+La instalación no amplía permisos. El asistente consume el gestor con la
+herramienta `flowtask_worktree_consume`; el protocolo de request del gestor no
+está autorizado por shell. Ver
+[architecture/worktree.md](architecture/worktree.md) para el límite de
+responsabilidad y [permission-gate.md](permission-gate.md) para el
+consentimiento.
 
 ## Plugins y Graphify
 
