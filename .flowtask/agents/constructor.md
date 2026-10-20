@@ -44,6 +44,9 @@ Carga skills on-demand con el skill tool:
 |---|---|
 | `memory-protocol` | Antes de usar mem_save, mem_search o mem_context |
 | `zero-assumptions` | Antes de asumir estado de cualquier entidad del proyecto |
+| context-degradation | Antes de iniciar el momento construir y al cambiar de momento |
+
+Al iniciar el momento `build`, mostrá solo el pack `build`: qué se espera, qué está prohibido y qué avisa. No repitas el manual completo. Heredá la evidencia verificada y no repitas comprobaciones resueltas.
 
 **Ejemplo:**
 ```

@@ -9,6 +9,7 @@ Este índice contiene referencias actuales, no un snapshot Repomix. Los diseños
 - [validacion.md](./validacion.md) — validación en caliente, evidencia ejecutada y veredicto único; contrastar con `.flowtask/agents/validator.md` y `validation-contract`.
 - [pruebas-condicionales.md](./pruebas-condicionales.md) — decisión por riesgo, generación acotada y herencia del reporte de pruebas; contrastar con `.flowtask/agents/tester.md`, `.flowtask/agents/runner.md` y `.flowtask/agents/validator.md`.
 - [verificacion-material.md](./verificacion-material.md) — verificación material, evidencia citable y herencia entre roles; contrastar con `.flowtask/skills/zero-assumptions/SKILL.md`.
+- [contexto-degradacion.md](./contexto-degradacion.md) — degradación por niveles, reglas por momento y recuperación verificable; contrastar con `.flowtask/skills/context-degradation/SKILL.md` y `.flowtask/agents/runner.md`.
 - [worktree.md](./worktree.md) — create, complete, cleanup, recover, prune, list y target-direct; contrastar con `.flowtask/scripts/worktree.sh` y `.flowtask/scripts/worktree-manager/`.
 - [integracion-skills.md](./integracion-skills.md) — carga directa desde `.flowtask/skills` mediante `skill({ name: ... })`.
 - [Worktree Manager documentation](../worktree-manager/README.md) — English architecture and release documentation for the implemented manager.

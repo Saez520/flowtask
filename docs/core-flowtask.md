@@ -286,7 +286,7 @@ Squash-merge a `main` en `198cf54` — es el hotfix que produjo ESTE archivo.
 - autoriza `bash` del runner (whitelist: `worktree.sh`, git read-only, commit)
 - bloquea `task()` a subagentes fuera de la lista → *"delegá al subagente"*
 - gate de commit: exige `.review-stamp` vigente (TTL 30 min; bypass ≤5 líneas)
-- presupuesto de contexto: bloquea `read`/`glob`/`grep` que exceden umbrales
+- presupuesto de contexto: degrada por niveles (aviso, entrega reducida, omisión por turno) y bloquea adjuntos al runner
 
 #### `flowtask-context-checkpoint` (detalle)
 

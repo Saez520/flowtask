@@ -9,9 +9,13 @@ plugin `flowtask-permission-gate` (hook post-ejecución + pre-gate barato en
 
 - Límites por llamada: `read=16.000` chars, `grep=8.000`, `glob=8.000`.
 - Acumulado por turno del runner: `32.000` chars entregados.
-- Fallback exacto sin preview (el runner solo ve el mensaje, nunca un preview
-  del contenido omitido ni los umbrales como configuración).
+- Degradación por niveles: aviso de acotación, entrega reducida sin preview y
+  omisión por acumulado. El runner ve qué se omitió, el tamaño real y a quién
+  delegar; nunca ve un preview del contenido omitido.
 - Attachments imagen/PDF bloqueados al runner (delegación al Inspector).
+- Los umbrales no se exponen en mensajes: se nombra el presupuesto aplicado, no
+  su cifra.
+- Si el tamaño no se puede medir, se registra una traza y se entrega sin recortar.
 
 ### Regla de oro
 

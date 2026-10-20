@@ -4,7 +4,9 @@
  * Verifica contra el plugin BUILT (dist/index.js):
  * 1. Que la mutación de `output.output` persiste y es visible por el caller
  *    (contrato mutable de OpenCode 1.18.x verificado en research v1.18.15).
- * 2. Que la allowlist del runner no se rompió: read/glob/grep siguen
+ * 2. Que la entrega reducida declara el tamaño real omitido y la delegación,
+ *    sin preview y sin exponer la cifra del umbral.
+ * 3. Que la allowlist del runner no se rompió: read/glob/grep siguen
  *    autorizados y el comando graphify query sigue siendo válido.
  *
  * Sin red ni MCP. Exit 0 = SMOKE-PASS; exit no-zero = SMOKE-FAIL observable
@@ -13,7 +15,7 @@
  */
 import assert from "node:assert/strict";
 import { isAuthorizedRunnerCommand } from "../dist/authorizer.js";
-import { buildFallback } from "../dist/context-budget.js";
+import { buildReducedDelivery } from "../dist/context-budget.js";
 import plugin from "../dist/index.js";
 
 const runner = process.env.SMOKE_RUNNER ?? "flowtask-runner";
@@ -27,10 +29,14 @@ try {
 
   await hooks["chat.message"]({ sessionID: "smoke-s", agent: runner }, { message: {}, parts: [] });
 
-  // 1) Mutación visible: output grande debe ser reemplazado por el fallback exacto.
+  // 1) Mutación visible: output grande debe ser reemplazado por la entrega
+  //    reducida, que declara el tamaño real y la delegación sin preview.
   const output = { title: "read", output: "a".repeat(60383), metadata: {} };
   await hooks["tool.execute.after"]({ tool: "read", sessionID: "smoke-s", callID: "smoke-1" }, output);
-  assert.equal(output.output, buildFallback("read", 60383, 16000), "mutación de output.output no persistió");
+  assert.equal(output.output, buildReducedDelivery("read", 60383, "call"), "mutación de output.output no persistió");
+  assert.ok(output.output.includes("60383"), "el mensaje declara el tamaño real omitido");
+  assert.ok(output.output.includes("Inspector"), "el mensaje declara a quién delegar");
+  assert.equal(output.output.includes("16000"), false, "el mensaje no expone la cifra del umbral");
 
   // 2) Allowlist intacta: read/glob/grep autorizados para runner (before no lanza
   //    delegación) y graphify query sigue autorizado por authorizer.ts.

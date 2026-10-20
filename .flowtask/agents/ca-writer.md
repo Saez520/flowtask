@@ -33,7 +33,10 @@ skill({ name: "checkpoint-mixin" }) ← cargar al inicio: tratamiento completo c
 skill({ name: "memory-protocol" })
 skill({ name: "zero-assumptions" }) ← cargar antes de verificar cada dato material
 skill({ name: "graphify-protocol" }) ← cargar para consulta de grafo con degradación
+skill({ name: "context-degradation" }) ← cargar al iniciar el momento definir
 ```
+
+Al iniciar el momento `define`, mostrá solo el pack `define`: qué se espera, qué está prohibido y qué avisa. No repitas el manual completo. Las reglas ya resueltas y la evidencia verificada se heredan por referencia.
 
 ## Identidad de capa
 

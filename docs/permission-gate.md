@@ -34,6 +34,36 @@ o `flowtask update` y requiere reiniciar OpenCode. No existe un fallback nativo.
   analizable también se bloquea y devuelve exactamente:
   `Recordá que debés delegar esta operación al subagente correspondiente.`
 
+## Presupuesto de contexto
+
+El gate de presupuesto de contexto degrada la entrega de las herramientas de
+lectura del runner (`read`, `glob` y `grep`) por niveles antes de omitirla. Los
+umbrales por llamada y el acumulado del turno se conservan; lo nuevo es el aviso
+previo y la entrega reducida.
+
+| Nivel | Cuándo ocurre | Qué ve el runner |
+|-------|---------------|------------------|
+| Aviso de acotación | El primer pedido amplio del turno. | Qué se pidió, sobre qué ruta, patrón o ventana, y cómo acotarlo. |
+| Entrega reducida | La entrega supera el presupuesto por llamada. | Qué se omitió, cuánto pesaba lo omitido y a quién delegarlo. |
+| Omisión por turno | La suma del turno alcanza el presupuesto acumulado. | El mismo aviso, nombrando el presupuesto acumulado del turno. |
+
+Reglas del contrato:
+
+- Los umbrales no se exponen en los mensajes: se nombra el ámbito del
+  presupuesto aplicado —por llamada o acumulado del turno— y el tamaño real
+  omitido, nunca la cifra.
+- La entrega reducida no incluye preview del contenido omitido.
+- Si el tamaño no se puede medir, se emite una traza con la causa y la entrega se
+  realiza sin recortar: nunca hay recorte silencioso.
+- Un adjunto de imagen o documento se delega con su tamaño medido y no se
+  entrega al runner.
+- Nada omitido se presenta como respuesta completa.
+
+El detalle completo vive en
+[architecture/contexto-degradacion.md](architecture/contexto-degradacion.md).
+
+## Commits, denegaciones e identidad
+
 ### Contrato del review-stamp
 
 Formato estructurado (JSON, una línea):

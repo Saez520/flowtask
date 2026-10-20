@@ -7,9 +7,14 @@ import { afterEach, test } from "node:test";
 import plugin from "../dist/index.js";
 import { isAuthorizedRunnerCommand, RUNNER_DELEGATION_MESSAGE, tokenizeCommand } from "../dist/authorizer.js";
 import {
+  buildAttachmentDelivery,
   buildFallback,
+  buildNarrowingNotice,
+  buildReducedDelivery,
   isImageOrPdfOutput,
   loadContextBudgetConfig,
+  registerNarrowingNotice,
+  resetNarrowingNotices,
   shouldPreventiveBlockGlob,
   shouldPreventiveBlockGrep,
   shouldPreventiveBlockRead,
@@ -301,7 +306,7 @@ test("identidad: variantes case/separador del runner califican como runner", asy
     await hooks["chat.message"]({ sessionID, agent }, { message: {}, parts: [] });
     await assert.rejects(
       hooks["tool.execute.before"]({ tool: "glob", sessionID, callID: "c" }, { args: { pattern: "**/*" } }),
-      (error) => error instanceof Error && error.message === buildFallback("glob", 8001, 8000),
+      (error) => error instanceof Error && error.message === buildNarrowingNotice("glob", { pattern: "**/*" }),
       `agent ${JSON.stringify(agent)} debe calificar como runner`,
     );
   }
@@ -327,7 +332,7 @@ test("identidad: modelo reportado en chat.message no sobrescribe identidad runne
   await hooks["chat.message"]({ sessionID: "s", agent: "muse-spark-1.2-contributor" }, { message: {}, parts: [] });
   await assert.rejects(
     hooks["tool.execute.before"]({ tool: "glob", sessionID: "s", callID: "c" }, { args: { pattern: "**/*" } }),
-    (error) => error instanceof Error && error.message === buildFallback("glob", 8001, 8000),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("glob", { pattern: "**/*" }),
   );
 });
 
@@ -523,78 +528,85 @@ test("context-budget: read pequeño (14_485) pasa intacto y suma al acumulado", 
   assert.equal(second.output.length, 6000);
 });
 
-test("context-budget: read 60_383 bloquea con fallback 16K sin preview (R3)", async () => {
+test("context-budget: read 60_383 se entrega reducido con el tamaño real y la delegación (R3)", async () => {
   const hooks = await mockPluginSession();
   const output = await callAfter(hooks, "read", "a".repeat(60383));
-  assert.equal(output.output, buildFallback("read", 60383, 16000));
+  assert.equal(output.output, buildReducedDelivery("read", 60383, "call"));
   assert.equal(output.metadata.truncated, true);
+  assert.equal(output.metadata.degradation.level, "reduced");
+  assert.equal(output.metadata.degradation.budget, "call");
+  assert.equal(output.metadata.degradation.omitted_chars, 60383);
+  assert.equal(output.metadata.degradation.delegated_to, "Inspector");
 });
 
-test("context-budget: grep 11_787 bloquea con fallback 8K (G4)", async () => {
+test("context-budget: grep 11_787 se entrega reducido por presupuesto por llamada (G4)", async () => {
   const hooks = await mockPluginSession();
   const output = await callAfter(hooks, "grep", "a".repeat(11787));
-  assert.equal(output.output, buildFallback("grep", 11787, 8000));
+  assert.equal(output.output, buildReducedDelivery("grep", 11787, "call"));
   assert.equal(output.metadata.truncated, true);
 });
 
-test("context-budget: glob 12_000 bloquea con fallback 8K (L3)", async () => {
+test("context-budget: glob 12_000 se entrega reducido por presupuesto por llamada (L3)", async () => {
   const hooks = await mockPluginSession();
   const output = await callAfter(hooks, "glob", "a".repeat(12000));
-  assert.equal(output.output, buildFallback("glob", 12000, 8000));
+  assert.equal(output.output, buildReducedDelivery("glob", 12000, "call"));
   assert.equal(output.metadata.truncated, true);
 });
 
-test("context-budget: acumulado 32K por turno bloquea aunque el individual de 6K pase", async () => {
+test("context-budget: acumulado 32K por turno omite lo siguiente aunque el individual de 6K pase", async () => {
   const hooks = await mockPluginSession();
   await callAfter(hooks, "read", "a".repeat(14485)); // sum = 14485
   await callAfter(hooks, "grep", "b".repeat(6000)); // sum = 20485
   await callAfter(hooks, "grep", "c".repeat(6000)); // sum = 26485
   const blocked = await callAfter(hooks, "grep", "d".repeat(6000)); // 26485 + 6000 > 32000
-  assert.equal(blocked.output, buildFallback("grep", 6000, 32000));
+  assert.equal(blocked.output, buildReducedDelivery("grep", 6000, "turn"));
   assert.equal(blocked.metadata.truncated, true);
+  assert.equal(blocked.metadata.degradation.level, "turn_omitted");
+  assert.equal(blocked.metadata.degradation.budget, "turn");
 });
 
-test("context-budget: imagen PNG (Image read successfully) bloquea y no entrega attachment", async () => {
+test("context-budget: imagen PNG (Image read successfully) se delega y no entrega attachment", async () => {
   const hooks = await mockPluginSession();
   const output = await callAfter(hooks, "read", "Image read successfully", {
     attachment: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==",
   });
-  assert.equal(output.output, `${buildFallback("read", 23, 16000)} (imagen/PDF — delegá al Inspector)`);
+  assert.equal(output.output, buildAttachmentDelivery("read", 23));
   assert.equal(output.metadata.attachment, undefined, "attachment no entregado al modelo");
+  assert.equal(output.metadata.degradation.level, "attachment_delegated");
 });
 
-test("context-budget: glob **/* sin path acotado bloquea preventivo en before", async () => {
+test("context-budget: glob **/* sin path acotado avisa la acotación en before", async () => {
   const hooks = await mockPluginSession();
   await assert.rejects(
     hooks["tool.execute.before"]({ tool: "glob", sessionID: "s", callID: "c" }, { args: { pattern: "**/*" } }),
-    (error) => error instanceof Error && error.message === buildFallback("glob", 8001, 8000),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("glob", { pattern: "**/*" }),
   );
-  // Path acotado a node_modules también se bloquea (lista cerrada).
+  // Path acotado a node_modules también se avisa (lista cerrada).
   await assert.rejects(
     hooks["tool.execute.before"](
       { tool: "glob", sessionID: "s", callID: "c" },
       { args: { pattern: "**/*", path: "node_modules/pkg" } },
     ),
-    (error) => error instanceof Error && error.message === buildFallback("glob", 8001, 8000),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("glob", { pattern: "**/*", path: "node_modules/pkg" }),
   );
 });
 
-test("context-budget: read de archivo >50KiB sin limit bloquea preventivo en before", async () => {
+test("context-budget: read de archivo >50KiB sin limit avisa la acotación en before", async () => {
   const root = makeTemp("flowtask-budget-read-");
   const bigFile = path.join(root, "big.txt");
   fs.writeFileSync(bigFile, Buffer.alloc(60 * 1024, 0x61)); // 61_440 bytes > 51_200
   const hooks = await mockPluginSession();
   await assert.rejects(
     hooks["tool.execute.before"]({ tool: "read", sessionID: "s", callID: "c" }, { args: { file: bigFile } }),
-    (error) => error instanceof Error && error.message === buildFallback("read", 60 * 1024, 16000),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("read", { file: bigFile }),
   );
 });
 
-test("context-budget: grep sin include en la raíz bloquea preventivo en before", async () => {
+test("context-budget: grep sin include en la raíz avisa la acotación en before", async () => {
   const hooks = await mockPluginSession();
   await assert.rejects(
     hooks["tool.execute.before"]({ tool: "grep", sessionID: "s", callID: "c" }, { args: { pattern: "TODO" } }),
-    (error) => error instanceof Error && error.message === buildFallback("grep", 8001, 8000),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("grep", { pattern: "TODO" }),
   );
 });
 
@@ -656,15 +668,85 @@ test("context-budget: loadContextBudgetConfig aplica override válido en workdir
   assert.deepEqual(config.blockedPaths, ["node_modules", "vendor"]);
 });
 
-test("context-budget: buildFallback retorna el template exacto sin preview", () => {
+test("context-budget: los mensajes nombran el ámbito del presupuesto y nunca la cifra", () => {
   assert.equal(
-    buildFallback("read", 60383, 16000),
-    "Resultado de `read` omitido: `60383` chars exceden el presupuesto `16000`. Acotá path/pattern/limit/include o delegá al Inspector.",
+    buildReducedDelivery("read", 60383, "call"),
+    "Resultado de `read` reducido: se omitieron `60383` chars de `contenido del archivo` por `el presupuesto por llamada`. Delegá lo omitido al Inspector o acotá path/pattern/limit/include.",
   );
   assert.equal(
-    buildFallback("glob", 12000, 8000),
-    "Resultado de `glob` omitido: `12000` chars exceden el presupuesto `8000`. Acotá path/pattern/limit/include o delegá al Inspector.",
+    buildReducedDelivery("grep", 6000, "turn"),
+    "Resultado de `grep` reducido: se omitieron `6000` chars de `coincidencias` por `el presupuesto acumulado del turno`. Delegá lo omitido al Inspector o acotá path/pattern/limit/include.",
   );
+  assert.equal(
+    buildNarrowingNotice("read", { file: "big.txt" }),
+    "Pedido amplio de `read` (`big.txt`): `usá `limit`/`offset` o delegá el archivo completo al Inspector`.",
+  );
+  for (const message of [
+    buildReducedDelivery("read", 60383, "call"),
+    buildReducedDelivery("grep", 6000, "turn"),
+    buildAttachmentDelivery("read", 23),
+    buildNarrowingNotice("read", { file: "big.txt" }),
+  ]) {
+    for (const figure of ["16000", "8000", "32000", "51200"]) {
+      assert.equal(message.includes(figure), false, `el mensaje no expone la cifra ${figure}`);
+    }
+  }
+});
+
+test("context-budget: buildFallback sigue siendo el alias de la entrega reducida por llamada", () => {
+  assert.equal(buildFallback("read", 60383, 16000), buildReducedDelivery("read", 60383, "call"));
+  assert.equal(buildFallback("glob", 12000, 8000), buildReducedDelivery("glob", 12000, "call"));
+  assert.equal(buildFallback("read", 60383, 16000).includes("16000"), false, "el alias no expone la cifra");
+});
+
+test("context-budget: el primer pedido amplio avisa y el segundo se permite en el mismo turno", async () => {
+  const sessionID = "s-progresion";
+  const args = { pattern: "**/*" };
+  const hooks = await mockPluginSession(true, process.cwd(), sessionID);
+  await assert.rejects(
+    hooks["tool.execute.before"]({ tool: "glob", sessionID, callID: "c1" }, { args }),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("glob", args),
+  );
+  // Segundo pedido amplio idéntico: el aviso ya se emitió, se permite ejecutar.
+  await hooks["tool.execute.before"]({ tool: "glob", sessionID, callID: "c2" }, { args });
+  // Un mensaje nuevo abre turno: el aviso vuelve a emitirse.
+  await hooks["chat.message"]({ sessionID, agent: "flowtask-runner" }, { message: {}, parts: [] });
+  await assert.rejects(
+    hooks["tool.execute.before"]({ tool: "glob", sessionID, callID: "c3" }, { args }),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("glob", args),
+  );
+});
+
+test("context-budget: la salida que no se puede medir se entrega intacta con traza", async () => {
+  const sessionID = "s-unmeasurable";
+  const hooks = await mockPluginSession(true, process.cwd(), sessionID);
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => {
+    warnings.push(args.join(" "));
+  };
+  try {
+    const output = { title: "read", output: { not: "a string" }, metadata: {} };
+    await hooks["tool.execute.after"]({ tool: "read", sessionID, callID: "c" }, output);
+    assert.deepEqual(output.output, { not: "a string" }, "la salida no medible se entrega intacta");
+    assert.equal(output.metadata.degradation.level, "measurement_unavailable");
+    assert.equal(warnings.length, 1, "la medición no disponible deja una traza");
+    assert.ok(warnings[0].includes("no se pudo medir"), warnings[0]);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+test("context-budget: el estado de avisos es por sesión y se reinicia", () => {
+  resetNarrowingNotices();
+  const args = { pattern: "**/*" };
+  assert.equal(registerNarrowingNotice("s-a", "glob", args), true, "el primer aviso se registra");
+  assert.equal(registerNarrowingNotice("s-a", "glob", args), false, "el aviso ya emitido no se repite");
+  assert.equal(registerNarrowingNotice("s-b", "glob", args), true, "otra sesión tiene su propio estado");
+  resetNarrowingNotices("s-a");
+  assert.equal(registerNarrowingNotice("s-a", "glob", args), true, "el reset de sesión reinicia el aviso");
+  resetNarrowingNotices();
+  assert.equal(registerNarrowingNotice("s-b", "glob", args), true, "el reset global reinicia todos los avisos");
 });
 
 test("context-budget: helpers preventivos puros (edge cases)", () => {

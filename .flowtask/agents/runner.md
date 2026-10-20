@@ -210,6 +210,7 @@ skill({ name: "zero-assumptions" })        ← cargar antes de verificar cada da
 skill({ name: "memory-protocol" })        ← cargar antes de usar mem_*
 skill({ name: "manual-classification" })  ← cargar si no hay clasificación inyectada en contexto
 skill({ name: "handshake-protocol" })     ← cargar antes de invocar subagentes
+skill({ name: "context-degradation" })     ← cargar al iniciar cada momento y al cambiar de momento
 ```
 
 Cuando se activa una ejecución del Agent Loop se cargan además las seis skills
@@ -218,6 +219,11 @@ Cuando se activa una ejecución del Agent Loop se cargan además las seis skills
 el controlador de la ejecución: compone los otros cinco contratos en orden fijo,
 persiste el registro de la ejecución y aplica el freno duro por gasto declarado.
 La composición se rige por `## Control del Agent Loop`.
+
+Al iniciar cada momento se carga `context-degradation` y se muestra solo el pack de
+ese momento: qué se espera, qué está prohibido y qué avisa. Las reglas ya resueltas
+y la evidencia verificada se heredan por referencia y no se repiten. Los umbrales
+numéricos no se muestran: el operador ve aviso, entrega reducida y delegación.
 
 Al iniciar cada conversación se carga `investigacion` antes de clasificar la
 intención. Permanece activa durante investigación, diagnóstico y ejecución.
@@ -453,6 +459,9 @@ Después de que un subagente responde, el runner DEBE verificar si la respuesta 
 4. Si el checkpoint SÍ existe: proceder al relanzamiento:
 
 #### Relanzamiento por capacidad
+
+Antes de relanzar, recuperá y declará el contexto durable según `### Recuperación
+tras compactación o relevo`.
 
 Para `constructor`, crear hilo fresco con restauración explícita del checkpoint,
 artifact y motivo del relevo. No presentarlo como continuidad técnica. Los demás
@@ -1152,13 +1161,84 @@ La ronda siguiente se despacha solo cuando todas las confirmaciones anteriores e
 
 ***
 
+## Contexto: reglas por momento y recuperación
+
+### Reglas vigentes por momento
+
+El trabajo avanza por momentos. Al iniciar cada momento se muestra solo el pack de
+ese momento: qué se espera, qué está prohibido y qué avisa.
+
+| Momento | Responsable | Qué se espera |
+|---|---|---|
+| `intake` | Paso 0 — clasificación | El pedido queda clasificado y el trabajo encuadrado. |
+| `define` | Flujo CA / ca-writer | Requisito, comportamiento observable y condiciones de fallo. |
+| `plan` | planner | Tareas, dependencias y orden de ejecución. |
+| `build` | constructor | Implementación conforme al plan aprobado. |
+| `validate` | validator / tester | Evidencia ejecutada y veredicto. |
+| `close` | Cierre | Consolidación, cierre y registro. |
+
+Reglas:
+
+- Se muestra solo el pack del momento. Al cambiar de momento se carga el pack nuevo
+  y lo ya resuelto se hereda por referencia.
+- Si el pack no se muestra, se declara que no se mostró y el trabajo no se presenta
+  como identificado.
+- Si falta memoria, se declara la fuente faltante y se sigue con la siguiente fuente
+  disponible; la ausencia no se trata como confirmación.
+- Los umbrales no son visibles: el operador ve aviso, entrega reducida y delegación.
+
+### Recuperación tras compactación o relevo
+
+Ante una compactación, un relevo por capacidad o un hilo nuevo, el runner recupera
+y declara el contexto durable **antes de actuar**. No arranca suponiendo.
+
+**Orden de consulta:**
+
+1. `mem_search(query: "flow-state/{CA-ID}/instances", type: "decision", scope: "project")`
+2. `mem_search(query: "CA-{ID} plan", type: "ca-artifact", scope: "project")`
+3. `mem_search(query: "{work_id} Agent Loop run", type: "decision", scope: "project")`; si
+   no aparece, buscar `Agent Loop progress — {work_id}` y `Agent Loop budget — {work_id}`
+4. `mem_get_observation` del run: leer `records.progress` y `records.budget`.
+5. Recuperar `round.number`, `variables`, `integrity.last_snapshot_id`, `tokens.total`,
+   `time.active_time_ms`, `cost.estimated_usd` e `integrity.last_confirmed_at`.
+
+**Bloque de declaración:**
+
+```
+Recuperación de contexto:
+- Decisiones vigentes: {lista} (fuente: {ref}, observado: {ISO-8601})
+- Progreso confirmado: ronda {N}; tareas {A}/{B}; criterios {C}/{D} (fuente: {ref}, observado: {ISO-8601})
+- Gasto acumulado: tokens {T}; tiempo activo {A}; costo estimado {C} (fuente: {ref}, observado: {ISO-8601})
+- Última ronda confirmada: {N} (fuente: {ref})
+- Huecos no registrados: {lista o "ninguno"}
+- Para retomar: {qué falta o "nada"}
+```
+
+**Reglas de fallo:**
+
+- Si lo material para continuar no está confirmado, se pausa con motivo
+  `progress_unavailable` o `record_unavailable`, declarando la última confirmación
+  buena y la condición exacta de reanudación.
+- No se declara cero por falta de datos y no se sobrescribe ningún registro.
+- No fusiones registros contradictorios: se declara la contradicción y se pausa.
+- Si lo no confirmable es periférico, se continúa etiquetándolo `[No verificado]`.
+- Si la ejecución activa es ambigua, la respuesta es `no disponible` y se pausa; no
+  elegís por conveniencia.
+- Ante una discrepancia entre lo heredado y lo observado, se declara la discrepancia
+  y se pausa antes de cambiar el alcance.
+- No re-verificás lo ya confirmado: la evidencia heredada se reutiliza por
+  referencia.
+
+***
+
 ## Reconciliación post-compaction
 
-Si el Runner pierde contexto o se reinicia, solicita `list` al gestor mediante
-el adapter y cruza su salida con `flow-state/*/instances`. Si Engram no está
-disponible o la lectura del gestor es ilegible, falla cerrado: no inventes un
-inventario vacío ni hagas cambios. Reporta como huérfanos los worktrees sin
-asociación durable; no los borres automáticamente.
+Para worktrees, después de recuperar el contexto durable según `### Recuperación tras
+compactación o relevo`, si el Runner pierde contexto o se reinicia, solicita `list`
+al gestor mediante el adapter y cruza su salida con `flow-state/*/instances`. Si
+Engram no está disponible o la lectura del gestor es ilegible, falla cerrado: no
+inventes un inventario vacío ni hagas cambios. Reporta como huérfanos los worktrees
+sin asociación durable; no los borres automáticamente.
 
 ## Mantenimiento de huérfanos
 

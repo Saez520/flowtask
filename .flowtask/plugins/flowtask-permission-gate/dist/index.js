@@ -6,7 +6,7 @@ import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunne
 import { createWorktreeConsumerBridge } from "./worktree-consumer-bridge.js";
 import { createConfiguredEngramInvoker } from "./engram-mcp.js";
 import { createWorktreeMcpClient } from "./worktree-mcp.js";
-import { buildFallback, isImageOrPdfOutput, loadContextBudgetConfig, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
+import { buildAttachmentDelivery, buildDegradationMetadata, buildNarrowingNotice, buildReducedDelivery, isImageOrPdfOutput, loadContextBudgetConfig, registerNarrowingNotice, resetNarrowingNotices, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
 /** The nine keys published by the worktree manager for every accepted and rejected request. */
 const PROTOCOL_KEYS = [
     "contract_version", "tool_version", "operation", "repository",
@@ -406,10 +406,12 @@ export default async function (input) {
             if (hookInput.agent !== undefined && isRunner(hookInput.agent)) {
                 SESSION_AGENTS.set(hookInput.sessionID, hookInput.agent);
             }
-            // Cada mensaje nuevo abre un turno: se numera y se resetea el acumulado.
+            // Cada mensaje nuevo abre un turno: se numera, se resetea el acumulado y
+            // se reinicia el estado de avisos de acotación del turno.
             const turn = (TURN_SEQ.get(hookInput.sessionID) ?? 0) + 1;
             TURN_SEQ.set(hookInput.sessionID, turn);
             TURN_STATE.set(hookInput.sessionID, { sum: 0, turn });
+            resetNarrowingNotices(hookInput.sessionID);
         },
         "tool.execute.before": async (hookInput, hookOutput) => {
             const command = String(hookOutput?.args?.command ?? "");
@@ -422,26 +424,19 @@ export default async function (input) {
             if (isRunner(agent) && !runnerToolAllowed(hookInput.tool, hookOutput?.args ?? {}))
                 runnerBlocked();
             // --- context budget: pre-gate barato (runner, lista cerrada, sin recorrer árbol) ---
+            // Degradación por niveles, nivel 1: el primer pedido amplio del turno se
+            // anuncia con la forma de acotar y no se ejecuta. El mismo pedido
+            // repetido en el turno se permite y su entrega se reduce en el post-gate.
             if (isRunner(agent) && (hookInput.tool === "read" || hookInput.tool === "glob" || hookInput.tool === "grep")) {
-                const budgetWorkdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
-                const budget = loadContextBudgetConfig(budgetWorkdir, sessionDir);
-                if (hookInput.tool === "read") {
-                    const statSize = readStatSizeSafe(hookOutput?.args ?? {});
-                    if (shouldPreventiveBlockRead(hookOutput?.args ?? {}, statSize)) {
-                        const actual = statSize ?? budget.preventiveReadStatLimit + 1;
-                        throw new Error(buildFallback("read", actual, budget.readThreshold));
-                    }
-                }
-                else if (hookInput.tool === "glob") {
-                    if (shouldPreventiveBlockGlob(hookOutput?.args ?? {})) {
-                        // Pre-gate sin tamaño real: N=threshold+1 expresa exceso potencial.
-                        throw new Error(buildFallback("glob", budget.globThreshold + 1, budget.globThreshold));
-                    }
-                }
-                else if (hookInput.tool === "grep") {
-                    if (shouldPreventiveBlockGrep(hookOutput?.args ?? {})) {
-                        throw new Error(buildFallback("grep", budget.grepThreshold + 1, budget.grepThreshold));
-                    }
+                const budgetArgs = hookOutput?.args ?? {};
+                const budgetTool = hookInput.tool;
+                const broad = budgetTool === "read"
+                    ? shouldPreventiveBlockRead(budgetArgs, readStatSizeSafe(budgetArgs))
+                    : budgetTool === "glob"
+                        ? shouldPreventiveBlockGlob(budgetArgs)
+                        : shouldPreventiveBlockGrep(budgetArgs);
+                if (broad && registerNarrowingNotice(hookInput.sessionID, budgetTool, budgetArgs)) {
+                    throw new Error(buildNarrowingNotice(budgetTool, budgetArgs));
                 }
             }
             if (hookInput.tool !== "bash" || !/\bgit\s+commit\b/.test(command))
@@ -495,37 +490,54 @@ export default async function (input) {
                 return;
             if (hookInput.tool !== "read" && hookInput.tool !== "glob" && hookInput.tool !== "grep")
                 return;
-            if (hookOutput == null || typeof hookOutput.output !== "string") {
+            if (hookOutput == null)
+                return;
+            const budgetTool = hookInput.tool;
+            if (typeof hookOutput.output !== "string") {
                 // GAP-003: si no se puede medir, nunca entregar silencioso sin control:
-                // se observa con traza. Un smoke de integración revalida la mutación.
-                console.warn(`[FlowTask Context Budget] no se pudo medir output de ${hookInput.tool} (session ${hookInput.sessionID}); se entrega sin presupuestar.`);
+                // se observa con traza y se marca la entrega como no medible. Un smoke
+                // de integración revalida la mutación.
+                console.warn(`[FlowTask Context Budget] no se pudo medir output de ${budgetTool} (session ${hookInput.sessionID}); se entrega sin presupuestar.`);
+                hookOutput.metadata = { ...(hookOutput.metadata ?? {}), ...buildDegradationMetadata("measurement_unavailable") };
                 return;
             }
             const budget = loadContextBudgetConfig(sessionDir || process.cwd(), sessionDir);
-            const threshold = hookInput.tool === "read" ? budget.readThreshold : hookInput.tool === "grep" ? budget.grepThreshold : budget.globThreshold;
+            const threshold = budgetTool === "read" ? budget.readThreshold : budgetTool === "grep" ? budget.grepThreshold : budget.globThreshold;
             const actual = hookOutput.output.length;
             // Attachments imagen/PDF: el texto corto miente sobre el costo real; el
             // runner no recibe attachments (v1) y se delega al Inspector.
             if (isImageOrPdfOutput(hookOutput)) {
-                hookOutput.output =
-                    buildFallback(hookInput.tool, actual, threshold) +
-                        " (imagen/PDF — delegá al Inspector)";
+                hookOutput.output = buildAttachmentDelivery(budgetTool, actual);
                 if (hookOutput.metadata)
-                    hookOutput.metadata.attachment = undefined;
+                    delete hookOutput.metadata.attachment;
+                hookOutput.metadata = {
+                    ...(hookOutput.metadata ?? {}),
+                    truncated: true,
+                    ...buildDegradationMetadata("attachment_delegated", { omittedChars: actual }),
+                };
                 return;
             }
-            // Umbral individual: se omite (no se suma al acumulado) y se marca.
+            // Presupuesto por llamada: se entrega reducido, sin preview y con la
+            // delegación explícita de lo omitido.
             if (actual > threshold) {
-                hookOutput.output = buildFallback(hookInput.tool, actual, threshold);
-                hookOutput.metadata = { ...(hookOutput.metadata ?? {}), truncated: true };
+                hookOutput.output = buildReducedDelivery(budgetTool, actual, "call");
+                hookOutput.metadata = {
+                    ...(hookOutput.metadata ?? {}),
+                    truncated: true,
+                    ...buildDegradationMetadata("reduced", { budget: "call", omittedChars: actual }),
+                };
                 return;
             }
-            // Umbral acumulado por turno: aunque esté bajo el individual, la suma
+            // Presupuesto acumulado por turno: aunque esté bajo el individual, la suma
             // entregada del turno no puede superar el presupuesto del turno.
             const state = TURN_STATE.get(hookInput.sessionID) ?? { sum: 0, turn: TURN_SEQ.get(hookInput.sessionID) ?? 0 };
             if (state.sum + actual > budget.turnAccumulated) {
-                hookOutput.output = buildFallback(hookInput.tool, actual, budget.turnAccumulated);
-                hookOutput.metadata = { ...(hookOutput.metadata ?? {}), truncated: true };
+                hookOutput.output = buildReducedDelivery(budgetTool, actual, "turn");
+                hookOutput.metadata = {
+                    ...(hookOutput.metadata ?? {}),
+                    truncated: true,
+                    ...buildDegradationMetadata("turn_omitted", { budget: "turn", omittedChars: actual }),
+                };
                 return;
             }
             state.sum += actual;
@@ -535,6 +547,7 @@ export default async function (input) {
             SESSION_AGENTS.clear();
             TURN_STATE.clear();
             TURN_SEQ.clear();
+            resetNarrowingNotices();
         },
     };
 }

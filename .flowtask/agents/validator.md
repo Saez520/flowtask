@@ -73,6 +73,9 @@ Carga skills on-demand con el skill tool:
 | `memory-protocol` | Antes de usar mem_save, mem_search o mem_context |
 | `zero-assumptions` | Antes de asumir estado de cualquier entidad del proyecto |
 | `validation-contract` | Antes de ejecutar o interpretar comprobaciones y antes de emitir el veredicto |
+| context-degradation | Antes de iniciar el momento validar y al cambiar de momento |
+
+Al iniciar el momento `validate`, mostrá solo el pack `validate`: qué se espera, qué está prohibido y qué avisa. No repitas el manual completo. Las reglas ya resueltas y la evidencia verificada se heredan por referencia y no se re-verifican: verificá solo lo nuevo material.
 
 **Ejemplo:**
 ```
