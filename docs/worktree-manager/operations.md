@@ -99,14 +99,76 @@ Parent-only lifecycle state belongs to the standalone manager. Target-direct
 state belongs to the explicit target repository while the parent is represented
 by its gitlink/index relationship. The required link mode is
 `staged-only`. Target-direct `abort`, `complete`, and `recover` preserve the
-snapshot and journal and stop on ambiguous drift.
+snapshot and journal and stop on ambiguous drift. An incomplete target-direct
+recovery is reported as `intervention_required` with exit code `6`, and the
+descriptor and the snapshot are retained for human intervention.
 
 ## FlowTask adapter behavior
 
-The adapter translates legacy records only during an explicit recovery request.
-It mirrors transaction evidence for compatibility, while the standalone
-manager remains unaware of FlowTask paths and legacy refs. This compatibility
-translation is not a second lifecycle implementation.
+The consumer entrypoint `.flowtask/scripts/worktree.sh` delegates to
+`.flowtask/scripts/worktree-adapter.sh`, which delegates to
+`.flowtask/scripts/worktree-manager/worktree.sh`, which runs
+`python3 -m worktree_manager`. There is a single lifecycle in that chain. The
+adapter publishes the output of the manager unchanged, and its compatibility
+notices go to stderr without any content of the backups.
+
+The adapter translates a legacy setting or a legacy transaction only when the
+request asks for it explicitly, and it declares the compatibility it applies.
+It never writes a legacy artifact.
+
+### Legacy configuration translation
+
+The legacy configuration `.flowtask/config/worktree.json` is read only for a
+`complete --preserve-dirty` request that carries no `--config`.
+
+- `preserveDirty` set to `true` applies `preserve_dirty=true` through a
+  temporary configuration file that the adapter passes with `--config`, and the
+  adapter publishes `Compatibility: legacy FlowTask preserveDirty setting applied.`
+- `preserveDirty` set to `false` changes nothing and publishes no notice.
+- An invalid document or a value that is not a boolean is rejected with
+  `The legacy configuration is invalid; no operation was started.` and exit
+  code `3`, without any mutation.
+- Reading the legacy document requires `node`; without it the operation is
+  rejected with `The legacy configuration cannot be read without node; no operation was started.`
+  and exit code `3`.
+- An explicit `--config` never reads the legacy document; the adapter publishes
+  `Compatibility: legacy FlowTask configuration ignored because --config was provided.`
+  and the operation is not blocked.
+
+### Legacy transaction import
+
+A legacy transaction is imported only by an explicit parent-only `recover` that
+names a transaction identifier. The identifier of a recovery request that
+carries the `td-` prefix is translated to the `wt-` prefix before the request
+reaches the manager.
+
+The canonical location of a transaction is `<git-dir>/<state_dir>/transactions/<transaction>`,
+where `state_dir` is the configured state directory. The legacy location is
+`.flowtask/backups/<transaction>`.
+
+- When both locations exist, the work identifier of each record is compared. A
+  missing identity or a different identity blocks the operation with exit code
+  `5` and nothing is changed; both records are preserved. When the identities
+  match, the adapter publishes
+  `Compatibility: canonical transaction <transaction> is authoritative; legacy copy left unchanged.`
+- When only the legacy location exists, it is imported once: the legacy
+  directory is copied into the canonical location, and the legacy backup
+  references `refs/flowtask/backups/<transaction>` and
+  `refs/flowtask/backups/<transaction>-untracked` are published as
+  `refs/<backup_ref_prefix>/<transaction>` and
+  `refs/<backup_ref_prefix>/<transaction>-untracked` when the canonical
+  reference does not exist yet. A canonical reference that exists with a
+  different object ID blocks the operation with exit code `5` and nothing is
+  changed. The adapter publishes `Compatibility: legacy FlowTask transaction <transaction> imported for recovery.`
+- The canonical state is never copied back to the legacy location.
+
+### Legacy state and environment
+
+No operation writes `.flowtask/backups` and no operation writes
+`refs/flowtask/backups`; both are read only in the explicit import described
+above. The variables `FLOWTASK_*` are inert: they change neither the
+configuration, nor the authorization, nor the execution. The controls of the
+standalone tests are `WORKTREE_MANAGER_TEST_*`.
 
 ## Consumer transport failures
 
