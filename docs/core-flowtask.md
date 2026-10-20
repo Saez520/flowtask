@@ -146,6 +146,7 @@ RUNNER clasifica ── ¿existe el CA en Engram?
               ▼
         [5] INICIO AUTOMÁTICO ── la orden del dev + el Gate PASS habilitan
             la construcción (sin espera rutinaria; el Gate se verifica igual)
+            la decisión condicional de pruebas se registra antes del worktree
               │
               ▼
         [6] WORKTREE ── worktree.sh create CA-{ID} --base {base detectada}
@@ -158,7 +159,14 @@ RUNNER clasifica ── ¿existe el CA en Engram?
             flow-state: flow-state/CA-{ID}/construct
               │
               ▼
-        [8] VALIDATOR ── validación en caliente
+        [8] TESTER CONDICIONAL ── genera pruebas solo cuando el riesgo lo exige
+            decisión: ca/CA-{ID}/artifact/test-gate
+            reporte: ca/CA-{ID}/artifact/tests-report
+            sin pruebas requeridas: continúa a la validación sin esperar
+              │
+              ▼
+        [9] VALIDATOR ── validación en caliente
+            hereda el reporte de pruebas sin repetir lo comprobado
             N1: cumplimiento del plan
             N2: convenciones del proyecto
             N3: higiene de coordinación (escáner de referencias)
@@ -174,8 +182,8 @@ RUNNER clasifica ── ¿existe el CA en Engram?
               │                          recuperación operativa o pausa
               │
               ▼ APPROVED con final=true
-        [9] CIERRE ── commit → worktree.sh complete (squash-merge a la base)
-             → ca_status: closed + purga de task_id huérfanos + session summary
+        [10] CIERRE ── commit → worktree.sh complete (squash-merge a la base)
+              → ca_status: closed + purga de task_id huérfanos + session summary
 ```
 
 ### Gestor portable y cierre seguro

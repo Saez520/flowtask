@@ -251,7 +251,7 @@ Los sufijos `progress`, `termination`, `idempotency`, `budget` y `run` pertenece
 | constructor | `construct` |
 | inspector | `inspect` |
 | validator | `validate` |
-| tester | `tests` |
+| tester | `tests` (generación), `test-gate` (decisión) |
 | review-orchestrator | `review` |
 | logger | `logging` |
 | initializer | `init` |
@@ -260,6 +260,8 @@ Los sufijos `progress`, `termination`, `idempotency`, `budget` y `run` pertenece
 > Este skill los aplica; no los redefine.
 
 > Mapeo de sufijos legacy a canónico: `ca` → `create`, `planning` → `plan`, `initialize` → `init`. `inspect` se mantiene.
+
+> El Tester mantiene tratamiento ligero en los dos checkpoints: la decisión (`test-gate`) y la generación (`tests`) se registran con `CheckpointPayload` v2, `treatment_class: "light"` y `state: "completed"`. Ninguno de los dos habilita continuidad de sesión: la continuidad la da el artifact, no el checkpoint.
 
 ## Registros de ejecución que no son checkpoints
 
@@ -283,7 +285,7 @@ El `CheckpointPayload` v2 sigue siendo la única estructura que habilita la cont
 | **ALTA** | ca-writer | Conversación multi-mensaje, tratamiento completo |
 | **ALTA** | planner | Decisiones pendientes antes de finalizar, tratamiento completo |
 | **MEDIA** | inspector | Preguntas secuenciales, tratamiento ligero |
-| **BAJA** | constructor, validator, tester, review-orchestrator, logger, initializer | Típicamente una sola ejecución, tratamiento ligero |
+| **BAJA** | constructor, validator, tester, review-orchestrator, logger, initializer | Típicamente una sola ejecución, tratamiento ligero. El tester registra dos checkpoints acotados por entrega: decisión y generación |
 
 ## Integración con el Runner
 

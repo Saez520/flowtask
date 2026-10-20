@@ -31,14 +31,16 @@ Todo `topic_key` sigue una de estas formas: `{namespace}/CA-{ID}[/{sub-namespace
 | `ca/CA-{ID}/artifact/validacion` | validator | Runner | `ca-artifact` |
 | `ca/CA-{ID}/artifact/audit` | plan-auditor | Runner, Validator | `ca-artifact` |
 | `ca/CA-{ID}/artifact/logging-report` | logger | — | `ca-artifact` |
-| `ca/CA-{ID}/artifact/tests-report` | tester | — | `ca-artifact` |
+| `ca/CA-{ID}/artifact/test-gate` | tester | Runner, Validator | `ca-artifact` |
+| `ca/CA-{ID}/artifact/tests-report` | tester | Runner, Validator | `ca-artifact` |
 | `ca/project/artifact/project-context` | initializer | Todos | `ca-artifact` |
 | `flow-state/CA-{ID}/create` | ca-writer | Runner | `decision` (CheckpointPayload) |
 | `flow-state/CA-{ID}/plan` | planner | Runner | `decision` (CheckpointPayload) |
 | `flow-state/CA-{ID}/audit` | plan-auditor | Runner | `decision` |
 | `flow-state/{execution_id}/construct` | constructor | Runner | `decision` |
 | `flow-state/{execution_id}/validate` | validator | Runner | `decision` |
-| `flow-state/{ID}/tests` | tester | Runner | `decision` |
+| `flow-state/CA-{ID}/test-gate` | tester | Runner, Validator | `decision` |
+| `flow-state/{ID}/tests` | tester | Runner, Validator | `decision` |
 | `flow-state/{CA-ID}/review` | review-orchestrator | Runner | `decision` |
 | `flow-state/{ID}/logging` | logger | Runner | `decision` |
 | `flow-state/{ID}/init` | initializer | Runner | `decision` |

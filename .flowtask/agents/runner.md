@@ -240,7 +240,7 @@ intención. Permanece activa durante investigación, diagnóstico y ejecución.
 | `flowtask-inspector`    | pregunta sobre el proyecto o pide análisis                        |
 | `flowtask-initializer`  | necesita escanear proyecto                                        |
 | `flowtask-logger`       | necesita instrumentar logging                                     |
-| `flowtask-tester`       | necesita generar tests                                            |
+| `flowtask-tester`       | necesita decidir si se necesitan tests y generarlos cuando corresponde |
 | `flowtask-graphify-docs-media` | necesita generar docs/media de Graphify (background, tras aceptación) |
 
 Formato para invocar:
@@ -319,6 +319,8 @@ Todos deben cumplirse:
 
 - **PASS**: imprime una línea `✔ Gate permitido: execution_gate — plan final y auditoría verificados. Inicio de construcción en {worktree}.` El Gate y la construcción quedan unidos **sin espera intermedia**. Registra la evidencia del Gate como una entrada de `PolicyDecision` en `flow-state/{execution_id}/run` (`autonomy.decisions`) con `kind: "gate"`, `policy: "execution_gate"`, `outcome: "pass"`, `verified: true`, el comando ejecutado, el resultado y sus `evidence_refs`. Los registros de evidencia material verificados (`VR-*`) del plan se incluyen en `evidence_refs`. Después crea el worktree y despacha al Constructor.
 - **FAIL**: una sola línea iniciando con `⛔ Gate rechazado: {razón concreta}` indicando la condición a resolver (decisión pendiente, blocker, auditoría faltante o rechazada, evidencia material ausente o incompleta, o `gate_status` ausente). No se crea worktree, no se abre ejecución y no se invoca el Constructor ni el Validator.
+
+La decisión de pruebas es posterior al Gate y no es una confirmación humana: los criterios del Gate no cambian y la apertura del worktree no espera una decisión del desarrollador.
 
 ### Modo `--auto`
 
@@ -841,14 +843,34 @@ Invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/CA-{ID}
 
 ### Paso 4 — Constructor
 
+El orden de inicio es: `AgentRunRecord` → decisión de pruebas → worktree → Constructor.
+
 Antes de despachar al Constructor, abre la ejecución con el `AgentRunRecord` que incluye la
 evidencia del Gate en `autonomy.decisions` y confírmalo por lectura. El worktree y la
 construcción son la ronda 1.
 
-Invoca constructor usando el formato canónico y aplica continuidad automática
-acotada ante fallo/interrupción recuperable. Relevo o recuperación tras rechazo
-inicia hilo nuevo con restauración explícita.
-Prompt: flow state del plan desde Engram y contexto actual del CA.
+#### Decisión de pruebas
+
+La decisión ocurre después del Gate de Ejecución y antes de abrir el worktree. No es una
+confirmación humana: no se pide confirmación por generar o no generar pruebas, no hay espera
+rutinaria y el `AgentRunRecord` no se modifica.
+
+1. Invoca `flowtask-tester` con `mode: decide`, `execution_id`, `artifact_namespace`,
+   `plan_ref`, `audit_ref`, `ca_ref`, el alcance, el `profile` con su `report_detail`, el
+   input literal y el `decision_ref` previo. Hilo fresco, tratamiento ligero.
+2. Si el artifact de decisión ya existe para el mismo `execution_id` y el mismo `plan_ref`,
+   leelo y no re-invokes al Tester: el flujo no re-evalúa la decisión.
+3. Si la respuesta trae `persistencia_fallida` o `state: blocked`, pausa con
+   `progress_unavailable` y el mensaje canónico de tres líneas. No abras worktree, no
+   invoqués al Constructor ni al Validator.
+4. Si la respuesta trae `tests_required: false`, imprime
+   `✔ Decisión de pruebas: no requeridas (ninguna condición; evidencia negativa registrada)`
+   y continuá al worktree con `tests_required: false`.
+5. Si la respuesta trae `tests_required: true`, imprime
+   `✔ Decisión de pruebas: requeridas ({conditions})` y pasá al Constructor el
+   `test_decision_ref` y el `tests_required` como referencias citables.
+6. Si la respuesta no trae la decisión, el flujo no infiere `tests_required`: pausa con
+   `progress_unavailable` y el mensaje canónico de tres líneas.
 
 ### Política de worktrees — adapter consumidor obligatorio por CA
 
@@ -893,6 +915,33 @@ journals, locks, backups o lógica de recuperación propia.
    consentimiento humano aplicable; `--auto` no agrega permisos ni sustituye
    consentimientos y nunca concede esos permisos.
 
+Con el worktree confirmado, invoca constructor usando el formato canónico y aplica continuidad automática
+acotada ante fallo/interrupción recuperable. Relevo o recuperación tras rechazo
+inicia hilo nuevo con restauración explícita.
+Prompt: flow state del plan desde Engram y contexto actual del CA.
+
+***
+
+### Paso 4.5 — Generación de pruebas
+
+La generación ocurre después de la construcción y antes de la validación.
+
+1. Si la decisión registrada trae `tests_required: false`, saltá al Paso 5 con
+   `tests_report_ref: NONE`.
+2. Si trae `tests_required: true`, invoca `flowtask-tester` con `mode: generate`,
+   `execution_id`, `artifact_namespace`, `test_decision_ref`, `tests_required: true`, el
+   worktree, el alcance, el `profile` con su `report_detail` y el reporte previo. Hilo
+   fresco, tratamiento ligero.
+3. La generación reutiliza la decisión registrada: el flujo no re-evalúa las condiciones. Un
+   cambio material de alcance desde la decisión pausa y exige una decisión nueva; el flujo
+   no infiere el alcance de la prueba.
+4. Si la respuesta trae `persistencia_fallida`, `state: blocked` o el reporte ausente, pausa
+   con `progress_unavailable` y el mensaje canónico de tres líneas. No invoqués al Validator
+   ni anuncies la entrega como lista para validar.
+5. Si el Tester responde `tests_not_required` con `tests_required: true`, es una
+   inconsistencia: pausa y no infieras el alcance de la prueba.
+6. Pasá al Validator el `test_decision_ref` y el `tests_report_ref`.
+
 ***
 
 ### Paso 5 — Validator
@@ -913,7 +962,9 @@ ni contexto de sesión anterior.
 El prompt de despacho incluye: `execution_id`, `artifact_namespace`, la ronda
 (`round=closure` o `round=intermediate`), el alcance declarado (`scope.goal`,
 `scope.files`, `scope.criteria`), `plan_ref` (obligatorio en `round=closure` y
-opcional en `round=intermediate`), `environment` y, cuando existe, la
+opcional en `round=intermediate`), `environment`, la decisión de pruebas
+(`test_decision_ref` y `tests_required`) y el reporte de pruebas
+(`tests_report_ref`, `NONE` cuando no se generaron) y, cuando existe, la
 referencia al reporte de validación anterior como referencia citable.
 
 **Veredictos.**
@@ -926,6 +977,8 @@ referencia al reporte de validación anterior como referencia citable.
 - `OPERATIONAL_FAILURE` → no es rechazo funcional: conserva estado e historial,
   recupera la comprobación si es posible y pausa/escalá si no
   (`needs_recovery_or_pause`).
+- Un test `failed` heredado del reporte de pruebas es un rechazo funcional con su
+  evidencia; una herramienta caída que impide comprobar es un fallo operativo.
 
 ### Cierre exitoso con worktree
 
@@ -956,6 +1009,8 @@ En cada ronda, el Runner entrega al Constructor el plan vigente, el resultado de
 Una nueva ronda después del diagnóstico requiere una hipótesis fundada, distinta o respaldada por evidencia nueva, y una comprobación observable. Si no hay hipótesis/progreso verificable, falta autoridad para continuar, hay un límite expreso, un fallo irrecuperable o se requiere cambiar alcance, pausa y explica motivo, estado conservado y condición de reanudación. No hay máximo global de rondas: el loop no se detiene por un número fijo de rechazos.
 
 Un fallo operativo (comando fallido, herramienta/servicio indisponible o limitación externa) no es rechazo funcional y no incrementa rondas. Conserva worktree, cambios, artifacts e historial; intenta recuperación operativa pertinente o pausa si no puede verificar. Nunca interpretes el fallo como aprobación ni pidas correcciones al Constructor por un fallo operativo.
+
+La validación hereda el reporte de pruebas: un test `failed` es un rechazo funcional con su evidencia y una herramienta caída es un fallo operativo. La generación reutiliza la decisión registrada sin re-evaluarla; un cambio material de alcance desde la decisión pausa y exige una decisión nueva.
 
 Un fallo irrecuperable declarado con evidencia y diagnóstico cierra por causa externa conservando trabajo, historial y diagnóstico. Un fallo externo no verificable no se declara irrecuperable: es un fallo operativo, produce pausa y nunca es un rechazo funcional.
 
@@ -1086,6 +1141,7 @@ La ronda siguiente se despacha solo cuando todas las confirmaciones anteriores e
 - **Con tope duro, el gasto ilegible o la atribución incompleta pausan en seguridad**; sin tope duro, esas mismas anomalías solo se informan y el trabajo continúa en modo degradado.
 - **El estancamiento no cambia de modelo** y las rondas no son una señal de gasto.
 - **El `AgentRunRecord` no es un checkpoint**: referencia el progreso, la terminación, la idempotencia y el gasto; no los sustituye y no habilita la reanudación de subagentes.
+- **La decisión de pruebas no altera los contratos de control**: es posterior al Gate de Ejecución, no es una confirmación humana y no modifica el `AgentRunRecord`.
 
 ### Fallos operativos
 

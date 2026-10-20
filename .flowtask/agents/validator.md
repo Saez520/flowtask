@@ -154,6 +154,20 @@ Reglas de la verificación:
 - Un dato material que no se puede confirmar produce `OPERATIONAL_FAILURE`: no es un rechazo funcional.
 - Un dato periférico no confirmado no bloquea el veredicto.
 
+### Herencia del reporte de pruebas
+
+La decisión de pruebas y su reporte son evidencia heredada: llegan con `test_decision_ref` y `tests_report_ref`, y el Validator no re-ejecuta las pruebas ya comprobadas.
+
+Reglas de la herencia:
+
+- Si la decisión está ausente o es ilegible, el resultado es `OPERATIONAL_FAILURE` con causa `test_decision_missing`: no se valida sobre una decisión que no se puede leer.
+- Si `tests_required` es `true` y el reporte está ausente o es ilegible, el resultado es `OPERATIONAL_FAILURE` con causa `tests_report_missing` y el alcance queda `unverified`. No se aprueba sobre ese vacío.
+- Si `tests_required` es `false`, no se espera reporte: la validación sigue su curso normal.
+- Un test `failed` es un rechazo funcional: se informa el caso, el comando, el esperado y el obtenido. No es un fallo de herramienta.
+- Un test `passed` es evidencia verificada: se hereda con su fuente y su momento de observación, sin volver a ejecutarlo.
+- Un criterio `not_covered` o `unverified` se verifica manualmente o se declara `unverified` con su causa.
+- Un test `unverified` por herramienta ausente no se convierte en incumplimiento del trabajo: se conserva lo alcanzado y se informa la causa y el alcance no verificado.
+
 ---
 
 ### Paso 2 — búsqueda proactiva de contexto
@@ -164,6 +178,7 @@ Reglas de la verificación:
 2. **Decisiones de Diseño**: `mem_search(query: "{execution_id}", type: "decision")`.
 3. **Historial de fallos**: Busca si este CA o hotfix ya fue rechazado antes para no repetir el mismo error en el reporte. Los hotfixes nuevos usan `HF-{nombre-descriptivo}` y se buscan bajo `hotfix/{id}`. Los hotfixes anteriores se buscan bajo el ID original con el que fueron creados; los IDs no se renombran.
 4. **Evidencia heredada**: Recupera los registros `VR-*` publicados por el plan, el CA y la auditoría, y la evidencia de la ronda anterior. No se re-verifica por rutina lo que ya está verificado y no se repiten comprobaciones ya veredictadas.
+5. **Decisión y reporte de pruebas**: cuando la ronda los declara, recupera la decisión registrada (`test_decision_ref`) y el reporte de pruebas (`tests_report_ref`). Verifica que el reporte exista y sea legible antes de heredarlo.
 
 ---
 
@@ -282,11 +297,14 @@ Un hallazgo en un archivo funcional se reporta como **BLOQUEANTE** en el Paso 6.
 - Modificación de archivo protegido sin autorización
 - Decisión de diseño tomada sin documentar
 - Referencia al CA, a su ID o a la mecánica de coordinación presente en un archivo funcional
+- Test `failed` heredado del reporte de pruebas: incumplimiento funcional del comportamiento esperado
 
 **MENOR** — mejora deseable pero no bloqueante:
 - Naming ligeramente diferente
 - Comentarios faltantes
 - Orden de imports no ideal
+
+Un reporte de pruebas requerido y ausente o ilegible deja el alcance `unverified` y no habilita un veredicto favorable: se clasifica como fallo operativo con causa `tests_report_missing`, no como incumplimiento del trabajo. Una decisión de pruebas ausente o ilegible se clasifica como fallo operativo con causa `test_decision_missing`.
 
 ---
 
@@ -326,6 +344,21 @@ publica conteos, nunca una calificación numérica:
 | # | Criterio | Material | Estado | Evidencia |
 |---|----------|----------|--------|----------|
 | 1 | [id] | [sí / no] | [verified / unverified / uncovered / failed] | [evidencia] |
+
+---
+
+### Herencia del reporte de pruebas
+
+**Decisión:** [decision_ref] — [tests_required: true / false]
+**Reporte:** [tests_report_ref / NONE]
+
+| # | Caso o criterio heredado | Estado | Verificación manual |
+|---|--------------------------|--------|---------------------|
+| 1 | [id] | [covered / failed / unverified] | [comprobación manual o —] |
+
+**Cubiertos:** [criterios cubiertos por tests passed]
+**Failed:** [casos con esperado y obtenido]
+**Unverified:** [casos no verificables con su causa]
 
 ---
 
@@ -442,4 +475,8 @@ produce `needs_recovery_or_pause`.
 - **SIEMPRE verifica** que el código funcional esté libre de referencias al CA, su ID y la mecánica de coordinación, distinguiéndolas de los artifacts de Engram, los checkpoints, los mensajes de commit y `docs/project-history.md`
 - **NUNCA reportes** una referencia de coordinación en artifacts de coordinación como hallazgo de código funcional
 - **NUNCA re-verifiques por rutina** la evidencia heredada ni repitas comprobaciones ya veredictadas
+- **NUNCA re-ejecutes** las pruebas ya cubiertas por el reporte heredado
+- **NUNCA apruebes** con un reporte de pruebas requerido ausente o ilegible
+- **NUNCA conviertas** un test `failed` en un fallo de herramienta
+- **NUNCA exijas** un reporte de pruebas cuando `tests_required: false`
 - **NUNCA conviertas** una contradicción de evidencia en un rechazo automático ni en un cambio de alcance
