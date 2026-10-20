@@ -1,0 +1,140 @@
+{
+  "schema": "worktree-language-allowlist/v1",
+  "policy": "literal-level",
+  "description": "Machine literals and justified exact exceptions that keep their published spelling. Every category applies to individual tokens. No category and no exception may exempt a complete message.",
+  "categories": {
+    "L-CMD": {
+      "kind": "command-or-option",
+      "description": "Published command and option names.",
+      "tokens": [],
+      "patterns": [
+        "^--[A-Za-z0-9][A-Za-z0-9-]*$",
+        "^-[A-Za-z]$"
+      ]
+    },
+    "L-PATH": {
+      "kind": "path-or-file",
+      "description": "Repository, state and evidence paths.",
+      "tokens": [],
+      "patterns": [
+        "^[^\\s]*/[^\\s]*$",
+        "\\.(py|sh|md|json|txt|conf|lock|log|bin)$"
+      ]
+    },
+    "L-ENV": {
+      "kind": "environment-variable",
+      "description": "Environment variable names.",
+      "tokens": [],
+      "patterns": [
+        "^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$"
+      ]
+    },
+    "L-REF": {
+      "kind": "git-reference",
+      "description": "References, revisions and object identifiers.",
+      "tokens": [
+        "HEAD"
+      ],
+      "patterns": [
+        "^refs/[^\\s]*$",
+        "^[0-9a-f]{7,40}$"
+      ]
+    },
+    "L-CONF": {
+      "kind": "configuration-key",
+      "description": "Published configuration keys.",
+      "tokens": [
+        "worktrees_dir",
+        "state_dir",
+        "backup_dir",
+        "backup_ref_prefix",
+        "branch_prefix",
+        "lock_dir",
+        "prepare_command",
+        "verify_command",
+        "prepare_enabled",
+        "verify_enabled",
+        "preserve_dirty"
+      ],
+      "patterns": []
+    },
+    "L-ID": {
+      "kind": "identifier-or-code",
+      "description": "Identifiers, stable codes and machine values.",
+      "tokens": [
+        "true",
+        "false",
+        "null",
+        "success",
+        "failure",
+        "pending_intervention",
+        "no_pending_work"
+      ],
+      "patterns": [
+        "^_*[a-z0-9]+(?:_[a-z0-9]+)+_*$",
+        "^-+[a-z0-9]+(?:-[a-z0-9]+)+$"
+      ]
+    },
+    "L-ACRONYM": {
+      "kind": "acronym",
+      "description": "Protocol and tool acronyms.",
+      "tokens": [
+        "MCP",
+        "CLI",
+        "JSON",
+        "RPC",
+        "SHA",
+        "ID",
+        "PATH",
+        "PYTHONPATH",
+        "TMPDIR"
+      ],
+      "patterns": []
+    },
+    "L-CMDNAME": {
+      "kind": "command-name",
+      "description": "Executable names.",
+      "tokens": [
+        "git",
+        "node",
+        "python3",
+        "sh",
+        "bash",
+        "sed",
+        "grep",
+        "head",
+        "cp",
+        "mkdir"
+      ],
+      "patterns": []
+    },
+    "L-PROTO": {
+      "kind": "protocol-literal",
+      "description": "Protocol and operation literals.",
+      "tokens": [
+        "submodule",
+        "staged-only",
+        "target-direct",
+        "link-parent",
+        "worktree_create",
+        "worktree_complete",
+        "worktree_cleanup",
+        "worktree_recover",
+        "worktree_list",
+        "worktree_prune",
+        "worktree_status"
+      ],
+      "patterns": []
+    }
+  },
+  "exceptions": [
+    {
+      "id": "L-EX-001",
+      "category": "english-loanword",
+      "literal": "façade",
+      "scope": "python-package",
+      "reason": "Established English spelling used in technical prose; it is not Spanish.",
+      "owner": "Worktree Manager maintainers"
+    }
+  ]
+}
