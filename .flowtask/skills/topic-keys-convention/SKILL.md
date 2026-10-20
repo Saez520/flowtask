@@ -45,6 +45,7 @@ Cada topic_key tiene un **owner** que es el único agente (o grupo) autorizado a
 | `flow-state/{execution_id}/termination` | Runner | Registro de pausas, reanudaciones y cierres | Todos (read-only) |
 | `flow-state/{execution_id}/idempotency` | Runner y Constructor (secuencial por ejecución) | Ledger de idempotencia: identidad, intentos y constancias | Runner, Constructor, Validator, Inspector |
 | `flow-state/{execution_id}/budget` | Runner | Registro de gasto por objetivo | Todos (read-only) |
+| `flow-state/{execution_id}/run` | Runner | Registro de la ejecución: estado efectivo, tope duro y pausas propias | Todos (read-only) |
 | `flow-state/no-ca/{agente}/{operation-id}` | Agentes ligeros sin CA | Estado de operación independiente | Runner |
 | `project/stack` | Initializer (owner) / onboarder (excepción) | Stack tecnológico del proyecto | Todos (read-only) |
 | `project/conventions` | Initializer | Convenciones generales del proyecto | Todos (read-only) |
@@ -62,7 +63,7 @@ Cada topic_key tiene un **owner** que es el único agente (o grupo) autorizado a
 
 > **Nota — Pendientes**: La escritura compartida de `pending/*` es cooperativa por responsabilidad. Cada escritor actualiza únicamente el slug que creó o que está tratando en su contexto; no se sobreescriben pendientes ajenos sin coordinación explícita. Al promover un pendiente a un CA, se conserva `pending/{slug}` como registro separado y se crea o actualiza el artifacto canónico `ca/CA-{ID}/artifact/{filename}`; la promoción no elimina ni migra el registro pendiente.
 
-> **Nota — Registros de ejecución**: los cuatro namespaces `flow-state/{execution_id}/{sufijo}` son registros operativos de una ejecución: **no son checkpoints de subagente**, no habilitan la reanudación y no sustituyen el estado por subagente. Los contextos, checks y reportes de invariantes se adjuntan al resultado durable de la ronda y no tienen `topic_key` propio.
+> **Nota — Registros de ejecución**: los cinco namespaces `flow-state/{execution_id}/{sufijo}` —`progress`, `termination`, `idempotency`, `budget` y `run`— son registros operativos de una ejecución: **no son checkpoints de subagente**, no habilitan la reanudación y no sustituyen el estado por subagente. Los contextos, checks y reportes de invariantes se adjuntan al resultado durable de la ronda y no tienen `topic_key` propio.
 
 ---
 
@@ -94,8 +95,9 @@ Esta excepción está documentada en `memory-contract` y el onboarder la referen
 | `flow-state/{execution_id}/termination` | Runner | `flow-state/CA-021-20261019T193000Z/termination` |
 | `flow-state/{execution_id}/idempotency` | Runner y Constructor (secuencial por ejecución) | `flow-state/CA-021-20261019T193000Z/idempotency` |
 | `flow-state/{execution_id}/budget` | Runner | `flow-state/CA-021-20261019T193000Z/budget` |
+| `flow-state/{execution_id}/run` | Runner | `flow-state/CA-021-20261019T193000Z/run` |
 
-Los sufijos `progress`, `termination`, `idempotency` y `budget` no son sub-namespaces de agente: registran la ejecución. El `execution_id` no es un `task_id` ni un checkpoint.
+Los sufijos `progress`, `termination`, `idempotency`, `budget` y `run` no son sub-namespaces de agente: registran la ejecución. El `execution_id` no es un `task_id` ni un checkpoint.
 
 **Regla**: Cada agente escribe SOLO a su sub-namespace. Runner lee todos.
 

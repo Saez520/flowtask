@@ -48,6 +48,7 @@ Todo `topic_key` sigue una de estas formas: `{namespace}/CA-{ID}[/{sub-namespace
 | `flow-state/{execution_id}/termination` | runner | Todos (read-only) | `decision` |
 | `flow-state/{execution_id}/idempotency` | runner y constructor (secuencial por ejecución) | Runner, Constructor, Validator, Inspector | `decision` |
 | `flow-state/{execution_id}/budget` | runner | Todos (read-only) | `decision` |
+| `flow-state/{execution_id}/run` | runner | Todos (read-only) | `decision` |
 | `flow-state/no-ca/{agente}/{operation-id}` | agentes ligeros sin CA | Runner | `decision` |
 | `project/stack` | initializer (owner) / onboarder (excepción: snapshot vigente) | Todos (read-only) | `config` |
 | `project/conventions` | initializer | Todos (read-only) | `pattern` |
@@ -66,7 +67,7 @@ Todo `topic_key` sigue una de estas formas: `{namespace}/CA-{ID}[/{sub-namespace
 - `execution_id` tiene la forma `{work_id}-{YYYYMMDDTHHMMSSZ}` en UTC, con `work_id` `CA-{ID}` o `HF-{slug}`.
 - `pending/{slug}` es una excepción explícita al prefijo `CA-` obligatorio.
 - `flow-state/{CA-ID}` y `flow-state/{execution_id}` **NUNCA** se usan sin sub-namespace.
-- Los sub-namespaces `progress`, `termination`, `idempotency` y `budget` son registros operativos de una ejecución: no son checkpoints y no habilitan la continuidad de subagentes.
+- Los sub-namespaces `progress`, `termination`, `idempotency`, `budget` y `run` son registros operativos de una ejecución: no son checkpoints y no habilitan la continuidad de subagentes.
 - Los contextos, verificaciones y reportes de invariantes se adjuntan al resultado durable de la ronda y no tienen `topic_key` propio.
 - Cada agente escribe **SOLO** sus namespaces autorizados.
 
@@ -151,8 +152,11 @@ Los registros operativos del Agent Loop se persisten también como observaciones
 | Terminación | `agent-loop-termination/v1` | `TerminationRecord v1` | `agent-loop-termination` |
 | Idempotencia | `agent-loop-idempotency/v1` | `IdempotencyRecord v1` | `agent-loop-idempotency` |
 | Gasto | `agent-loop-budget/v1` | `BudgetRecord v1` | `agent-loop-budget` |
+| Ejecución | `agent-loop-run/v1` | `AgentRunRecord v1` | `agent-loop-run` |
 
 Los contextos, verificaciones y reportes de invariantes no aparecen en esta tabla: se adjuntan al resultado durable de la ronda y no poseen namespace propio.
+
+El registro de ejecución **referencia** el progreso, la terminación, la idempotencia y el gasto por sus topic keys: no los sustituye, no duplica sus hechos y no los reescribe.
 
 ---
 

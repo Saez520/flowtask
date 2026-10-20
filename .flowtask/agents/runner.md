@@ -180,10 +180,12 @@ skill({ name: "manual-classification" })  ← cargar si no hay clasificación in
 skill({ name: "handshake-protocol" })     ← cargar antes de invocar subagentes
 ```
 
-Cuando se activa una ejecución del Agent Loop se cargan además las cinco skills
+Cuando se activa una ejecución del Agent Loop se cargan además las seis skills
 `agent-loop-progress`, `agent-loop-invariants`, `agent-loop-termination`,
-`agent-loop-idempotency` y `agent-loop-budget`. La composición de esos contratos
-se rige por `## Control del Agent Loop`.
+`agent-loop-idempotency`, `agent-loop-budget` y `agent-loop-run`. Esta última es
+el controlador de la ejecución: compone los otros cinco contratos en orden fijo,
+persiste el registro de la ejecución y aplica el freno duro por gasto declarado.
+La composición se rige por `## Control del Agent Loop`.
 
 Al iniciar cada conversación se carga `investigacion` antes de clasificar la
 intención. Permanece activa durante investigación, diagnóstico y ejecución.
@@ -799,7 +801,7 @@ registrados. El gestor standalone ejecuta el lifecycle; antes de completarlo:
 
 Este loop común aplica a CAs y hotfixes solo después de que el trabajo esté documentado y el Runner haya emitido una señal explícita y observable de inicio. La existencia de un artifacto, worktree o rechazo previo no activa el loop por sí sola. En CA permanecen obligatorios el Gate de Ejecución y la auditoría; en hotfix se conserva el flujo aislado y su evento literal `ejecutar`.
 
-La composición de los cinco contratos del Agent Loop se rige por `## Control del Agent Loop`. Este loop conserva sus reglas de diagnóstico, de rondas y de Inspector.
+La composición de los contratos del Agent Loop, la compuerta de gasto y el registro de la ejecución se rigen por `## Control del Agent Loop`. Este loop conserva sus reglas de diagnóstico, de rondas y de Inspector.
 
 En cada ronda, el Runner entrega al Constructor el plan vigente, el resultado del Validator y el historial pertinente. Tras el primer rechazo funcional, solicita al Constructor la corrección fundada en la evidencia. Tras un segundo rechazo funcional sin aprobación, y en cada rechazo posterior, solicita a un Inspector nuevo un diagnóstico usando el patrón de fallos y el historial completo; después despacha al Constructor con ese diagnóstico. Cambiar de Inspector no borra intentos, fallos ni enfoques descartados.
 
@@ -817,7 +819,7 @@ Solo `APPROVED` explícito del Validator cierra la validación y habilita el cie
 
 ### Fuentes vigentes
 
-Cada ejecución del Agent Loop consulta cinco contratos como fuente vigente. Este apartado dirige cuándo se consulta cada uno y no redefine sus reglas.
+Cada ejecución del Agent Loop consulta cinco contratos de control y el controlador de la ejecución como fuente vigente. Este apartado dirige cuándo se consulta cada uno y no redefine sus reglas.
 
 | Skill | Qué aporta | Cuándo se consulta |
 |-------|-----------|-------------------|
@@ -826,21 +828,27 @@ Cada ejecución del Agent Loop consulta cinco contratos como fuente vigente. Est
 | `agent-loop-termination` | El predicado de terminación: única decisión de continuar, pausar o cerrar. | Al cierre de cada ronda funcional completada, antes de despachar la siguiente. |
 | `agent-loop-idempotency` | La identidad estable de operación: reintentos y reanudaciones sin duplicar efectos. | Antes de cada fase con efecto observable, antes de un reintento y al reanudar. |
 | `agent-loop-budget` | El registro de gasto: única fuente de cuánto costó el objetivo, con aviso suave ante límites blandos declarados. | Al cierre de ronda, después de la terminación, solo cuando la terminación dice `continue`. |
+| `agent-loop-run` | El controlador de la ejecución: compone los cinco contratos, persiste el registro de la ejecución y aplica el freno duro por gasto declarado. | Al iniciar, antes de la ronda 1, al cerrar cada ronda, al pausar, al reanudar y al cerrar. |
+
+`agent-loop-run` no reemplaza ni redefine los cinco contratos de control: los consulta como
+fuente vigente y los aplica en orden fijo.
 
 El binding de persistencia de esos contratos vive en `memory-contract`, la ownership y los sub-namespaces en `topic-keys-convention`, y la separación entre checkpoints y registros de ejecución en `checkpoint-mixin`.
 
-Si una de las cinco skills no carga, o si alguna de esas referencias está rota, la ejecución se detiene y se informa: no se improvisa una regla sustituta.
+Si una de las cinco skills de control no carga, si `agent-loop-run` no carga o si alguna de esas referencias está rota, la ejecución se detiene y se informa: no se improvisa una regla sustituta.
 
 ### Orden de la ejecución
 
 **Antes de la ronda 1:**
 
-1. Resolver `execution.id` y el baseline vigente de la ejecución.
+1. Resolver `execution.id`, el baseline vigente de la ejecución y el tope duro declarado por el trabajo.
 2. Inicializar el registro de progreso como ronda 0 y confirmarlo por lectura.
 3. Crear el ledger de idempotencia en la fase `runner.intake` y confirmarlo por lectura.
 4. Resolver y registrar el contexto de invariantes de la ronda, y confirmarlo por lectura.
 5. Crear el registro de gasto de la ejecución y confirmarlo por lectura.
-6. Consultar el registro de terminación: si no existe, la ejecución está en estado `running`; si existe, se restaura y se respeta.
+6. Crear el `AgentRunRecord` con las referencias a los cuatro registros y el tope duro, y confirmarlo por lectura.
+7. Consultar el registro de terminación: si no existe, la ejecución está en estado `running`; si existe, se restaura y se respeta.
+8. Despachar la ronda 1.
 
 Ninguna ronda se despacha sin esas confirmaciones.
 
@@ -851,8 +859,9 @@ Ninguna ronda se despacha sin esas confirmaciones.
 3. Si algún invariante no es evaluable, no se confirma la instantánea y se registra la información faltante.
 4. Registrar la instantánea de progreso de la ronda y confirmarla por lectura.
 5. Evaluar el predicado de terminación.
-6. Si la terminación dice `continue`, evaluar y registrar el gasto antes de despachar.
-7. Confirmar las fases de idempotencia de la ronda.
+6. Si la terminación dice `continue`, evaluar la compuerta de gasto antes de despachar: primero el tope duro y después el límite blando. Tope duro alcanzado → pausa `source: controller`, `reason: hard_limit`. Límite blando con `pause` → pausa reversible. Límite blando con `notify` → aviso visible.
+7. Confirmar las fases de idempotencia de la ronda y actualizar el `AgentRunRecord` con la ronda, el estado efectivo, la pausa o el cierre y la última compuerta.
+8. Despachar la ronda siguiente solo si la decisión es `continue`.
 
 La ronda siguiente se despacha solo cuando todas las confirmaciones anteriores están leídas.
 
@@ -867,11 +876,20 @@ La ronda siguiente se despacha solo cuando todas las confirmaciones anteriores e
 - **El rechazo funcional no es un reintento**: un rechazo funcional del Validator no es un reintento de idempotencia y abre una unidad lógica nueva.
 - **El fallo operativo no es una ronda**: no es una ronda funcional ni incrementa la numeración de rondas ni el contador de estancamiento.
 - **Los registros de ejecución no son checkpoints**: no habilitan la reanudación de subagentes ni sustituyen el estado por subagente.
+- **El controlador compone, no redefine**: `agent-loop-run` aplica los cinco contratos en orden fijo. Si una skill no carga o una referencia está rota, se detiene la ejecución y se informa; no se improvisa una regla sustituta.
+- **La terminación prevalece sobre la compuerta**: si la terminación dice `pause` o `close`, la compuerta de gasto no se evalúa y el motivo visible es el de la terminación. El gasto no anula ni fuerza una terminación.
+- **El tope duro solo existe si el trabajo lo declara**: sin `hard_limit` declarado no hay pausa por gasto, solo observación y aviso suave. Se evalúa después de la terminación y antes del límite blando.
+- **El tope duro solo pausa**: alcanzado, produce una pausa reversible del controlador con `source: controller` y `reason: hard_limit`. Nunca cierra, nunca abandona, nunca termina procesos por consumo y nunca cambia de modelo.
+- **Con tope duro, el gasto ilegible o la atribución incompleta pausan en seguridad**; sin tope duro, esas mismas anomalías solo se informan y el trabajo continúa en modo degradado.
+- **El estancamiento no cambia de modelo** y las rondas no son una señal de gasto.
+- **El `AgentRunRecord` no es un checkpoint**: referencia el progreso, la terminación, la idempotencia y el gasto; no los sustituye y no habilita la reanudación de subagentes.
 
 ### Fallos operativos
 
 - Si una superficie contractual es ilegible o una de sus referencias está rota, la ejecución se detiene y se informa el motivo. No se aplica una regla improvisada ni una fuente paralela.
 - Si un registro operativo es ilegible, no está confirmado o no se persistió, se aplica la regla de su propio contrato: no se sustituye por una regla improvisada, no se anuncian avances y no se despacha la ronda siguiente.
+- Si el `AgentRunRecord` no existe, es ilegible o no se confirma, no se despacha: se conserva la última confirmación y se pausa en seguridad.
+- Si el `AgentRunRecord` contradice a otro registro de la ejecución, se informa la contradicción, no se sobrescribe ninguno de los dos y no se avanza.
 
 ***
 
