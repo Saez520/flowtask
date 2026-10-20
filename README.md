@@ -18,7 +18,7 @@ Versión actual: consultar `flowtask --version` (fuente: `.flowtask/package.json
 
 Después de instalarlo, hablá con el runner desde el IDE configurado. El runner identifica preguntas, cambios, revisiones y ejecuciones acordadas.
 
-Comandos del entorno instalado: `/init-types`, `/init-data`, `/init-business`, `/init-config`, `/init-api`, `/onboard` y `/update`. Las revisiones se solicitan describiendo el alcance o usando `/review` cuando el runtime lo soporte. Un hotfix acordado se ejecuta cuando el runner ya persistió el diagnóstico y recibe ejecutar.
+Comandos del entorno instalado: `/init-types`, `/init-data`, `/init-business`, `/init-config`, `/init-api`, `/onboard` y `/update`. Las revisiones se solicitan describiendo el alcance o usando `/review` cuando el runtime lo soporte. Un hotfix acordado se ejecuta cuando el runner ya persistió el diagnóstico y el desarrollador acepta explícitamente la corrección acordada.
 
 ## Primeros pasos
 

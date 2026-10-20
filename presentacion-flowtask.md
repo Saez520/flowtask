@@ -68,13 +68,13 @@ CA-{ID}
 
 **Paso 1** — ¿Existe el CA? Si no → CA-Writer lo crea con el dev
 **Paso 2** — Planner genera el plan técnico
-**Paso 3** — **Checkpoint**: El dev revisa y aprueba (o corrige)
+**Paso 3** — **Gate técnico**: verifica plan/auditoría; si pasa, la construcción inicia sin espera
 **Paso 4** — Constructor implementa
 **Paso 5** — Validator valida
 **Paso 6** — Si rechaza 2 veces → escala al dev
 
 - Las correcciones acordadas se ejecutan como Hotfix (HF), sin ceremonia de CA
-- `--auto` salta el checkpoint (para cuando confías en el pipeline)
+- `--auto` no agrega permisos: declara que no hay espera rutinaria
 
 ---
 

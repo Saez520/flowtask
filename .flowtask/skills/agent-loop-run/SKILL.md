@@ -129,8 +129,22 @@ los registros y la política vigente. Es la entrada del protocolo de inicio y se
 como `RunContext v1`:
 
 ~~~json
-{"schema":"agent-loop-run/context/v1","execution":{"id":"CA-ejemplo-20261020T001500Z","work_id":"CA-ejemplo","work_kind":"ca","status":"active"},"baseline":{"version":1,"ref":"baseline://approved/plan","approved_at":"2026-10-20T00:15:00Z"},"hard_limit":{"declared":true,"tokens":500000,"active_time_ms":null,"effect":"pause","ref":"baseline://approved/hard-limit","declared_by":"authority","declared_at":"2026-10-20T00:15:00Z"},"records":{"progress":"flow-state/CA-ejemplo-20261020T001500Z/progress","termination":"flow-state/CA-ejemplo-20261020T001500Z/termination","idempotency":"flow-state/CA-ejemplo-20261020T001500Z/idempotency","budget":"flow-state/CA-ejemplo-20261020T001500Z/budget","run":"flow-state/CA-ejemplo-20261020T001500Z/run"},"invariants":{"catalog_version":1,"context_ref":"round-000-invariant-context"},"policy":{"profile":"development","max_retries_per_phase":2},"started_at":"2026-10-20T00:15:00Z"}
+{"schema":"agent-loop-run/context/v1","execution":{"id":"CA-ejemplo-20261020T001500Z","work_id":"CA-ejemplo","work_kind":"ca","status":"active"},"baseline":{"version":1,"ref":"baseline://approved/plan","approved_at":"2026-10-20T00:15:00Z"},"gate":{"id":"auto-0001","kind":"gate","policy":"execution_gate","outcome":"pass","verified":true,"reason":null,"command":"mem_search(query: \"CA-ejemplo plan\", type: \"ca-artifact\", scope: \"project\")","result":"plan final y auditoria verificados","evidence_refs":["ca/CA-ejemplo/artifact/plan","ca/CA-ejemplo/artifact/audit"],"at":"2026-10-20T00:15:00Z"},"hard_limit":{"declared":true,"tokens":500000,"active_time_ms":null,"effect":"pause","ref":"baseline://approved/hard-limit","declared_by":"authority","declared_at":"2026-10-20T00:15:00Z"},"records":{"progress":"flow-state/CA-ejemplo-20261020T001500Z/progress","termination":"flow-state/CA-ejemplo-20261020T001500Z/termination","idempotency":"flow-state/CA-ejemplo-20261020T001500Z/idempotency","budget":"flow-state/CA-ejemplo-20261020T001500Z/budget","run":"flow-state/CA-ejemplo-20261020T001500Z/run"},"invariants":{"catalog_version":1,"context_ref":"round-000-invariant-context"},"policy":{"profile":"development","max_retries_per_phase":2},"started_at":"2026-10-20T00:15:00Z"}
 ~~~
+
+**Bloques del contexto de ejecución.**
+
+| Bloque | Contenido |
+|--------|-----------|
+| `schema` | Siempre `agent-loop-run/context/v1`. |
+| `execution` | `id`, `work_id`, `work_kind`, `status` y `started_at`. |
+| `baseline` | Versión, referencia y aprobación del baseline vigente. |
+| `gate` | Resultado del gate que habilita la ejecución, como objeto `PolicyDecision v1`. Es `null` mientras el gate no se evaluó. |
+| `hard_limit` | Tope duro declarado, con `declared`, `tokens`, `active_time_ms`, `effect`, `ref`, `declared_by` y `declared_at`. |
+| `records` | Referencias a los cinco registros operativos. |
+| `invariants` | Versión del catálogo de invariantes y referencia del contexto de la ronda. |
+| `policy` | Perfil vigente y máximo de reintentos por fase. |
+| `started_at` | Instante de apertura de la ejecución. |
 
 ## Identidad y señal de inicio
 
@@ -149,9 +163,12 @@ ajenas a esa señal.
 
 ### Señal explícita de inicio
 
-La señal de inicio es el evento único, explícito y observable que abre la ejecución. En un
-trabajo sujeto a gate, la señal es la orden literal de ejecución emitida después de pasar el
-gate y de la aprobación; en un hotfix, su evento literal de ejecución.
+La señal de inicio es el evento único, explícito y observable que abre la ejecución.
+
+- En un trabajo sujeto a gate, la señal es la **orden original del desarrollador que autoriza
+  el trabajo** junto con el **resultado PASS del gate**. No se exige una segunda confirmación
+  después del gate.
+- En un hotfix, la señal es la **aceptación explícita del diagnóstico acordado**.
 
 **Reglas de la señal:**
 
@@ -163,6 +180,23 @@ gate y de la aprobación; en un hotfix, su evento literal de ejecución.
   ejecución** y no crea una nueva: conserva la identidad, la numeración y los contadores.
 - **Una señal posterior al cierre abre una ejecución nueva**, con identidad y contadores
   propios.
+
+### Autonomía por política
+
+La política vigente es `gate-then-auto`: el control técnico se verifica primero y, cuando
+pasa, la construcción comienza sin espera rutinaria.
+
+- **El avance automático solo omite la confirmación rutinaria posterior al gate.** No omite
+  el gate, ni la auditoría del plan, ni la validación de la implementación.
+- **Un indicador de invocación como `--auto` no altera el gate ni los consentimientos.**
+  Solo declara que no hay espera rutinaria.
+- **No hay interruptores por flujo ni configuración estática.** La autonomía rige por la
+  política vigente y por el consentimiento aplicable.
+- **Las acciones de riesgo conservan su consentimiento explícito.** Preservar o descartar
+  cambios del destino, publicar o mover trabajo a remoto, eliminar trabajo ajeno o pendiente
+  manual y modificar archivos protegidos requieren consentimiento humano explícito.
+- **La autonomía no sustituye la evidencia.** Toda decisión automática de avance o de pausa
+  queda registrada como una decisión de política con su referencia verificable.
 
 ## Baseline y tope duro
 
@@ -240,7 +274,7 @@ escribe **solo** el propio; los demás se consultan.
 El registro de ejecución es un documento único, completo y durable:
 
 ~~~json
-{"schema":"agent-loop-run/v1","execution":{"id":"CA-ejemplo-20261020T001500Z","work_id":"CA-ejemplo","work_kind":"ca","status":"active","started_at":"2026-10-20T00:15:00Z"},"baseline":{"version":1,"ref":"baseline://approved/plan","approved_at":"2026-10-20T00:15:00Z"},"hard_limit":{"declared":true,"tokens":500000,"active_time_ms":null,"effect":"pause","ref":"baseline://approved/hard-limit","declared_by":"authority","declared_at":"2026-10-20T00:15:00Z"},"round":{"number":3,"last_snapshot_id":"round-003-rev-1"},"records":{"progress":"flow-state/CA-ejemplo-20261020T001500Z/progress","termination":"flow-state/CA-ejemplo-20261020T001500Z/termination","idempotency":"flow-state/CA-ejemplo-20261020T001500Z/idempotency","budget":"flow-state/CA-ejemplo-20261020T001500Z/budget"},"state":"running","pause":null,"closure":null,"budget_gate":{"outcome":"not_evaluated","reason":"termination_precedence","hard_limit_reached":false,"termination_ref":null,"budget_ref":"flow-state/CA-ejemplo-20261020T001500Z/budget","evaluated_at":"2026-10-20T00:30:00Z"},"integrity":{"record_version":1,"last_transition_id":"tr-run-0001","last_confirmed_at":"2026-10-20T00:15:00Z"},"created_at":"2026-10-20T00:15:00Z","updated_at":"2026-10-20T00:30:00Z"}
+{"schema":"agent-loop-run/v1","execution":{"id":"CA-ejemplo-20261020T001500Z","work_id":"CA-ejemplo","work_kind":"ca","status":"active","started_at":"2026-10-20T00:15:00Z"},"baseline":{"version":1,"ref":"baseline://approved/plan","approved_at":"2026-10-20T00:15:00Z"},"hard_limit":{"declared":true,"tokens":500000,"active_time_ms":null,"effect":"pause","ref":"baseline://approved/hard-limit","declared_by":"authority","declared_at":"2026-10-20T00:15:00Z"},"round":{"number":3,"last_snapshot_id":"round-003-rev-1"},"records":{"progress":"flow-state/CA-ejemplo-20261020T001500Z/progress","termination":"flow-state/CA-ejemplo-20261020T001500Z/termination","idempotency":"flow-state/CA-ejemplo-20261020T001500Z/idempotency","budget":"flow-state/CA-ejemplo-20261020T001500Z/budget"},"autonomy":{"policy":"gate-then-auto","decisions":[{"id":"auto-0001","kind":"gate","policy":"execution_gate","outcome":"pass","verified":true,"reason":null,"command":"mem_search(query: \"CA-ejemplo plan\", type: \"ca-artifact\", scope: \"project\")","result":"plan final y auditoria verificados","evidence_refs":["ca/CA-ejemplo/artifact/plan","ca/CA-ejemplo/artifact/audit"],"at":"2026-10-20T00:15:00Z"}]},"state":"running","pause":null,"closure":null,"budget_gate":{"outcome":"not_evaluated","reason":"termination_precedence","hard_limit_reached":false,"termination_ref":null,"budget_ref":"flow-state/CA-ejemplo-20261020T001500Z/budget","evaluated_at":"2026-10-20T00:30:00Z"},"integrity":{"record_version":1,"last_transition_id":"tr-run-0001","last_confirmed_at":"2026-10-20T00:15:00Z"},"created_at":"2026-10-20T00:15:00Z","updated_at":"2026-10-20T00:30:00Z"}
 ~~~
 
 **Bloques del registro de ejecución.**
@@ -253,6 +287,7 @@ El registro de ejecución es un documento único, completo y durable:
 | `hard_limit` | Tope duro declarado, con `declared`, `tokens`, `active_time_ms`, `effect`, `ref`, `declared_by` y `declared_at`. |
 | `round` | Número de ronda y última instantánea de progreso confirmada. |
 | `records` | Referencias a los cuatro registros operativos. |
+| `autonomy` | Política vigente y decisiones de política registradas. |
 | `state` | Estado efectivo del controlador: `running`, `paused` o `closed`. |
 | `pause` | Pausa vigente o `null`. |
 | `closure` | Cierre vigente o `null`. |
@@ -270,6 +305,42 @@ origen (`termination` o `budget`) y es `null` cuando la pausa es propia del cont
 **Bloque `budget_gate`.** Contiene `outcome`, `reason`, `hard_limit_reached`,
 `termination_ref`, `budget_ref` y `evaluated_at`.
 
+**Bloque `autonomy`.** Contiene `policy` y `decisions[]`. La política vigente es
+`gate-then-auto`. `decisions[]` es una lista append-only de decisiones de política: cada
+gate PASS, cada pausa por excepción y cada reanudación agregan **exactamente una** entrada.
+
+### Decisión de política
+
+La evidencia de las decisiones automáticas se modela como `PolicyDecision v1`:
+
+~~~json
+{"schema":"agent-loop-run/policy-decision/v1","id":"auto-0002","kind":"pause","policy":"exception_pause","outcome":"pause","verified":true,"reason":"authority_block","command":null,"result":"conservado worktree, artifacts y ronda 3","evidence_refs":["flow-state/CA-ejemplo-20261020T001500Z/progress","flow-state/CA-ejemplo-20261020T001500Z/termination"],"at":"2026-10-20T00:45:00Z"}
+~~~
+
+| Campo | Contenido |
+|-------|-----------|
+| `id` | Identidad de la decisión, `auto-{NNNN}` monotónico dentro de la ejecución. |
+| `kind` | `gate`, `pause` o `resume`. |
+| `policy` | Política que habilita la decisión: `execution_gate`, `exception_pause` o `resume_gate`. |
+| `outcome` | Resultado observado: `pass`, `fail`, `pause`, `resume` o `reject`. |
+| `verified` | `true` solo si la evidencia se leyó y confirmó; `false` si es parcial o no verificable. |
+| `reason` | `null` o el motivo de pausa vigente. |
+| `command` | Comando ejecutado cuando aplica; `null` en caso contrario. |
+| `result` | Resultado resumido y verificable; `null` cuando no aplica. |
+| `evidence_refs` | Referencias citable de la decisión. |
+| `at` | Momento de la evaluación, en ISO-8601. |
+
+**Reglas de la decisión de política:**
+
+- **El registro es append-only.** Cada escritura reemplaza el documento completo, pero
+  conserva todas las entradas anteriores de `decisions[]`.
+- **Un gate FAIL no abre ejecución y no crea registro.** Se informa en una línea, no se
+  construye nada y el plan conserva su `gate_status` como evidencia.
+- **`verified: false` nunca autoriza un permiso de riesgo ni un cierre.** Una decisión no
+  verificada habilita como máximo una pausa.
+- **Una pausa por excepción registra el motivo vigente** y conserva el estado de la
+  ejecución.
+
 ### Enumeraciones del contrato
 
 | Campo | Valores |
@@ -283,6 +354,10 @@ origen (`termination` o `budget`) y es `null` cuando la pausa es propia del cont
 | `budget_gate.reason` | `none`, `observing`, `within_limits`, `tokens_soft_limit_exceeded`, `active_time_soft_limit_exceeded`, `both_soft_limits_exceeded`, `soft_limit_exceeded`, `explicit_pause_decision`, `record_unavailable`, `attribution_incomplete`, `data_unverified`, `termination_precedence`, `closed`, `hard_limit_exceeded`, `hard_limit_unverified` |
 | `closure.verdict` | `success`, `safe_abandonment`, `external_cause` |
 | `hard_limit.effect` | `pause` |
+| `autonomy.policy` | `gate-then-auto` |
+| `PolicyDecision.kind` | `gate`, `pause`, `resume` |
+| `PolicyDecision.policy` | `execution_gate`, `exception_pause`, `resume_gate` |
+| `PolicyDecision.outcome` | `pass`, `fail`, `pause`, `resume`, `reject` |
 
 ### Persistencia y confirmación
 
@@ -531,6 +606,10 @@ Toda pausa es **reversible** y pertenece a la **misma ejecución**.
 contadores, el motivo, la ronda en la que se pausó, la evidencia y las condiciones de
 reanudación.
 
+**Una pausa por excepción deja una decisión de política.** Registra una entrada con
+`kind: pause`, `policy: exception_pause` y el motivo vigente, y conserva el estado de la
+ejecución para poder reanudarla.
+
 **Mientras dura la pausa no se despachan rondas.** No hay trabajo en curso y no se avanza
 ningún contador.
 
@@ -545,6 +624,11 @@ Reanudar exige, **en conjunto**:
 2. La **misma ejecución**: el `execution_id` no cambia.
 3. Una **causa resuelta**, conforme a la fila que corresponde al motivo de la pausa.
 4. **No reiniciar**: se conservan la numeración, los contadores y lo avanzado.
+
+**La reanudación reutiliza la evidencia y no repite comprobaciones ya verificadas.** Lee la
+última decisión de política y la evidencia de la última ronda, conserva la numeración y no
+vuelve a ejecutar una comprobación ya confirmada. Deja una decisión de política con
+`kind: resume` y `policy: resume_gate`.
 
 **Causas por motivo de pausa:**
 
@@ -695,6 +779,12 @@ pausa** ni habilita ningún freno.
     subagentes.
 24. **El gasto no atribuido no se suma** a ninguna ejecución.
 25. **Nunca se declara cero** por falta de datos ni se infiere un límite desde el consumo.
+26. **Toda decisión automática deja evidencia.** Cada avance o pausa por excepción deja
+    exactamente una entrada en `autonomy.decisions`, con su referencia verificable.
+27. **La reanudación reutiliza la evidencia.** No repite comprobaciones ya verificadas ni
+    reinicia contadores.
+28. **La autonomía no concede permisos.** No sustituye consentimientos ni habilita
+    preservaciones, descartes, publicaciones, borrados ni cambios en archivos protegidos.
 
 ## Matriz de aceptación
 
@@ -730,6 +820,9 @@ pausa** ni habilita ningún freno.
 | AC-28 | Muchas rondas no cambian el modelo ni pausan por conteo de rondas. | Las rondas son un hecho de estancamiento, no de gasto. | Freno duro por gasto |
 | AC-29 | Existe un único registro de ejecución por ejecución, con referencias a los cuatro registros y sin sustituirlos. | `run` referencia; no duplica ni reescribe. | Registros de la ejecución |
 | AC-30 | Toda escritura se confirma por lectura antes de despachar; sin confirmación no hay despacho. | `record_version` monotónico y confirmación obligatoria. | Registros de la ejecución; Orden de la ejecución |
+| AC-31 | En un trabajo sujeto a gate, la señal de inicio es la orden original del desarrollador más el resultado PASS del gate; no se exige una segunda confirmación. | La señal abre la ejecución sin espera rutinaria posterior al gate. | Identidad y señal de inicio; Autonomía por política |
+| AC-32 | Cada gate PASS, cada pausa por excepción y cada reanudación dejan exactamente una entrada append-only en `autonomy.decisions`. | El registro de decisiones conserva todas las entradas y no las reescribe. | Decisión de política; Registro de ejecución |
+| AC-33 | La autonomía no concede permisos ni sustituye consentimientos; una decisión con `verified: false` no autoriza un permiso de riesgo ni un cierre. | `verified: false` habilita como máximo una pausa. | Decisión de política; Autonomía por política |
 
 ## Ejemplos canónicos
 

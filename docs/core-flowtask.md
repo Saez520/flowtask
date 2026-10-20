@@ -143,8 +143,8 @@ RUNNER clasifica ── ¿existe el CA en Engram?
             FAIL → aborta (sin worktree, sin constructor) — ni --auto lo salta
               │ PASS
               ▼
-        [5] CHECKPOINT HUMANO ── el dev escribe "ejecutar"
-            (--auto solo exime la espera; el Gate se verifica igual)
+        [5] INICIO AUTOMÁTICO ── la orden del dev + el Gate PASS habilitan
+            la construcción (sin espera rutinaria; el Gate se verifica igual)
               │
               ▼
         [6] WORKTREE ── worktree.sh create CA-{ID} --base {base detectada}
@@ -216,8 +216,9 @@ exactamente Git 2.54.0; parent-only conserva su contrato anterior.
 ### Flujo HF — Hotfix acordado (sin CA)
 
 **Origen.** El runner investiga y diagnostica conversacionalmente (skill
-`investigacion` + Graphify + Engram). El dev converge en una corrección y
-escribe el evento literal: `"ejecutar"`.
+`investigacion` + Graphify + Engram). El dev converge en una corrección y la
+acepta explícitamente: esa aceptación es la señal de inicio y no se exige una
+segunda palabra.
 
 **Para qué.** Ejecutar una corrección YA diagnosticada y acordada, sin abrir el
 ciclo CA completo.

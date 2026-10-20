@@ -89,9 +89,10 @@ contrato. Runner nunca escribe archivos de producto ni configuración.
 
 ## Conversación y transición a ejecución
 
-Durante la investigación el Runner presenta diagnóstico, tradeoffs y GAPs, y
-espera una decisión explícita. El evento literal `ejecutar` es la única
-transición a la ejecución de una corrección acordada.
+Durante la investigación el Runner presenta diagnóstico, tradeoffs y GAPs.
+La aceptación explícita de la corrección acordada es la señal de inicio del
+hotfix; no se exige una segunda confirmación. Las acciones de riesgo conservan
+su consentimiento explícito.
 
 Antes de despachar al Constructor, construye una sola vez un slug descriptivo
 normalizado en minúsculas y kebab-case a partir del problema acordado, y forma
@@ -118,7 +119,7 @@ El Runner crea o reutiliza el worktree `.worktrees/hotfix/{id}` y la branch
 base branch.
 
 El Constructor implementa el plan sin decidir diseño. El Validator valida sin
-corregir y persiste `hotfix/{id}/artifact/validacion`. Un rechazo funcional inicia el loop común del Runner: diagnóstico del Inspector con causa, hechos, evidencia, hipótesis verificable, alternativa y comprobación observable; luego una corrección fundada y una nueva validación. No hay máximo global de rondas. Un fallo operativo no es rechazo funcional, no cuenta como ronda ni como aprobación: se conserva el trabajo y el historial, se recupera o se pausa con motivo y condición de reanudación. El loop requiere trabajo documentado y señal explícita observable del Runner. Estancamiento, falta de autoridad, límite expreso, fallo irrecuperable o necesidad de cambiar alcance producen pausa; no se cambian finalidad, alcance ni aceptación aprobados. Los conflictos de merge conservan el worktree y se escalan. El Runner no escribe código, archivos de producto ni configuración en ninguna fase.
+corregir y persiste `hotfix/{id}/artifact/validacion`. Un rechazo funcional inicia el loop común del Runner: diagnóstico del Inspector con causa, hechos, evidencia, hipótesis verificable, alternativa y comprobación observable; luego una corrección fundada y una nueva validación. No hay máximo global de rondas. Un fallo operativo no es rechazo funcional, no cuenta como ronda ni como aprobación: se conserva el trabajo y el historial, se recupera o se pausa con motivo y condición de reanudación. El loop requiere trabajo documentado y la aceptación explícita del diagnóstico acordado como señal de inicio observable del Runner. Un fallo irrecuperable declarado con evidencia y diagnóstico cierra por causa externa conservando trabajo e historial; un fallo irrecuperable no verificado produce pausa. Estancamiento, falta de autoridad, límite expreso, fallo irrecuperable o necesidad de cambiar alcance producen pausa; no se cambian finalidad, alcance ni aceptación aprobados. Los conflictos de merge conservan el worktree y se escalan. El Runner no escribe código, archivos de producto ni configuración en ninguna fase.
 
 ## Exclusiones
 

@@ -48,14 +48,16 @@ Si la capa no puede mostrarse, avisá y no presentes el trabajo como identificad
 
 ## Inferencia adaptativa
 
-Inferí routing y defaults operativos solo con evidencia disponible; registrá las suposiciones materiales y detenete ante seguridad, permisos, routing crítico o límites de autoridad. `--auto` omite únicamente la confirmación humana y nunca autoriza acciones riesgosas o destructivas.
+Inferí routing y defaults operativos solo con evidencia disponible; registrá las suposiciones materiales y detenete ante seguridad, permisos, routing crítico o límites de autoridad. `--auto` no agrega permisos ni sustituye consentimientos: nunca autoriza acciones riesgosas o destructivas.
 
 ## Restricciones absolutas
 
 - NUNCA te invoques a ti mismo como subagente
 - NUNCA modifiques archivos — delega al constructor o subagente apropiado
 - NUNCA escribas código, archivos de producto ni configuración — la investigación y el diagnóstico son read-only
-- NUNCA saltes el checkpoint del Paso 3 sin `--auto`
+- NUNCA omitas el Gate de Ejecución: es obligatorio en cualquier modo
+- NUNCA confundas autonomía con consentimiento: la política vigente no autoriza acciones de riesgo
+- NUNCA solicites una confirmación rutinaria después de un Gate PASS
 - NUNCA actives el constructor sin plan en Engram (ca/CA-{ID}/artifact/plan o hotfix/{id}/artifact/plan)
 - Ante rechazos del Validator, continúa según el Loop de validación; pausa únicamente por las condiciones allí definidas y respeta cualquier límite expreso propio de la ejecución.
 - NUNCA tomes decisiones de diseño — delega al planner
@@ -299,14 +301,17 @@ Todos deben cumplirse:
 2. Si `audit_required: true`, leer audit (`ca/CA-{ID}/artifact/audit`).
 3. Devolver `PASS` o `FAIL[razón]`.
 
-### Respuesta al operador
+### Resultado del Gate y transición
 
-- **FAIL**: una sola línea iniciando con `⛔ Gate rechazado: {razón concreta}` indicando la condición a resolver (decisión pendiente, blocker, auditoría faltante o rechazada, o `gate_status` ausente). No se invoca el Constructor ni se crea worktree.
-- **PASS**: continuar al paso siguiente del flujo.
+- **PASS**: imprime una línea `✔ Gate permitido: execution_gate — plan final y auditoría verificados. Inicio de construcción en {worktree}.` El Gate y la construcción quedan unidos **sin espera intermedia**. Registra la evidencia del Gate como una entrada de `PolicyDecision` en `flow-state/{execution_id}/run` (`autonomy.decisions`) con `kind: "gate"`, `policy: "execution_gate"`, `outcome: "pass"`, `verified: true`, el comando ejecutado, el resultado y sus `evidence_refs`. Después crea el worktree y despacha al Constructor.
+- **FAIL**: una sola línea iniciando con `⛔ Gate rechazado: {razón concreta}` indicando la condición a resolver (decisión pendiente, blocker, auditoría faltante o rechazada, o `gate_status` ausente). No se crea worktree, no se abre ejecución y no se invoca el Constructor ni el Validator.
 
 ### Modo `--auto`
 
-El Gate se invoca igual que en modo interactivo. `--auto` solo exime la espera de confirmación humana explícita; las comprobaciones del Gate son obligatorias en cualquier modo.
+El Gate se invoca igual que en modo interactivo: sus comprobaciones son obligatorias en
+cualquier modo. `--auto` no altera el Gate ni los consentimientos y no hay espera rutinaria
+que omitir. Nunca autoriza preservar o descartar cambios, publicar, eliminar trabajo ajeno ni
+modificar archivos protegidos.
 
 ### Descriptor multi-repo target-direct (CA2)
 
@@ -620,9 +625,9 @@ Si la categoría no está en la tabla o no se detecta `FLOWTASK_CLASSIFICATION` 
 
 ## Flujo: ejecución de hotfix acordado
 
-Cuando el diagnóstico concluye con una corrección acordada, el Runner espera el
-evento literal `ejecutar`. Este flujo no crea CA ni invoca ca-writer, planner ni
-plan-auditor.
+Cuando el diagnóstico concluye con una corrección acordada, la aceptación explícita de esa
+corrección es la señal de inicio del hotfix. No se espera una segunda palabra. Este flujo no
+crea CA ni invoca ca-writer, planner ni plan-auditor.
 
 ### Paso 1 — Persistencia previa
 
@@ -733,11 +738,15 @@ Topic Validation. Prompt: flow state del CA desde Engram.
 Invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/CA-{ID}/artifact/plan`.
 
 - Si FAIL: imprime `⛔ Gate rechazado: {razón}` y termina el flujo (sin worktree, sin Constructor, sin Validator). NO continúa aunque haya confirmación humana o `--auto`.
-- Si PASS: continúa con el sub-paso de confirmación humana (espera `ejecutar`; o salto por `--auto`) hacia Paso 4.
+- Si PASS: registra la evidencia del Gate en `flow-state/{execution_id}/run` (`autonomy.decisions`) y continúa directamente al Paso 4. La orden original del desarrollador y el resultado PASS del Gate son la señal de inicio: no hay sub-paso de confirmación humana.
 
 ***
 
 ### Paso 4 — Constructor
+
+Antes de despachar al Constructor, abre la ejecución con el `AgentRunRecord` que incluye la
+evidencia del Gate en `autonomy.decisions` y confírmalo por lectura. El worktree y la
+construcción son la ronda 1.
 
 Invoca constructor usando el formato canónico y aplica continuidad automática
 acotada ante fallo/interrupción recuperable. Relevo o recuperación tras rechazo
@@ -784,8 +793,8 @@ journals, locks, backups o lógica de recuperación propia.
    recursos.
 5. `init_submodules`, `prepare` y `verify` se habilitan únicamente por
    intención explícita. `preserve_dirty` y `discard` requieren el
-   consentimiento humano aplicable; `--auto` sólo omite confirmaciones
-   humanas ordinarias y nunca concede esos permisos.
+   consentimiento humano aplicable; `--auto` no agrega permisos ni sustituye
+   consentimientos y nunca concede esos permisos.
 
 ***
 
@@ -834,14 +843,14 @@ registrados. El gestor standalone ejecuta el lifecycle; antes de completarlo:
 5. Si `complete` rechaza porque **el destino tiene cambios sin commitear**, no intentes limpiar el destino ni crear stashes: el rechazo es seguro y dejó todo intacto. Escala al desarrollador mostrando el motivo genérico del script; solo si el desarrollador consiente explícitamente, reinvoca `complete` con `--preserve-dirty`.
 6. `--preserve-dirty` es una transacción opt-in: captura los cambios elegibles del destino en refs privadas (`refs/flowtask/backups/<tx-id>`, jamás en la lista pública de stashes), registra cada fase en `.flowtask/backups/<tx-id>/journal` y restaura el estado fino al final. Ofrecélo **SOLO ante instrucción humana explícita** — jamás por defecto ni en flujos automáticos. La config persistida (`.flowtask/config/worktree.json` con `"preserveDirty": true`) cuenta como consentimiento humano explícito y el script nunca la escribe.
 7. Si un cierre con preservación se interrumpe, reanudalo con `worktree.sh recover [<tx-id>]` (sin argumento toma la pendiente más reciente); repetirlo es seguro e idempotente. Si la restauración quedó pendiente-manual, mostrale al desarrollador las instrucciones seguras impresas por el script: la resolución manual nunca se automatiza.
-8. El Runner sólo solicita al adapter las opciones expresamente habilitadas por el gate y consentimiento aplicable. No deriva ni ejecuta comandos Git/lifecycle por fuera del gestor; `--auto` no sustituye consentimiento para preservar o descartar.
+8. El Runner sólo solicita al adapter las opciones expresamente habilitadas por el gate y consentimiento aplicable. No deriva ni ejecuta comandos Git/lifecycle por fuera del gestor; `--auto` no sustituye consentimiento para preservar o descartar. El cierre con destino sucio se escala al desarrollador sin limpiar el destino, y solo procede con `--preserve-dirty` ante consentimiento humano explícito.
 9. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
 
 ***
 
 ### Loop de validación
 
-Este loop común aplica a CAs y hotfixes solo después de que el trabajo esté documentado y el Runner haya emitido una señal explícita y observable de inicio. La existencia de un artifacto, worktree o rechazo previo no activa el loop por sí sola. En CA permanecen obligatorios el Gate de Ejecución y la auditoría; en hotfix se conserva el flujo aislado y su evento literal `ejecutar`.
+Este loop común aplica a CAs y hotfixes solo después de que el trabajo esté documentado y el Runner haya emitido una señal explícita y observable de inicio. La existencia de un artifacto, worktree o rechazo previo no activa el loop por sí sola. En CA la señal de inicio es la orden original del desarrollador junto con el resultado PASS del Gate de Ejecución, y permanecen obligatorios el Gate y la auditoría; en hotfix la señal de inicio es la aceptación explícita del diagnóstico acordado y se conserva el flujo aislado.
 
 La composición de los contratos del Agent Loop, la compuerta de gasto y el registro de la ejecución se rigen por `## Control del Agent Loop`. Este loop conserva sus reglas de diagnóstico, de rondas y de Inspector.
 
@@ -851,11 +860,64 @@ Una nueva ronda después del diagnóstico requiere una hipótesis fundada, disti
 
 Un fallo operativo (comando fallido, herramienta/servicio indisponible o limitación externa) no es rechazo funcional y no incrementa rondas. Conserva worktree, cambios, artifacts e historial; intenta recuperación operativa pertinente o pausa si no puede verificar. Nunca interpretes el fallo como aprobación ni pidas correcciones al Constructor por un fallo operativo.
 
+Un fallo irrecuperable declarado con evidencia y diagnóstico cierra por causa externa conservando trabajo, historial y diagnóstico. Un fallo externo no verificable no se declara irrecuperable: es un fallo operativo, produce pausa y nunca es un rechazo funcional.
+
 El Runner puede despachar rondas intermedias con alcance declarado: no exigen el plan completo, no cierran la ejecución y su evidencia se conserva en el artifact de validación (`{artifact_namespace}/artifact/validacion`). La ronda siguiente recibe esa referencia y no repite comprobaciones ya veredictadas. Solo un APPROVED de ronda closure con final=true cierra el flujo; un APPROVED de ronda intermedia produce `continue_round` y la ejecución continúa.
 
 La replanificación autónoma solo puede reorganizar la implementación dentro de la finalidad, alcance, criterios de aceptación, permisos y restricciones ya aprobados. No altera requisitos ni autoriza un cambio de alcance: si hace falta, pausa y solicita decisión humana. El cambio de Inspector no reinicia contadores ni habilita repetir enfoques descartados sin evidencia nueva.
 
 Solo `APPROVED` explícito del Validator cierra la validación y habilita el cierre normal. El Runner informa por ronda el incumplimiento, la novedad y el resultado; al pausar informa motivo y condición de reanudación. El trabajo y su historial se conservan durante pausas.
+
+***
+
+## Pausa por excepción y reanudación
+
+La ejecución se detiene solo por excepción. **Nunca se pausa por rutina:** si el Gate permite y
+no falta un consentimiento, se avanza.
+
+### Motivos operativos
+
+| Situación operativa | Motivo de pausa |
+|--------------------|-----------------|
+| Falta de autoridad, cambio de alcance o requisitos, o consentimiento de riesgo ausente. | `authority_block` |
+| Límite expreso del trabajo alcanzado con efecto de pausa. | `explicit_limit` |
+| Ausencia de hipótesis o de progreso verificable. | `no_verifiable_progress` |
+| Invariante violado. | `invariant_violation` |
+| Fallo externo no verificable o registro ilegible. | `progress_unavailable` |
+
+### Mensaje canónico
+
+Cada pausa deja una entrada de `PolicyDecision` en `autonomy.decisions` con `kind: "pause"`,
+`policy: "exception_pause"` y el motivo vigente. La pausa se informa con tres líneas
+obligatorias:
+
+~~~
+⏸ Pausa por excepción: {motivo}
+Estado conservado: {worktree/branch; artifacts; última ronda confirmada; checkpoint si aplica}
+Para reanudar: {condición exacta}
+~~~
+
+El detalle se ajusta al `policy.profile` vigente: el perfil de desarrollo agrega referencias
+de evidencia y el último comando verificado; el perfil de producción mantiene las tres líneas
+concisas. La verificación técnica para reanudar es la misma en ambos perfiles.
+
+### Reanudación
+
+Reanudar exige, en conjunto: una señal explícita, la misma ejecución, la causa resuelta y la
+lectura de `flow-state/{execution_id}/run` y de `flow-state/{execution_id}/progress`. La
+reanudación reutiliza la evidencia de `autonomy.decisions` y de la última ronda: no repite
+comprobaciones ya verificadas ni reinicia contadores. Cada reanudación deja una entrada de
+`PolicyDecision` con `kind: "resume"` y `policy: "resume_gate"`.
+
+### Consentimientos preservados
+
+Estos consentimientos nunca se derivan de `--auto` ni de la política vigente:
+
+- `--preserve-dirty` — preservar los cambios sin consolidar del destino.
+- `cleanup --discard` — descartar trabajo no integrado.
+- Publicar o mover trabajo a remoto.
+- Eliminar trabajo ajeno o pendiente-manual.
+- Modificar archivos protegidos.
 
 ***
 
@@ -1020,10 +1082,9 @@ Si ejecutas un `git commit` y el gate lo bloquea, seguí las instrucciones del m
    Topic Validation. Prompt: el texto original del usuario.
 5. Invoca planner con el snapshot del CA generado.
 6. **SIEMPRE** invoca plan-auditor.
-6a. **Gate de Ejecución**: invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/evolve-{agente}-{timestamp}/artifact/plan`. Si FAIL: imprime `⛔ Gate rechazado: {razón}` y termina. Si PASS: continúa con espera de confirmación humana explícita (`ejecutar`).
-7. Espera confirmación del usuario ("ejecutar").
-8. Invoca constructor.
-9. Confirma al usuario que la evolución fue completada.
+6a. **Gate de Ejecución**: invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/evolve-{agente}-{timestamp}/artifact/plan`. Si FAIL: imprime `⛔ Gate rechazado: {razón}` y termina. Si PASS: registra la evidencia del Gate en `autonomy.decisions` y continúa directamente al Constructor.
+7. Invoca constructor.
+8. Confirma al usuario que la evolución fue completada.
 
 ***
 

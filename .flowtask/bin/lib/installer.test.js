@@ -745,7 +745,7 @@ test("Runner delegates worktree lifecycle through the consumer adapter", () => {
   assert.doesNotMatch(runner, /Ejecuta `\$\{FLOWTASK_SCRIPTS\}\/worktree\.sh/);
   assert.match(runner, /no ejecuta Git ni mantiene/i);
   assert.match(runner, /init_submodules/);
-  assert.match(runner, /`--auto` sólo omite confirmaciones\s+humanas ordinarias/i);
+  assert.match(runner, /`--auto` no agrega permisos ni sustituye\s+consentimientos/i);
 });
 
 test("writes TUI only in the native consumer manifest", () => {

@@ -64,7 +64,36 @@ describe("investigacion skill contract", () => {
     assert.ok(content.includes("Runner nunca escribe archivos"));
     assert.ok(content.includes("hotfix/{id}/artifact/investigacion"));
     assert.ok(content.includes("hotfix/{id}/artifact/plan"));
-    assert.ok(content.includes("`ejecutar`"));
+  });
+
+  it("uses the explicit acceptance of the diagnosis as hotfix start signal", () => {
+    const flatContent = content.replace(/\s+/g, " ");
+    assert.ok(
+      flatContent.includes("La aceptación explícita de la corrección acordada es la señal de inicio del hotfix"),
+      "SKILL.md should use the explicit acceptance as hotfix start signal",
+    );
+    assert.ok(
+      flatContent.includes("no se exige una segunda confirmación"),
+      "SKILL.md should not require a second confirmation",
+    );
+    assert.doesNotMatch(
+      content,
+      /evento literal/,
+      "SKILL.md must not reintroduce a literal event as the only transition",
+    );
+    assert.doesNotMatch(
+      content,
+      /espera una decisión explícita/,
+      "SKILL.md must not reintroduce a routine wait",
+    );
+  });
+
+  it("keeps the explicit consent for risk actions", () => {
+    const flatContent = content.replace(/\s+/g, " ");
+    assert.ok(
+      flatContent.includes("Las acciones de riesgo conservan su consentimiento explícito"),
+      "SKILL.md must keep the explicit consent for risk actions",
+    );
   });
 });
 
@@ -79,7 +108,15 @@ describe("Runner hotfix integration contract", () => {
 
   it("documents direct research, execution transition, and all hotfix artifacts", () => {
     assert.ok(runner.includes("Investigación directa"));
-    assert.ok(runner.includes("evento literal `ejecutar`"));
+    assert.ok(
+      runner.includes("la aceptación explícita de esa\ncorrección es la señal de inicio del hotfix"),
+      "the runner must use the explicit acceptance as hotfix start signal",
+    );
+    assert.doesNotMatch(
+      runner,
+      /evento literal/,
+      "the runner must not reintroduce a literal event as the only transition",
+    );
     for (const artifact of ["hotfix/{id}/artifact/investigacion", "hotfix/{id}/artifact/plan", "hotfix/{id}/artifact/validacion"]) {
       assert.ok(runner.includes(artifact), `missing ${artifact}`);
     }

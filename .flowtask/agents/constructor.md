@@ -142,13 +142,41 @@ Para cada artefacto:
 2. Implementa siguiendo las convenciones del plan
 3. Verifica que compile/pase lint si es posible
 
+### Pausa por excepción
+
+Dentro del plan aprobado no se pide confirmación para avanzar. Solo se pausa y se escala al
+Runner cuando:
+
+- falta de autoridad, o el trabajo requiere un cambio de alcance o de requisitos;
+- el trabajo tiene un límite expreso alcanzado;
+- no hay hipótesis ni progreso verificable;
+- hay un fallo externo no verificable;
+- se necesita un consentimiento preservado.
+
+El mensaje de pausa tiene tres líneas obligatorias:
+
+~~~
+⏸ Pausa por excepción: {motivo}
+Estado conservado: {worktree/branch; artifacts; cambios; última ronda confirmada}
+Para reanudar: {condición exacta}
+~~~
+
+Al reanudar, no repitas acciones ya confirmadas: reutilizá la evidencia de la última ronda
+confirmada y continuá desde el estado conservado.
+
+Los consentimientos preservados requieren consentimiento humano explícito: `--preserve-dirty`,
+`cleanup --discard`, publicar o mover trabajo a remoto, eliminar trabajo ajeno o
+pendiente-manual y modificar archivos protegidos. Ni `--auto` ni la autonomía por política los
+conceden ni los sustituyen.
+
 ### Manejo de conflicto al completar
 
 Si el runner te escala porque `worktree.sh complete` detectó un conflicto, **no pierdas el worktree**. Explica en forma breve:
 
 1. Qué decisión o cambio chocó con `development`.
 2. Por qué se conserva el worktree para resolverlo.
-3. Qué camino prefiere el desarrollador: **¿lo implemento o lo analizamos?**
+3. El motivo del conflicto, el estado conservado (worktree, cambios y artifacts) y la condición de reanudación.
+4. Qué camino prefiere el desarrollador: **¿lo implemento o lo analizamos?**
 
 No resuelvas automáticamente sin esa confirmación.
 

@@ -332,6 +332,10 @@ vacíos.
 - Efecto: `close` con `verdict: "external_cause"` y `precedence: 2`.
 - Conserva trabajo, historial y diagnóstico (`diagnosis_ref`).
 - No se reintenta ni se reanuda. Una ejecución cerrada no se reabre.
+- **Sin diagnóstico verificable el fallo no se declara irrecuperable.** Si falta `ref` o
+  `diagnosis_ref`, o si el diagnóstico no es verificable, el hecho es un **fallo operativo**:
+  produce una pausa (`progress_unavailable` o `authority_block`), nunca un cierre por causa
+  externa y nunca un rechazo funcional.
 
 ### 3. Objetivo cumplido
 
@@ -400,6 +404,25 @@ La pausa es **reversible** y pertenece a la misma ejecución.
   que informa la limitación.
 - El estancamiento **propone** el abandono; el cierre requiere una señal explícita de la autoridad
   o un límite expreso con efecto de cierre.
+
+### Informe al operador
+
+Toda pausa informa al operador. El informe describe el motivo, el estado conservado y la
+condición de reanudación, y esos tres datos son obligatorios:
+
+1. **Motivo** — el motivo de pausa vigente.
+2. **Estado conservado** — la última instantánea confirmada, la numeración de rondas, los
+   contadores, la evidencia y el trabajo preservado.
+3. **Condición de reanudación** — la causa que habilita la reanudación, conforme a la fila que
+   corresponde al motivo de la pausa.
+
+El **detalle** del informe se ajusta al perfil vigente de la ejecución: el perfil de
+desarrollo agrega referencias de evidencia y el último comando verificado; el perfil de
+producción mantiene el informe conciso. La **verificación técnica para reanudar es la misma**
+en ambos perfiles: cambia la profundidad del detalle, nunca el requisito.
+
+**Un fallo operativo no es un rechazo funcional.** No es una ronda, no incrementa la
+numeración de rondas ni el contador de estancamiento y no pide correcciones al Constructor.
 
 ## Reanudación
 
