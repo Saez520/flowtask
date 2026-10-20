@@ -27,7 +27,37 @@ flowtask install
 
 El instalador selecciona interactivamente targets OpenCode, VS Code y Claude Code. Se puede marcar uno o varios; confirmar sin marcar instala standalone en `.flowtask/`. Luego selecciona personalidad `training`, `mid`, `senior` o `custom`. `--persona` evita la selección de personalidad, no la selección de targets; sin TTY la instalación falla de forma explícita.
 
-Durante `install` copia recursos, skills y scripts; para Claude genera agents, commands, settings, MCP y `CLAUDE.md`; para OpenCode instala plugins del manifiesto en `.opencode/plugins` y genera `.opencode/opencode.json` y `.opencode/tui.json`; escribe `config/profile.json`, `config/review.json` y `.installation-method` en el target; y coordina Graphify/ferris-search según las preguntas del instalador.
+Durante `install` copia recursos, skills y scripts; para Claude genera agents, commands, settings, MCP y `CLAUDE.md`; para OpenCode instala plugins del manifiesto en `.opencode/plugins` y genera `.opencode/opencode.json` y `.opencode/tui.json`; escribe `config/profile.json`, `config/review.json`, `config/autonomy.json`, `config/permissions.json` y `.installation-method` en el target; y coordina Graphify/ferris-search según las preguntas del instalador.
+
+## Capas de configuración del target
+
+Cada target instalado recibe tres capas de configuración en `<target>/config/`:
+
+| Archivo | Capa | Valores |
+|---------|------|---------|
+| `profile.json` | Persona (tono) | `level`: `training`, `mid`, `senior` o `custom`; `persona`: identidad de tono; `onboarded`: estado del onboarding. |
+| `autonomy.json` | Autonomía (iniciativa) | `version`: `1`; `profile`: `assistant`, `autonomous-dev` o `hermes`. |
+| `permissions.json` | Permisos (sobre técnico) | `version`: `1`; `envelope`: `standard`. |
+
+`install` y `update` crean `autonomy.json` y `permissions.json` solo cuando la
+capa no existe, con `autonomous-dev` y `standard` como valores de instalación,
+para que lo instalado siga funcionando. Ese default es una migración y no un
+fallback de runtime: en ejecución, una capa ausente o inválida es un fallo con
+mensaje operativo. Una capa inválida nunca se repara con un default — la
+operación falla y el archivo se conserva. `profile.json` conserva su forma
+vigente y una persona ausente o inválida deja un aviso sin alterar la autonomía
+ni los permisos.
+
+La precedencia entre capas es `permisos > autonomía > persona`. Para inspeccionar
+las capas resueltas de un target:
+
+```bash
+flowtask layers resolve --target opencode
+flowtask layers resolve --json
+```
+
+El contrato completo está en
+[architecture/capas-persona-autonomia-permisos.md](architecture/capas-persona-autonomia-permisos.md).
 
 ## Targets
 

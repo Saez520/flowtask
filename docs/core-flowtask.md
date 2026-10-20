@@ -57,6 +57,11 @@ debate de igual a igual — y el runner adopta una según el perfil del
 desarrollador. La personalidad cambia el tono y la profundidad de la
 conversación, no las reglas de orquestación.
 
+La personalidad solo define tono y profundidad; no autoriza ni restringe acciones.
+La autorización técnica vive en la capa de permisos y la iniciativa en la capa de
+autonomía. El contrato de las tres capas está en
+[architecture/capas-persona-autonomia-permisos.md](architecture/capas-persona-autonomia-permisos.md).
+
 ### Cómo leer este documento
 
 | Bloque | Contenido |

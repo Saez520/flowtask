@@ -34,6 +34,63 @@ o `flowtask update` y requiere reiniciar OpenCode. No existe un fallback nativo.
   analizable también se bloquea y devuelve exactamente:
   `Recordá que debés delegar esta operación al subagente correspondiente.`
 
+## Capa de permisos
+
+El gate valida, antes de aplicar la allowlist técnica del runner, que las capas
+de autonomía y de permisos existan y sean válidas en el target. La autonomía no
+autoriza: solo se comprueba que la capa esté sana.
+
+**Esquema.** Los dos archivos viven en el directorio de configuración del target
+(`<target>/config/`):
+
+```json
+{ "version": 1, "profile": "autonomous-dev" }
+```
+
+```json
+{ "version": 1, "envelope": "standard" }
+```
+
+`profile` admite `assistant`, `autonomous-dev` y `hermes`. `envelope` admite
+`standard`, el único sobre técnico de esta fase: equivale al gate técnico
+vigente y no agrega ninguna capacidad.
+
+**Resolución.** El primer directorio candidato que contiene `autonomy.json` o
+`permissions.json` es la fuente, y en esa fuente ambos archivos deben existir y
+ser válidos. Los candidatos se prueban en orden: `.opencode/flowtask/config`,
+`.claude/flowtask/config`, `.vscode/flowtask/config` y `.flowtask/config`.
+
+**Fallo.**
+
+| Situación | Resultado |
+|-----------|-----------|
+| Falta `permissions.json` en la fuente | Denegación con `[FlowTask Permission Gate] Capa de permisos ausente o inválida.` |
+| `permissions.json` con `envelope` desconocido | Denegación con la misma causa y el valor desconocido nombrado. |
+| Falta `autonomy.json` en la fuente | Denegación con `[FlowTask Permission Gate] Capa de autonomía ausente o inválida.` |
+| `autonomy.json` con `profile` desconocido | Denegación con la misma causa y el valor desconocido nombrado. |
+| El target no declara ninguna configuración de capas | La comprobación no aplica: el sobre técnico vigente (la allowlist) sigue siendo el límite. |
+
+El mensaje de denegación nombra la capa, el archivo, la causa y la acción:
+
+```text
+[FlowTask Permission Gate] Capa de permisos ausente o inválida.
+Archivo: <ruta de permissions.json>
+Causa: <causa>
+Acción: corregí la capa o ejecutá flowtask update; el Runner no ejecuta herramientas con límites ampliados.
+```
+
+**Alcance.** La comprobación aplica solo a las herramientas del runner. El gate
+universal de commits conserva su comportamiento y los permisos de los subagentes
+no cambian. La allowlist de bash y la lista de subagentes autorizados no se
+amplían.
+
+**Smoke.** En un target instalado, borrar `permissions.json`, reiniciar OpenCode
+y verificar que una herramienta del runner se deniega con el mensaje operativo;
+restaurar el archivo, reiniciar OpenCode y verificar que la operación permitida
+vuelve a funcionar. La denegación real depende de que OpenCode recargue
+`dist/index.js`: los tests con fixtures verifican el parser, el mensaje y la
+paridad, no el ciclo de carga.
+
 ## Presupuesto de contexto
 
 El gate de presupuesto de contexto degrada la entrega de las herramientas de
@@ -292,3 +349,9 @@ prueba.
 7. Registrar en el reporte la identidad observada (`hookInput.agent`,
    `input.agent` o ninguna), las rutas verificadas, los comandos permitidos y
    denegados, el feedback literal y cualquier GAP del runtime.
+8. Probar la capa de permisos: borrar
+   `.opencode/flowtask/config/permissions.json`, reiniciar OpenCode e invocar
+   una herramienta del runner. Resultado esperado: la herramienta se deniega
+   con `[FlowTask Permission Gate] Capa de permisos ausente o inválida.` y la
+   causa y la acción recomendadas. Restaurar el archivo, reiniciar OpenCode y
+   repetir: la operación permitida vuelve a funcionar.

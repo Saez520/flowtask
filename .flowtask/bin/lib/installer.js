@@ -13,6 +13,15 @@ import { showInteractiveSelector } from "./ui.js";
 import { coordinateGraphify } from "./graphify.js";
 import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA, classifyOwnership, replaceManagedPackage } from "./ownership.js";
 import { ensureCanonicalSubmodule } from "./submodule-publication.js";
+import {
+  AUTONOMY_PROFILES,
+  LAYER_FILES,
+  LAYER_SOURCES,
+  MIGRATION_DEFAULTS,
+  describeOperationalFailure,
+  readLayerSources,
+  resolveLayers,
+} from "./layers.js";
 
 export const INSTALLER_WRITERS = Object.freeze([
   "W01 removeLegacyConsumerFiles", "W02 migrateProfileLocation", "W03 promptFerrisSearch",
@@ -596,31 +605,38 @@ function resolvePersonaContent(flowtaskDir, personaChoice) {
   return fs.readFileSync(personaPath, "utf8");
 }
 
+const PERSONA_START_MARKER = "<!-- FLOWTASK:PERSONA_START -->";
+const PERSONA_END_MARKER = "<!-- FLOWTASK:PERSONA_END -->";
+const AUTONOMY_START_MARKER = "<!-- FLOWTASK:AUTONOMY_START -->";
+const AUTONOMY_END_MARKER = "<!-- FLOWTASK:AUTONOMY_END -->";
+
+/**
+ * Inyecta el bloque de persona de un runner.
+ *
+ * `undefined` deja el bloque intacto; `null` (o un contenido vacío) lo limpia.
+ * Los marcadores ausentes solo advierten: la persona es opcional.
+ */
 export function injectPersonaIntoRunnerContent(content, personaContent) {
-  if (!personaContent) return content;
+  if (personaContent === undefined) return content;
 
-  const startMarker = "<!-- FLOWTASK:PERSONA_START -->";
-  const endMarker = "<!-- FLOWTASK:PERSONA_END -->";
+  const startIdx = content.indexOf(PERSONA_START_MARKER);
+  const endIdx = content.indexOf(PERSONA_END_MARKER);
 
-  const startIdx = content.indexOf(startMarker);
-  const endIdx = content.indexOf(endMarker);
-
-  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx + startMarker.length) {
+  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx + PERSONA_START_MARKER.length) {
     logWarn("Marcadores PERSONA no encontrados en runner.md. No se inyectó personalidad.");
     return content;
   }
 
+  const block = personaContent ? `\n${personaContent}\n` : "\n";
   return (
-    content.slice(0, startIdx + startMarker.length) +
-    "\n" +
-    personaContent +
-    "\n" +
+    content.slice(0, startIdx + PERSONA_START_MARKER.length) +
+    block +
     content.slice(endIdx)
   );
 }
 
 function injectPersonaIntoRunner(targetDir, personaContent) {
-  if (personaContent === null) return;
+  if (personaContent === undefined) return;
 
   const runnerPath = path.join(targetDir, "agents", "runner.md");
   if (!fileExists(runnerPath)) {
@@ -630,7 +646,67 @@ function injectPersonaIntoRunner(targetDir, personaContent) {
 
   const content = fs.readFileSync(runnerPath, "utf8");
   fs.writeFileSync(runnerPath, injectPersonaIntoRunnerContent(content, personaContent), "utf8");
-  logSuccess(`Personalidad inyectada en runner.md de ${targetDir}.`);
+  logSuccess(personaContent
+    ? `Personalidad inyectada en runner.md de ${targetDir}.`
+    : `Bloque de personalidad limpiado en runner.md de ${targetDir}.`);
+}
+
+/**
+ * Inyecta el valor de autonomía resuelto entre los marcadores de autonomía.
+ * A diferencia de la persona, la autonomía es obligatoria: sin marcadores o
+ * con un descriptor inválido, la operación falla.
+ */
+export function injectAutonomyIntoRunnerContent(content, descriptor) {
+  const profile = descriptor && descriptor.profile;
+  const source = descriptor && descriptor.source;
+
+  if (!AUTONOMY_PROFILES.includes(profile) || !LAYER_SOURCES.includes(source)) {
+    const error = new Error(
+      "[FlowTask Layers] No se pudo inyectar la autonomía en runner.md: descriptor de autonomía inválido.",
+    );
+    error.code = "autonomy_descriptor_invalid";
+    throw error;
+  }
+
+  const startIdx = content.indexOf(AUTONOMY_START_MARKER);
+  const endIdx = content.indexOf(AUTONOMY_END_MARKER);
+
+  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx + AUTONOMY_START_MARKER.length) {
+    const error = new Error(
+      `[FlowTask Layers] No se pudo inyectar la autonomía en runner.md: marcadores ${AUTONOMY_START_MARKER} y ${AUTONOMY_END_MARKER} ausentes.`,
+    );
+    error.code = "autonomy_markers_missing";
+    throw error;
+  }
+
+  const block = `\nAutonomía vigente: ${profile} (origen: ${source}).\n`;
+  return (
+    content.slice(0, startIdx + AUTONOMY_START_MARKER.length) +
+    block +
+    content.slice(endIdx)
+  );
+}
+
+export function injectAutonomyIntoRunner(targetDir, descriptor) {
+  const runnerPath = path.join(targetDir, "agents", "runner.md");
+  if (!fileExists(runnerPath)) {
+    const error = new Error(
+      `[FlowTask Layers] No se pudo inyectar la autonomía en runner.md: runner.md no encontrado en ${targetDir}.`,
+    );
+    error.code = "autonomy_runner_missing";
+    throw error;
+  }
+
+  const content = fs.readFileSync(runnerPath, "utf8");
+  fs.writeFileSync(runnerPath, injectAutonomyIntoRunnerContent(content, descriptor), "utf8");
+  logSuccess(`Autonomía inyectada en runner.md de ${targetDir}.`);
+}
+
+/** Descriptor de autonomía resuelto por la sincronización de capas. */
+function autonomyDescriptorFrom(targetConfig) {
+  const layer = targetConfig && targetConfig.autonomy;
+  if (!layer || layer.status !== "valid" || !layer.value) return null;
+  return { profile: layer.value.profile, source: layer.source };
 }
 
 function configureRunnerScriptsContent(content, targetSubDir) {
@@ -685,6 +761,69 @@ function readProfileLevel(targetDir) {
   return level && levelToChoice[level] ? level : null;
 }
 
+const OPERATIONAL_LAYERS = Object.freeze(["autonomy", "permissions"]);
+
+function layerLabel(name) {
+  return name === "autonomy" ? "autonomía" : "permisos";
+}
+
+function layerOperationalError(name, layer) {
+  const reason = layer.reason
+    ?? (layer.status === "missing"
+      ? "capa ausente: no se encontró el archivo de la capa"
+      : "capa inválida");
+  const error = new Error(describeOperationalFailure({
+    layer: name,
+    path: layer.path,
+    reason,
+  }));
+  error.code = name === "autonomy" ? "autonomy_invalid" : "permissions_invalid";
+  error.layer = name;
+  error.path = layer.path ?? null;
+  error.reason = reason;
+  return error;
+}
+
+function writeLayerDefault(configDir, name) {
+  const filePath = path.join(configDir, LAYER_FILES[name]);
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(MIGRATION_DEFAULTS[name], null, 2), "utf8");
+  logSuccess(`Capa de ${layerLabel(name)} migrada en ${filePath} con el valor por defecto de instalación.`);
+}
+
+/**
+ * Garantiza que el target tenga las capas de autonomía y de permisos.
+ *
+ * La resolución es por capa con reemplazo completo: una capa válida se
+ * preserva y una capa inválida falla el target sin sobrescribir el archivo.
+ * Solo se escribe el default de migración cuando la capa no existe en ninguna
+ * fuente: el default es una migración, no un fallback de runtime.
+ */
+export function ensureTargetLayers(targetDir, { teamConfigDir = null } = {}) {
+  const configDir = targetConfigDir(targetDir);
+  const project = readLayerSources(configDir);
+  const team = teamConfigDir ? readLayerSources(teamConfigDir) : null;
+
+  const resolution = resolveLayers({ team, project });
+  const created = [];
+
+  // Una capa inválida falla el target antes de escribir nada: el archivo se
+  // conserva y no se repara con un default.
+  for (const name of OPERATIONAL_LAYERS) {
+    const layer = resolution.layers[name];
+    if (layer.status === "invalid") throw layerOperationalError(name, layer);
+  }
+
+  for (const name of OPERATIONAL_LAYERS) {
+    if (resolution.layers[name].status !== "missing") continue;
+    writeLayerDefault(configDir, name);
+    created.push(name);
+  }
+
+  const finalResolution = resolveLayers({ team, project: readLayerSources(configDir) });
+  return { resolution: finalResolution, created };
+}
+
 export function materializeReviewConfig(flowtaskDir, targetDir) {
   const sourcePath = path.join(flowtaskDir, "config", "review.json");
   const config = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
@@ -702,13 +841,44 @@ export function materializeReviewConfig(flowtaskDir, targetDir) {
   return destination;
 }
 
-export function syncTargetConfig(flowtaskDir, targetDir, personaChoice, { preserveProfile = false } = {}) {
+/**
+ * Sincroniza la configuración del target: el review gestionado, la capa de
+ * persona y las capas de autonomía y permisos.
+ *
+ * La persona se escribe solo con una elección explícita; un perfil válido se
+ * conserva y uno inválido sin elección explícita no se sobrescribe. Las capas
+ * operativas se resuelven por separado y nunca se reparan con un default.
+ */
+export function syncTargetConfig(flowtaskDir, targetDir, personaChoice, { preserveProfile = false, explicitPersona = false } = {}) {
   materializeReviewConfig(flowtaskDir, targetDir);
+
   const existing = readProfile(targetDir);
-  const valid = existing && levelToChoice[existing.level] && typeof existing.persona === "string";
-  if (!preserveProfile || !valid) {
+  const valid = Boolean(existing && levelToChoice[existing.level] && typeof existing.persona === "string");
+
+  let personaStatus;
+  if (explicitPersona && personaChoice) {
     writeProfile(targetDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
+    personaStatus = "valid";
+  } else if (valid) {
+    personaStatus = "valid";
+  } else if (existing) {
+    personaStatus = "invalid";
+    logWarn(`Perfil de persona inválido en ${targetConfigDir(targetDir)}: no se sobrescribe y se continúa sin persona.`);
+  } else if (!preserveProfile && personaChoice) {
+    writeProfile(targetDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
+    personaStatus = "valid";
+  } else {
+    personaStatus = "missing";
+    logWarn(`No se encontró perfil de persona en ${targetConfigDir(targetDir)}: se continúa sin persona.`);
   }
+
+  const { resolution } = ensureTargetLayers(targetDir);
+
+  return {
+    persona: personaStatus,
+    autonomy: resolution.layers.autonomy,
+    permissions: resolution.layers.permissions,
+  };
 }
 
 export async function resolvePersonaSelection(projectDir, readline, options = {}) {
@@ -1290,11 +1460,12 @@ ${COLORS.blue}╔═════════════════════
         if (!verifyDirectoryMirror(srcDir, destDir, { ignorePaths: pruned.preserved })) throw new Error(`Mirror verification failed for ${src}`);
       }
 
-      // ── Inject persona into runner.md ───────────────────────────────
+      // ── Config del target: persona y capas de autonomía y permisos ──
+      // Las capas se resuelven y escriben antes de instalar el plugin y antes
+      // de inyectar persona y autonomía.
       configureRunnerScripts(TARGET_DIR, targetSubDir);
-      if (personaContent && id !== "claude") {
-        injectPersonaIntoRunner(TARGET_DIR, personaContent);
-      }
+      const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, { explicitPersona: true });
+      const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
 
       // OpenCode: skills go to .opencode/skills/ (outside flowtask subdir)
       if (id === "opencode") {
@@ -1302,8 +1473,6 @@ ${COLORS.blue}╔═════════════════════
         if (fileExists(srcSkills)) copyWithProgress(srcSkills, path.join(projectDir, ".opencode", "skills"), "skills (opencode)", readline);
         mergeOpencodeConfig(path.join(projectDir, ideDir, "opencode.json"), flowtaskDir, ideDir);
       }
-
-      syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice);
 
       // Claude: generate agents/commands/CLAUDE.md/settings from source
       if (id === "claude") {
@@ -1315,16 +1484,14 @@ ${COLORS.blue}╔═════════════════════
         mergeClaudeSettings(path.join(projectDir, ".claude", "settings.json"), flowtaskDir);
         mergeClaudeMcpConfig(path.join(projectDir, ".mcp.json"), flowtaskDir);
         cleanupOrphanedClaudeAssets(projectDir);
-        if (personaContent) {
-          const sourceRunnerPath = path.join(flowtaskDir, "agents", "runner.md");
-          const sourceRunner = fs.readFileSync(sourceRunnerPath, "utf8");
-          const runnerBody = injectPersonaIntoRunnerContent(
-            configureRunnerScriptsContent(sourceRunner, targetSubDir), personaContent,
-          );
-          generateClaudeMd(flowtaskDir, projectDir, runnerBody);
-        } else {
-          generateClaudeMd(flowtaskDir, projectDir);
-        }
+        const sourceRunnerPath = path.join(flowtaskDir, "agents", "runner.md");
+        const sourceRunner = fs.readFileSync(sourceRunnerPath, "utf8");
+        let runnerBody = injectPersonaIntoRunnerContent(
+          configureRunnerScriptsContent(sourceRunner, targetSubDir),
+          personaContent ?? null,
+        );
+        if (autonomyDescriptor) runnerBody = injectAutonomyIntoRunnerContent(runnerBody, autonomyDescriptor);
+        generateClaudeMd(flowtaskDir, projectDir, runnerBody);
       }
 
       // ── Step 5: Install plugins from manifest (OpenCode only) ────────────
@@ -1335,6 +1502,12 @@ ${COLORS.blue}╔═════════════════════
         logStep(5, "Installing plugins from manifest...");
         const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
         installManifestPlugins(projectDir, preflight?.manifest ?? manifest, flowtaskDir, preflight);
+      }
+
+      // ── Inject persona and autonomy into runner.md ───────────────────
+      if (id !== "claude") {
+        injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
+        if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
       }
 
       // ── Step 6: Write installation marker ───────────────────────────────
@@ -1424,16 +1597,18 @@ ${COLORS.blue}╔═════════════════════
     if (currentLevel) break;
   }
 
-  let personaChoice;
+  let personaChoice = null;
   if (options.persona && levelToChoice[options.persona]) {
     personaChoice = mapping[levelToChoice[options.persona]];
   } else if (currentLevel && levelToChoice[currentLevel]) {
     personaChoice = mapping[levelToChoice[currentLevel]];
     logInfo(`Conservando personalidad existente: ${personaChoice.persona}`);
   } else {
-    personaChoice = await promptPersonaSeleccion(readline, currentLevel);
+    // Sin personalidad válida y sin elección explícita no se abre el prompt:
+    // se continúa sin persona y sin alterar autonomía ni permisos.
+    logWarn("No se encontró una personalidad válida y no se indicó --persona. Se continúa sin inyectar personalidad.");
   }
-  const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
+  const personaContent = personaChoice ? resolvePersonaContent(flowtaskDir, personaChoice) : null;
 
   // ── Step 2: Delta sync each target ──────────────────────────────────────
   const preservePaths = ["CA-", "workspace", ".workspace", ".installation-method"];
@@ -1477,20 +1652,26 @@ ${COLORS.blue}╔═════════════════════
 
       logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
 
+      // ── Config del target: persona y capas de autonomía y permisos ──
+      // Las capas se resuelven y escriben antes de instalar el plugin y antes
+      // de inyectar persona y autonomía.
+      configureRunnerScripts(TARGET_DIR, subDir);
+      const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
+        preserveProfile: !options.persona,
+        explicitPersona: Boolean(options.persona),
+      });
+      const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
+
       // ── Re-install plugins from manifest (OpenCode only) ─────────────────
       if (id === "opencode") {
         installManifestPlugins(projectDir, manifest, flowtaskDir, preflight);
       }
 
-      // ── Inject persona into runner.md ───────────────────────────────
-      configureRunnerScripts(TARGET_DIR, subDir);
-      if (personaContent && id !== "claude") {
-        injectPersonaIntoRunner(TARGET_DIR, personaContent);
+      // ── Inject persona and autonomy into runner.md ───────────────────
+      if (id !== "claude") {
+        injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
+        if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
       }
-
-      syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
-        preserveProfile: !options.persona,
-      });
 
       // Claude: regenerate derived files
       if (id === "claude") {
@@ -1502,7 +1683,12 @@ ${COLORS.blue}╔═════════════════════
         mergeClaudeMcpConfig(path.join(projectDir, ".mcp.json"), flowtaskDir);
         cleanupOrphanedClaudeAssets(projectDir);
         const sourceRunner = fs.readFileSync(path.join(flowtaskDir, "agents", "runner.md"), "utf8");
-        generateClaudeMd(flowtaskDir, projectDir, configureRunnerScriptsContent(sourceRunner, subDir));
+        let runnerBody = injectPersonaIntoRunnerContent(
+          configureRunnerScriptsContent(sourceRunner, subDir),
+          personaContent ?? null,
+        );
+        if (autonomyDescriptor) runnerBody = injectAutonomyIntoRunnerContent(runnerBody, autonomyDescriptor);
+        generateClaudeMd(flowtaskDir, projectDir, runnerBody);
       }
 
       fs.writeFileSync(

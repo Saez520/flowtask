@@ -129,7 +129,7 @@ los registros y la política vigente. Es la entrada del protocolo de inicio y se
 como `RunContext v1`:
 
 ~~~json
-{"schema":"agent-loop-run/context/v1","execution":{"id":"CA-ejemplo-20261020T001500Z","work_id":"CA-ejemplo","work_kind":"ca","status":"active"},"baseline":{"version":1,"ref":"baseline://approved/plan","approved_at":"2026-10-20T00:15:00Z"},"gate":{"id":"auto-0001","kind":"gate","policy":"execution_gate","outcome":"pass","verified":true,"reason":null,"command":"mem_search(query: \"CA-ejemplo plan\", type: \"ca-artifact\", scope: \"project\")","result":"plan final y auditoria verificados","evidence_refs":["ca/CA-ejemplo/artifact/plan","ca/CA-ejemplo/artifact/audit"],"at":"2026-10-20T00:15:00Z"},"hard_limit":{"declared":true,"tokens":500000,"active_time_ms":null,"effect":"pause","ref":"baseline://approved/hard-limit","declared_by":"authority","declared_at":"2026-10-20T00:15:00Z"},"records":{"progress":"flow-state/CA-ejemplo-20261020T001500Z/progress","termination":"flow-state/CA-ejemplo-20261020T001500Z/termination","idempotency":"flow-state/CA-ejemplo-20261020T001500Z/idempotency","budget":"flow-state/CA-ejemplo-20261020T001500Z/budget","run":"flow-state/CA-ejemplo-20261020T001500Z/run"},"invariants":{"catalog_version":1,"context_ref":"round-000-invariant-context"},"policy":{"profile":"development","max_retries_per_phase":2},"started_at":"2026-10-20T00:15:00Z"}
+{"schema":"agent-loop-run/context/v1","execution":{"id":"CA-ejemplo-20261020T001500Z","work_id":"CA-ejemplo","work_kind":"ca","status":"active"},"baseline":{"version":1,"ref":"baseline://approved/plan","approved_at":"2026-10-20T00:15:00Z"},"gate":{"id":"auto-0001","kind":"gate","policy":"execution_gate","outcome":"pass","verified":true,"reason":null,"command":"mem_search(query: \"CA-ejemplo plan\", type: \"ca-artifact\", scope: \"project\")","result":"plan final y auditoria verificados","evidence_refs":["ca/CA-ejemplo/artifact/plan","ca/CA-ejemplo/artifact/audit"],"at":"2026-10-20T00:15:00Z"},"autonomy":{"profile":"autonomous-dev","source":"project"},"hard_limit":{"declared":true,"tokens":500000,"active_time_ms":null,"effect":"pause","ref":"baseline://approved/hard-limit","declared_by":"authority","declared_at":"2026-10-20T00:15:00Z"},"records":{"progress":"flow-state/CA-ejemplo-20261020T001500Z/progress","termination":"flow-state/CA-ejemplo-20261020T001500Z/termination","idempotency":"flow-state/CA-ejemplo-20261020T001500Z/idempotency","budget":"flow-state/CA-ejemplo-20261020T001500Z/budget","run":"flow-state/CA-ejemplo-20261020T001500Z/run"},"invariants":{"catalog_version":1,"context_ref":"round-000-invariant-context"},"policy":{"profile":"development","max_retries_per_phase":2},"started_at":"2026-10-20T00:15:00Z"}
 ~~~
 
 **Bloques del contexto de ejecución.**
@@ -140,6 +140,7 @@ como `RunContext v1`:
 | `execution` | `id`, `work_id`, `work_kind`, `status` y `started_at`. |
 | `baseline` | Versión, referencia y aprobación del baseline vigente. |
 | `gate` | Resultado del gate que habilita la ejecución, como objeto `PolicyDecision v1`. Es `null` mientras el gate no se evaluó. |
+| `autonomy` | Capa de autonomía resuelta antes de abrir la ejecución: `profile` (valor vigente) y `source` (origen de la resolución). |
 | `hard_limit` | Tope duro declarado, con `declared`, `tokens`, `active_time_ms`, `effect`, `ref`, `declared_by` y `declared_at`. |
 | `records` | Referencias a los cinco registros operativos. |
 | `invariants` | Versión del catálogo de invariantes y referencia del contexto de la ronda. |
@@ -190,8 +191,12 @@ pasa, la construcción comienza sin espera rutinaria.
   el gate, ni la auditoría del plan, ni la validación de la implementación.
 - **Un indicador de invocación como `--auto` no altera el gate ni los consentimientos.**
   Solo declara que no hay espera rutinaria.
-- **No hay interruptores por flujo ni configuración estática.** La autonomía rige por la
-  política vigente y por el consentimiento aplicable.
+- **La capa de autonomía declara la iniciativa (`assistant`, `autonomous-dev`, `hermes`); no es un
+  interruptor por flujo y no altera el gate, la auditoría, la validación ni los consentimientos.
+  La política de ejecución sigue siendo `gate-then-auto`.**
+- **La autonomía solo puede restringir dentro del sobre de permisos; nunca lo amplía.** La
+  precedencia entre capas es `permisos > autonomía > persona`: la persona no autoriza ni
+  restringe, y la autonomía no amplía el sobre técnico.
 - **Las acciones de riesgo conservan su consentimiento explícito.** Preservar o descartar
   cambios del destino, publicar o mover trabajo a remoto, eliminar trabajo ajeno o pendiente
   manual y modificar archivos protegidos requieren consentimiento humano explícito.
@@ -278,7 +283,7 @@ escribe **solo** el propio; los demás se consultan.
 El registro de ejecución es un documento único, completo y durable:
 
 ~~~json
-{"schema":"agent-loop-run/v1","execution":{"id":"CA-ejemplo-20261020T001500Z","work_id":"CA-ejemplo","work_kind":"ca","status":"active","started_at":"2026-10-20T00:15:00Z"},"baseline":{"version":1,"ref":"baseline://approved/plan","approved_at":"2026-10-20T00:15:00Z"},"hard_limit":{"declared":true,"tokens":500000,"active_time_ms":null,"effect":"pause","ref":"baseline://approved/hard-limit","declared_by":"authority","declared_at":"2026-10-20T00:15:00Z"},"round":{"number":3,"last_snapshot_id":"round-003-rev-1"},"records":{"progress":"flow-state/CA-ejemplo-20261020T001500Z/progress","termination":"flow-state/CA-ejemplo-20261020T001500Z/termination","idempotency":"flow-state/CA-ejemplo-20261020T001500Z/idempotency","budget":"flow-state/CA-ejemplo-20261020T001500Z/budget"},"autonomy":{"policy":"gate-then-auto","decisions":[{"id":"auto-0001","kind":"gate","policy":"execution_gate","outcome":"pass","verified":true,"reason":null,"command":"mem_search(query: \"CA-ejemplo plan\", type: \"ca-artifact\", scope: \"project\")","result":"plan final y auditoria verificados","evidence_refs":["ca/CA-ejemplo/artifact/plan","ca/CA-ejemplo/artifact/audit"],"at":"2026-10-20T00:15:00Z"}]},"state":"running","pause":null,"closure":null,"budget_gate":{"outcome":"not_evaluated","reason":"termination_precedence","hard_limit_reached":false,"termination_ref":null,"budget_ref":"flow-state/CA-ejemplo-20261020T001500Z/budget","evaluated_at":"2026-10-20T00:30:00Z"},"integrity":{"record_version":1,"last_transition_id":"tr-run-0001","last_confirmed_at":"2026-10-20T00:15:00Z"},"created_at":"2026-10-20T00:15:00Z","updated_at":"2026-10-20T00:30:00Z"}
+{"schema":"agent-loop-run/v1","execution":{"id":"CA-ejemplo-20261020T001500Z","work_id":"CA-ejemplo","work_kind":"ca","status":"active","started_at":"2026-10-20T00:15:00Z"},"baseline":{"version":1,"ref":"baseline://approved/plan","approved_at":"2026-10-20T00:15:00Z"},"hard_limit":{"declared":true,"tokens":500000,"active_time_ms":null,"effect":"pause","ref":"baseline://approved/hard-limit","declared_by":"authority","declared_at":"2026-10-20T00:15:00Z"},"round":{"number":3,"last_snapshot_id":"round-003-rev-1"},"records":{"progress":"flow-state/CA-ejemplo-20261020T001500Z/progress","termination":"flow-state/CA-ejemplo-20261020T001500Z/termination","idempotency":"flow-state/CA-ejemplo-20261020T001500Z/idempotency","budget":"flow-state/CA-ejemplo-20261020T001500Z/budget"},"autonomy":{"policy":"gate-then-auto","profile":"autonomous-dev","source":"project","decisions":[{"id":"auto-0001","kind":"gate","policy":"execution_gate","outcome":"pass","verified":true,"reason":null,"command":"mem_search(query: \"CA-ejemplo plan\", type: \"ca-artifact\", scope: \"project\")","result":"plan final y auditoria verificados","evidence_refs":["ca/CA-ejemplo/artifact/plan","ca/CA-ejemplo/artifact/audit"],"at":"2026-10-20T00:15:00Z"}]},"state":"running","pause":null,"closure":null,"budget_gate":{"outcome":"not_evaluated","reason":"termination_precedence","hard_limit_reached":false,"termination_ref":null,"budget_ref":"flow-state/CA-ejemplo-20261020T001500Z/budget","evaluated_at":"2026-10-20T00:30:00Z"},"integrity":{"record_version":1,"last_transition_id":"tr-run-0001","last_confirmed_at":"2026-10-20T00:15:00Z"},"created_at":"2026-10-20T00:15:00Z","updated_at":"2026-10-20T00:30:00Z"}
 ~~~
 
 **Bloques del registro de ejecución.**
@@ -291,7 +296,7 @@ El registro de ejecución es un documento único, completo y durable:
 | `hard_limit` | Tope duro declarado, con `declared`, `tokens`, `active_time_ms`, `effect`, `ref`, `declared_by` y `declared_at`. |
 | `round` | Número de ronda y última instantánea de progreso confirmada. |
 | `records` | Referencias a los cuatro registros operativos. |
-| `autonomy` | Política vigente y decisiones de política registradas. |
+| `autonomy` | Política vigente, capa de autonomía resuelta y decisiones de política registradas. |
 | `state` | Estado efectivo del controlador: `running`, `paused` o `closed`. |
 | `pause` | Pausa vigente o `null`. |
 | `closure` | Cierre vigente o `null`. |
@@ -309,9 +314,11 @@ origen (`termination` o `budget`) y es `null` cuando la pausa es propia del cont
 **Bloque `budget_gate`.** Contiene `outcome`, `reason`, `hard_limit_reached`,
 `termination_ref`, `budget_ref` y `evaluated_at`.
 
-**Bloque `autonomy`.** Contiene `policy` y `decisions[]`. La política vigente es
-`gate-then-auto`. `decisions[]` es una lista append-only de decisiones de política: cada
-gate PASS, cada pausa por excepción y cada reanudación agregan **exactamente una** entrada.
+**Bloque `autonomy`.** Contiene `policy`, `profile`, `source` y `decisions[]`. La política vigente
+es `gate-then-auto`. `profile` es el valor de la capa de autonomía resuelta
+(`assistant`, `autonomous-dev` o `hermes`) y `source` es su origen (`team` o `project`).
+`decisions[]` es una lista append-only de decisiones de política: cada gate PASS, cada pausa por
+excepción y cada reanudación agregan **exactamente una** entrada.
 
 ### Decisión de política
 
@@ -359,6 +366,8 @@ La evidencia de las decisiones automáticas se modela como `PolicyDecision v1`:
 | `closure.verdict` | `success`, `safe_abandonment`, `external_cause` |
 | `hard_limit.effect` | `pause` |
 | `autonomy.policy` | `gate-then-auto` |
+| `autonomy.profile` | `assistant`, `autonomous-dev`, `hermes` |
+| `autonomy.source` | `team`, `project` |
 | `PolicyDecision.kind` | `gate`, `pause`, `resume` |
 | `PolicyDecision.policy` | `execution_gate`, `exception_pause`, `resume_gate` |
 | `PolicyDecision.outcome` | `pass`, `fail`, `pause`, `resume`, `reject` |
@@ -709,8 +718,10 @@ regla improvisada, no se anuncian avances y no se despacha la ronda siguiente.
 
 ## Configuración
 
-No hay archivos de configuración ni claves de entorno. Los valores por defecto son
-documentales y viven en los datos de la ejecución.
+La capa de autonomía se resuelve antes de abrir la ejecución y su valor queda registrado en el
+registro de ejecución (`autonomy.profile` y `autonomy.source`). Los parámetros propios del
+controlador no tienen archivos ni claves de entorno. Los valores por defecto son documentales y
+viven en los datos de la ejecución.
 
 ### Tope duro
 

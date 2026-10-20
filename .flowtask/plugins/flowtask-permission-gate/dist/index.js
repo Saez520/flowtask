@@ -6,6 +6,7 @@ import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunne
 import { createWorktreeConsumerBridge } from "./worktree-consumer-bridge.js";
 import { createConfiguredEngramInvoker } from "./engram-mcp.js";
 import { createWorktreeMcpClient } from "./worktree-mcp.js";
+import { buildLayerBlockMessage, readOperationalLayers } from "./layers.js";
 import { buildAttachmentDelivery, buildDegradationMetadata, buildNarrowingNotice, buildReducedDelivery, isImageOrPdfOutput, loadContextBudgetConfig, registerNarrowingNotice, resetNarrowingNotices, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
 /** The nine keys published by the worktree manager for every accepted and rejected request. */
 const PROTOCOL_KEYS = [
@@ -421,8 +422,18 @@ export default async function (input) {
             // identidad; si no califica (o está ausente), se cae a la sesión.
             const hookAgent = hookInput.agent;
             const agent = hookAgent !== undefined && isRunner(hookAgent) ? hookAgent : SESSION_AGENTS.get(hookInput.sessionID);
-            if (isRunner(agent) && !runnerToolAllowed(hookInput.tool, hookOutput?.args ?? {}))
-                runnerBlocked();
+            if (isRunner(agent)) {
+                // Capa de permisos: la autonomía y los permisos deben existir y ser
+                // válidos en el target antes de aplicar la allowlist técnica. La
+                // autonomía no autoriza: solo se comprueba que la capa esté sana.
+                const layerWorkdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
+                const operationalLayers = readOperationalLayers([layerWorkdir, sessionDir]);
+                if (!operationalLayers.ok && operationalLayers.configDir) {
+                    throw new Error(buildLayerBlockMessage(operationalLayers));
+                }
+                if (!runnerToolAllowed(hookInput.tool, hookOutput?.args ?? {}))
+                    runnerBlocked();
+            }
             // --- context budget: pre-gate barato (runner, lista cerrada, sin recorrer árbol) ---
             // Degradación por niveles, nivel 1: el primer pedido amplio del turno se
             // anuncia con la forma de acotar y no se ejecuta. El mismo pedido

@@ -817,6 +817,84 @@ test("materializes managed config and profile independently for three targets", 
   }
 });
 
+test("migrates the absent layers of a target with the installation defaults", () => {
+  const { root, flowtaskDir } = createFixture();
+  writeJson(path.join(flowtaskDir, "config", "review.json"), {
+    enabled: true,
+    stampPath: ".flowtask/config/.review-stamp",
+  });
+  const targetDir = path.join(root, ".opencode", "flowtask");
+  writeJson(path.join(targetDir, "config", "profile.json"), {
+    level: "senior", persona: "tutor-senior", onboarded: true,
+  });
+
+  const result = syncTargetConfig(flowtaskDir, targetDir, {
+    level: "senior", persona: "tutor-senior", onboarded: true,
+  });
+
+  assert.equal(result.persona, "valid");
+  assert.equal(result.autonomy.status, "valid");
+  assert.equal(result.permissions.status, "valid");
+  assert.deepEqual(readJson(path.join(targetDir, "config", "autonomy.json")), {
+    version: 1, profile: "autonomous-dev",
+  });
+  assert.deepEqual(readJson(path.join(targetDir, "config", "permissions.json")), {
+    version: 1, envelope: "standard",
+  });
+  assert.deepEqual(readJson(path.join(targetDir, "config", "profile.json")), {
+    level: "senior", persona: "tutor-senior", onboarded: true,
+  });
+});
+
+test("fails the target when a layer is invalid and keeps the file untouched", () => {
+  const { root, flowtaskDir } = createFixture();
+  writeJson(path.join(flowtaskDir, "config", "review.json"), {
+    enabled: true,
+    stampPath: ".flowtask/config/.review-stamp",
+  });
+  const targetDir = path.join(root, ".opencode", "flowtask");
+  writeJson(path.join(targetDir, "config", "autonomy.json"), { version: 1, profile: "root" });
+
+  assert.throws(
+    () => syncTargetConfig(flowtaskDir, targetDir, {
+      level: "senior", persona: "tutor-senior", onboarded: true,
+    }),
+    (error) => {
+      assert.equal(error.code, "autonomy_invalid");
+      return true;
+    },
+  );
+
+  assert.deepEqual(readJson(path.join(targetDir, "config", "autonomy.json")), {
+    version: 1, profile: "root",
+  });
+});
+
+test("does not overwrite an invalid persona profile and keeps the layers intact", () => {
+  const { root, flowtaskDir } = createFixture();
+  writeJson(path.join(flowtaskDir, "config", "review.json"), {
+    enabled: true,
+    stampPath: ".flowtask/config/.review-stamp",
+  });
+  const targetDir = path.join(root, ".opencode", "flowtask");
+  writeJson(path.join(targetDir, "config", "profile.json"), { level: "senior" });
+  writeJson(path.join(targetDir, "config", "autonomy.json"), { version: 1, profile: "assistant" });
+  writeJson(path.join(targetDir, "config", "permissions.json"), { version: 1, envelope: "standard" });
+
+  const result = syncTargetConfig(flowtaskDir, targetDir, {
+    level: "mid", persona: "tutor-mid", onboarded: true,
+  }, { preserveProfile: true });
+
+  assert.equal(result.persona, "invalid");
+  assert.deepEqual(readJson(path.join(targetDir, "config", "profile.json")), { level: "senior" });
+  assert.deepEqual(readJson(path.join(targetDir, "config", "autonomy.json")), {
+    version: 1, profile: "assistant",
+  });
+  assert.deepEqual(readJson(path.join(targetDir, "config", "permissions.json")), {
+    version: 1, envelope: "standard",
+  });
+});
+
 test("fans out legacy profile and preserves it when one target fails", () => {
   const { root } = createFixture();
   const legacy = path.join(root, ".flowtask", "profile.json");

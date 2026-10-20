@@ -1,5 +1,32 @@
 # flowtask/config — Configuración del ecosistema
 
+## Capas de persona, autonomía y permisos
+
+Cada target instalado tiene su propia configuración de capas en
+`<target>/config/`. Los tres archivos son estado local: no se versionan.
+
+| Archivo | Capa | Valores |
+|---------|------|---------|
+| `profile.json` | Persona (tono) | `level`: `training`, `mid`, `senior`, `custom`. `persona`: identidad de tono. `onboarded`: estado del onboarding. |
+| `autonomy.json` | Autonomía (iniciativa) | `version`: `1`. `profile`: `assistant`, `autonomous-dev` o `hermes`. |
+| `permissions.json` | Permisos (sobre técnico) | `version`: `1`. `envelope`: `standard`. |
+
+- La precedencia entre capas es `permisos > autonomía > persona`: la persona no
+  autoriza ni restringe, y la autonomía no amplía el sobre de permisos.
+- `install` y `update` crean `autonomy.json` y `permissions.json` **solo cuando
+  la capa no existe**, con `autonomous-dev` y `standard` como valores de
+  instalación. Ese default es una migración, no un fallback de runtime: en
+  ejecución, una capa ausente o inválida es un fallo con mensaje operativo.
+- Una capa inválida nunca se repara con un default: la operación falla y el
+  archivo se conserva.
+- Una persona ausente o inválida deja un aviso y la ejecución continúa sin
+  persona, sin tocar autonomía ni permisos.
+- `flowtask layers resolve` muestra las capas resueltas de un target y el
+  origen de cada una.
+
+La fuente normativa del contrato de las tres capas es
+`docs/architecture/capas-persona-autonomia-permisos.md`.
+
 ## Presupuesto de contexto (context-budget)
 
 El gate de presupuesto de contexto del runner es un **gate transparente en

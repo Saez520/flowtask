@@ -446,9 +446,39 @@ describe("agent-loop-run autonomy contract", () => {
       "--auto must never be described as granting permissions",
     );
     assert.ok(
-      flatContent.includes("No hay interruptores por flujo ni configuración estática"),
-      "missing the rule against per-flow switches and static configuration",
+      flatContent.includes("La capa de autonomía declara la iniciativa"),
+      "missing the autonomy layer as the declared initiative",
     );
+    assert.ok(
+      flatContent.includes("no es un interruptor por flujo y no altera el gate, la auditoría, la validación ni los consentimientos"),
+      "missing the rule that the autonomy layer is not a per-flow switch",
+    );
+    assert.ok(
+      flatContent.includes("La política de ejecución sigue siendo `gate-then-auto`"),
+      "missing the preserved execution policy",
+    );
+    assert.doesNotMatch(
+      flatContent,
+      /No hay interruptores por flujo ni configuración estática/,
+      "the retired rule about per-flow switches and static configuration must not come back",
+    );
+  });
+
+  it("declares the autonomy layer values, precedence and recorded fields", () => {
+    for (const profile of ["assistant", "autonomous-dev", "hermes"]) {
+      assert.ok(flatContent.includes(`\`${profile}\``), `missing autonomy profile ${profile}`);
+    }
+    assert.ok(
+      flatContent.includes("`permisos > autonomía > persona`"),
+      "missing the structural precedence between layers",
+    );
+    assert.ok(
+      flatContent.includes("nunca lo amplía"),
+      "the autonomy layer must not be allowed to widen the permission envelope",
+    );
+    assert.ok(flatContent.includes("`autonomy.profile`"), "missing the autonomy.profile field");
+    assert.ok(flatContent.includes("`autonomy.source`"), "missing the autonomy.source field");
+    assert.ok(flatContent.includes("`team`, `project`"), "missing the autonomy.source enumeration");
   });
 
   it("models PolicyDecision v1 with its fields and enums", () => {

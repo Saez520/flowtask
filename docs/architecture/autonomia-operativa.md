@@ -14,6 +14,10 @@ El paralelismo acotado no relaja estos controles: cada trabajo conserva su Gate,
 decisión de pruebas y consentimientos; la integración se serializa y el gasto se atribuye por
 ejecución.
 
+La capa que declara la iniciativa se define junto con la capa de persona y la de permisos en
+[capas-persona-autonomia-permisos.md](./capas-persona-autonomia-permisos.md). Esa página fija los
+valores de autonomía, la precedencia `permisos > autonomía > persona` y el fallo por capa.
+
 ## Transición automática tras el gate
 
 - **Gate `PASS`** habilita la construcción. El runner informa el resultado en una línea,
@@ -119,8 +123,9 @@ habilita la modificación de archivos protegidos.
 
 ## Límites
 
-- No hay configuración estática nueva ni interruptores por flujo: la autonomía rige por la
-  política vigente y por el consentimiento aplicable.
+- La capa de autonomía declara la iniciativa (`assistant`, `autonomous-dev`, `hermes`); no es un
+  interruptor por flujo y no altera el gate, la auditoría, la validación ni los consentimientos. La
+  política de ejecución sigue siendo `gate-then-auto`.
 - No hay espacios de persistencia nuevos: las decisiones de política viven en el registro de
   ejecución.
 - No hay agentes ni contratos nuevos: se extienden las superficies vigentes de runner,
@@ -133,11 +138,15 @@ habilita la modificación de archivos protegidos.
 
 ~~~
 node --test .flowtask/bin/test/hitl-policy-gates.test.js
+node --test .flowtask/bin/test/capas-contrato.test.js
 ~~~
 
 La prueba contractual verifica la política `gate-then-auto`, la señal de inicio sin segunda
 confirmación, el registro de decisiones de política, los motivos de pausa, el mensaje canónico
 de tres líneas, los consentimientos preservados y la coherencia de la documentación funcional.
+
+La prueba del contrato de capas verifica los valores de autonomía, la precedencia entre capas,
+la tabla de fallo por capa y los defaults de migración.
 
 La fuente normativa del contrato es la skill `agent-loop-run` y, para la terminación, la skill
 `agent-loop-termination`.
