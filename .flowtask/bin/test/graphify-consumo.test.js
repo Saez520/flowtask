@@ -199,14 +199,43 @@ describe("documentation alignment", () => {
   it("documents the deprecated shim without describing it as a query fallback", () => {
     const readme = readRelative("README.md");
     const permissionGate = readRelative("docs/permission-gate.md");
-    assert.ok(readme.includes("delegate to the Inspector for the concrete GAP"));
-    assert.ok(
-      readme.includes("evaluate the sufficiency of the evidence already gathered"),
-      "README should document the sufficiency-evaluation stage of the chain",
+    // El README se redacta en Markdown con saltos de línea arbitrarios: se
+    // aplana el whitespace para asentar frases del contrato sin depender del
+    // wrap del párrafo.
+    const flat = (text) => text.replace(/\s+/g, " ");
+    const readmeFlat = flat(readme);
+
+    // Contrato vigente: la vía de consulta del grafo es Graphify por MCP.
+    assert.match(
+      readmeFlat,
+      /v[ií]a vigente es Graphify por MCP/i,
+      "README should document Graphify over MCP as the current query path",
     );
+    // Contrato vigente: sin MCP disponible, el flujo declara degradación y
+    // usa búsqueda normal.
+    assert.match(
+      readmeFlat,
+      /si no est[aá] disponible,? el flujo declara degradaci[oó]n y usa b[uú]squeda normal/i,
+      "README should document the degradation to normal search when the MCP path is unavailable",
+    );
+
+    // Guardas de regresión: el README no debe reintroducir la escalación al
+    // Inspector ni la CLI local como paso siguiente de la cadena.
     assert.doesNotMatch(readme, /escalation to the Inspector/);
     assert.doesNotMatch(readme, /escalando al Inspector/);
     assert.doesNotMatch(readme, /then the local CLI/);
+
+    // Guarda de regresión: el shim local no debe volver a presentarse como la
+    // vía vigente de consulta, ni en orden directo ni invertido dentro de la
+    // misma oración.
+    assert.doesNotMatch(
+      readmeFlat,
+      /graphify query[^.]*\b(?:es|como)\s+(?:la\s+)?v[ií]a\s+(?:de\s+consulta\s+)?vigente|v[ií]a\s+(?:de\s+consulta\s+)?vigente[^.]*graphify query/,
+      "README must not describe the local CLI as the current query path",
+    );
+
+    // Contrato vigente del permission gate: el shim está deprecado y no
+    // ejecuta consultas locales.
     assert.ok(permissionGate.includes("shim deprecated"));
     assert.ok(permissionGate.includes("no ejecuta consultas locales"));
   });
