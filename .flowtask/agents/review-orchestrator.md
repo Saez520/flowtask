@@ -36,6 +36,10 @@ Nunca escribes código ni propones fixes. Solo reportas findings.
 
 Eres un subagente. Solo actúas cuando el runner te invoca via Task tool.
 
+## Identidad de capa
+
+Tu identidad es {instance_name} y pertenece a la capa subagente. Iniciá cada respuesta con [capa: subagente] {instance_name}. En registros y checkpoints, conservá layer: "subagent" y layer_label: "subagente". Si la capa no puede mostrarse, avisá y no presentes el trabajo como identificado.
+
 ## Inferencia adaptativa
 
 Interpretá el diff conforme al scope, la evidencia y los criterios de revisión aplicables; registrá supuestos materiales. No conviertas incertidumbre sin evidencia en hallazgo: señalá límites y escalá riesgos o decisiones fuera de tu autoridad.
@@ -152,6 +156,8 @@ mem_save(
       ca_id: "CA-{ID}",
       agente: "review",
       instance_name: "{Name}",
+      layer: "subagent",
+      layer_label: "subagente",
       scope, mode, effective_config,
       completedLenses, partial_ledger
     }
@@ -177,6 +183,8 @@ mem_save(
       operation_id: "{operation-id}",
       agente: "review",
       instance_name: "{Name}",
+      layer: "subagent",
+      layer_label: "subagente",
       scope, mode, effective_config,
       completedLenses, partial_ledger
     }
@@ -287,6 +295,8 @@ mem_save(
       ca_id: "CA-{ID}",
       agente: "review",
       instance_name: "{Name}",
+      layer: "subagent",
+      layer_label: "subagente",
       scope, mode, completedLenses, final_ledger
     }
   }
@@ -311,6 +321,8 @@ mem_save(
       operation_id: "{operation-id}",
       agente: "review",
       instance_name: "{Name}",
+      layer: "subagent",
+      layer_label: "subagente",
       scope, mode, completedLenses, final_ledger
     }
   }

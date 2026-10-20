@@ -41,10 +41,14 @@ Toda observación de checkpoint en Engram usa ese schema. Los campos clave son:
 | `treatment_class` | `"complete"` \| `"light"` | Clase de tratamiento. Determina la bifurcación de continuidad. |
 | `state` | `"active"` \| `"paused"` \| `"completed"` | Estado del checkpoint. `"completed"` marca de cierre — conserva la observación como traza (no se borra). |
 | `sequence` | entero | Contador monotónico incremental por agente. |
-| `topic_signature` | objeto \| ausente | Firma del tema (opcional, backward-compatible). Si el checkpoint no lo trae, se asume mismo tema (degradación explícita). |
+| `topic_signature` | objeto \| ausente | Firma del tema (opcional, backward-compatible). Si el checkpoint no lo trae y el trabajo es existente, la identidad no puede validarse: se informa qué se esperaba y qué se encontró y se detiene con `topic_unverifiable`. No se asume mismo tema. |
 | `flow_state` | objeto | Estado específico del agente. |
+| `flow_state.layer` | string (opcional) | Capa de identidad del agente (`"subagent"`). Los checkpoints antiguos sin capa se leen como `subagent` y se completan en el próximo upsert. |
+| `flow_state.layer_label` | string (opcional) | Etiqueta visible de la capa (`"subagente"`). |
 | `resume_ref` | string (opcional) | Referencia de reanudación. **Obligatorio en tratamiento completo** (ca-writer, planner). |
 | `fresh_thread_marker` | boolean (opcional) | Marcador de hilo nuevo. Solo en tratamiento ligero sin CA. |
+
+> **Capa ausente**: los checkpoints antiguos sin `flow_state.layer` se leen como capa `subagent` y se completan en el próximo upsert. La ausencia del campo no invalida el checkpoint.
 
 ## Protocolo de uso
 
@@ -79,6 +83,8 @@ mem_save(
       ca_id: "CA-{ID}",
       agente: "{agente}",
       instance_name: "{Name}",
+      layer: "subagent",
+      layer_label: "subagente",
       resume_ref: "{task_id}",
       // estado específico del agente
     }
@@ -103,7 +109,9 @@ mem_save(
     flow_state: {
       ca_id: "CA-{ID}",
       agente: "{agente}",
-      instance_name: "{Name}"
+      instance_name: "{Name}",
+      layer: "subagent",
+      layer_label: "subagente"
     }
   }
 )
@@ -145,6 +153,8 @@ mem_save(
       ca_id: "CA-{ID}",
       agente: "{agente}",
       instance_name: "{Name}",
+      layer: "subagent",
+      layer_label: "subagente",
       // estado específico del agente
     }
   }
@@ -170,6 +180,8 @@ mem_save(
       operation_id: "{operation-id}",
       agente: "{agente}",
       instance_name: "{Name}",
+      layer: "subagent",
+      layer_label: "subagente",
       // estado específico del agente
     }
   }
@@ -193,7 +205,9 @@ mem_save(
     flow_state: {
       ca_id: "CA-{ID}",
       agente: "{agente}",
-      instance_name: "{Name}"
+      instance_name: "{Name}",
+      layer: "subagent",
+      layer_label: "subagente"
     }
   }
 )

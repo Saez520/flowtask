@@ -110,6 +110,8 @@ Usan este schema y conservan el estado estructurado necesario para reanudación:
     "ca_id": "CA-{ID}",
     "agente": "{agente}",
     "instance_name": "{Name}",
+    "layer": "subagent",
+    "layer_label": "subagente",
     "resume_ref": "{task_id}"
   },
   "fresh_thread_marker": true
@@ -123,6 +125,8 @@ Usan este schema y conservan el estado estructurado necesario para reanudación:
 - `sequence`: contador monotónico incremental por agente.
 - `topic_signature`: firma del tema (opcional, backward-compatible).
 - `flow_state`: estado específico del agente.
+- `flow_state.layer`: capa de identidad del agente (opcional, backward-compatible). Los checkpoints antiguos sin capa se leen como `subagent` y se completan en el próximo upsert.
+- `flow_state.layer_label`: etiqueta visible de la capa (opcional, backward-compatible).
 - `resume_ref`: obligatorio en tratamiento completo (ca-writer, planner). Referencia de reanudación.
 - `fresh_thread_marker`: solo en tratamiento ligero sin CA.
 
