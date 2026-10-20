@@ -1,0 +1,232 @@
+{
+  "phase": 9,
+  "environment": {
+    "consumer_branch": "worktree/CA-worktree-manager-phase-9",
+    "consumer_base_commit": "bd3eab24c6687a7fbed69be7f807c169ba01d34b",
+    "consumer_implementation_commit": "6903781acf85d28a32c4cd608f0158e93bf07f1b",
+    "standalone_build_ref": "integration/phase-9",
+    "standalone_commit": "a4b4782236407d4c6067344218f7b3e43c9b4ecf",
+    "submodule_path": ".flowtask/scripts/worktree-manager",
+    "tool_version": "1.0.0",
+    "consumer_version": "1.25.0",
+    "main_observed": "3314ed4c20a1606f428d1c12fdd1329afd26e39b",
+    "delivery_main_sync": "pending"
+  },
+  "scenarios": [
+    {
+      "id": "A",
+      "name": "standalone-isolation",
+      "command": "node --test .flowtask/bin/test/worktree-adapter-compat.test.js",
+      "expected": "the canonical manager creates, lists and completes a worktree in a repository without consumer state",
+      "observed": "create, list and complete succeed; the repository has no consumer directory and no legacy reference",
+      "result": "pass"
+    },
+    {
+      "id": "B",
+      "name": "no-legacy-mirrors",
+      "command": "node --test .flowtask/bin/test/worktree-adapter-compat.test.js",
+      "expected": "no operation writes the legacy backup directory or the legacy backup references",
+      "observed": "after create, complete, cleanup and prune the legacy directory does not exist and the legacy references are empty",
+      "result": "pass"
+    },
+    {
+      "id": "C",
+      "name": "legacy-preserve-dirty",
+      "command": "node --test .flowtask/bin/test/worktree-adapter-compat.test.js",
+      "expected": "the legacy preserveDirty value is applied and declared, the destination changes are preserved and no mirror is created",
+      "observed": "the compatibility notice is published on stderr, the destination changes are preserved, the worktree change is integrated and no mirror exists",
+      "result": "pass"
+    },
+    {
+      "id": "D",
+      "name": "invalid-legacy-config-blocks",
+      "command": "node --test .flowtask/bin/test/worktree-adapter-compat.test.js",
+      "expected": "exit code 3 without any mutation",
+      "observed": "exit code 3, the worktree is preserved, the base is unchanged and no mirror exists",
+      "result": "pass"
+    },
+    {
+      "id": "E",
+      "name": "explicit-config-wins",
+      "command": "node --test .flowtask/bin/test/worktree-adapter-compat.test.js",
+      "expected": "the explicit configuration is used, the legacy configuration is declared as ignored and the operation is not blocked",
+      "observed": "the operation succeeds, the notice names the ignored legacy configuration and the destination changes are preserved",
+      "result": "pass"
+    },
+    {
+      "id": "F",
+      "name": "legacy-recover-import",
+      "command": "node --test .flowtask/bin/test/worktree-adapter-compat.test.js",
+      "expected": "the legacy transaction is imported once, the canonical manager recovers it and the legacy copy is not written back",
+      "observed": "the import is declared, the transaction is in the canonical state, the legacy journal is byte-identical and a second recovery does not import again",
+      "result": "pass"
+    },
+    {
+      "id": "G",
+      "name": "conflict-blocks",
+      "command": "node --test .flowtask/bin/test/worktree-adapter-compat.test.js",
+      "expected": "exit code 5 without any mutation when the identity or the reference differs",
+      "observed": "exit code 5, the canonical and the legacy records are preserved and no transaction is created for a conflicting reference",
+      "result": "pass"
+    },
+    {
+      "id": "H",
+      "name": "flowtask-env-inert",
+      "command": "node --test .flowtask/bin/test/worktree-adapter-compat.test.js",
+      "expected": "the legacy environment variables do not change the configuration, the authorization or the execution",
+      "observed": "the published output is identical with and without the legacy environment, the counter is not created and no mirror exists",
+      "result": "pass"
+    }
+  ],
+  "standalone_isolation": {
+    "command": "PYTHONPATH=. python3 -m worktree_manager --version",
+    "cli_version": "1.0.0",
+    "mcp_handshake": "initialize and tools/list publish seven tools",
+    "mcp_tool_count": 7,
+    "flowtask_or_engram_required": false,
+    "observed": "the manager answers the version and the seven tools without the consumer, without Engram and without a consumer checkout"
+  },
+  "generic_locations": {
+    "command": "node --test .flowtask/bin/test/worktree-adapter-compat.test.js",
+    "operations": [
+      "create",
+      "complete",
+      "cleanup",
+      "prune",
+      "recover"
+    ],
+    "expected": "the canonical state is used and no legacy artifact is written",
+    "observed": "the state is published in the canonical state root and the legacy directory and references stay absent",
+    "result": "pass"
+  },
+  "legacy_preserve_dirty": {
+    "expected": "the legacy value is translated and declared",
+    "observed": "preserve_dirty=true is applied from the translated configuration and the notice is published",
+    "result": "pass"
+  },
+  "invalid_legacy_config_blocks": {
+    "expected": "exit code 3 without mutation",
+    "observed": "exit code 3 with both resources preserved",
+    "result": "pass"
+  },
+  "explicit_config_wins": {
+    "expected": "the explicit configuration is used and the legacy one is declared as ignored",
+    "observed": "the operation succeeds and the notice is published",
+    "result": "pass"
+  },
+  "legacy_recover_import": {
+    "expected": "one import into the canonical state and no copy back",
+    "observed": "one import, byte-identical legacy record, no second import",
+    "result": "pass"
+  },
+  "conflict_blocks": {
+    "expected": "exit code 5 without mutation",
+    "observed": "exit code 5 with both resources preserved",
+    "result": "pass"
+  },
+  "flowtask_env_inert": {
+    "expected": "the legacy environment changes nothing",
+    "observed": "identical published output and no legacy artifact",
+    "result": "pass"
+  },
+  "repeated_update": {
+    "command": "node --test .flowtask/bin/lib/installer.test.js",
+    "expected": "the installation and the update preserve the configuration, the worktrees, the journals, the backups and the references",
+    "observed": "the installer suite reports 65 of 66 tests and the only failure is the known type error present before this increment",
+    "result": "pass_with_known_failure"
+  },
+  "equivalence": {
+    "command": "node --test .flowtask/bin/test/worktree-consumer-matrix.test.js",
+    "expected": "the command line and the stdio transport publish the same request and the same envelope for every cell",
+    "observed": "48 cells published, all of them ok, and 58 tests with no failure",
+    "result": "pass"
+  },
+  "legacy_suite": {
+    "command": "node --test .flowtask/bin/test/worktree-hotfix.test.js",
+    "tests": 19,
+    "pass": 19,
+    "fail": 0,
+    "sentinel_cases": 15,
+    "sentinel_observed": 15,
+    "deleted_tests": [
+      {
+        "name": "keeps explicit --repo on the parent-only lifecycle",
+        "reason": "The explicit repository selection is exercised by the canonical creation of the regression suite."
+      },
+      {
+        "name": "keeps CA identifiers compatible",
+        "reason": "The identifier compatibility is exercised by the canonical creation of the regression suite."
+      },
+      {
+        "name": "reports all local change categories for {name}",
+        "reason": "The engine published a per-category prose report that is not part of the published contract; the canonical contract reports one stable code."
+      },
+      {
+        "name": "rejects pending stash for {name}",
+        "reason": "The engine published a dedicated message for a pending stash; the canonical contract reports one stable code."
+      },
+      {
+        "name": "rejects dirty destination for {name}",
+        "reason": "The engine published a fixed prose template; the canonical contract reports one stable code and the state of the repository."
+      },
+      {
+        "name": "CA2 target-direct submodule lifecycle (whole group)",
+        "reason": "The group drove the retired shell target-direct invocation; the canonical target-direct contract is exercised by the transport matrix and the standalone suites."
+      },
+      {
+        "name": "complete submodule lifecycle (Git 2.54.0) (whole group)",
+        "reason": "The group asserted the prose and the exit codes of the retired shell submodule lifecycle; the canonical submodule behavior is covered by the rebaselined regression suite."
+      },
+      {
+        "name": "complete close journal crash phases (whole group)",
+        "reason": "The group drove the close journal and its crash hooks of the retired shell engine, which have no canonical equivalent."
+      },
+      {
+        "name": "adversarial dirty destination rejection (whole group)",
+        "reason": "The group compared byte-identical prose of the retired engine; the canonical suite observes the state of the repository and the stable code."
+      },
+      {
+        "name": "transactional preservation (whole group)",
+        "reason": "The group drove the close journal, the review stamp and the restore hooks of the retired shell engine."
+      },
+      {
+        "name": "portable configuration, preflight, cleanup and locks (whole group)",
+        "reason": "The group asserted the configuration parsing, the internal close capability and the lock messages of the retired shell engine."
+      },
+      {
+        "name": "reuses legacy backups for recovery without migrating or deleting prior state",
+        "reason": "The scenario is the subject of the compatibility suite of the adapter and it is not duplicated in the legacy suite."
+      }
+    ]
+  },
+  "limits": [
+    {
+      "id": "published_build",
+      "statement": "The build tip of the standalone manager is present in the local build clone and in the materialised submodule, but it is not published in the standalone origin, so a reconstruction from the remote alone is not possible."
+    },
+    {
+      "id": "absent_predecessor_manifest",
+      "statement": "The manifest of the previous phase is absent and its digest is only known by its prefix, so no verdict is published for it; the committed evidence of the previous phase and its six verified digests substitute it."
+    },
+    {
+      "id": "moved_base",
+      "statement": "The base of the delivery is the frozen commit of the previous phase; a delivery over the moved main requires a rebase and a complete revalidation."
+    },
+    {
+      "id": "installer_known_failure",
+      "statement": "One installer test fails with a type error at installer.test.js:678; the failure is present before this increment and is registered as a known gap."
+    },
+    {
+      "id": "opencode_known_failure",
+      "statement": "One OpenCode configuration test fails; the failure is present before this increment and is registered as a known gap."
+    },
+    {
+      "id": "rebased_legacy_suite",
+      "statement": "The legacy suite is rebaselined against the canonical manager; its count changed and the removed cases are registered with their reason."
+    },
+    {
+      "id": "no_push",
+      "statement": "No publication was performed: the delivery to main and to the origin stays pending and the tag is local."
+    }
+  ]
+}
