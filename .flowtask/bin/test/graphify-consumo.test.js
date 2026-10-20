@@ -130,6 +130,18 @@ describe("Graphify agent integration", () => {
       "ca-writer.md must not describe the historical CLI as a query path",
     );
 
+    // Contrato vigente: el Planner consulta el grafo por la integración MCP y
+    // la CLI histórica no forma parte de la cadena de consulta.
+    assert.ok(
+      planner.includes("graphify_query_graph"),
+      "planner.md should query the graph through the MCP integration",
+    );
+    assert.doesNotMatch(
+      planner,
+      /CLI actual/,
+      "planner.md must not describe the historical CLI as a query path",
+    );
+
     // Contrato vigente: antes de delegar, el Runner evalúa la suficiencia de la
     // evidencia ya investigada (etapa 2 del chain de 3 pasos).
     assert.ok(

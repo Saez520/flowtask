@@ -770,12 +770,70 @@ Invoca planner usando el formato canónico: ejecutar el Handshake Protocol
 (getOrCreateInstance) + Context Injection; Escenario A/B según `task_id` y
 Topic Validation. Prompt: flow state del CA desde Engram.
 
+En la reanudación, el prompt incorpora los resultados de derivación ya
+devueltos o la referencia al CA actualizado. El prompt deriva al checkpoint del
+Planner: no re-narra su estado.
+
+***
+
+### Paso 2.5 — Derivaciones y huecos del Planner
+
+La respuesta del Planner puede traer `derivations` (pedidos de dato que el
+Planner no resuelve con sus permisos), `business_gaps` (huecos de negocio),
+`pending_decisions`, `blockers`, `pause_reason` y `persistencia`. El runner no
+delega por su cuenta y no sustituye el juicio del Planner sobre el tipo de
+hueco: responde al pedido ya formulado.
+
+Lee `state`, `derivations`, `business_gaps`, `pending_decisions`, `blockers`,
+`pause_reason`, `persistencia` y `next`, y aplica esta precedencia:
+
+1. **Persistencia fallida**: si `persistencia: failed`, detente e informa
+   `persistencia_fallida` (`artifact | checkpoint`). No invoqués el Gate.
+2. **Pausa**: si `pause_reason` es distinto de `NONE`, emite el mensaje
+   canónico de tres líneas y no invoqués el Gate:
+
+   ```
+   ⏸ Pausa por excepción: {motivo}
+   Estado conservado: {trabajo; artifacts; cambios; última ronda confirmada}
+   Para reanudar: {condición exacta}
+   ```
+
+3. **Derivaciones**: si `derivations` viene con contenido, por cada item
+   invoca al Inspector con `datum_id`, `kind`, `question`, `scope`,
+   `evidence_refs` y `gaps`, y devuelve el resultado al Planner con el mismo
+   `task_id` y la misma `instance_name`, conservando el `datum_id`, la fuente,
+   el estado y la nota. El Runner no completa el dato ni lo presenta como
+   hecho: el dato que vuelve sin fuente citable se entrega como `unverified` y
+   el Planner lo convierte en decisión pendiente o en bloqueo.
+   No avances al Gate, ni al Plan-Auditor, ni al worktree, ni al Constructor
+   mientras queden derivaciones. **No avanzar al Gate** con derivaciones
+   pendientes.
+4. **Huecos de negocio**: si `business_gaps`, `pending_decisions` o `blockers`
+   vienen con contenido y `derivations: []`, invoca al CA-Writer con el mismo
+   hilo, el `kind`, la descripción, las `evidence_refs` y el fundamento de cada
+   hueco. Si el CA-Writer emite `derivations`, resolvelas por el Paso 1.5.
+   Reinvoca al Planner solo cuando la respuesta del CA-Writer indique
+   `ca_updated` o `ca_created`, con `ca_status: complete`, `derivations: []` y
+   `persistencia: confirmed`. Si la respuesta queda en `draft` o en
+   `waiting_for_user`, detente sin planificar.
+5. **Plan completo**: si `state: plan_generated`, `derivations: []`,
+   `business_gaps: []`, `pending_decisions: []`, `blockers: NONE` y
+   `persistencia: confirmed`, continuá al Paso 3.
+
+**Una ronda por dato**: el Runner no reenvía un `datum_id` ya respondido. Si
+el Planner repite un `datum_id` que ya volvió, se declara el bloqueo y se
+conserva el estado, sin invocar al Inspector otra vez.
+
+En la composición del prompt, no reenvíes un resultado de derivación ya
+devuelto para el mismo `datum_id`.
+
 ***
 
 ### Paso 3 — Gate de Ejecución
 
 Invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/CA-{ID}/artifact/plan`.
 
+- Si el Planner respondió `state: blocked` o `next: waiting_for_derivation`, no se invoca el Gate: la rama del Paso 2.5 sigue vigente.
 - Si FAIL: imprime `⛔ Gate rechazado: {razón}` y termina el flujo (sin worktree, sin Constructor, sin Validator). NO continúa aunque haya confirmación humana o `--auto`.
 - Si PASS: registra la evidencia del Gate en `flow-state/{execution_id}/run` (`autonomy.decisions`) y continúa directamente al Paso 4. La orden original del desarrollador y el resultado PASS del Gate son la señal de inicio: no hay sub-paso de confirmación humana.
 
