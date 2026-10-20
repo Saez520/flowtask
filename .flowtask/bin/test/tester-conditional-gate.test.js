@@ -270,7 +270,7 @@ function assertHygiene(opencode, packageJson, agentFiles) {
     "no debe agregarse un agente nuevo para la decisión de pruebas",
   );
   assert.ok(
-    packageJson.includes('"version": "1.25.0"'),
+    packageJson.includes('"version": "1.26.0"'),
     "la versión vigente no debe cambiar",
   );
 }

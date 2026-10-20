@@ -1,6 +1,6 @@
 # Plan de implementación — Agent Loop y Hermes
 
-**Estado:** aprobado el 2026-10-19. F0 y F1 completadas. F2 siguiente. GATE HERMES H0 abierto.
+**Estado:** aprobado el 2026-10-19. F0, F1 y F2 completadas. F3 siguiente. GATE HERMES H1 abierto.
 **Alcance:** evolución de FlowTask/Flotas hacia un motor de desarrollo autónomo y Hermes como producto generalista.
 **Frontera:** OpenCode V2 es el harness/runtime; FlowTask es el control plane; Hermes es el producto. No se forkeará OpenCode.
 
@@ -32,6 +32,17 @@ F1 completada:
 - F1.6a Observabilidad del presupuesto — 3274881.
 - Integración de control — 761004f.
 - F1.1 AgentRun con F1.6b freno declarado — 712b89f.
+
+F2 completada:
+- F2.6 Identidad — 546d559.
+- F2.2 Validator realtime — ea7e912.
+- F2.1 HITL — f15e7b0.
+- F2.7 Zero-Assumptions — b15ab03.
+- F2.3 CA-Writer — 7806503.
+- F2.4 Planner — c598233.
+- F2.5 Tester condicional — 4b18f7a.
+- F2.8 Degradación de contexto — 6886317.
+- F2.9 Orquestación paralela — 248a7e5.
 
 ## F0 — Integración y base (completada)
 
@@ -71,17 +82,17 @@ Grupos paralelos:
 
 Secuencia: F2.1 HITL después de F1.1 + F2.6 + F2.2. F2.7 Zero-Assumptions después de F2.6 + F2.1.
 
-| Punto | Estado | Nota |
-|---|---|---|
-| F2.1 HITL | Análisis condicional | Validar en implementación cuándo aplica |
-| F2.2 Validator realtime | Análisis | Herramientas del harness y validaciones no-plan |
-| F2.3 CA-Writer | Dirección aprobada | Auditoría de contradicciones antes de evolucionar |
-| F2.4 Planner | Dirección aprobada | Comunicación mediada entre agentes |
-| F2.5 Tester condicional | Análisis | Gate tipo plan-auditor |
-| F2.6 Identidad | Análisis | Bug histórico resuelto (#572); alcance Hermes |
-| F2.7 Zero-Assumptions | Análisis | Formalizado para CA-Writer/Planner/Inspector; falta cobertura |
-| F2.8 Degradación de contexto | Análisis | Inyección progresiva |
-| F2.9 Orquestación paralela | Análisis | Validar si ya se soporta |
+| Punto | Estado | Dependencias / paralelo | Merge |
+|---|---|---|---|
+| F2.1 HITL | Implementado y validado | Validar en implementación cuándo aplica | f15e7b0 |
+| F2.2 Validator realtime | Implementado y validado | Herramientas del harness y validaciones no-plan | ea7e912 |
+| F2.3 CA-Writer | Implementado y validado | Auditoría de contradicciones antes de evolucionar | 7806503 |
+| F2.4 Planner | Implementado y validado | Comunicación mediada entre agentes | c598233 |
+| F2.5 Tester condicional | Implementado y validado | Gate tipo plan-auditor | 4b18f7a |
+| F2.6 Identidad | Implementado y validado | Bug histórico resuelto (#572); alcance Hermes | 546d559 |
+| F2.7 Zero-Assumptions | Implementado y validado | Formalizado para CA-Writer/Planner/Inspector; falta cobertura | b15ab03 |
+| F2.8 Degradación de contexto | Implementado y validado | Inyección progresiva | 6886317 |
+| F2.9 Orquestación paralela | Implementado y validado | Validar si ya se soporta | 248a7e5 |
 
 Gate Hermes H1: F1 completo + F2.1 + F2.6 + F2.7 + F0.3. H1 puede correr en paralelo con F3.
 
@@ -108,7 +119,7 @@ Gate Hermes H2: H1 + permisos de dominio (F4.8) + F3 + auditoría/rollback.
 
 Gates:
 - GATE HERMES H0 — ABIERTO: el contrato de F1.1 fue validado.
-- GATE HERMES H1 — se puede iniciar en paralelo con F3.
+- GATE HERMES H1 — ABIERTO: F1 + F2.1 + F2.6 + F2.7 + F0.3 satisfacen sus condiciones; se puede iniciar en paralelo con F3.
 - GATE HERMES H2 — se puede iniciar.
 
 H2 no se construye desde cero: base de runtime existente + controlador, permisos e interfaz.

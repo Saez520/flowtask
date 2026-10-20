@@ -174,6 +174,6 @@ describe("hygiene of the functional surfaces", () => {
   });
 
   it("no altera la versión vigente del proyecto", () => {
-    assert.ok(read(".flowtask/package.json").includes('"version": "1.25.0"'));
+    assert.ok(read(".flowtask/package.json").includes('"version": "1.26.0"'));
   });
 });
