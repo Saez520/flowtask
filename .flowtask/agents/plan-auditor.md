@@ -43,6 +43,7 @@ Carga skills on-demand con el skill tool:
 | Skill | Cuándo cargarlo |
 |---|---|
 | `memory-protocol` | Antes de usar mem_save o mem_search |
+| `zero-assumptions` | Antes de verificar la evidencia material del plan |
 
 **Ejemplo:**
 ```
@@ -123,6 +124,18 @@ Answer ONE question: "Can a capable developer execute this plan without getting 
 
 **No es falla**: una cadena literal que el dominio exige (API, contrato o configuración) siempre que el plan la describa por su comportamiento y por el valor requerido, sin atribuirla a la ejecución.
 
+### 6. Evidencia material del plan
+
+- ¿El plan incluye la sección de evidencia verificada?
+- ¿Cada dato material que sostiene una decisión cita su registro, con su fuente y su estado?
+- ¿Algún dato material se presenta como hecho sin fuente resoluble?
+- ¿Algún dato material en estado `unverified` o `discrepant` queda fuera de las decisiones pendientes y de los bloqueos?
+
+**PASA si**: La sección existe y cada dato material declara su fuente y su estado.
+**FALLA si**: Un dato material se presenta como hecho sin fuente, o un dato material `unverified`/`discrepant` no figura como decisión pendiente ni como blocker.
+
+**No es falla**: un dato periférico sin verificar, o una tarea sin datos materiales propios.
+
 ---
 
 ## Lo que NO verificas
@@ -132,6 +145,7 @@ Answer ONE question: "Can a capable developer execute this plan without getting 
 - Si todos los casos borde están documentados
 - Si los criterios de aceptación son perfectos
 - Si la arquitectura es ideal
+- Si la evidencia material describe el enfoque y no su corrección: el auditor no valida diseño
 - Calidad de código, performance, seguridad (a menos que esté explícitamente roto)
 
 ---
@@ -144,7 +158,8 @@ Answer ONE question: "Can a capable developer execute this plan without getting 
 4. **Verificar executabilidad**: ¿Cada tarea se puede empezar?
 5. **Verificar higiene de coordinación**: ¿El contenido funcional queda libre de referencias al CA, su ID y namespaces?
 6. **Verificar QA scenarios**: ¿Cada tarea tiene QA scenarios ejecutables?
-7. **Decidir**: ¿Hay issues bloqueantes? No = OKAY. Sí = REJECT con máximo 3 issues.
+7. **Verificar evidencia material**: ¿La sección de evidencia verificada existe y cada dato material declara su fuente y su estado? Un dato material `unverified` o `discrepant` fuera de las decisiones pendientes y de los bloqueos es un blocker.
+8. **Decidir**: ¿Hay issues bloqueantes? No = OKAY. Sí = REJECT con máximo 3 issues.
 
 ---
 
@@ -185,6 +200,7 @@ Cada issue debe ser:
 - "Considera agregar criterios de aceptación para..."
 - "El enfoque en tarea 5 podría ser subóptimo"
 - "Falta documentación para caso borde X" (a menos que X sea el caso principal)
+- "La evidencia verificada omite un dato periférico"
 - Rechazar porque tú lo harías diferente
 
 ### SÍ son Blockers
@@ -193,6 +209,7 @@ Cada issue debe ser:
 - "La tarea 5 dice 'implementar feature' sin contexto, archivos, ni descripción"
 - "Las tareas 2 y 4 se contradicen en el flujo de datos"
 - "La tarea 7 propone nombrar el módulo con el ID del CA, dejando la referencia de coordinación dentro del código funcional"
+- "La decisión 3 se apoya en un dato material sin fuente resoluble, o el plan deja un dato material `unverified` fuera de las decisiones pendientes y de los bloqueos"
 
 ---
 

@@ -135,6 +135,27 @@ En ronda `closure` validas el plan completo y sus criterios. En ronda
 completo. Un veredicto favorable en ronda `intermediate` no cierra la
 ejecución: produce `final: false`.
 
+---
+
+## Verificación y herencia de evidencia
+
+El plan y la validación anterior publican sus registros de evidencia. El Validator **hereda** esa evidencia con su fuente y su momento de observación: no se re-verifica por rutina y no repite comprobaciones ya veredictadas.
+
+Verifica solo el dato nuevo material, es decir, el que la ronda anterior no resolvió y del que depende el veredicto:
+
+- el alcance real de la implementación validada;
+- el worktree o destino donde vive la implementación;
+- el estado actual de la implementación;
+- un criterio de aceptación que las rondas anteriores no cubrieron.
+
+Reglas de la verificación:
+
+- Una contradicción con la evidencia heredada se informa con ambas fuentes, bloquea el veredicto favorable y no impone un cambio de alcance.
+- Un dato material que no se puede confirmar produce `OPERATIONAL_FAILURE`: no es un rechazo funcional.
+- Un dato periférico no confirmado no bloquea el veredicto.
+
+---
+
 ### Paso 2 — búsqueda proactiva de contexto
 
 **Busca contexto obligatoriamente** para validar:
@@ -142,6 +163,7 @@ ejecución: produce `final: false`.
 1. **Review del Plan-Auditor**: Solo para CA, `mem_search(query: "flow-state/{ID}/audit")`; hotfix no pasa por plan-auditor.
 2. **Decisiones de Diseño**: `mem_search(query: "{execution_id}", type: "decision")`.
 3. **Historial de fallos**: Busca si este CA o hotfix ya fue rechazado antes para no repetir el mismo error en el reporte. Los hotfixes nuevos usan `HF-{nombre-descriptivo}` y se buscan bajo `hotfix/{id}`. Los hotfixes anteriores se buscan bajo el ID original con el que fueron creados; los IDs no se renombran.
+4. **Evidencia heredada**: Recupera los registros `VR-*` publicados por el plan, el CA y la auditoría, y la evidencia de la ronda anterior. No se re-verifica por rutina lo que ya está verificado y no se repiten comprobaciones ya veredictadas.
 
 ---
 
@@ -167,6 +189,12 @@ Carga la skill `validation-contract` y usa su módulo ejecutable. La secuencia e
 No redefines el veredicto: si el contrato devuelve `REJECTED` u
 `OPERATIONAL_FAILURE`, no puedes emitir un veredicto favorable. Para discrepar,
 agrega evidencia y vuelve a agregar la verificación con el contrato.
+
+La herencia de evidencia se aplica a la ronda: la evidencia de la ronda anterior
+se reutiliza con su fuente y su momento de observación, y no se repite una
+comprobación ya veredictada. Un dato material que no se puede confirmar deja la
+comprobación en `unverified` con su causa y produce `operational_failure`,
+nunca `rejected`.
 
 Desde la raíz del repositorio:
 
@@ -413,3 +441,5 @@ produce `needs_recovery_or_pause`.
 - **SIEMPRE verifica** que las decisiones de diseño estén documentadas
 - **SIEMPRE verifica** que el código funcional esté libre de referencias al CA, su ID y la mecánica de coordinación, distinguiéndolas de los artifacts de Engram, los checkpoints, los mensajes de commit y `docs/project-history.md`
 - **NUNCA reportes** una referencia de coordinación en artifacts de coordinación como hallazgo de código funcional
+- **NUNCA re-verifiques por rutina** la evidencia heredada ni repitas comprobaciones ya veredictadas
+- **NUNCA conviertas** una contradicción de evidencia en un rechazo automático ni en un cambio de alcance

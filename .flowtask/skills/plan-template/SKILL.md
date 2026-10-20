@@ -43,6 +43,25 @@ All technical decisions resolved. ZERO decisions left for the constructor.
 
 ---
 
+## Evidencia verificada
+
+Every material datum that a decision depends on, with its source and its state.
+A decision that relies on a material datum cites the record that backs it.
+
+| ID | Dato material | Materialidad | Fuente | Estado | Nota |
+|----|---------------|--------------|--------|--------|------|
+| VR-01 | [dato] | [material / peripheral] | [source reference] | [verified / unverified / discrepant] | [note] |
+
+Rules:
+- Every material datum cited by a decision cites its record (VR-NN).
+- A material record whose state is `unverified` or `discrepant` appears as a
+  `pending_decision` (gate_status: `pending_decisions`) or as a `blocker`; it
+  never stays inside a decision or a task.
+- When there are no additional material data, state it explicitly:
+  "No hay datos materiales adicionales."
+
+---
+
 ## Scope
 
 **INCLUDES:**
@@ -151,3 +170,5 @@ If applicable:
 - **QA Scenarios**: Specific tool + concrete steps + exact assertions. Both happy-path AND failure.
 - **Only verified files**: Do not reference files that have not been found via Engram or scan.
 - **Conventions resolved**: The planner resolves all conventions. The constructor follows them, does not re-search.
+- **Material data cites its record**: Every material datum behind a decision cites its VR record, with source and state.
+- **No unverified material datum in a decision**: A material record with state `unverified` or `discrepant` is listed as a `pending_decision` or a `blocker`, never used as the basis of a decision or a task.

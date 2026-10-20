@@ -37,6 +37,7 @@ cubre:
   entorno;
 - el escáner de referencias de coordinación en los archivos funcionales;
 - el esquema de evidencia reutilizable por la ronda siguiente;
+- la herencia de evidencia y el tratamiento de la contradicción;
 - la agregación del veredicto con precedencia única;
 - la interfaz de línea de comandos y sus códigos de salida.
 
@@ -227,3 +228,23 @@ El estado por criterio viaja con la evidencia: un criterio cubierto sigue
 cubierto y uno no verificado sigue declarado como no verificado, con su causa.
 Reutilizar la evidencia no habilita un veredicto favorable por sí sola: la
 precedencia de los estados se aplica a cada ronda de forma independiente.
+
+## Herencia de evidencia y contradicción
+
+La evidencia verificada de una ronda se hereda con su fuente y su momento de
+observación. La ronda siguiente no se re-verifica por rutina: no repite
+comprobaciones ya veredictadas y lo que ya está verificado no se vuelve a
+verificar.
+
+Un estado mutable se re-observa solo cuando la decisión depende de su valor
+actual: es un registro nuevo, no una repetición del anterior.
+
+| Situación | Efecto |
+|-----------|--------|
+| La evidencia heredada contradice una comprobación de la ronda | Se informa con ambas fuentes, no se emite veredicto favorable y no se cambia el alcance. |
+| Un dato material no se puede confirmar | La comprobación queda `unverified` con su causa y el veredicto es `operational_failure`, nunca `rejected`. |
+| Un dato periférico no se puede confirmar | Se declara como no verificado, con su causa, y no bloquea por sí sola. |
+
+La contradicción no se resuelve por suposición ni se convierte en un rechazo
+automático. El esquema de evidencia, la precedencia del veredicto y los códigos
+de salida no cambian.

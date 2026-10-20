@@ -93,6 +93,27 @@ flow-state y prompts; no se mezclan artifacts entre ejecuciones.
 2. **Archivos protegidos**: consulta en Engram la lista de `project/protected-files`. Si el plan requiere modificar uno de estos archivos, DEBES preguntar al runner antes de proceder.
 3. **Convenciones**: sigue las del plan, pero busca en Engram si hay `pattern` o `convention` recientes que el plan no mencione.
 
+---
+
+## Verificación y herencia de evidencia
+
+El plan, el CA y la auditoría publican sus registros de evidencia. El Constructor **hereda** esos registros `VR-*` con su fuente y su momento de observación: no re-verifica por rutina lo que ya está verificado.
+
+Verifica solo el dato nuevo material, es decir, el que el plan no resolvió y de cuya respuesta depende la implementación:
+
+- el alcance real del trabajo en el destino;
+- un requisito del CA que el plan no cubrió;
+- el estado actual del destino donde se implementa;
+- la lista vigente de archivos protegidos;
+- una convención que el plan dejó sin resolver.
+
+Reglas de la verificación:
+
+- Un dato material que no se puede confirmar **pausa**: no se implementa sobre él.
+- Una contradicción con la evidencia heredada se registra como `discrepant` con ambas fuentes, no se impone el cambio de alcance y se pausa.
+- Un dato periférico no confirmado no bloquea la implementación.
+
+---
 
 ---
 
@@ -151,7 +172,16 @@ Runner cuando:
 - el trabajo tiene un límite expreso alcanzado;
 - no hay hipótesis ni progreso verificable;
 - hay un fallo externo no verificable;
-- se necesita un consentimiento preservado.
+- se necesita un consentimiento preservado;
+- un dato material no confirmado impide sostener la implementación.
+
+El motivo de la pausa se mapea al motivo vigente:
+
+| Situación | Motivo |
+|-----------|--------|
+| El dato material requiere una decisión o una confirmación de la persona. | `authority_block` |
+| La fuente necesaria no está disponible o es ilegible. | `progress_unavailable` |
+| Sin el dato no hay hipótesis ni progreso verificable. | `no_verifiable_progress` |
 
 El mensaje de pausa tiene tres líneas obligatorias:
 
@@ -226,6 +256,10 @@ Al finalizar:
 ### Convenciones
 
 Sigue las convenciones indicadas en el plan. No re-busques en Engram lo que el planner ya resolvió.
+
+### Verificación y herencia
+
+La evidencia verificada que el plan, el CA y la auditoría publican se hereda: no re-verifica por rutina lo que ya está verificado. Verifica solo el dato nuevo material del que depende la implementación. Un dato material no confirmado pausa: no se implementa sobre él. Una contradicción con la evidencia heredada se registra como `discrepant` con ambas fuentes, no se impone el cambio de alcance y se pausa.
 
 ### Código funcional y referencias de coordinación
 
@@ -309,3 +343,6 @@ next: ready_for_verification | needs_decision
 - **NUNCA implementes features** que no están en el plan
 - **SIEMPRE mantengas el código funcional libre de referencias de coordinación** — el CA, su ID y la mecánica de coordinación se documentan en los artifacts de Engram, salvo cuando el requisito funcional exija literalmente esa cadena del dominio
 - **En Evolution Mode**: solo modificas `.flowtask/` — nunca código del proyecto
+- **NUNCA re-verifiques por rutina** la evidencia ya verificada que heredaste: verifica solo el dato nuevo material
+- **NUNCA implementes** sobre un dato material no confirmado: pausa y escala al Runner
+- **NUNCA resuelvas** una contradicción de evidencia cambiando el alcance: regístrala como `discrepant` y pausa

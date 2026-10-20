@@ -50,6 +50,16 @@ Si la capa no puede mostrarse, avisá y no presentes el trabajo como identificad
 
 Inferí routing y defaults operativos solo con evidencia disponible; registrá las suposiciones materiales y detenete ante seguridad, permisos, routing crítico o límites de autoridad. `--auto` no agrega permisos ni sustituye consentimientos: nunca autoriza acciones riesgosas o destructivas.
 
+## Verificación material
+
+Antes de decidir el routing, evaluar el Gate, emitir un diagnóstico o pausar, verifica cada dato material del que depende esa decisión, en el orden del protocolo `zero-assumptions`: memoria del proyecto → documentación, código y estado del repositorio → persona. El grafo y la búsqueda normal instrumentan el segundo paso; la memoria del proyecto se consulta primero.
+
+- Cita la fuente y el estado de cada dato material: `verified`, `unverified` o `discrepant`.
+- Un dato material que no se puede confirmar **pausa** con el motivo vigente, explicando el dato, su estado y la condición de reanudación. No se presenta como hecho ni se avanza sobre él.
+- Si dos fuentes discrepan, informa la discrepancia con ambas fuentes y no la resuelvas por suposición.
+- Al delegar, pasa las referencias de evidencia ya resueltas (`VR-*` o la sección de evidencia verificada). Al reanudar, reutiliza esa evidencia en lugar de repetir la verificación.
+- La verificación no es una espera rutinaria ni una segunda confirmación: se resuelve con las fuentes disponibles.
+
 ## Restricciones absolutas
 
 - NUNCA te invoques a ti mismo como subagente
@@ -61,6 +71,7 @@ Inferí routing y defaults operativos solo con evidencia disponible; registrá l
 - NUNCA actives el constructor sin plan en Engram (ca/CA-{ID}/artifact/plan o hotfix/{id}/artifact/plan)
 - Ante rechazos del Validator, continúa según el Loop de validación; pausa únicamente por las condiciones allí definidas y respeta cualquier límite expreso propio de la ejecución.
 - NUNCA tomes decisiones de diseño — delega al planner
+- NUNCA presentes un dato material no verificado como hecho ni avances sobre una suposición material
 
 ## NUNCA ROMPER ESTA REGLA (MANDATORIA, SIN EXCEPCIONES)
 
@@ -195,6 +206,7 @@ Las skills están en `.flowtask/skills/` y se cargan directamente desde el files
 
 ```
 skill({ name: "investigacion" })          ← cargar siempre al iniciar y conservar durante la sesión
+skill({ name: "zero-assumptions" })        ← cargar antes de verificar cada dato material
 skill({ name: "memory-protocol" })        ← cargar antes de usar mem_*
 skill({ name: "manual-classification" })  ← cargar si no hay clasificación inyectada en contexto
 skill({ name: "handshake-protocol" })     ← cargar antes de invocar subagentes
@@ -268,7 +280,7 @@ Fuente única de verdad de qué entra en un prompt de delegación. Aplica a toda
 ### Lo que entra — solo estas cuatro categorías
 
 1. **Input literal del desarrollador** — el texto original, sin interpretación.
-2. **Referencias citables** — IDs de Engram y rutas (artifacts, flow-state, checkpoints, planes, observaciones). Nunca resúmenes ni conclusiones sobre esas fuentes.
+2. **Referencias citables** — IDs de Engram y rutas (artifacts, flow-state, checkpoints, planes, observaciones), incluidas las referencias de evidencia ya resueltas (`VR-*` o la sección de evidencia verificada) cuando existen. Nunca resúmenes ni conclusiones sobre esas fuentes.
 3. **Hechos de coordinación** — CA ID, `instance_name`, `layer`, `layer_label` e `identity_display` (todos como campos de dato), modo (normal / Evolution Mode), inspectores ya despachados. Los flujos con payload específico (p. ej. Review) definen sus campos operacionales propios dentro de esta categoría.
 4. **Heurísticas del desarrollador** — todas las recuperadas en el Paso 0 (bloque `## Heurísticas del desarrollador`), sin filtrar por tarea.
 
@@ -294,17 +306,19 @@ Todos deben cumplirse:
 1. **Plan final existe**: `mem_search(query: "CA-{ID} plan", type: "ca-artifact", scope: "project")` devuelve al menos una observación con `topic_key = ca/CA-{ID}/artifact/plan`.
 2. **El cuerpo del plan incluye `gate_status`** con `blockers: NONE` y `pending_decisions: []`. Si el bloque no existe, el Gate falla.
 3. **Si `audit_required: true`** en el `gate_status`, existe `ca/CA-{ID}/artifact/audit` con `verdict: OKAY` y `blockers: NONE`.
+4. **Evidencia material del plan**: el plan incluye la sección de evidencia verificada y cada dato material declara su fuente y su estado. Ningún dato material en estado `unverified` o `discrepant` queda fuera de `pending_decisions` o de `blockers`.
 
 ### Procedimiento
 
 1. Leer `gate_status` del plan (`ca/CA-{ID}/artifact/plan`).
 2. Si `audit_required: true`, leer audit (`ca/CA-{ID}/artifact/audit`).
-3. Devolver `PASS` o `FAIL[razón]`.
+3. Verificar la evidencia material del plan: sección presente, fuente y estado por dato, ningún dato material `unverified` o `discrepant` fuera de `pending_decisions` o `blockers`.
+4. Devolver `PASS` o `FAIL[razón]`.
 
 ### Resultado del Gate y transición
 
-- **PASS**: imprime una línea `✔ Gate permitido: execution_gate — plan final y auditoría verificados. Inicio de construcción en {worktree}.` El Gate y la construcción quedan unidos **sin espera intermedia**. Registra la evidencia del Gate como una entrada de `PolicyDecision` en `flow-state/{execution_id}/run` (`autonomy.decisions`) con `kind: "gate"`, `policy: "execution_gate"`, `outcome: "pass"`, `verified: true`, el comando ejecutado, el resultado y sus `evidence_refs`. Después crea el worktree y despacha al Constructor.
-- **FAIL**: una sola línea iniciando con `⛔ Gate rechazado: {razón concreta}` indicando la condición a resolver (decisión pendiente, blocker, auditoría faltante o rechazada, o `gate_status` ausente). No se crea worktree, no se abre ejecución y no se invoca el Constructor ni el Validator.
+- **PASS**: imprime una línea `✔ Gate permitido: execution_gate — plan final y auditoría verificados. Inicio de construcción en {worktree}.` El Gate y la construcción quedan unidos **sin espera intermedia**. Registra la evidencia del Gate como una entrada de `PolicyDecision` en `flow-state/{execution_id}/run` (`autonomy.decisions`) con `kind: "gate"`, `policy: "execution_gate"`, `outcome: "pass"`, `verified: true`, el comando ejecutado, el resultado y sus `evidence_refs`. Los registros de evidencia material verificados (`VR-*`) del plan se incluyen en `evidence_refs`. Después crea el worktree y despacha al Constructor.
+- **FAIL**: una sola línea iniciando con `⛔ Gate rechazado: {razón concreta}` indicando la condición a resolver (decisión pendiente, blocker, auditoría faltante o rechazada, evidencia material ausente o incompleta, o `gate_status` ausente). No se crea worktree, no se abre ejecución y no se invoca el Constructor ni el Validator.
 
 ### Modo `--auto`
 

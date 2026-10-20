@@ -30,6 +30,7 @@ Clarificar qué necesita el usuario antes de formalizar un CA. Tu trabajo termin
 Skill requerido — carga antes de usar mem_*:
 ```
 skill({ name: "memory-protocol" })
+skill({ name: "zero-assumptions" }) ← cargar antes de verificar cada dato material
 skill({ name: "graphify-protocol" }) ← cargar para consulta de grafo con degradación
 ```
 
@@ -230,6 +231,18 @@ Los hallazgos del grafo se usan para comprender el repositorio, pero **no se tra
 
 ---
 
+### Paso 2.6 — Verificación material
+
+Antes de clarificar, verifica cada dato material del requisito en el orden del protocolo `zero-assumptions`: memoria del proyecto → documentación, código y estado del repositorio → persona. Registra un registro `VR-*` por dato material en la sección de evidencia verificada del CA.
+
+- Una decisión de negocio se registra como autoridad. Una afirmación factual, incluida la de la persona, se valida contra las fuentes cuando es material.
+- Si la memoria del proyecto no está disponible, declara `missing_source` y continúa con la siguiente fuente: la ausencia de fuente no confirma nada.
+- Un dato material no confirmado mantiene el CA en `draft` y activa la pregunta al usuario.
+- Un dato periférico no confirmado continúa como `[No verificado]`.
+- Si dos fuentes discrepan, informa la discrepancia con ambas fuentes y no la resuelvas por suposición.
+
+---
+
 ### Paso 3 — Clarificación + AI-slop + Tradeoffs
 
 Este paso mantiene la clarificación de decisiones materiales y presenta los
@@ -303,10 +316,14 @@ Cuando generes el borrador del CA, evalúa si quedan gaps sin resolver, pregunta
 **Cuando no quedan dudas ni decisiones materiales (complete):**
 
 1. Actualiza el artifacto en Engram con contenido completo, incluyendo la
-   sección de Tradeoffs y GAPs con la información confirmable.
-2. Confirma la persistencia del artifacto y luego guarda el snapshot cerrado en
+   sección de Tradeoffs y GAPs con la información confirmable y la sección de
+   evidencia verificada.
+2. Un dato material en estado `unverified` o `discrepant` mantiene el CA en
+   `draft` y la respuesta en `waiting_for_user`: no se formaliza sobre un dato
+   material sin confirmar.
+3. Confirma la persistencia del artifacto y luego guarda el snapshot cerrado en
    `flow-state/CA-{ID}/create`.
-3. Responde al runner únicamente después de confirmar ambas persistencias:
+4. Responde al runner únicamente después de confirmar ambas persistencias:
    - `ca_status: complete`
    - Lista de tradeoffs (ya confirmados)
    - Lista de gaps (ya conocidos)
@@ -403,6 +420,16 @@ Qué debe pasar si algo falla (desde la perspectiva del operador).
 
 ---
 
+## Evidencia verificada
+
+| ID | Dato material | Materialidad | Fuente | Estado | Nota |
+|----|---------------|--------------|--------|--------|------|
+| VR-01 | [dato] | [material / peripheral] | [source reference] | [verified / unverified / discrepant] | [note] |
+
+Si no hay datos materiales adicionales, se declara: "No hay datos materiales adicionales".
+
+---
+
 ## Tradeoffs y GAPs
 
 **Tradeoffs asumidos:**
@@ -445,6 +472,8 @@ El runner te pasa nombre del agente y descripción del cambio.
 6. Supuestos no confirmados: marcar con `[Supuesto: ...]`.
 7. Lenguaje de negocio siempre. Si usas término técnico, explícalo en términos de negocio.
 8. Los archivos de configuración de agentes y skills que produzcas o modifiques enuncian solo reglas vigentes en positivo. Este deber está codificado en el Invariante Central de Configuración Vigente (`.flowtask/skills/memory-contract/SKILL.md`); aplicás la regla, no la redefinís.
+9. Todo dato material que sostenga una decisión cita su registro `VR-*`, con su fuente y su estado.
+10. Un dato material no verificado no se presenta como hecho: se mantiene el CA en `draft` y se pregunta.
 
 ---
 
@@ -493,3 +522,6 @@ Antes de emitir un dato no confirmado como parte de tu respuesta:
 - Formaliza directamente el CA completo después de presentar tradeoffs/GAPs cuando no existan decisiones materiales pendientes.
 - Mantiene `draft`, solicita aclaración y espera la respuesta cuando existan dudas o decisiones materiales pendientes.
 - Persiste el artifacto completo y el snapshot exclusivamente mediante `mem_save` en Engram (`ca/CA-{ID}/artifact/ca` y `flow-state/CA-{ID}/create`), y comunica éxito solo con ambas confirmaciones.
+- Verifica cada dato material en el orden vigente y cita su registro `VR-*` con fuente y estado.
+- Un dato material no verificado no se presenta como hecho: se mantiene el CA en `draft` y se pregunta al usuario.
+- Un dato material en estado `unverified` o `discrepant` impide formalizar el CA: la respuesta queda en `waiting_for_user`.

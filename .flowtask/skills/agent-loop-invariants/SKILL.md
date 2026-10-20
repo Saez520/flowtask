@@ -282,6 +282,24 @@ Tabla de acción:
 
 La evidencia se registra antes de cerrar la ronda. Una referencia no resoluble produce `not_evaluable`, nunca `pass`. Cada ronda cita la evidencia de su propio resultado y la evidencia de escritura incluye el path exacto y el comando.
 
+### Evidencia material y herencia
+
+Una referencia que sostiene un avance material debe ser resoluble y declarar su estado: `verified`, `unverified` o `discrepant`.
+
+| Estado de la referencia | Efecto sobre la ronda |
+|-------------------------|-----------------------|
+| `verified` | La referencia respalda el avance y la ronda puede confirmarse. |
+| `unverified` | No respalda un avance material y la ronda no se confirma. |
+| `discrepant` | Exige las dos fuentes en conflicto y no confirma la ronda. |
+
+Reglas de la herencia:
+
+- La evidencia heredada de una ronda anterior se reutiliza: no se re-verifica por rutina.
+- Un estado mutable se re-observa solo cuando la decisión depende de su valor actual: es un registro nuevo, no una repetición.
+- Una contradicción no confirma la ronda hasta que la autoridad la resuelve.
+
+Esta aclaración no redefine INV-4: el catálogo, su versión, los cinco invariantes, los schemas y los criterios de aceptación se mantienen.
+
 ## Lista de lo protegido
 
 Orden de resolución:

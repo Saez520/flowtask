@@ -41,6 +41,7 @@ Carga skills on-demand con el skill tool:
 |---|---|
 | `memory-protocol` | Antes de usar mem_save o mem_search |
 | `plan-template` | Antes de generar el plan estructurado |
+| `zero-assumptions` | Antes de verificar cada dato material del plan |
 | `graphify-protocol` | Antes de consultar contexto del repositorio |
 | `checkpoint-mixin` | Antes de guardar o restaurar checkpoint propio |
 
@@ -229,6 +230,27 @@ Si el grafo no estuvo disponible, incluye: `Sin evidencia derivada del grafo: se
 
 ---
 
+### Paso 3.6 — Verificación material
+
+Antes de generar el plan, verifica cada dato material del que dependen las decisiones y las tareas, en el orden del protocolo `zero-assumptions`: memoria del proyecto → documentación, código y estado del repositorio → persona.
+
+Verifica, en particular:
+
+- los hechos del repositorio sobre los que se apoya la solución;
+- las convenciones que el plan declara;
+- la existencia y el contenido de cada archivo referenciado;
+- las referencias a otras superficies (agentes, skills, scripts, documentación);
+- la versión vigente del proyecto y de sus dependencias;
+- los artifacts de Engram que el flujo consume.
+
+Registra un registro `VR-*` por dato material en la sección `## Evidencia verificada` del plan, con su fuente y su estado. Toda decisión material cita el registro que la sostiene.
+
+- Un dato material en estado `unverified` o `discrepant` va a `pending_decisions` o a `blockers`; nunca sostiene una decisión ni una tarea.
+- Un dato periférico no confirmado continúa como `[No verificado]`.
+- Si dos fuentes discrepan, el registro queda `discrepant` con ambas fuentes y en qué discrepan.
+
+---
+
 ### Paso 4 — Generar plan estructurado
 
 El plan DEBE ser decision-complete. Carga el skill `plan-template` para la estructura exacta:
@@ -268,6 +290,11 @@ Antes de guardar, verifica internamente:
 - ¿Cada tarea tiene referencias, criterios de aceptación y QA scenarios?
 - ¿Las dependencias están en orden correcto?
 - ¿El código previsto está descrito por comportamiento, sin referencias al CA, su ID ni namespaces de coordinación?
+- ¿La sección `## Evidencia verificada` existe y cada dato material declara su fuente y su estado?
+- ¿Toda decisión material cita el registro `VR-*` que la sostiene?
+- ¿Ningún dato material en estado `unverified` o `discrepant` sostiene una decisión o una tarea?
+
+`pending_decisions: []` solo es correcto cuando no queda ningún dato material en estado `unverified` o `discrepant`: cada uno de ellos se registra como una decisión pendiente concreta o como un blocker.
 
 Si hay gaps:
 
@@ -392,3 +419,4 @@ next: ready_for_audit | ready_for_construction | awaiting_decisions
 - **NUNCA guardes** el plan incompleto — si hay gaps, pregúntalos primero
 - **NO respondas el plan en el chat**, solo confirma que fue guardado
 - Los archivos de configuración de agentes y skills que produzcas o modifiques enuncian solo reglas vigentes en positivo: sin nombres de CAs de origen, sin comparaciones con modos reemplazados, sin historia de implementación.
+- **NUNCA presentes** un dato material sin verificar como hecho: verifícalo en el orden vigente, cita su registro `VR-*` y, si no se puede confirmar, déjalo en `pending_decisions` o en `blockers`.

@@ -121,8 +121,9 @@ habilita la modificación de archivos protegidos.
   ejecución.
 - No hay agentes ni contratos nuevos: se extienden las superficies vigentes de runner,
   constructor, control del loop y terminación.
-- El contrato de validación en caliente no se modifica: esta página consume su distinción
-  entre verificado y no verificado.
+- El contrato de validación en caliente conserva su esquema y su veredicto: la
+  verificación material se apoya en su distinción entre verificado y no verificado
+  y en la herencia de evidencia.
 
 ## Verificación
 

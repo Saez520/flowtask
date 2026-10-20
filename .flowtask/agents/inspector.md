@@ -62,6 +62,7 @@ Cuando el runner en modo senior te delega verificación de claims, o cuando el d
 Skill requerido — carga antes de usar mem_*:
 ```
 skill({ name: "memory-protocol" })
+skill({ name: "zero-assumptions" }) ← cargar antes de verificar cada dato material
 ```
 
 > checkpoint-mixin: cargar SOLO cuando el plugin flowtask-context-checkpoint inyecte la instrucción de checkpoint (contexto ≥ 70%)
@@ -196,6 +197,17 @@ Lee el input del usuario y determina:
 
 ---
 
+### Paso 2.5 — Verificación material
+
+La investigación previa del runner es un insumo con proveniencia: se acepta como cierta y no se re-verifica por rutina. Los datos nuevos que agregues al análisis sí se verifican, en el orden del protocolo `zero-assumptions`: memoria del proyecto → documentación, código y estado del repositorio → persona.
+
+- Cita el `source_ref` y el estado de cada dato material que uses: `verified`, `unverified` o `discrepant`.
+- Un dato material que no se puede confirmar se informa como GAP material y se recomienda la pausa; no se presenta como hecho.
+- Un dato periférico que no se puede confirmar continúa como `[No verificado]`.
+- Si dos fuentes discrepan, informa la discrepancia con ambas fuentes y no la resuelvas por suposición.
+
+---
+
 ### Paso 3 — Leer archivos relevantes
 
 Si Engram no tiene la respuesta, lee los archivos del proyecto:
@@ -236,6 +248,20 @@ La respuesta directa siempre debe estar presente. Las secciones adicionales son 
 - Riesgos críticos y blockers siempre deben permanecer visibles e integrados en la respuesta pertinente, sin importar el modo.
 - Regla: no crear secciones vacías, mensajes de relleno ni equivalentes de “no se detectaron GAPs”. No inventes Tradeoffs o GAPs.
 - Los Tradeoffs deben expresarse en lenguaje de negocio/producto cuando corresponda, no como detalle técnico sin impacto.
+
+#### Fuentes
+
+Cuando la respuesta se apoye en datos materiales, agrega el bloque de fuentes. Cada fila cita el dato, su fuente y su estado.
+
+```
+### Fuentes
+
+| Dato | Fuente | Estado |
+|------|--------|--------|
+| [dato] | [source_ref] | [verified / unverified / discrepant] |
+```
+
+El bloque se agrega solo cuando hay datos materiales que citar: no se crean secciones vacías.
 
 ---
 
@@ -304,3 +330,5 @@ Antes de emitir un dato no confirmado como parte de tu respuesta:
 - SIEMPRE busca en Engram primero antes de leer archivos
 - Presenta Tradeoffs y GAPs solo cuando el modo de salida y la materialidad del análisis lo indiquen
 - NUNCA asumas que el usuario quiere hacer cambios — espera su confirmación
+- NUNCA presentes un dato material no verificado como hecho: cita su fuente y su estado, o decláralo `[No verificado]`
+- La evidencia heredada no se re-verifica por rutina: solo se verifican los datos nuevos que agregues

@@ -197,6 +197,10 @@ pasa, la construcción comienza sin espera rutinaria.
   manual y modificar archivos protegidos requieren consentimiento humano explícito.
 - **La autonomía no sustituye la evidencia.** Toda decisión automática de avance o de pausa
   queda registrada como una decisión de política con su referencia verificable.
+- **La evidencia material distingue lo verificado de lo no verificado.** Una decisión con
+  `verified: false` no respalda un avance material ni un cierre; como máximo habilita una
+  pausa. Una decisión material cita la fuente concreta y no presenta un dato no verificado
+  como hecho.
 
 ## Baseline y tope duro
 
@@ -629,6 +633,10 @@ Reanudar exige, **en conjunto**:
 última decisión de política y la evidencia de la última ronda, conserva la numeración y no
 vuelve a ejecutar una comprobación ya confirmada. Deja una decisión de política con
 `kind: resume` y `policy: resume_gate`.
+
+**La reanudación reutiliza la evidencia material verificada** y no repite su comprobación.
+Si un dato material sigue sin confirmarse, la pausa se mantiene y la ronda siguiente no se
+despacha.
 
 **Causas por motivo de pausa:**
 

@@ -129,7 +129,7 @@ RUNNER clasifica ── ¿existe el CA en Engram?
 └─ ya existe ──┐
               ▼
         [2] PLANNER ── plan decision-complete
-            salida: ca/CA-{ID}/artifact/plan (incluye gate_status)
+            salida: ca/CA-{ID}/artifact/plan (incluye gate_status y evidencia verificada)
             flow-state: flow-state/CA-{ID}/plan
               │
               ▼
@@ -139,7 +139,8 @@ RUNNER clasifica ── ¿existe el CA en Engram?
               ▼
         [4] GATE DE EJECUCIÓN
             verifica: plan final existe + gate_status con blockers NONE y
-            pending_decisions [] + audit OKAY si audit_required
+            pending_decisions [] + audit OKAY si audit_required +
+            evidencia material: sin datos materiales no verificados
             FAIL → aborta (sin worktree, sin constructor) — ni --auto lo salta
               │ PASS
               ▼

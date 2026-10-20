@@ -183,6 +183,25 @@ con su causa.
 Reutilizar la evidencia no habilita un veredicto favorable por sí sola: la
 precedencia de los estados se aplica en cada ronda de forma independiente.
 
+## Herencia de evidencia y contradicción
+
+La evidencia verificada de una ronda se hereda con su fuente y su momento de
+observación. La ronda siguiente no se re-verifica por rutina: no repite
+comprobaciones ya veredictadas.
+
+Un estado mutable se re-observa solo cuando la decisión depende de su valor
+actual: es un registro nuevo, no una repetición del anterior.
+
+| Situación | Efecto |
+|-----------|--------|
+| La evidencia heredada contradice una comprobación de la ronda | Se informa con ambas fuentes, no se emite veredicto favorable y no se cambia el alcance. |
+| Un dato material no se puede confirmar | La comprobación queda no verificada con su causa y el veredicto es de fallo operativo, nunca de rechazo funcional. |
+| Un dato periférico no se puede confirmar | Se declara como no verificado, con su causa, y no bloquea por sí sola. |
+
+La contradicción no se resuelve por suposición ni se convierte en un rechazo
+automático. El esquema de evidencia, la precedencia del veredicto y los códigos
+de salida no cambian.
+
 ## Verificación ejecutable
 
 Desde la raíz del repositorio:
@@ -223,6 +242,7 @@ entrada estándar y con `--json` emite el resultado completo.
 
 - [INDEX.md](./INDEX.md) — índice de la arquitectura vigente.
 - [handshake.md](./handshake.md) — identidad, continuidad y checkpoints.
+- [verificacion-material.md](./verificacion-material.md) — verificación material, evidencia citable y herencia entre roles.
 - [../core-flowtask.md](../core-flowtask.md) — flujo principal de una ejecución.
 - `.flowtask/agents/validator.md` — conducta del agente que ejecuta la
   validación.
