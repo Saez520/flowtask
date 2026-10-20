@@ -41,11 +41,11 @@ Toda observación de checkpoint en Engram usa ese schema. Los campos clave son:
 | `treatment_class` | `"complete"` \| `"light"` | Clase de tratamiento. Determina la bifurcación de continuidad. |
 | `state` | `"active"` \| `"paused"` \| `"completed"` | Estado del checkpoint. `"completed"` marca de cierre — conserva la observación como traza (no se borra). |
 | `sequence` | entero | Contador monotónico incremental por agente. |
-| `topic_signature` | objeto \| ausente | Firma del tema (opcional, backward-compatible). Si el checkpoint no lo trae y el trabajo es existente, la identidad no puede validarse: se informa qué se esperaba y qué se encontró y se detiene con `topic_unverifiable`. No se asume mismo tema. |
+| `topic_signature` | objeto \| ausente | Firma del tema (opcional, backward-compatible). Si el checkpoint no lo trae y el trabajo es existente, la identidad no puede validarse: se informa qué se esperaba y qué se encontró y se detiene con `topic_unverifiable`. No se asume mismo tema. En tratamiento completo es obligatoria en el trabajo existente y se conserva en el payload de cierre. |
 | `flow_state` | objeto | Estado específico del agente. |
 | `flow_state.layer` | string (opcional) | Capa de identidad del agente (`"subagent"`). Los checkpoints antiguos sin capa se leen como `subagent` y se completan en el próximo upsert. |
 | `flow_state.layer_label` | string (opcional) | Etiqueta visible de la capa (`"subagente"`). |
-| `resume_ref` | string (opcional) | Referencia de reanudación. **Obligatorio en tratamiento completo** (ca-writer, planner). |
+| `resume_ref` | string (opcional) | Referencia de reanudación. **Obligatorio en tratamiento completo** (ca-writer, planner). Se conserva en el payload de cierre. |
 | `fresh_thread_marker` | boolean (opcional) | Marcador de hilo nuevo. Solo en tratamiento ligero sin CA. |
 
 > **Capa ausente**: los checkpoints antiguos sin `flow_state.layer` se leen como capa `subagent` y se completan en el próximo upsert. La ausencia del campo no invalida el checkpoint.
@@ -59,10 +59,17 @@ Toda observación de checkpoint en Engram usa ese schema. Los campos clave son:
 ```
 1. Verificar checkpoint: mem_search(query: "flow-state/{CA-ID}/{sufijo}")
 2. Si existe y state != "completed":
-   - Restaurar flow_state (tradeoffs, gaps, decisiones pendientes)
-   - Continuar desde donde quedó (Escenario B)
+   - Validar la firma del tema contra la del trabajo en curso
+   - Si la firma falta o el checkpoint no es restaurable: informar qué se esperaba
+     y qué se encontró y detenerse con `topic_unverifiable`. No se asume mismo
+     tema y no se abre un hilo sustituto en su lugar
+   - Si la firma valida: restaurar flow_state (tradeoffs, gaps, decisiones
+     pendientes, derivaciones pendientes) y continuar desde donde quedó
+     (Escenario B)
 3. Si no existe o está "completed": comenzar desde cero (Escenario A)
 ```
+
+> El escenario lo determina quien coordina la ejecución. El agente de tratamiento completo restaura el estado que recibe y no decide por sí mismo si la conversación continúa.
 
 **Durante ejecución — guardar checkpoint:**
 
@@ -77,8 +84,8 @@ mem_save(
     treatment_class: "complete",
     state: "active",
     updated_at: now(),
-    sequence: N,
-    topic_signature: { ids: [...], keywords: [...] },  // opcional
+    sequence: {anterior + 1},
+    topic_signature: { ids: [...], keywords: [...] },  // obligatorio en trabajo existente
     flow_state: {
       ca_id: "CA-{ID}",
       agente: "{agente}",
@@ -105,19 +112,29 @@ mem_save(
     treatment_class: "complete",
     state: "completed",
     updated_at: now(),
-    sequence: N,
+    sequence: {anterior + 1},
+    topic_signature: { ids: [...], keywords: [...] },  // misma firma del payload activo
     flow_state: {
       ca_id: "CA-{ID}",
       agente: "{agente}",
       instance_name: "{Name}",
       layer: "subagent",
-      layer_label: "subagente"
+      layer_label: "subagente",
+      resume_ref: "{task_id}",  // misma referencia de reanudación
+      persistence: "artifact_confirmed"
     }
   }
 )
 ```
 
 > `state: "completed"` marca el cierre y conserva la observación como traza consultable. No se elimina.
+
+### Unicidad del payload y secuencia
+
+- Un `topic_key` admite un único payload. El cierre actualiza ese mismo payload: no se escribe una segunda forma narrativa ni una variante bajo la misma clave.
+- `sequence` se incrementa sobre el checkpoint previo más reciente: `(checkpoint previo).sequence + 1`. Si no existe checkpoint previo, `sequence` es `1`.
+- La traza legible del trabajo vive en otra clave (por ejemplo, el artifact del CA). No sustituye ni sobrescribe el payload de continuidad.
+- El payload de cierre conserva `topic_signature` y `resume_ref` del payload activo: sin ellos, el cierre pierde la validación de tema y la referencia de reanudación.
 
 ### Tratamiento ligero (inspector, constructor, validator, tester, review-orchestrator, logger, initializer)
 

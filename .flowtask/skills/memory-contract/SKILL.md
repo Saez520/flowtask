@@ -122,13 +122,20 @@ Usan este schema y conservan el estado estructurado necesario para reanudación:
 - `version`: siempre `"2.0"`.
 - `treatment_class`: `"complete"` (ca-writer, planner) o `"light"` (resto de agentes).
 - `state`: `"active"`, `"paused"` o `"completed"`. `"completed"` marca el cierre y conserva la observación como traza.
-- `sequence`: contador monotónico incremental por agente.
-- `topic_signature`: firma del tema (opcional, backward-compatible).
+- `sequence`: contador monotónico incremental por agente. Se calcula como `(checkpoint previo más reciente).sequence + 1`; si no existe checkpoint previo, vale `1`.
+- `topic_signature`: firma del tema (opcional, backward-compatible). En tratamiento completo es obligatoria en el trabajo existente.
 - `flow_state`: estado específico del agente.
 - `flow_state.layer`: capa de identidad del agente (opcional, backward-compatible). Los checkpoints antiguos sin capa se leen como `subagent` y se completan en el próximo upsert.
 - `flow_state.layer_label`: etiqueta visible de la capa (opcional, backward-compatible).
 - `resume_ref`: obligatorio en tratamiento completo (ca-writer, planner). Referencia de reanudación.
 - `fresh_thread_marker`: solo en tratamiento ligero sin CA.
+
+**Ciclo de vida del payload de continuidad**:
+
+- Un `topic_key` de continuidad admite un único payload. El payload activo y el payload de cierre son el mismo registro actualizado, nunca dos formas que compitan bajo la misma clave.
+- El payload de cierre de tratamiento completo conserva `topic_signature` y `resume_ref`: sin firma no hay validación de tema y sin referencia no hay reanudación identificable.
+- No se escribe una variante narrativa del estado bajo la clave de continuidad. La traza legible del trabajo vive en su propia clave de artifact.
+- El escenario (hilo nuevo o reanudación) lo determina quien coordina la ejecución; el agente restaura el estado que recibe y no decide por sí mismo si continúa.
 
 ### SessionSummary
 

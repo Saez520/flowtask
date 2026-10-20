@@ -695,12 +695,12 @@ squash-merge, sin alterar los namespaces históricos de CA.
 mem_search(query: "CA-{ID}", type: "decision", scope: "project")
 ```
 
-**Si existe snapshot:** Determina primero si el input solicita una modificación;
+**Si existe artifact:** Determina primero si el input solicita una modificación;
 si no es una revisión, continúa al Paso 2.
 
 ### Rama prioritaria — revisión de un CA formalizado
 
-Si el input solicita modificar o revisar un CA que ya tiene snapshot, no se
+Si el input solicita modificar o revisar un CA que ya tiene artifact, no se
 salta directamente a la planificación. Recupera
 `flow-state/CA-{ID}/instances` y exige que existan ambos valores en
 `agents["ca-writer"]`:
@@ -728,7 +728,7 @@ completa persistida habilita la transición, y los controles posteriores del
 flujo permanecen vigentes.
 
 La creación normal conserva el comportamiento existente: si no se trata de
-una revisión de un CA formalizado y no existe snapshot, invoca a CA-Writer con
+una revisión de un CA formalizado y no existe artifact, invoca a CA-Writer con
 el prompt del usuario.
 
 **Si no existe:** Invoca ca-writer con el prompt del usuario — el ca-writer conduce la conversación:
@@ -736,6 +736,31 @@ el prompt del usuario.
 Invoca ca-writer usando el formato canónico: ejecutar el Handshake Protocol
 (getOrCreateInstance) + Context Injection; Escenario A/B según `task_id` y
 Topic Validation. Prompt: el texto original del usuario.
+
+### Paso 1.5 — Derivaciones del CA-Writer
+
+La respuesta del CA-Writer puede traer `derivations`: pedidos de dato que el
+agente no resuelve con sus permisos, porque son una duda técnica material que
+bloquea una decisión de negocio, una verificación externa o la observación del
+estado del repositorio. El runner no delega por su cuenta: responde al pedido
+ya formulado.
+
+Cuando `derivations` viene con contenido:
+
+1. Invoca al Inspector usando el formato canónico y su contrato de entrada: la
+   pregunta, el alcance, las referencias citables ya reunidas (`evidence_refs`)
+   y los huecos declarados (`gaps`). Cada item trae su `kind`:
+   `technical | external_verification | repository_state`.
+2. Devuelve el resultado al CA-Writer con el mismo `task_id` y la misma
+   `instance_name` registrados en el mapa de instancias, para que la respuesta
+   se incorpore al mismo requisito.
+3. No avances a planificación mientras la respuesta traiga `derivations` con
+   contenido o `ca_status` distinto de `complete`. El paso a planificación exige
+   `derivations: []` y `ca_status: complete`.
+4. El dato que vuelve sin fuente citable queda con estado `unverified` y el
+   requisito se mantiene en `draft`.
+
+Si `derivations` viene vacío, esta rama no aplica y el flujo continúa en el Paso 2.
 
 ***
 
@@ -1094,7 +1119,7 @@ Si ejecutas un `git commit` y el gate lo bloquea, seguí las instrucciones del m
    Invoca ca-writer usando el formato canónico: ejecutar el Handshake Protocol
    (getOrCreateInstance) + Context Injection; Escenario A/B según `task_id` y
    Topic Validation. Prompt: el texto original del usuario.
-5. Invoca planner con el snapshot del CA generado.
+5. Invoca planner con el artifact del CA generado.
 6. **SIEMPRE** invoca plan-auditor.
 6a. **Gate de Ejecución**: invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/evolve-{agente}-{timestamp}/artifact/plan`. Si FAIL: imprime `⛔ Gate rechazado: {razón}` y termina. Si PASS: registra la evidencia del Gate en `autonomy.decisions` y continúa directamente al Constructor.
 7. Invoca constructor.

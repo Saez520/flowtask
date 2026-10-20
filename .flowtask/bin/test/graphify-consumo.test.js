@@ -118,6 +118,18 @@ describe("Graphify agent integration", () => {
     assert.ok(caWriter.includes("búsqueda normal del proyecto"));
     assert.ok(planner.includes("búsqueda normal del proyecto"));
 
+    // Contrato vigente: la consulta del grafo se hace por la integración MCP.
+    // La CLI histórica no ejecuta consultas y no se describe como vía de consulta.
+    assert.ok(
+      caWriter.includes("graphify_query_graph"),
+      "ca-writer.md should query the graph through the MCP integration",
+    );
+    assert.doesNotMatch(
+      caWriter,
+      /CLI actual/,
+      "ca-writer.md must not describe the historical CLI as a query path",
+    );
+
     // Contrato vigente: antes de delegar, el Runner evalúa la suficiencia de la
     // evidencia ya investigada (etapa 2 del chain de 3 pasos).
     assert.ok(
