@@ -22,27 +22,275 @@ export const INSTALLER_WRITERS = Object.freeze([
   "W15 root cleanup", "W16 Graphify", "W17 JSON/file primitives",
 ]);
 
-function ensureWorktreeManagerSubmodule(flowtaskDir) {
+// ─── Worktree Manager submodule ───────────────────────────────────────────────
+// The manager is consumed as a submodule. It is never copied into a target and
+// it is never registered as a consumer server: the capabilities below describe
+// what the checkout can actually do, not what a configuration claims.
+
+const WORKTREE_MANAGER_PROBE_TIMEOUT_MS = 5000;
+const WORKTREE_MANAGER_MIN_PYTHON = "3.9";
+const WORKTREE_MANAGER_REQUIRED_ENTRYPOINTS = Object.freeze([
+  "worktree.sh",
+  "worktree_manager/__main__.py",
+]);
+const WORKTREE_MANAGER_MCP_ENTRYPOINTS = Object.freeze([
+  "worktree_manager/mcp_transport.py",
+  "worktree_manager/mcp_server.py",
+  "worktree_manager/mcp_contract.py",
+  "worktree_manager/mcp_operations.py",
+]);
+const WORKTREE_MANAGER_MCP_TOOLS = Object.freeze([
+  "worktree_create", "worktree_complete", "worktree_cleanup",
+  "worktree_recover", "worktree_list", "worktree_prune", "worktree_status",
+]);
+
+function comparePythonVersions(left, right) {
+  const parse = (value) => String(value).split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const a = parse(left);
+  const b = parse(right);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+/** Run one read-only python probe. The probe never writes and never installs anything. */
+function runPythonProbe(pythonBin, args, { managerDir, timeoutMs, input = "" }) {
+  const env = { ...process.env };
+  if (managerDir) {
+    // The manager directory is the working directory of the probe, so the
+    // package under test is the one that is imported and not a namesake.
+    env.PYTHONPATH = managerDir;
+  } else {
+    delete env.PYTHONPATH;
+  }
+  try {
+    const stdout = execFileSync(pythonBin, args, {
+      encoding: "utf8",
+      input,
+      timeout: timeoutMs,
+      maxBuffer: 4 * 1024 * 1024,
+      cwd: managerDir || undefined,
+      env,
+    });
+    return { ok: true, stdout };
+  } catch (error) {
+    const stderr = String(error?.stderr ?? "").trim();
+    const lastLine = stderr.split("\n").map((line) => line.trim()).filter(Boolean).pop();
+    const cause = error?.killed || error?.signal
+      ? `probe exceeded ${timeoutMs} ms`
+      : (lastLine || String(error?.message ?? "probe failed").trim());
+    return { ok: false, cause };
+  }
+}
+
+function probePythonVersion(pythonBin, timeoutMs) {
+  const result = runPythonProbe(pythonBin, ["-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"], {
+    managerDir: "", timeoutMs,
+  });
+  if (!result.ok) return { ok: false, cause: result.cause };
+  const version = result.stdout.trim().split("\n").filter(Boolean).pop()?.trim();
+  if (!version) return { ok: false, cause: "python did not report a version" };
+  return { ok: true, version };
+}
+
+/** Probe the CLI entrypoint: `python3 -m worktree_manager --version`. */
+function probeManagerCli(managerDir, pythonBin, timeoutMs) {
+  const result = runPythonProbe(pythonBin, ["-m", "worktree_manager", "--version"], { managerDir, timeoutMs });
+  if (!result.ok) return { ok: false, cause: result.cause };
+  const version = result.stdout.trim().split("\n").filter(Boolean).pop()?.trim();
+  if (!version) return { ok: false, cause: "the CLI entrypoint reported no version" };
+  return { ok: true, version };
+}
+
+/**
+ * Probe the MCP entrypoint over stdio: initialize handshake plus tools/list.
+ * The probe closes the transport as soon as both answers are read.
+ */
+function probeManagerMcp(managerDir, pythonBin, timeoutMs) {
+  const requests = [
+    {
+      jsonrpc: "2.0", id: 1, method: "initialize",
+      params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "flowtask-installer", version: "1.0.0" } },
+    },
+    { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+  ];
+  const result = runPythonProbe(pythonBin, ["-m", "worktree_manager.mcp_transport"], {
+    managerDir, timeoutMs, input: `${requests.map((request) => JSON.stringify(request)).join("\n")}\n`,
+  });
+  if (!result.ok) return { ok: false, cause: result.cause };
+  const responses = new Map();
+  for (const line of result.stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed.id === "number") responses.set(parsed.id, parsed);
+    } catch { /* a diagnostic line is not a protocol answer */ }
+  }
+  const initialized = responses.get(1)?.result;
+  if (!initialized?.serverInfo) return { ok: false, cause: "the MCP handshake returned no server information" };
+  const tools = responses.get(2)?.result?.tools;
+  if (!Array.isArray(tools)) return { ok: false, cause: "the MCP transport returned no tool list" };
+  const names = tools.map((tool) => tool?.name).filter(Boolean).sort();
+  const missing = WORKTREE_MANAGER_MCP_TOOLS.filter((name) => !names.includes(name));
+  if (missing.length > 0) return { ok: false, cause: `the MCP tool list is missing: ${missing.join(", ")}` };
+  return { ok: true, version: initialized.serverInfo?.version ?? null, tools: names };
+}
+
+/**
+ * Detect what the manager checkout can really do.
+ *
+ * A transport is reported as available only when it answered a read-only
+ * probe, never because a configuration declares it.
+ */
+export function detectWorktreeManagerCapabilities(managerDir, options = {}) {
+  const timeoutMs = options.timeoutMs ?? WORKTREE_MANAGER_PROBE_TIMEOUT_MS;
+  const pythonBin = options.pythonBin ?? "python3";
+  const report = {
+    managerDir,
+    python: { available: false, version: null, cause: null },
+    cli: { available: false, version: null, cause: null },
+    mcp: { available: false, version: null, tools: [], cause: null },
+    transports: [],
+  };
+
+  const python = probePythonVersion(pythonBin, timeoutMs);
+  if (!python.ok) {
+    const cause = `python is not usable: ${python.cause}`;
+    report.python = { available: false, version: null, cause };
+    report.cli = { available: false, version: null, cause };
+    report.mcp = { available: false, version: null, tools: [], cause };
+    return report;
+  }
+  report.python = { available: true, version: python.version, cause: null };
+  if (comparePythonVersions(python.version, WORKTREE_MANAGER_MIN_PYTHON) < 0) {
+    const cause = `python ${python.version} is older than the required ${WORKTREE_MANAGER_MIN_PYTHON}`;
+    report.python = { available: false, version: python.version, cause };
+    report.cli = { available: false, version: null, cause };
+    report.mcp = { available: false, version: null, tools: [], cause };
+    return report;
+  }
+
+  const missingMcpEntrypoints = WORKTREE_MANAGER_MCP_ENTRYPOINTS
+    .filter((entry) => !fs.existsSync(path.join(managerDir, entry)));
+  if (missingMcpEntrypoints.length > 0) {
+    report.mcp = {
+      available: false, version: null, tools: [],
+      cause: `missing MCP entrypoints: ${missingMcpEntrypoints.join(", ")}`,
+    };
+  } else {
+    const mcp = probeManagerMcp(managerDir, pythonBin, timeoutMs);
+    report.mcp = mcp.ok
+      ? { available: true, version: mcp.version, tools: mcp.tools, cause: null }
+      : { available: false, version: null, tools: [], cause: mcp.cause };
+  }
+
+  const cli = probeManagerCli(managerDir, pythonBin, timeoutMs);
+  report.cli = cli.ok
+    ? { available: true, version: cli.version, cause: null }
+    : { available: false, version: null, cause: cli.cause };
+  report.transports = [
+    ...(report.cli.available ? ["cli"] : []),
+    ...(report.mcp.available ? ["mcp"] : []),
+  ];
+  return report;
+}
+
+/**
+ * Verify that a manager checkout matches the recorded gitlink and exposes the
+ * entrypoints the installation requires. No alternative copy is produced.
+ */
+export function verifyWorktreeManagerCheckout({ managerDir, expectedGitlink }) {
+  const missing = WORKTREE_MANAGER_REQUIRED_ENTRYPOINTS
+    .filter((entry) => !fs.existsSync(path.join(managerDir, entry)));
+  if (missing.length > 0) {
+    throw new Error(`Worktree Manager checkout is missing required entrypoints: ${missing.join(", ")}`);
+  }
+  const entrypoint = path.join(managerDir, "worktree.sh");
+  if (!fs.statSync(entrypoint).isFile()) {
+    throw new Error("Worktree Manager entrypoint is not a file: worktree.sh");
+  }
+  if ((fs.statSync(entrypoint).mode & 0o111) === 0) {
+    throw new Error("Worktree Manager entrypoint is not executable: worktree.sh");
+  }
+  if (expectedGitlink) {
+    const actual = execFileSync("git", ["-C", managerDir, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+    if (actual !== expectedGitlink) {
+      throw new Error(`Worktree Manager checkout does not match the recorded gitlink (${actual} != ${expectedGitlink})`);
+    }
+  }
+  return managerDir;
+}
+
+export function ensureWorktreeManagerSubmodule(flowtaskDir) {
   const managerDir = path.join(flowtaskDir, "scripts", "worktree-manager");
-  const manager = path.join(managerDir, "worktree.sh");
+  let expected = null;
   try {
     const gitRoot = execFileSync("git", ["-C", flowtaskDir, "rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-    const relative = path.relative(gitRoot, managerDir);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("manager path is outside the FlowTask checkout");
+    // The reported root and the requested path may differ by a symlink, so the
+    // relative path is resolved against the real location of both.
+    let root = gitRoot;
+    let relative = path.relative(root, managerDir);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      root = fs.realpathSync(gitRoot);
+      relative = path.relative(root, path.join(fs.realpathSync(flowtaskDir), "scripts", "worktree-manager"));
+      if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("manager path is outside the FlowTask checkout");
+    }
     try {
-      execFileSync("git", ["-C", gitRoot, "submodule", "update", "--init", "--", relative], { stdio: "ignore" });
+      execFileSync("git", ["-C", root, "submodule", "update", "--init", "--", relative], { stdio: "ignore" });
     } catch (error) {
       throw new Error(`cannot materialize Worktree Manager submodule (${relative}): ${error.message}`);
     }
-    const indexEntry = execFileSync("git", ["-C", gitRoot, "ls-files", "--stage", "--", relative], { encoding: "utf8" }).trim();
+    const indexEntry = execFileSync("git", ["-C", root, "ls-files", "--stage", "--", relative], { encoding: "utf8" }).trim();
     const match = indexEntry.match(/^160000 ([0-9a-f]{40,64}) 0\t/);
     if (!match) throw new Error("Worktree Manager path is not a staged submodule gitlink");
-    const expected = match[1];
-    const actual = execFileSync("git", ["-C", path.dirname(manager), "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-    if (expected !== actual || !fs.statSync(manager).isFile()) throw new Error("Worktree Manager checkout does not match the recorded gitlink");
+    expected = match[1];
+    verifyWorktreeManagerCheckout({ managerDir: path.join(root, relative), expectedGitlink: expected });
   } catch (error) {
     throw new Error(`Worktree Manager submodule unavailable: ${error.message}`);
   }
+  const resolvedManagerDir = path.join(fs.realpathSync(flowtaskDir), "scripts", "worktree-manager");
+  return { managerDir: resolvedManagerDir, gitlink: expected, capabilities: detectWorktreeManagerCapabilities(resolvedManagerDir) };
+}
+
+/**
+ * Gate the installation on a usable manager.
+ *
+ * A single usable transport is enough to continue; the other one is reported
+ * with its cause. Without any transport the installation fails here, before
+ * any target is written.
+ */
+export function prepareWorktreeManager(flowtaskDir, options = {}) {
+  const ensure = options.ensureWorktreeManager ?? ensureWorktreeManagerSubmodule;
+  const report = ensure(flowtaskDir, options);
+  const capabilities = report?.capabilities ?? report;
+  const transports = capabilities?.transports ?? [];
+  if (transports.length === 0) {
+    const causes = [capabilities?.cli?.cause, capabilities?.mcp?.cause].filter(Boolean).join("; ");
+    throw new Error(`Worktree Manager has no usable transport: ${causes || "no transport was detected"}`);
+  }
+  return report;
+}
+
+/** Report the detected capabilities, naming the cause of every unusable transport. */
+export function reportWorktreeManagerCapabilities(report) {
+  const capabilities = report?.capabilities ?? report;
+  const { cli, mcp } = capabilities ?? {};
+  if (cli?.available && mcp?.available) {
+    logSuccess(`Worktree Manager ready: CLI ${cli.version} and MCP ${mcp.tools.length} tools are operational.`);
+    return;
+  }
+  if (cli?.available) {
+    logWarn(`Worktree Manager partially installed: only the CLI is operational (${cli.version}); MCP is not: ${mcp?.cause ?? "unknown cause"}`);
+    return;
+  }
+  if (mcp?.available) {
+    logWarn(`Worktree Manager partially installed: only the MCP is operational (${mcp.tools.length} tools); the CLI is not: ${cli?.cause ?? "unknown cause"}`);
+    return;
+  }
+  logError(`Worktree Manager is not operational: ${[cli?.cause, mcp?.cause].filter(Boolean).join("; ")}`);
 }
 
 /** Single read-only validation barrier shared by install and update. */
@@ -90,6 +338,15 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
     }
     classifierOwnership.push(decision);
   }
+  // The manager gate runs before any materialization, so an installation
+  // without a usable transport never leaves a newly written source behind.
+  if (options.worktreeManager) {
+    const capabilities = options.worktreeManager.capabilities ?? options.worktreeManager;
+    if ((capabilities?.transports ?? []).length === 0) {
+      const causes = [capabilities?.cli?.cause, capabilities?.mcp?.cause].filter(Boolean).join("; ");
+      throw new Error(`Worktree Manager has no usable transport: ${causes || "no transport was detected"}`);
+    }
+  }
   // Do any potentially mutating source materialization only after all other
   // read-only preflight checks have passed, so bad config/ownership/manifest
   // cannot leave a newly materialized source behind.
@@ -108,6 +365,7 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
     txID: `install-${process.pid}-${Date.now()}`, mode, strictManifest: true,
     targets, sourceDigest, sourceDir: source.sourceDir, manifest, configPath,
     ownership, classifierOwnership, writers: INSTALLER_WRITERS, allowedWrites: [], preDigest: null,
+    worktreeManager: options.worktreeManager ?? null,
   };
   return Object.freeze(descriptor);
 }
@@ -950,7 +1208,8 @@ function cleanupOrphanedClaudeAssets(projectDir) {
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir, options = {}) {
-  ensureWorktreeManagerSubmodule(flowtaskDir);
+  const worktreeManager = prepareWorktreeManager(flowtaskDir);
+  reportWorktreeManagerCapabilities(worktreeManager);
   console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
 ║        FlowTask Installation Wizard       ║
@@ -978,7 +1237,7 @@ ${COLORS.blue}╔═════════════════════
 
   const projectDir = process.cwd();
   const preflight = targets.some(({ id }) => id === "opencode")
-    ? await prepareInstallation(flowtaskDir, projectDir, "install", { targets }) : null;
+    ? await prepareInstallation(flowtaskDir, projectDir, "install", { targets, worktreeManager }) : null;
   const targetDirs = targets.map(({ targetSubDir }) => path.join(projectDir, targetSubDir));
   if (!migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
     throw new Error("No se pudo migrar profile.json; se conserva el origen. Verifica permisos/espacio y reintenta con flowtask update.");
@@ -1112,7 +1371,8 @@ ${COLORS.blue}╔═════════════════════
 // ─── Update ───────────────────────────────────────────────────────────────────
 
 export async function update(flowtaskDir, options = {}) {
-  ensureWorktreeManagerSubmodule(flowtaskDir);
+  const worktreeManager = prepareWorktreeManager(flowtaskDir);
+  reportWorktreeManagerCapabilities(worktreeManager);
   console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
 ║        FlowTask Update Wizard (Delta)     ║
@@ -1148,7 +1408,7 @@ ${COLORS.blue}╔═════════════════════
   }
 
   const preflight = targets.some(({ id }) => id === "opencode")
-    ? await prepareInstallation(flowtaskDir, projectDir, "update", { targets }) : null;
+    ? await prepareInstallation(flowtaskDir, projectDir, "update", { targets, worktreeManager }) : null;
   const legacyCleanupOk = removeLegacyConsumerFiles(projectDir, ["CLAUDE.md"]);
   if (!legacyCleanupOk) logWarn("La limpieza de CLAUDE.md no fue completa; el resultado debe revisarse.");
 

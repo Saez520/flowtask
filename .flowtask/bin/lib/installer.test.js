@@ -13,10 +13,14 @@ import {
   regenerateCanonicalCli,
   removeLegacyConsumerFiles,
   prepareInstallation,
+  prepareWorktreeManager,
+  detectWorktreeManagerCapabilities,
+  ensureWorktreeManagerSubmodule,
+  verifyWorktreeManagerCheckout,
   ASSETS,
 } from "./installer.js";
 import { showInteractiveSelector } from "./ui.js";
-import { registerPluginArrayEntry } from "./opencode.js";
+import { registerPluginArrayEntry, mergeOpencodeConfig } from "./opencode.js";
 import { generateClaudeCommands } from "./claude.js";
 import { verifyDirectoryMirror, copyDirectoryDelta, copyWithProgress, pruneDirectoryExtras } from "./copy.js";
 import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA } from "./ownership.js";
@@ -1068,4 +1072,306 @@ test("scripts distribution carries the wrapper and adapter without legacy implem
   const usage = spawnSync(wrapper, ["--help"], { encoding: "utf8" });
   assert.notEqual(usage.status, 0);
   assert.match(usage.stderr, /standalone ausente o no inicializado/);
+});
+
+// ─── Worktree Manager installation, capabilities and gitlink ──────────────────
+
+const MANAGER_MCP_SERVER_SOURCE = `import json
+import sys
+
+from .mcp_contract import TOOL_NAMES
+
+
+def dispatch(message):
+    method = message.get("method")
+    if method == "initialize":
+        return {"protocolVersion": "2024-11-05", "capabilities": {"tools": {}},
+                "serverInfo": {"name": "worktree-manager", "version": "1.0.0"}}
+    if method == "tools/list":
+        return {"tools": [{"name": name, "description": "Manage repository worktrees",
+                           "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}}
+                          for name in TOOL_NAMES]}
+    if method == "tools/call":
+        return {"content": []}
+    raise ValueError("method_not_found")
+
+
+def main():
+    for line in sys.stdin:
+        message = json.loads(line)
+        result = dispatch(message)
+        if "id" in message and result is not None:
+            sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": message["id"], "result": result}) + "\\n")
+            sys.stdout.flush()
+`;
+
+const MANAGER_CLI_SOURCE = `VERSION = "1.0.0"
+
+
+def main(argv=None):
+    import sys
+    args = list(sys.argv[1:] if argv is None else argv)
+    if "--version" in args:
+        print(VERSION)
+        return 0
+    print("unsupported", file=sys.stderr)
+    return 2
+`;
+
+function git(cwd, args) {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
+  return result.stdout.trim();
+}
+
+function writeManagerFixture(dir, { withPackage = true, withMcp = true, brokenCli = false, brokenMcp = false } = {}) {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "worktree.sh"), "#!/bin/sh\nexit 0\n", "utf8");
+  fs.chmodSync(path.join(dir, "worktree.sh"), 0o755);
+  if (!withPackage) return;
+  const packageDir = path.join(dir, "worktree_manager");
+  fs.mkdirSync(packageDir, { recursive: true });
+  fs.writeFileSync(path.join(packageDir, "__init__.py"), '"""Fixture manager."""\n', "utf8");
+  fs.writeFileSync(path.join(packageDir, "__main__.py"), "from .cli import main\n\nraise SystemExit(main())\n", "utf8");
+  fs.writeFileSync(path.join(packageDir, "cli.py"), brokenCli
+    ? "raise RuntimeError('the CLI entrypoint is broken')\n"
+    : MANAGER_CLI_SOURCE, "utf8");
+  fs.writeFileSync(path.join(packageDir, "mcp_contract.py"),
+    'TOOL_NAMES = ("worktree_create", "worktree_complete", "worktree_cleanup", "worktree_recover", "worktree_list", "worktree_prune", "worktree_status")\n', "utf8");
+  fs.writeFileSync(path.join(packageDir, "mcp_operations.py"),
+    'def call(name, arguments):\n    return {"operation": name, "arguments": arguments}\n', "utf8");
+  if (!withMcp) return;
+  fs.writeFileSync(path.join(packageDir, "mcp_server.py"), brokenMcp
+    ? "raise RuntimeError('the MCP entrypoint is broken')\n"
+    : MANAGER_MCP_SERVER_SOURCE, "utf8");
+  fs.writeFileSync(path.join(packageDir, "mcp_transport.py"),
+    'from .mcp_server import main\n\nif __name__ == "__main__":\n    main()\n', "utf8");
+}
+
+/** Build a real repository whose manager is a submodule with its own gitlink. */
+function createManagerFixture(managerOptions = {}) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-manager-"));
+  fixtures.push(root);
+  const sourceDir = path.join(root, "manager-source");
+  writeManagerFixture(sourceDir, managerOptions);
+  git(sourceDir, ["init", "-q", "-b", "main"]);
+  git(sourceDir, ["add", "-A"]);
+  git(sourceDir, ["-c", "user.name=flowtask", "-c", "user.email=flowtask@example.invalid", "commit", "-q", "-m", "manager"]);
+
+  const parentDir = path.join(root, "flowtask");
+  fs.mkdirSync(path.join(parentDir, ".flowtask", "scripts"), { recursive: true });
+  git(parentDir, ["init", "-q", "-b", "main"]);
+  git(parentDir, ["-c", "protocol.file.allow=always", "submodule", "add", "-q", sourceDir, ".flowtask/scripts/worktree-manager"]);
+  git(parentDir, ["add", "-A"]);
+  git(parentDir, ["-c", "user.name=flowtask", "-c", "user.email=flowtask@example.invalid", "commit", "-q", "-m", "flowtask"]);
+
+  const flowtaskDir = path.join(parentDir, ".flowtask");
+  const pluginSource = path.join(flowtaskDir, "plugins", CONTEXT_CHECKPOINT_NAME);
+  fs.mkdirSync(pluginSource, { recursive: true });
+  fs.writeFileSync(path.join(pluginSource, "package.json"), JSON.stringify({ dependencies: { "@opencode/plugin": "2.0.27" } }), "utf8");
+  fs.writeFileSync(path.join(pluginSource, "index.ts"), "export {}\n", "utf8");
+  writeJson(path.join(flowtaskDir, "plugins", "flowtask-plugins.json"), [{
+    name: CONTEXT_CHECKPOINT_NAME, path: CONTEXT_CHECKPOINT_NAME, kind: "server",
+    destinations: ["opencode"], entrypoint: "index.ts",
+  }]);
+  return { root, parentDir, flowtaskDir, sourceDir };
+}
+
+function managerFixtureOptions() {
+  return {
+    ensureSource: async () => ({
+      sourceCommit: CONTEXT_CHECKPOINT_SHA,
+      sourceDir: path.join(fixtureFlowtaskDir, "plugins", CONTEXT_CHECKPOINT_NAME),
+    }),
+  };
+}
+
+let fixtureFlowtaskDir = "";
+
+test("the manager submodule is materialized at the recorded gitlink", () => {
+  const fixture = createManagerFixture();
+  const report = ensureWorktreeManagerSubmodule(fixture.flowtaskDir);
+  const recorded = git(fixture.parentDir, ["ls-files", "--stage", "--", ".flowtask/scripts/worktree-manager"])
+    .match(/^160000 ([0-9a-f]{40,64}) 0\t/)[1];
+  assert.equal(report.gitlink, recorded);
+  assert.equal(git(path.join(fixture.parentDir, ".flowtask", "scripts", "worktree-manager"), ["rev-parse", "HEAD"]), recorded);
+  assert.deepEqual(report.capabilities.transports, ["cli", "mcp"]);
+});
+
+test("an incorrect gitlink is reported without producing an alternative copy", () => {
+  const fixture = createManagerFixture();
+  const managerDir = path.join(fixture.parentDir, ".flowtask", "scripts", "worktree-manager");
+  // A gitlink that points at a commit the submodule does not know cannot be materialized.
+  git(fixture.parentDir, ["update-index", "--add", "--cacheinfo", "160000," + "1".repeat(40) + ",.flowtask/scripts/worktree-manager"]);
+  assert.throws(() => ensureWorktreeManagerSubmodule(fixture.flowtaskDir), /Worktree Manager submodule unavailable/i);
+  assert.equal(fs.existsSync(path.join(fixture.flowtaskDir, "scripts", "worktree-manager-core.sh")), false);
+  assert.equal(fs.existsSync(path.join(fixture.root, "worktree-manager")), false);
+  // The checkout is still a submodule and was never replaced by a payload copy.
+  assert.equal(fs.lstatSync(managerDir).isDirectory(), true);
+  assert.equal(git(fixture.parentDir, ["config", "--file", ".gitmodules", "--get", "submodule..flowtask/scripts/worktree-manager.path"]),
+    ".flowtask/scripts/worktree-manager");
+});
+
+test("a checkout that does not match the recorded gitlink is rejected", () => {
+  const fixture = createManagerFixture();
+  const managerDir = path.join(fixture.parentDir, ".flowtask", "scripts", "worktree-manager");
+  const recorded = git(managerDir, ["rev-parse", "HEAD"]);
+  assert.throws(() => verifyWorktreeManagerCheckout({ managerDir, expectedGitlink: "0".repeat(40) }),
+    /does not match the recorded gitlink/i);
+  assert.equal(verifyWorktreeManagerCheckout({ managerDir, expectedGitlink: recorded }), managerDir);
+});
+
+test("a missing required entrypoint is reported as a diagnostic", () => {
+  const fixture = createManagerFixture({ withPackage: false });
+  assert.throws(() => ensureWorktreeManagerSubmodule(fixture.flowtaskDir),
+    /Worktree Manager submodule unavailable.*missing required entrypoints.*__main__\.py/is);
+});
+
+test("an entrypoint that is not executable is reported as a diagnostic", () => {
+  const fixture = createManagerFixture();
+  const managerDir = path.join(fixture.parentDir, ".flowtask", "scripts", "worktree-manager");
+  fs.chmodSync(path.join(managerDir, "worktree.sh"), 0o644);
+  assert.throws(() => verifyWorktreeManagerCheckout({ managerDir }),
+    /not executable/i);
+});
+
+test("both transports are detected when the manager answers the CLI and MCP probes", () => {
+  const fixture = createManagerFixture();
+  const report = prepareWorktreeManager(fixture.flowtaskDir);
+  assert.deepEqual(report.capabilities.transports, ["cli", "mcp"]);
+  assert.equal(report.capabilities.cli.available, true);
+  assert.equal(report.capabilities.cli.version, "1.0.0");
+  assert.equal(report.capabilities.mcp.available, true);
+  assert.equal(report.capabilities.mcp.tools.length, 7);
+  assert.ok(report.capabilities.mcp.tools.includes("worktree_prune"));
+  assert.equal(report.capabilities.python.available, true);
+});
+
+test("the installation continues with the CLI and reports the MCP cause when the MCP entrypoints are missing", () => {
+  const fixture = createManagerFixture({ withMcp: false });
+  const report = prepareWorktreeManager(fixture.flowtaskDir);
+  assert.deepEqual(report.capabilities.transports, ["cli"]);
+  assert.equal(report.capabilities.cli.available, true);
+  assert.equal(report.capabilities.mcp.available, false);
+  assert.match(report.capabilities.mcp.cause, /missing MCP entrypoints/);
+  assert.match(report.capabilities.mcp.cause, /mcp_transport\.py/);
+});
+
+test("the installation continues with the MCP and reports the CLI cause when the CLI entrypoint is broken", () => {
+  const fixture = createManagerFixture({ brokenCli: true });
+  const report = prepareWorktreeManager(fixture.flowtaskDir);
+  assert.deepEqual(report.capabilities.transports, ["mcp"]);
+  assert.equal(report.capabilities.mcp.available, true);
+  assert.equal(report.capabilities.cli.available, false);
+  assert.match(report.capabilities.cli.cause, /broken/i);
+});
+
+test("the installation fails before writing the target when no transport is usable", () => {
+  const fixture = createManagerFixture({ brokenCli: true, brokenMcp: true });
+  const projectDir = path.join(fixture.root, "project");
+  fs.mkdirSync(projectDir, { recursive: true });
+  fs.writeFileSync(path.join(projectDir, "keep.txt"), "untouched\n", "utf8");
+  const before = treeDigest(projectDir);
+  assert.throws(() => prepareWorktreeManager(fixture.flowtaskDir), /no usable transport/i);
+  assert.equal(treeDigest(projectDir), before, "the target must not be written without a usable transport");
+  assert.equal(fs.readFileSync(path.join(projectDir, "keep.txt"), "utf8"), "untouched\n");
+});
+
+test("a transport is reported as available only when it answered a read-only probe", () => {
+  const fixture = createManagerFixture();
+  const managerDir = path.join(fixture.parentDir, ".flowtask", "scripts", "worktree-manager");
+  const capabilities = detectWorktreeManagerCapabilities(managerDir);
+  assert.equal(capabilities.cli.available, true);
+  assert.equal(capabilities.mcp.available, true);
+  // A configuration that declares a server is never the evidence of an operational transport.
+  const declared = { mcp: { "worktree-manager": { type: "local", command: ["worktree-manager"], enabled: true } } };
+  assert.equal(declared.mcp["worktree-manager"].enabled, true);
+  assert.equal(capabilities.mcp.available, true, "the capability comes from the probe, not from the declaration");
+});
+
+test("repeating the preparation preserves unrelated configuration, work state and permissions", async () => {
+  const fixture = createManagerFixture();
+  fixtureFlowtaskDir = fixture.flowtaskDir;
+  const projectDir = path.join(fixture.root, "project");
+  fs.mkdirSync(projectDir, { recursive: true });
+  writeJson(path.join(projectDir, ".opencode", "opencode.json"), {
+    $schema: "https://custom/schema.json",
+    mcp: { "unrelated-server": { type: "local", command: ["unrelated"], enabled: true } },
+    agent: { "flowtask-runner": { permissions: canonicalRunnerPermission } },
+  });
+  fs.writeFileSync(path.join(projectDir, ".worktree-manager.conf"), "[manager]\nbase = main\n", "utf8");
+  fs.mkdirSync(path.join(projectDir, ".worktrees", "wt-1"), { recursive: true });
+  fs.writeFileSync(path.join(projectDir, ".worktrees", "wt-1", "state.json"), "{}\n", "utf8");
+  fs.mkdirSync(path.join(projectDir, ".git", "state", "transactions"), { recursive: true });
+  fs.writeFileSync(path.join(projectDir, ".git", "state", "transactions", "tx-1.json"), "{}\n", "utf8");
+  fs.mkdirSync(path.join(projectDir, ".git", "backups"), { recursive: true });
+  fs.writeFileSync(path.join(projectDir, ".git", "backups", "backup-1"), "backup\n", "utf8");
+  const before = treeDigest(projectDir);
+
+  const first = prepareWorktreeManager(fixture.flowtaskDir);
+  const installDescriptor = await prepareInstallation(fixture.flowtaskDir, projectDir, "install", {
+    targets: [{ id: "standalone", ideDir: "", targetSubDir: ".flowtask" }],
+    worktreeManager: first,
+    ...managerFixtureOptions(),
+  });
+  const second = prepareWorktreeManager(fixture.flowtaskDir);
+  const updateDescriptor = await prepareInstallation(fixture.flowtaskDir, projectDir, "update", {
+    targets: [{ id: "standalone", ideDir: "", targetSubDir: ".flowtask" }],
+    worktreeManager: second,
+    ...managerFixtureOptions(),
+  });
+
+  assert.deepEqual(second.capabilities.transports, first.capabilities.transports);
+  assert.deepEqual(installDescriptor.worktreeManager.capabilities.transports, first.capabilities.transports);
+  assert.deepEqual(updateDescriptor.worktreeManager.capabilities.transports, first.capabilities.transports);
+  assert.equal(treeDigest(projectDir), before, "the preparation must not change the project");
+  const config = readJson(path.join(projectDir, ".opencode", "opencode.json"));
+  assert.deepEqual(Object.keys(config.mcp), ["unrelated-server"]);
+  assert.deepEqual(config.agent["flowtask-runner"].permissions, canonicalRunnerPermission);
+});
+
+test("the manager is never copied into an installation target", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-manager-copy-"));
+  fixtures.push(root);
+  const source = path.join(root, "source");
+  const target = path.join(root, "target");
+  fs.mkdirSync(path.join(source, "worktree-manager"), { recursive: true });
+  fs.writeFileSync(path.join(source, "worktree-manager", "worktree.sh"), "#!/bin/sh\n", "utf8");
+  fs.writeFileSync(path.join(source, "worktree.sh"), "#!/bin/sh\n", "utf8");
+  copyDirectoryDelta(source, target);
+  assert.equal(fs.existsSync(path.join(target, "worktree-manager")), false);
+  assert.equal(fs.existsSync(path.join(target, "worktree.sh")), true);
+});
+
+test("the manager is not registered as a consumer server and no permission is widened", () => {
+  const source = path.resolve(path.dirname(FLOWTASK_CLI), "..");
+  const flowtaskConfig = JSON.parse(fs.readFileSync(path.join(source, "..", "opencode.json"), "utf8"));
+  assert.equal(Object.keys(flowtaskConfig.mcp ?? {}).includes("worktree-manager"), false);
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-manager-server-"));
+  fixtures.push(root);
+  const targetConfig = path.join(root, "opencode.json");
+  writeJson(targetConfig, {
+    $schema: "https://custom/schema.json",
+    mcp: { "unrelated-server": { type: "local", command: ["unrelated"], enabled: true } },
+    agent: { "flowtask-runner": { permissions: canonicalRunnerPermission } },
+  });
+  mergeOpencodeConfig(targetConfig, source, ".opencode");
+  const merged = readJson(targetConfig);
+  assert.deepEqual(Object.keys(merged.mcp), ["unrelated-server", "engram", "ferris-search"]);
+  assert.equal(Object.keys(merged.mcp).includes("worktree-manager"), false);
+  assert.deepEqual(merged.agents["flowtask-runner"].permissions, canonicalRunnerPermission);
+  assert.equal(JSON.stringify(merged).includes("worktree-manager"), false);
+});
+
+test("the real manager checkout is detected as operational when it is materialized", (t) => {
+  const source = path.resolve(path.dirname(FLOWTASK_CLI), "..");
+  const managerDir = path.join(source, "scripts", "worktree-manager");
+  if (!fs.existsSync(path.join(managerDir, "worktree_manager", "mcp_transport.py"))) {
+    t.skip("the manager submodule is not materialized in this checkout");
+    return;
+  }
+  const capabilities = detectWorktreeManagerCapabilities(managerDir);
+  assert.deepEqual(capabilities.transports, ["cli", "mcp"]);
+  assert.equal(capabilities.mcp.tools.length, 7);
 });
