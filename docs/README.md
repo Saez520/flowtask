@@ -16,6 +16,7 @@ Esta carpeta separa operación vigente de diseños retirados. La fuente de verda
 - [Worktrees](./architecture/worktree.md)
 - [Worktree Manager documentation](./worktree-manager/README.md) — English inventory, interfaces, operations, compatibility, and release procedure.
 - [Evidencia del gestor de worktrees](./operations/worktree-phase-8/README.md) — procedencia, snapshot, matriz de transporte y digests.
+- [Evidencia de la retirada del acoplamiento legacy](./operations/worktree-phase-9/README.md) — gate de entrada, compatibilidad declarada, snapshot y digests.
 - [Skills](./architecture/integracion-skills.md)
 
 ## Histórico

@@ -5,8 +5,8 @@ Este índice contiene referencias actuales, no un snapshot Repomix. Los diseños
 ## Referencias operativas
 
 - [handshake.md](./handshake.md) — identidad, continuidad y checkpoints; contrastar con `.flowtask/agents/runner.md` y `handshake-protocol`.
-- [worktree.md](./worktree.md) — create, complete, cleanup, recover, prune, list y target-direct; contrastar con `.flowtask/scripts/worktree.sh` y `lib/`.
-- [Documento auxiliar del script worktree](../../.flowtask/scripts/worktree.md) — arquitectura detallada del gestor; es documentación y no un entrypoint ejecutable.
+- [worktree.md](./worktree.md) — create, complete, cleanup, recover, prune, list y target-direct; contrastar con `.flowtask/scripts/worktree.sh` y `.flowtask/scripts/worktree-manager/`.
+- [Evidencia de la retirada del acoplamiento legacy](../operations/worktree-phase-9/README.md) — gate de entrada, compatibilidad declarada, snapshot y digests de la fase.
 - [integracion-skills.md](./integracion-skills.md) — carga directa desde `.flowtask/skills` mediante `skill({ name: ... })`.
 - [Worktree Manager documentation](../worktree-manager/README.md) — English architecture and release documentation for the implemented manager.
 

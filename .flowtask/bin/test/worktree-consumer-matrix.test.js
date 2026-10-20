@@ -93,6 +93,8 @@ function stateOf(repo) {
     refs: git(repo, "for-each-ref", "--format=%(refname) %(objectname)"),
     worktrees: git(repo, "worktree", "list", "--porcelain"),
     state_files: stateFiles(repo),
+    legacy_backups_exists: fs.existsSync(path.join(repo, ".flowtask", "backups")),
+    legacy_backup_refs: git(repo, "for-each-ref", "refs/flowtask/backups", "--format=%(refname)").trim(),
   };
 }
 
@@ -357,6 +359,8 @@ async function runCell(transport, repoName, caseName) {
       "the wrapper plans once and executes once",
     );
     assert.deepEqual(after.other, before.other, "the other repository must not change");
+    assert.equal(after.target.legacy_backups_exists, false, `${caseName} must not create the legacy backup directory`);
+    assert.equal(after.target.legacy_backup_refs, "", `${caseName} must not create the legacy backup references`);
 
     if (caseName === "happy") {
       assert.equal(result.status, "success");

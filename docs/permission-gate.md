@@ -195,6 +195,13 @@ incierto y la siguiente acción es reconciliar la operación antes de cualquier
 nuevo intento. El reporte de cada fase nombra la operación, el trabajo, el
 repositorio, la vía, el resultado, la causa y la siguiente acción.
 
+### Formas administrativas por shell
+
+Las formas `${FLOWTASK_SCRIPTS}/worktree.sh` con `list`, `create`, `prune`,
+`complete` y `cleanup` son administrativas: ejecutan el mismo gestor canónico
+y no son la vía del asistente. El Runner consume el gestor con
+`flowtask_worktree_consume`, y el gate no amplía la allowlist de bash.
+
 ### Protocolo de request por shell
 
 `--request-json` no está autorizado por shell: `${FLOWTASK_SCRIPTS}/worktree.sh`

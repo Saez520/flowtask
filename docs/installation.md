@@ -83,6 +83,28 @@ verificación del checkout sin duplicar nada y preservan `.worktree-manager.conf
 `opencode.json`, los servidores ajenos, `.worktrees`, los journals, los backups
 y las asociaciones registradas.
 
+### Compatibilidad con instalaciones anteriores
+
+La entrada `worktree.sh` y el adaptador de compatibilidad siguen disponibles.
+La configuración genérica manda: la ruta pasada con `--config` y el archivo
+`.worktree-manager.conf` se aplican en ese orden, y la ruta explícita excluye
+cualquier lectura de la configuración anterior.
+
+El archivo `.flowtask/config/worktree.json` es un dato de solo lectura. Se
+interpreta únicamente en dos peticiones: un `complete --preserve-dirty` sin
+`--config`, que traduce su valor `preserveDirty` a `preserve_dirty=true` y
+declara la compatibilidad aplicada por stderr; y un `recover` explícito, que
+importa una transacción anterior al estado canónico una sola vez. Una
+configuración anterior inválida bloquea la operación con el código 3 y no
+muta nada. La recuperación nunca copia el estado canónico de vuelta.
+
+Un conflicto de identidad entre la transacción canónica y la anterior bloquea
+la operación con el código 5 y conserva ambos registros. Las instalaciones
+nuevas no activan ninguna ruta anterior: no se crean espejos de respaldos ni
+referencias heredadas. No se anuncia publicación, ni retirada definitiva del
+punto de entrada, ni compatibilidad ilimitada; la fase de deprecación es
+posterior.
+
 La instalación no amplía permisos. El asistente consume el gestor con la
 herramienta `flowtask_worktree_consume`; el protocolo de request del gestor no
 está autorizado por shell. Ver

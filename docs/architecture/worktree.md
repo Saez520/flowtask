@@ -19,10 +19,25 @@ This document describes only the integration with FlowTask.
 The consumer implementation is `.flowtask/bin/lib/worktree-consumer-adapter.js`; its validation contract is `.flowtask/bin/lib/worktree-consumer-contract.js`.
 
 `.flowtask/scripts/worktree.sh` is the consumer entrypoint and delegates to
-`.flowtask/scripts/worktree-adapter.sh`. The adapter preserves compatibility
-with legacy FlowTask invocations and records, and translates those records
-only during recovery. The standalone does not know about FlowTask or inspect
-its legacy paths or refs.
+`.flowtask/scripts/worktree-adapter.sh`, which delegates to the canonical
+manager. There is no parallel engine.
+
+The configuration precedence is explicit: the path passed with `--config`
+first, then `.worktree-manager.conf`. The file `.flowtask/config/worktree.json`
+is a legacy read-only datum. It is interpreted only for a `complete
+--preserve-dirty` without `--config`, where its `preserveDirty` value is
+translated to `preserve_dirty=true` and the applied compatibility is declared
+on stderr, and for an explicit `recover`, where a legacy transaction is
+imported into the canonical state once. An explicit `--config` never reads the
+legacy file, an invalid legacy configuration blocks the operation with exit
+code 3, and a conflict of identity blocks it with exit code 5 while both
+records are preserved. The canonical state is never copied back, and no
+operation writes a legacy backup directory or a legacy backup reference.
+
+The variables `FLOWTASK_*` are inert: they do not change the configuration,
+the authorization or the execution. The controls of the standalone tests are
+`WORKTREE_MANAGER_TEST_*`. The standalone does not know about FlowTask or
+inspect its legacy paths or refs.
 
 The installer validates the gitlink, materializes the submodule before copying
 assets, and excludes the manager from the generic copy. If the source is not
