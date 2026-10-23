@@ -345,22 +345,51 @@ export function isAuthorizedRunnerCommand(command) {
             if (tokens[1] === "create") {
                 return tokens.length === 5 && Boolean(tokens[2]) && tokens[3] === "--base" && Boolean(tokens[4]);
             }
-            // `complete` and `cleanup` share the shape "<id> [--base <branch>] [own-flag]"
-            // but each one owns a different trailing flag.  Keeping them in a single
-            // table avoids the trap of accepting `complete --discard` (public discard
-            // belongs to cleanup only) or `cleanup --preserve-dirty`.
-            const ownFlag = { complete: "--preserve-dirty", cleanup: "--discard" };
-            if (ownFlag[tokens[1]] !== undefined && Boolean(tokens[2]) && tokens[2] !== "--base") {
+            if (tokens[1] === "complete") {
+                if (!Boolean(tokens[2]) || tokens[2] === "--base" || tokens[2].startsWith("--"))
+                    return false;
                 const args = tokens.slice(3);
-                const flag = ownFlag[tokens[1]];
+                const seen = new Set();
+                let i = 0;
+                while (i < args.length) {
+                    const flag = args[i];
+                    if (flag === "--preserve-dirty") {
+                        if (seen.has(flag))
+                            return false;
+                        seen.add(flag);
+                        i += 1;
+                        continue;
+                    }
+                    if (flag === "--base" || flag === "--title" || flag === "--body") {
+                        if (seen.has(flag))
+                            return false;
+                        if (i + 1 >= args.length)
+                            return false;
+                        const value = args[i + 1];
+                        if (!value || value.startsWith("--"))
+                            return false;
+                        seen.add(flag);
+                        i += 2;
+                        continue;
+                    }
+                    return false;
+                }
+                return true;
+            }
+            if (tokens[1] === "cleanup") {
+                if (!Boolean(tokens[2]) || tokens[2] === "--base" || tokens[2].startsWith("--"))
+                    return false;
+                const args = tokens.slice(3);
+                const ownFlag = "--discard";
                 if (args.length === 0)
                     return true;
-                if (args.length === 1 && args[0] === flag)
+                if (args.length === 1 && args[0] === ownFlag)
                     return true;
                 if (args.length === 2 && args[0] === "--base" && Boolean(args[1]))
                     return true;
-                if (args.length === 3 && args[0] === "--base" && Boolean(args[1]) && args[2] === flag)
+                if (args.length === 3 && args[0] === "--base" && Boolean(args[1]) && args[2] === ownFlag)
                     return true;
+                return false;
             }
             return false;
         }

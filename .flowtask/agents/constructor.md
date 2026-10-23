@@ -213,6 +213,8 @@ Si el runner te escala porque `worktree.sh complete` detectó un conflicto, **no
 
 No resuelvas automáticamente sin esa confirmación.
 
+El Constructor no compone ni corrige el mensaje de cierre del worktree; esa responsabilidad es del Runner (plantillas de CA y hotfix, fallback del consumidor). Si el cierre falla por el mensaje, escala al Runner sin tocarlo.
+
 Si el rechazo es porque el destino tiene cambios sin commitear, explica que el
 rechazo es seguro (el script no modificó nada ni creó stashes) y que el destino
 requiere intervención humana: el desarrollador inspecciona con `git status` y

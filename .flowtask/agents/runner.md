@@ -735,7 +735,7 @@ Despacha el Validator con el mismo contexto. El Validator persiste
 `hotfix/{id}/artifact/validacion` y su flow-state separado. Los rechazos siguen el
 Loop de validación común, incluidos el diagnóstico posterior, la pausa por sus
 condiciones y cualquier límite expreso propio de la ejecución. Con APPROVED hacé el commit antes de
-`${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch} [--init-submodules]`.
+`${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch} [--init-submodules] [--title TEXTO] [--body TEXTO]`.
 Un conflicto conserva worktree y branch y se escala sin limpiar; un rechazo por
 destino con cambios sin commitear también conserva todo intacto, se escala al
 desarrollador y solo procede con `--preserve-dirty` si hay consentimiento
@@ -1047,7 +1047,7 @@ Cuando el validator apruebe y el CA tenga worktree asociado, el Runner solicita
 al adapter la operación `complete` con la misma identidad, base y transporte
 registrados. El gestor standalone ejecuta el lifecycle; antes de completarlo:
 
-1. Hacé el commit antes de `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID> --base {base_branch_detectada}`.
+1. Hacé el commit antes de `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID> --base {base_branch_detectada} [--title TEXTO] [--body TEXTO]`.
 2. El adapter invoca `complete` en el transporte seleccionado (sin fallback), con la base previamente registrada.
 3. Si completa bien, el gestor hace squash-merge a la rama base detectada y limpia el worktree/branch.
 4. Si `complete` falla por conflicto, **no limpies** el worktree.
@@ -1058,6 +1058,25 @@ registrados. El gestor standalone ejecuta el lifecycle; antes de completarlo:
 9. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
 
 ***
+
+### Mensaje de cierre
+
+El Runner compone el título y el cuerpo desde el CA o el hotfix; el consumidor
+aporta el fallback en español si no hay fuente. Usá `worktree.sh complete
+<id> --base <rama> --title "..." --body "..."` o
+`flowtask_worktree_consume` con `commit_title`/`commit_body`. Plantillas:
+
+- CA — Título: título del artifact del CA. Cuerpo: `Entrega: <resumen>. Motivo:
+  <problema>. Verificación: <APPROVED del Validator, ronda closure>.`
+- Hotfix — Título: `Correccion: <problema acordado>`. Cuerpo: `Causa:
+  <diagnóstico>. Verificación: <APPROVED>.`
+
+El gestor agrega ` [work_id]` si el título no contiene el ID. El Runner no
+incluye rutas, branches, `squash merge` ni mecanismo interno. Si no hay fuente
+diciente, omití las flags y el consumidor inyecta el fallback:
+`Cierre generico de <work_id>` / `No habia una descripcion de la entrega
+disponible al momento del cierre.`. No se agrega ninguna aprobación nueva.
+
 
 ### Loop de validación
 
