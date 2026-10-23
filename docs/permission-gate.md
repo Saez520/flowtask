@@ -157,6 +157,7 @@ Las formas administrativas seguras existentes conservan sus restricciones:
 - `${FLOWTASK_SCRIPTS}/worktree.sh create <id> --base <branch>`
 - `${FLOWTASK_SCRIPTS}/worktree.sh prune`
 - `${FLOWTASK_SCRIPTS}/worktree.sh complete <id>` o con `--base <branch>` opcional
+- `${FLOWTASK_SCRIPTS}/worktree.sh complete <id> --base <branch> --title "..." --body "..."` (título y cuerpo del commit de cierre)
 - `${FLOWTASK_SCRIPTS}/worktree.sh complete <id> --preserve-dirty` o con
   `--base <branch> --preserve-dirty`, únicamente tras consentimiento humano
 - `${FLOWTASK_SCRIPTS}/worktree.sh cleanup <id>` o con `--discard` y/o

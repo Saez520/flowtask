@@ -35,7 +35,7 @@ while [[ $index -lt ${#args[@]} ]]; do
       index=$((index + 2));;
     --target) index=$((index + 2));;
     --*) index=$((index + 1));;
-    *) operation="$token"; break;;
+    *) operation="$token"; work_id_index=$((index + 1)); work_id="${args[$work_id_index]:-}"; break;;
   esac
 done
 
@@ -207,6 +207,19 @@ if [[ "$operation" == "recover" && $target_direct -eq 0 && -n "$repo" && -n "$re
       done
       notice "Compatibility: legacy FlowTask transaction $transaction imported for recovery."
     fi
+  fi
+fi
+
+# The consumer supplies the Spanish fallback when complete has no title flag.
+if [[ "$operation" == "complete" ]]; then
+  has_title=0
+  for token in "${args[@]}"; do
+    case "$token" in
+      --title|--title=*) has_title=1;;
+    esac
+  done
+  if [[ $has_title -eq 0 && -n "${work_id:-}" && "${work_id}" != -* ]]; then
+    args+=(--title "Cierre generico de ${work_id}" --body "No habia una descripcion de la entrega disponible al momento del cierre.")
   fi
 fi
 

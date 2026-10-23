@@ -123,6 +123,8 @@ test("matches canonical Runner commands structurally", () => {
     "./.opencode/flowtask/scripts/worktree.sh create wt-1 --base main",
      "./.claude/flowtask/scripts/worktree.sh complete wt-1 --base main",
      "./.flowtask/scripts/worktree.sh complete wt-1 --base main",
+     './.flowtask/scripts/worktree.sh complete wt-1 --base main --title "Cierre" --body "Motivo"',
+     './.flowtask/scripts/worktree.sh complete wt-1 --title "Cierre" --body "Motivo" --base main',
      "./.flowtask/scripts/worktree.sh complete wt-1 --preserve-dirty",
      "./.flowtask/scripts/worktree.sh complete wt-1 --base main --preserve-dirty",
      "./.flowtask/scripts/worktree.sh cleanup wt-1",
@@ -225,6 +227,9 @@ test("rejects malformed, mixed and dangerous commands", () => {
      "./.flowtask/scripts/worktree.sh --repo /tmp/repo list",
      "./.flowtask/scripts/worktree.sh complete wt-1 --discard",
      "./.flowtask/scripts/worktree.sh cleanup wt-1 --preserve-dirty",
+     './.flowtask/scripts/worktree.sh cleanup wt-1 --title "x"',
+     './.flowtask/scripts/worktree.sh create wt-1 --title "x"',
+     "./.flowtask/scripts/worktree.sh complete wt-1 --title",
      "./.flowtask/scripts/worktree.sh create wt-1 --base main --prepare",
      // El protocolo de request es exclusivo del consumidor: el runner no lo publica.
      "./.flowtask/scripts/worktree.sh --request-json -",

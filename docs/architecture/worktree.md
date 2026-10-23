@@ -18,6 +18,8 @@ This document describes only the integration with FlowTask.
 
 The consumer implementation is `.flowtask/bin/lib/worktree-consumer-adapter.js`; its validation contract is `.flowtask/bin/lib/worktree-consumer-contract.js`.
 
+The closure commit carries a descriptive subject and body (`--title`/`--body` or `commit_title`/`commit_body`); the consumer injects the Spanish generic fallback when no title is supplied.
+
 `.flowtask/scripts/worktree.sh` is the consumer entrypoint and delegates to
 `.flowtask/scripts/worktree-adapter.sh`, which delegates to the canonical
 manager. There is no parallel engine.

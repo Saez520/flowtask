@@ -187,7 +187,7 @@ RUNNER clasifica ── ¿existe el CA en Engram?
               │                          recuperación operativa o pausa
               │
               ▼ APPROVED con final=true
-        [10] CIERRE ── commit → worktree.sh complete (squash-merge a la base)
+        [10] CIERRE ── commit → worktree.sh complete (squash-merge a la base, con --title/--body dicientes)
               → ca_status: closed + purga de task_id huérfanos + session summary
 ```
 

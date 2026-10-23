@@ -565,3 +565,48 @@ test("the persisted transport selection is not changed by a later operation", as
   assert.equal(after.filter((entry) => entry.transport === "mcp").length, 0, "the other transport is not used");
   retireWorktree(repo, "persisted-cli");
 });
+
+test("complete transports commit_title and commit_body and injects the spanish fallback when they are absent", async () => {
+  const repo = repositories.A;
+  const workId = "matrix-commit-title";
+  retireWorktree(repo, workId);
+  const createTitle = await createWorktreeCliClient({ managerDirectory: MANAGER }).invoke({ operation: "worktree_create", repo, work_id: workId, base: "main" });
+  assert.equal(createTitle.envelope.result, "success");
+  const titleWorktree = path.join(repo, ".worktrees", workId);
+  fs.writeFileSync(path.join(titleWorktree, `${workId}.txt`), "change\n");
+  git(titleWorktree, "add", `${workId}.txt`);
+  git(titleWorktree, "commit", "-qm", "matrix change");
+  const consumer = createConsumer();
+  const result = await consumer.adapter.execute({
+    operation: "complete", repo_root: repo, work_id: workId, base: "main",
+    confirm: true, authorization: AUTHORIZATION, transport: "cli",
+    commit_title: "Cierre de prueba", commit_body: "Entrega: prueba. Motivo: verificacion.",
+  });
+  assert.equal(result.status, "success");
+  const preflight = callFor(consumer.calls, "preflight");
+  const execute = callFor(consumer.calls, "execute");
+  assert.equal(preflight.context.document.commit_title, "Cierre de prueba");
+  assert.equal(execute.context.document.commit_title, "Cierre de prueba");
+  assert.equal(preflight.context.document.commit_body, "Entrega: prueba. Motivo: verificacion.");
+  assert.equal(execute.context.document.commit_body, "Entrega: prueba. Motivo: verificacion.");
+  retireWorktree(repo, workId);
+
+  const fallbackWorkId = "matrix-commit-fallback";
+  retireWorktree(repo, fallbackWorkId);
+  const createFallback = await createWorktreeCliClient({ managerDirectory: MANAGER }).invoke({ operation: "worktree_create", repo, work_id: fallbackWorkId, base: "main" });
+  assert.equal(createFallback.envelope.result, "success");
+  const fallbackWorktree = path.join(repo, ".worktrees", fallbackWorkId);
+  fs.writeFileSync(path.join(fallbackWorktree, `${fallbackWorkId}.txt`), "change\n");
+  git(fallbackWorktree, "add", `${fallbackWorkId}.txt`);
+  git(fallbackWorktree, "commit", "-qm", "matrix change");
+  const fallbackConsumer = createConsumer();
+  const fallbackResult = await fallbackConsumer.adapter.execute({
+    operation: "complete", repo_root: repo, work_id: fallbackWorkId, base: "main",
+    confirm: true, authorization: AUTHORIZATION, transport: "cli",
+  });
+  assert.equal(fallbackResult.status, "success");
+  const fallbackPreflight = callFor(fallbackConsumer.calls, "preflight");
+  assert.equal(fallbackPreflight.context.document.commit_title, `Cierre generico de ${fallbackWorkId}`);
+  assert.equal(fallbackPreflight.context.document.commit_body, "No habia una descripcion de la entrega disponible al momento del cierre.");
+  retireWorktree(repo, fallbackWorkId);
+});

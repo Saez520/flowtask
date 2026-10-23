@@ -190,3 +190,5 @@ A worktree whose association cannot be registered is reported as blocked
 before any mutation. A worktree that was created and whose association could
 not be confirmed is reported as blocked with the effect confirmed and the
 resource preserved, so that the operator can reconcile it.
+
+Closure commits use `commit_title`/`commit_body` (or `--title`/`--body`); the consumer injects the Spanish generic fallback when they are absent.

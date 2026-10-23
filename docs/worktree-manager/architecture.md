@@ -33,6 +33,7 @@ where they need a subprocess outside that wrapper.
 | `worktree_manager.state_digest` | Canonical digest of the repository state and of a plan |
 | `worktree_manager.mcp_server` | MCP service published over stdio |
 | `worktree_manager.mcp_contract` | Strict, versioned request and envelope contracts |
+| `worktree_manager.commit_message` | Deterministic composition of closure commit subject and body, including the neutral fallback |
 | `worktree_manager.mcp_operations` | Façade over the lifecycle and the recovery services |
 | `worktree_manager.mcp_transport` | Entry point of the stdio transport |
 

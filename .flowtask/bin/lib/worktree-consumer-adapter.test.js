@@ -370,3 +370,32 @@ test("keeps the identity of a repository that is reached through a symbolic link
   assert.equal(status.status, "success");
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+test("complete operation carries commit_title and commit_body in preflight and execute", async () => {
+  const { adapter, calls } = fixture();
+  const result = await adapter.execute(input({ operation: "complete", confirm: true, authorization: "I_AUTHORIZE_THIS_CALL", commit_title: "Titulo", commit_body: "Cuerpo" }));
+  assert.equal(result.status, "success");
+  const cliCalls = calls.filter(([kind]) => kind === "cli").map(([, request]) => request);
+  assert.equal(cliCalls.length, 2);
+  assert.equal(cliCalls[0].commit_title, "Titulo");
+  assert.equal(cliCalls[0].commit_body, "Cuerpo");
+  assert.equal(cliCalls[1].commit_title, "Titulo");
+  assert.equal(cliCalls[1].commit_body, "Cuerpo");
+});
+
+test("complete operation injects spanish fallback when commit_title is absent", async () => {
+  const { adapter, calls } = fixture();
+  const result = await adapter.execute(input({ operation: "complete", confirm: true, authorization: "I_AUTHORIZE_THIS_CALL" }));
+  assert.equal(result.status, "success");
+  const cliCalls = calls.filter(([kind]) => kind === "cli").map(([, request]) => request);
+  assert.equal(cliCalls[0].commit_title, "Cierre generico de alpha_1");
+  assert.equal(cliCalls[0].commit_body, "No habia una descripcion de la entrega disponible al momento del cierre.");
+});
+
+test("commit_title is rejected outside complete", async () => {
+  const { adapter } = fixture();
+  await assert.rejects(
+    adapter.execute(input({ commit_title: "Titulo" })),
+    (error) => error instanceof TypeError,
+  );
+});
