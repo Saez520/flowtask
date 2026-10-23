@@ -28,12 +28,6 @@ Comandos del entorno instalado: `/init-types`, `/init-data`, `/init-business`, `
 4. Consultá [docs/permission-gate.md](docs/permission-gate.md) para permisos y review-stamps.
 5. Consultá [docs/project-history.md](docs/project-history.md) para elementos retirados o legacy.
 
-## Límites importantes
-
-- `flowtask graphify query` es un shim histórico: no consulta localmente. La vía vigente es Graphify por MCP; si no está disponible, el flujo declara degradación y usa búsqueda normal.
-- Los artifacts nuevos se persisten en Engram; los archivos locales antiguos son compatibilidad histórica.
-- La documentación editorial no reemplaza los contratos ejecutables bajo `.flowtask`.
-
 ## Estructura mínima
 
 `.flowtask/` — fuente canónica del CLI, contratos y plugins.
