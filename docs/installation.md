@@ -79,39 +79,35 @@ flowtask update --persona senior
 
 ## Worktree Manager
 
-El gestor de worktrees se integra como submódulo en
-`.flowtask/scripts/worktree-manager/`. El gitlink registrado en el árbol del
-consumidor es la referencia: no se mantiene una copia local del núcleo y el
-gestor no se copia al target instalado.
+El gestor de worktrees se publica una sola vez a nivel global del usuario en
+el directorio global de FlowTask (`$XDG_CONFIG_HOME/flowtask/worktree-manager`
+o `~/.config/flowtask/worktree-manager`; en Windows `%APPDATA%/FlowTask/worktree-manager`).
+El submódulo `.flowtask/scripts/worktree-manager/` sigue siendo la fuente de la copia;
+el target consumidor no recibe copia del gestor ni del submódulo.
 
-El instalador verifica el gitlink y los entrypoints obligatorios antes de
-copiar recursos: `worktree.sh` y `worktree_manager/__main__.py` para la línea de
-comandos, y `mcp_transport.py`, `mcp_server.py`, `mcp_contract.py` y
-`mcp_operations.py` para el transporte MCP. Si el checkout no coincide con el
-gitlink o le falta un entrypoint, la instalación falla con un diagnóstico; no
-se crea una copia alternativa.
+El instalador publica una copia gestionada con un marcador de ownership
+(`.flowtask-worktree-manager-owner.json`) que registra la versión, el commit de
+origen y el manifiesto de archivos gestionados. La clasificación del destino es
+`ABSENT`, `MANAGED`, `EXTERNAL` o `AMBIGUOUS`; solo los dos primeros se publican.
+Un destino `EXTERNAL` o `AMBIGUOUS` falla de forma cerrada sin modificarlo.
 
-El instalador sondea dos capacidades y las reporta por separado:
+`flowtask update` sobrescribe la copia gestionada, avisa solo cuando cambia la
+versión, preserva los archivos no gestionados y elimina únicamente los archivos
+del manifiesto previo que ya no existen. Un archivo no gestionado con el mismo
+nombre que uno gestionado se sobrescribe porque pertenece al manifiesto.
 
-| Capacidad | Sonda de solo lectura | Resultado esperado |
-| --- | --- | --- |
-| CLI | `python3 -m worktree_manager --version` | versión del gestor |
-| MCP | `python3 -m worktree_manager.mcp_transport` con `initialize` y `tools/list` | las siete tools: `worktree_create`, `worktree_complete`, `worktree_cleanup`, `worktree_recover`, `worktree_list`, `worktree_prune`, `worktree_status` |
+El consumo resuelve la copia en este orden: instalación global, repositorio del
+consumidor, directorio de sesión. Un checkout válido exige
+`worktree_manager/__main__.py` y `worktree_manager/mcp_transport.py`. Si ninguna
+ubicación es válida, la operación falla con un mensaje que nombra la ruta global
+esperada y la acción `flowtask install`.
 
-La sonda es local, no escribe en el checkout, no instala dependencias y
-dispone de un límite de 5 segundos por detección.
+El puente autorizado `flowtask_worktree_consume` sigue siendo la única superficie
+expuesta al asistente; no se agrega una entrada MCP pública del gestor al
+`opencode.json` global y no se publica el gestor en ningún registro.
 
-- **Ambas operativas:** la instalación continúa y las dos vías quedan
-  disponibles.
-- **Una sola operativa:** la instalación continúa y se reporta la capacidad
-  ausente con su causa; el consumidor sigue operando por la vía disponible.
-- **Ninguna operativa:** la instalación falla antes de escribir en el target y
-  informa la causa de cada vía.
-
-`install` y `update` son idempotentes respecto del gestor: repiten la
-verificación del checkout sin duplicar nada y preservan `.worktree-manager.conf`,
-`opencode.json`, los servidores ajenos, `.worktrees`, los journals, los backups
-y las asociaciones registradas.
+Si la máquina no tiene Python compatible (piso 3.9), la instalación completa se
+bloquea con diagnóstico y salida no exitosa, sin dejar estado a medias.
 
 ### Compatibilidad con instalaciones anteriores
 

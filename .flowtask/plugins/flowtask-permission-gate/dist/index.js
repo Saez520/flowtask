@@ -1,11 +1,12 @@
 import { tool } from "@opencode-ai/plugin";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, isAuthorizedWorktreeConsumer, WORKTREE_CONSUMER_TOOL, } from "./authorizer.js";
 import { createWorktreeConsumerBridge } from "./worktree-consumer-bridge.js";
 import { createConfiguredEngramInvoker } from "./engram-mcp.js";
 import { createWorktreeMcpClient } from "./worktree-mcp.js";
+import { resolveWorktreeManagerLocation, missingManagerCause } from "./worktree-manager-location.js";
 import { buildLayerBlockMessage, readOperationalLayers } from "./layers.js";
 import { buildAttachmentDelivery, buildDegradationMetadata, buildNarrowingNotice, buildReducedDelivery, isImageOrPdfOutput, loadContextBudgetConfig, registerNarrowingNotice, resetNarrowingNotices, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
 /** The nine keys published by the worktree manager for every accepted and rejected request. */
@@ -338,12 +339,12 @@ export default async function (input) {
      * repository owns its own copy; the session copy is the fallback for a
      * repository that does not carry the manager.
      */
+    const resolveManagerLocation = (repoRoot) => resolveWorktreeManagerLocation({ repoRoot, sessionDir, env: process.env });
     const managerDirectoryFor = (repoRoot) => {
-        const local = resolve(repoRoot, ".flowtask/scripts/worktree-manager");
-        if (existsSync(local))
-            return local;
-        return resolve(sessionDir, ".flowtask/scripts/worktree-manager");
+        const location = resolveManagerLocation(repoRoot);
+        return location ? location.directory : null;
     };
+    const missingCauseFor = (repoRoot) => missingManagerCause({ repoRoot, sessionDir, env: process.env });
     const worktreeConsumer = createWorktreeConsumerBridge({
         invokeEngram: createConfiguredEngramInvoker(sessionDir),
         isDirectory: (path) => { try {
@@ -355,6 +356,10 @@ export default async function (input) {
         listLocalBranches: (repoRoot) => execFileSync("git", ["branch", "--format=%(refname:short)"], { cwd: repoRoot, encoding: "utf8" }).split(/\r?\n/).filter(Boolean),
         detectTransport: async ({ repoRoot }) => {
             const managerDirectory = managerDirectoryFor(repoRoot);
+            if (!managerDirectory) {
+                const cause = missingCauseFor(repoRoot);
+                return { cli: { available: false, cause }, mcp: { available: false, cause } };
+            }
             const cli = await createWorktreeCliClient({ managerDirectory }).detect();
             const mcp = await createWorktreeMcpClient({ managerDirectory }).detect();
             return {
@@ -362,8 +367,18 @@ export default async function (input) {
                 mcp: { available: mcp.available, cause: mcp.cause },
             };
         },
-        invokeCli: async ({ repoRoot, request }) => createWorktreeCliClient({ managerDirectory: managerDirectoryFor(repoRoot) }).invoke(request),
-        invokeMcp: async ({ repoRoot, tool, request }) => createWorktreeMcpClient({ managerDirectory: managerDirectoryFor(repoRoot) }).invoke(tool, request),
+        invokeCli: async ({ repoRoot, request }) => {
+            const managerDirectory = managerDirectoryFor(repoRoot);
+            if (!managerDirectory)
+                return { sent: false, cause: missingCauseFor(repoRoot) };
+            return createWorktreeCliClient({ managerDirectory }).invoke(request);
+        },
+        invokeMcp: async ({ repoRoot, tool, request }) => {
+            const managerDirectory = managerDirectoryFor(repoRoot);
+            if (!managerDirectory)
+                return { sent: false, cause: missingCauseFor(repoRoot) };
+            return createWorktreeMcpClient({ managerDirectory }).invoke(tool, request);
+        },
         dispatchConstructor: async (record) => input.client.session.prompt({
             path: { id: dispatchSessionID },
             body: { agent: "flowtask-constructor", parts: [{ type: "text", text: `Implement the confirmed worktree association: ${JSON.stringify(record)}` }] },

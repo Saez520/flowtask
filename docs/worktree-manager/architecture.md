@@ -88,9 +88,9 @@ persisted descriptor identity with the arguments of the command.
 
 ## Installation boundary
 
-The installer validates and materializes the submodule before copying assets
-and excludes the manager from generic copies. If the source is unavailable,
-installation fails rather than creating an alternative implementation.
+The installer publishes a managed global copy from the submodule source. The
+target does not receive the manager. If the source is unavailable, installation
+fails rather than creating an alternative implementation.
 
 ## Consumer transport boundary
 

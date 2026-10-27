@@ -13,6 +13,7 @@ import {
 import { createWorktreeConsumerBridge } from "./worktree-consumer-bridge.js";
 import { createConfiguredEngramInvoker } from "./engram-mcp.js";
 import { createWorktreeMcpClient } from "./worktree-mcp.js";
+import { resolveWorktreeManagerLocation, missingManagerCause } from "./worktree-manager-location.js";
 import { buildLayerBlockMessage, readOperationalLayers } from "./layers.js";
 import {
   buildAttachmentDelivery,
@@ -406,17 +407,25 @@ export default async function (input: PluginInput) {
    * repository owns its own copy; the session copy is the fallback for a
    * repository that does not carry the manager.
    */
-  const managerDirectoryFor = (repoRoot: string): string => {
-    const local = resolve(repoRoot, ".flowtask/scripts/worktree-manager");
-    if (existsSync(local)) return local;
-    return resolve(sessionDir, ".flowtask/scripts/worktree-manager");
+const resolveManagerLocation = (repoRoot: string) =>
+    resolveWorktreeManagerLocation({ repoRoot, sessionDir, env: process.env });
+
+  const managerDirectoryFor = (repoRoot: string): string | null => {
+    const location = resolveManagerLocation(repoRoot);
+    return location ? location.directory : null;
   };
+  const missingCauseFor = (repoRoot: string): string =>
+    missingManagerCause({ repoRoot, sessionDir, env: process.env });
   const worktreeConsumer = createWorktreeConsumerBridge({
     invokeEngram: createConfiguredEngramInvoker(sessionDir),
     isDirectory: (path) => { try { return statSync(path).isDirectory(); } catch { return false; } },
     listLocalBranches: (repoRoot) => execFileSync("git", ["branch", "--format=%(refname:short)"], { cwd: repoRoot, encoding: "utf8" }).split(/\r?\n/).filter(Boolean),
-    detectTransport: async ({ repoRoot }) => {
+detectTransport: async ({ repoRoot }) => {
       const managerDirectory = managerDirectoryFor(repoRoot);
+      if (!managerDirectory) {
+        const cause = missingCauseFor(repoRoot);
+        return { cli: { available: false, cause }, mcp: { available: false, cause } };
+      }
       const cli = await createWorktreeCliClient({ managerDirectory }).detect();
       const mcp = await createWorktreeMcpClient({ managerDirectory }).detect();
       return {
@@ -424,8 +433,16 @@ export default async function (input: PluginInput) {
         mcp: { available: mcp.available, cause: mcp.cause },
       };
     },
-    invokeCli: async ({ repoRoot, request }) => createWorktreeCliClient({ managerDirectory: managerDirectoryFor(repoRoot) }).invoke(request),
-    invokeMcp: async ({ repoRoot, tool, request }) => createWorktreeMcpClient({ managerDirectory: managerDirectoryFor(repoRoot) }).invoke(tool, request),
+    invokeCli: async ({ repoRoot, request }) => {
+      const managerDirectory = managerDirectoryFor(repoRoot);
+      if (!managerDirectory) return { sent: false, cause: missingCauseFor(repoRoot) };
+      return createWorktreeCliClient({ managerDirectory }).invoke(request);
+    },
+    invokeMcp: async ({ repoRoot, tool, request }) => {
+      const managerDirectory = managerDirectoryFor(repoRoot);
+      if (!managerDirectory) return { sent: false, cause: missingCauseFor(repoRoot) };
+      return createWorktreeMcpClient({ managerDirectory }).invoke(tool, request);
+    },
     dispatchConstructor: async (record) => input.client.session.prompt({
       path: { id: dispatchSessionID },
       body: { agent: "flowtask-constructor", parts: [{ type: "text", text: `Implement the confirmed worktree association: ${JSON.stringify(record)}` }] },

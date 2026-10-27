@@ -14,6 +14,8 @@ import {
   removeLegacyConsumerFiles,
   prepareInstallation,
   prepareWorktreeManager,
+  prepareGlobalWorktreeManager,
+  reportWorktreeManagerCapabilities,
   detectWorktreeManagerCapabilities,
   ensureWorktreeManagerSubmodule,
   verifyWorktreeManagerCheckout,
@@ -1149,7 +1151,7 @@ test("scripts distribution carries the wrapper and adapter without legacy implem
 
   const usage = spawnSync(wrapper, ["--help"], { encoding: "utf8" });
   assert.notEqual(usage.status, 0);
-  assert.match(usage.stderr, /standalone ausente o no inicializado/);
+  assert.match(usage.stderr, /Worktree Manager is not installed/);
 });
 
 // ─── Worktree Manager installation, capabilities and gitlink ──────────────────
@@ -1209,7 +1211,7 @@ function writeManagerFixture(dir, { withPackage = true, withMcp = true, brokenCl
   if (!withPackage) return;
   const packageDir = path.join(dir, "worktree_manager");
   fs.mkdirSync(packageDir, { recursive: true });
-  fs.writeFileSync(path.join(packageDir, "__init__.py"), '"""Fixture manager."""\n', "utf8");
+  fs.writeFileSync(path.join(packageDir, "__init__.py"), '"""Fixture manager."""\n__version__ = "1.0.0"\n', "utf8");
   fs.writeFileSync(path.join(packageDir, "__main__.py"), "from .cli import main\n\nraise SystemExit(main())\n", "utf8");
   fs.writeFileSync(path.join(packageDir, "cli.py"), brokenCli
     ? "raise RuntimeError('the CLI entrypoint is broken')\n"
@@ -1406,6 +1408,98 @@ test("repeating the preparation preserves unrelated configuration, work state an
   const config = readJson(path.join(projectDir, ".opencode", "opencode.json"));
   assert.deepEqual(Object.keys(config.mcp), ["unrelated-server"]);
   assert.deepEqual(config.agent["flowtask-runner"].permissions, canonicalRunnerPermission);
+});
+
+test("the global copy is published outside the consumer with its own marker and capabilities", () => {
+  const fixture = createManagerFixture();
+  const globalDir = path.join(fixture.root, "global", "worktree-manager");
+  const report = prepareGlobalWorktreeManager(fixture.flowtaskDir, { globalManagerDir: globalDir });
+
+  assert.equal(report.source, "global");
+  assert.equal(report.managerDir, globalDir);
+  assert.equal(report.version, "1.0.0");
+  assert.deepEqual(report.capabilities.transports, ["cli", "mcp"]);
+  assert.ok(fs.existsSync(path.join(globalDir, "worktree.sh")));
+  assert.ok(fs.existsSync(path.join(globalDir, "worktree_manager", "__init__.py")));
+  const marker = readJson(path.join(globalDir, ".flowtask-worktree-manager-owner.json"));
+  assert.equal(marker.managedBy, "flowtask");
+  assert.equal(marker.component, "worktree-manager");
+  assert.equal(marker.version, "1.0.0");
+  assert.ok(marker.files.includes("worktree.sh"));
+  assert.ok(marker.files.includes("worktree_manager/__init__.py"));
+});
+
+test("publishing the global copy twice with the same version reports no change", () => {
+  const fixture = createManagerFixture();
+  const globalDir = path.join(fixture.root, "global", "worktree-manager");
+  prepareGlobalWorktreeManager(fixture.flowtaskDir, { globalManagerDir: globalDir });
+  const second = prepareGlobalWorktreeManager(fixture.flowtaskDir, { globalManagerDir: globalDir });
+
+  assert.equal(second.previousVersion, "1.0.0");
+  assert.equal(second.version, "1.0.0");
+  assert.equal(second.versionChanged, false);
+});
+
+test("an unusable Python blocks the global publication before any copy is written", () => {
+  const fixture = createManagerFixture();
+  const globalDir = path.join(fixture.root, "global", "worktree-manager");
+  const missingPython = path.join(fixture.root, "missing-python3");
+
+  assert.throws(
+    () => prepareGlobalWorktreeManager(fixture.flowtaskDir, { globalManagerDir: globalDir, pythonBin: missingPython }),
+    /Worktree Manager has no usable transport.*python is not usable/is,
+  );
+  assert.equal(fs.existsSync(globalDir), false);
+});
+
+test("the global publication fails closed when the destination is not FlowTask-owned", () => {
+  const fixture = createManagerFixture();
+  const globalDir = path.join(fixture.root, "global", "worktree-manager");
+  fs.mkdirSync(globalDir, { recursive: true });
+  fs.writeFileSync(path.join(globalDir, "user-file.txt"), "keep", "utf8");
+
+  assert.throws(
+    () => prepareGlobalWorktreeManager(fixture.flowtaskDir, { globalManagerDir: globalDir }),
+    /ownership-external/,
+  );
+  assert.equal(fs.readFileSync(path.join(globalDir, "user-file.txt"), "utf8"), "keep");
+  assert.equal(fs.existsSync(path.join(globalDir, "worktree.sh")), false);
+});
+
+test("the quiet report stays silent only when both transports are operational", () => {
+  const fixture = createManagerFixture();
+  const globalDir = path.join(fixture.root, "global", "worktree-manager");
+  const report = prepareGlobalWorktreeManager(fixture.flowtaskDir, { globalManagerDir: globalDir });
+  const lines = [];
+  const originalLog = console.log;
+  console.log = (...args) => { lines.push(args.join(" ")); };
+  try {
+    reportWorktreeManagerCapabilities(report, { quiet: true });
+    assert.deepEqual(lines, []);
+
+    reportWorktreeManagerCapabilities(report, { quiet: false });
+    assert.match(lines.join("\n"), /Worktree Manager ready/);
+
+    lines.length = 0;
+    reportWorktreeManagerCapabilities({
+      capabilities: {
+        cli: { available: true, version: "1.0.0" },
+        mcp: { available: false, cause: "MCP is not available" },
+      },
+    }, { quiet: true });
+    assert.match(lines.join("\n"), /partially installed/);
+
+    lines.length = 0;
+    reportWorktreeManagerCapabilities({
+      capabilities: {
+        cli: { available: false, cause: "CLI is not available" },
+        mcp: { available: false, cause: "MCP is not available" },
+      },
+    }, { quiet: true });
+    assert.match(lines.join("\n"), /not operational/);
+  } finally {
+    console.log = originalLog;
+  }
 });
 
 test("the manager is never copied into an installation target", () => {

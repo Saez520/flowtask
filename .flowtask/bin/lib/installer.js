@@ -12,6 +12,9 @@ import { generateClaudeAgents, generateClaudeCommands, generateClaudeMd, mergeCl
 import { showInteractiveSelector } from "./ui.js";
 import { coordinateGraphify } from "./graphify.js";
 import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA, classifyOwnership, replaceManagedPackage } from "./ownership.js";
+import { resolveGlobalConfigDir } from "./global-paths.js";
+import { globalWorktreeManagerDir } from "./global-paths.js";
+import { ensureGlobalWorktreeManager, formatWorktreeManagerVersionNotice } from "./worktree-manager-runtime.js";
 import { ensureCanonicalSubmodule } from "./submodule-publication.js";
 import {
   AUTONOMY_PROFILES,
@@ -233,7 +236,7 @@ export function verifyWorktreeManagerCheckout({ managerDir, expectedGitlink }) {
   return managerDir;
 }
 
-export function ensureWorktreeManagerSubmodule(flowtaskDir) {
+export function ensureWorktreeManagerSubmodule(flowtaskDir, options = {}) {
   const managerDir = path.join(flowtaskDir, "scripts", "worktree-manager");
   let expected = null;
   try {
@@ -261,7 +264,7 @@ export function ensureWorktreeManagerSubmodule(flowtaskDir) {
     throw new Error(`Worktree Manager submodule unavailable: ${error.message}`);
   }
   const resolvedManagerDir = path.join(fs.realpathSync(flowtaskDir), "scripts", "worktree-manager");
-  return { managerDir: resolvedManagerDir, gitlink: expected, capabilities: detectWorktreeManagerCapabilities(resolvedManagerDir) };
+  return { managerDir: resolvedManagerDir, gitlink: expected, capabilities: detectWorktreeManagerCapabilities(resolvedManagerDir, { pythonBin: options.pythonBin, timeoutMs: options.timeoutMs }) };
 }
 
 /**
@@ -283,11 +286,25 @@ export function prepareWorktreeManager(flowtaskDir, options = {}) {
   return report;
 }
 
-/** Report the detected capabilities, naming the cause of every unusable transport. */
-export function reportWorktreeManagerCapabilities(report) {
+export function prepareGlobalWorktreeManager(flowtaskDir, options = {}) {
+  const sourceReport = prepareWorktreeManager(flowtaskDir, options);
+  const destinationDir = options.globalManagerDir ?? globalWorktreeManagerDir();
+  const report = ensureGlobalWorktreeManager({
+    sourceReport,
+    destinationDir,
+    pythonBin: options.pythonBin,
+    timeoutMs: options.timeoutMs,
+    faultInjector: options.faultInjector,
+    detectCapabilities: (dir, opts) => detectWorktreeManagerCapabilities(dir, opts),
+  });
+  return report;
+}
+export function reportWorktreeManagerCapabilities(report, { quiet } = {}) {
   const capabilities = report?.capabilities ?? report;
   const { cli, mcp } = capabilities ?? {};
-  if (cli?.available && mcp?.available) {
+  const bothAvailable = Boolean(cli?.available && mcp?.available);
+  if (quiet && bothAvailable) return;
+  if (bothAvailable) {
     logSuccess(`Worktree Manager ready: CLI ${cli.version} and MCP ${mcp.tools.length} tools are operational.`);
     return;
   }
@@ -1378,8 +1395,8 @@ function cleanupOrphanedClaudeAssets(projectDir) {
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir, options = {}) {
-  const worktreeManager = prepareWorktreeManager(flowtaskDir);
-  reportWorktreeManagerCapabilities(worktreeManager);
+  const worktreeManager = prepareGlobalWorktreeManager(flowtaskDir, options);
+  reportWorktreeManagerCapabilities(worktreeManager, { quiet: false });
   console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
 ║        FlowTask Installation Wizard       ║
@@ -1544,8 +1561,10 @@ ${COLORS.blue}╔═════════════════════
 // ─── Update ───────────────────────────────────────────────────────────────────
 
 export async function update(flowtaskDir, options = {}) {
-  const worktreeManager = prepareWorktreeManager(flowtaskDir);
-  reportWorktreeManagerCapabilities(worktreeManager);
+  const worktreeManager = prepareGlobalWorktreeManager(flowtaskDir, options);
+  reportWorktreeManagerCapabilities(worktreeManager, { quiet: !worktreeManager.versionChanged });
+  const versionNotice = formatWorktreeManagerVersionNotice({ previousVersion: worktreeManager.previousVersion, version: worktreeManager.version });
+  if (versionNotice) logInfo(versionNotice);
   console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
 ║        FlowTask Update Wizard (Delta)     ║

@@ -41,10 +41,11 @@ the authorization or the execution. The controls of the standalone tests are
 `WORKTREE_MANAGER_TEST_*`. The standalone does not know about FlowTask or
 inspect its legacy paths or refs.
 
-The installer validates the gitlink, materializes the submodule before copying
-assets, and excludes the manager from the generic copy. If the source is not
-available, installation or updating fails with a diagnostic; it does not
-create an alternative copy.
+The installer publishes a managed global copy of the manager under the user's
+global FlowTask directory and excludes it from the generic asset copy. The
+consumer resolves the manager in this order: global installation, repository
+checkout, session directory. There is no npm publication and no global MCP entry
+for the manager; the authorized bridge remains the only exposed surface.
 
 ## Consumer bridge
 

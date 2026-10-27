@@ -3,6 +3,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { runCliAction } from "./lib/cli-errors.js";
 import { install, update } from "./lib/installer.js";
 import {
   PERSONA_LEVELS,
@@ -158,6 +159,7 @@ function runLayersResolve(commandArgs) {
   process.exit(0);
 }
 
+async function main() {
 let options;
 try {
   options = parseOptions(args.slice(1));
@@ -168,11 +170,11 @@ try {
 
 switch (command) {
   case "install":
-    install(FLOWTASK_DIR, options);
+    await runCliAction(async () => { await install(FLOWTASK_DIR, options); });
     break;
 
   case "update":
-    update(FLOWTASK_DIR, options);
+    await runCliAction(async () => { await update(FLOWTASK_DIR, options); });
     break;
 
   case "layers": {
@@ -244,3 +246,5 @@ Examples:
     console.error("Run 'flowtask --help' for usage information.");
     process.exit(1);
 }
+}
+main().catch((err) => { console.error(err?.message ?? err); process.exitCode = 1; });
