@@ -439,6 +439,8 @@ const CLASSIFIER_PLUGIN_NAMES = [
   "flowtask-classifier-tui",
 ];
 
+const LEGACY_MODEL_SELECTOR_NAME = "flowtask-model-selector";
+
 const CANONICAL_TUI_KEYS = new Set(["$schema", "plugin"]);
 
 // ─── Dependency checks ────────────────────────────────────────────────────────
@@ -1105,6 +1107,11 @@ export function regenerateCanonicalTui(projectDir, flowtaskDir, manifest) {
   return destination;
 }
 
+/** Normalize a CLI plugin path for stable comparison. */
+function normalizePluginPath(value) {
+  return typeof value === "string" ? value.replace(/\\/g, "/").replace(/^\.\//, "") : "";
+}
+
 /** Regenerate the project CLI plugin declaration while preserving unrelated settings. */
 export function regenerateCanonicalCli(projectDir, flowtaskDir, manifest) {
   const destination = path.join(flowtaskDir, "cli.json");
@@ -1116,18 +1123,22 @@ export function regenerateCanonicalCli(projectDir, flowtaskDir, manifest) {
     } catch (err) { throw new Error(`invalid CLI config ${destination}: ${err.message}`); }
   }
   const managedNames = new Set((manifest ?? []).filter((entry) => entry?.destinations?.includes("opencode")).map((entry) => entry.name));
-  const plugins = (Array.isArray(config.plugins) ? config.plugins : []).filter((item) => {
-    const name = extractPluginName(typeof item === "string" ? item : item?.path);
-    return !name || !managedNames.has(name);
-  });
+  const desiredPlugins = [];
   for (const entry of manifest ?? []) {
     if (entry?.kind !== "cli" || !entry.destinations?.includes("opencode")) continue;
     const sourceEntrypoint = path.join(flowtaskDir, "plugins", entry.path, entry.entrypoint);
     if (!fileExists(sourceEntrypoint)) continue;
     let relative = path.relative(path.dirname(destination), sourceEntrypoint).split(path.sep).join("/");
     if (!relative.startsWith(".")) relative = `./${relative}`;
-    plugins.push(relative);
+    desiredPlugins.push(relative);
   }
+  const desiredPaths = new Set(desiredPlugins.map(normalizePluginPath));
+  const plugins = (Array.isArray(config.plugins) ? config.plugins : []).filter((item) => {
+    const rawPath = typeof item === "string" ? item : item?.path;
+    const name = extractPluginName(rawPath);
+    return !(name && managedNames.has(name)) && !desiredPaths.has(normalizePluginPath(rawPath));
+  });
+  plugins.push(...desiredPlugins);
   const next = { ...config, $schema: config.$schema || "https://opencode.ai/cli.json", plugins };
   if (!writeBytesIfChanged(destination, `${JSON.stringify(next, null, 2)}\n`)) throw new Error(`could not write CLI config ${destination}`);
   const runtimeConfig = path.join(projectDir, ".opencode", "cli.json");
@@ -1136,16 +1147,20 @@ export function regenerateCanonicalCli(projectDir, flowtaskDir, manifest) {
     try { existingRuntime = JSON.parse(fs.readFileSync(runtimeConfig, "utf8")); } catch { throw new Error(`invalid CLI config ${runtimeConfig}`); }
     if (!existingRuntime || typeof existingRuntime !== "object" || Array.isArray(existingRuntime)) throw new Error(`invalid CLI config ${runtimeConfig}`);
   }
-  const runtimePlugins = (Array.isArray(existingRuntime?.plugins) ? existingRuntime.plugins : []).filter((item) => {
-    const name = extractPluginName(typeof item === "string" ? item : item?.path);
-    return !name || !managedNames.has(name);
-  });
+  const runtimeDesired = [];
   for (const entry of manifest ?? []) {
     if (entry?.kind !== "cli" || !entry.destinations?.includes("opencode")) continue;
     const installedEntrypoint = path.join(projectDir, ".opencode", "plugins", entry.name, entry.entrypoint);
     if (!fileExists(installedEntrypoint)) continue;
-    runtimePlugins.push(calculatePluginRelativePath(runtimeConfig, projectDir, entry.name, entry.entrypoint));
+    runtimeDesired.push(calculatePluginRelativePath(runtimeConfig, projectDir, entry.name, entry.entrypoint));
   }
+  const runtimePaths = new Set(runtimeDesired.map(normalizePluginPath));
+  const runtimePlugins = (Array.isArray(existingRuntime?.plugins) ? existingRuntime.plugins : []).filter((item) => {
+    const rawPath = typeof item === "string" ? item : item?.path;
+    const name = extractPluginName(rawPath);
+    return !(name && managedNames.has(name)) && !runtimePaths.has(normalizePluginPath(rawPath));
+  });
+  runtimePlugins.push(...runtimeDesired);
   const runtime = { ...existingRuntime, $schema: existingRuntime.$schema || "https://opencode.ai/cli.json", plugins: runtimePlugins };
   if (!writeBytesIfChanged(runtimeConfig, `${JSON.stringify(runtime, null, 2)}\n`)) throw new Error(`could not write CLI config ${runtimeConfig}`);
   return destination;
@@ -1236,6 +1251,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
     }
   }
   const migratedLegacyIndexes = new Set();
+  let installedAgentModelSelector = false;
 
   for (const entry of manifest) {
     if (!validateManifestEntry(entry)) continue;
@@ -1257,8 +1273,10 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
       continue;
     }
 
+    const allowlist = Array.isArray(entry.files) && entry.files.length > 0 ? entry.files : null;
     try {
-      copyDirectoryDelta(srcDir, destDir);
+      copyDirectoryDelta(srcDir, destDir, [], new Set(), null, allowlist);
+      if (allowlist) pruneAllowlistedDestination(destDir, allowlist);
       logSuccess(`Plugin ${entry.name} copied to .opencode/plugins/${entry.name}`);
     } catch (err) {
       logError(`Failed to copy plugin ${entry.name}: ${err.message}`);
@@ -1271,6 +1289,8 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
       logWarn(`⚠️  Plugin entrypoint not found for ${entry.name}: ${entry.entrypoint} (expected at ${entrypointAbsPath})`);
       continue;
     }
+
+    if (entry.name === "agent-model-selector-opencode") installedAgentModelSelector = true;
 
     if (entry.kind === "cli") {
       const cliPath = path.join(projectDir, ".opencode", "cli.json");
@@ -1326,14 +1346,57 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
   }
 
   cleanupDisabledClassifier(projectDir, manifest, preflight?.classifierOwnership ?? null);
+  if (installedAgentModelSelector) cleanupLegacyModelSelector(projectDir, flowtaskDir, manifest);
   if (manifest.some((entry) => entry?.kind === "cli")) regenerateCanonicalCli(projectDir, flowtaskDir, manifest);
 }
 
+/** Remove destination entries outside an explicit manifest allowlist. */
+function pruneAllowlistedDestination(destDir, includePaths) {
+  if (!fs.existsSync(destDir)) return;
+  for (const name of fs.readdirSync(destDir)) {
+    if (includePaths.includes(name)) continue;
+    fs.rmSync(path.join(destDir, name), { recursive: true, force: true });
+  }
+}
+
+/**
+ * Remove the legacy model selector installation once its replacement was
+ * copied and validated. The manifest is the source of truth: if the legacy
+ * name is still declared, nothing is removed.
+ */
+function cleanupLegacyModelSelector(projectDir, flowtaskDir, manifest) {
+  if ((manifest ?? []).some((entry) => entry?.name === LEGACY_MODEL_SELECTOR_NAME)) return false;
+
+  let removed = false;
+  const pluginDir = path.join(projectDir, ".opencode", "plugins", LEGACY_MODEL_SELECTOR_NAME);
+  if (fileExists(pluginDir)) {
+    try {
+      fs.rmSync(pluginDir, { recursive: true, force: true });
+      removed = true;
+      logInfo(`Plugin legacy eliminado: ${LEGACY_MODEL_SELECTOR_NAME}`);
+    } catch (err) {
+      logWarn(`No se pudo eliminar el plugin legacy ${LEGACY_MODEL_SELECTOR_NAME}: ${err.message}`);
+    }
+  }
+
+  const configPaths = new Set([
+    path.join(projectDir, ".opencode", "cli.json"),
+    path.join(projectDir, ".opencode", "tui.json"),
+    path.join(projectDir, ".opencode", "opencode.json"),
+    path.join(flowtaskDir, "cli.json"),
+    path.join(flowtaskDir, "tui.json"),
+  ]);
+  for (const configPath of configPaths) {
+    if (removePluginFromConfigArrays(configPath, LEGACY_MODEL_SELECTOR_NAME)) removed = true;
+  }
+  return removed;
+}
+
 function removePluginFromConfigArrays(configPath, pluginName) {
-  if (!fileExists(configPath)) return;
+  if (!fileExists(configPath)) return false;
   let config;
-  try { config = JSON.parse(fs.readFileSync(configPath, "utf8")); } catch { return; }
-  if (!config || typeof config !== "object") return;
+  try { config = JSON.parse(fs.readFileSync(configPath, "utf8")); } catch { return false; }
+  if (!config || typeof config !== "object") return false;
   let changed = false;
   const next = { ...config };
   for (const key of ["plugin", "plugins"]) {
@@ -1342,6 +1405,7 @@ function removePluginFromConfigArrays(configPath, pluginName) {
     changed ||= next[key].length !== config[key].length;
   }
   if (changed) writeJsonVerified(configPath, next);
+  return changed;
 }
 
 // ─── Migration & Cleanup ──────────────────────────────────────────────────────

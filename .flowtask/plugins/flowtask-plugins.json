@@ -18,11 +18,12 @@
     "enabled": false
   },
   {
-    "name": "flowtask-model-selector",
-    "path": "flowtask-model-selector",
+    "name": "agent-model-selector-opencode",
+    "path": "agent-model-selector/packages/opencode",
     "kind": "cli",
     "destinations": ["opencode"],
-    "entrypoint": "dist/tui.js"
+    "entrypoint": "dist/tui.js",
+    "files": ["dist", "package.json", "README.md"]
   },
   {
     "name": "flowtask-permission-gate",

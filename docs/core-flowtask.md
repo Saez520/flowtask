@@ -282,7 +282,7 @@ Squash-merge a `main` en `198cf54` — es el hotfix que produjo ESTE archivo.
 | --- | --- | --- |
 | `flowtask-permission-gate` | server | permisos del runner + gate de commit |
 | `flowtask-context-checkpoint` | server | checkpoint forzado al 70% de contexto |
-| `flowtask-model-selector` | tui | elige modelo por agente |
+| `agent-model-selector-opencode` | cli (TUI) | elige modelo y variante por agente |
 
 #### `flowtask-permission-gate` (detalle)
 
@@ -297,6 +297,23 @@ Squash-merge a `main` en `198cf54` — es el hotfix que produjo ESTE archivo.
 - detecta child sessions (subagentes) y mide su ventana de contexto
 - al ≥70% inyecta la orden de checkpoint en Engram + tag de capacidad
 - si el subagente ignora 2 steps consecutivos → warning en logs
+
+#### `agent-model-selector-opencode` (detalle)
+
+- se instala desde el submodule `.flowtask/plugins/agent-model-selector/packages/opencode`
+- copia solo `dist`, `package.json` y `README.md` según la allowlist `files` del manifiesto
+- registra el entrypoint `dist/tui.js` en `.opencode/cli.json`
+- elimina la instalación legacy `flowtask-model-selector` (directorio y entradas de configuración) después de copiar y validar el reemplazo
+
+#### Rollback del selector
+
+1. `git submodule deinit -f .flowtask/plugins/agent-model-selector`
+2. `git rm .flowtask/plugins/agent-model-selector` y quitar la entrada de `.gitmodules`
+3. `git checkout <commit-anterior> -- .flowtask/plugins/flowtask-model-selector .flowtask/plugins/flowtask-plugins.json .flowtask/bin/lib/installer.js .flowtask/bin/lib/installer.test.js .flowtask/bin/lib/copy.js docs/core-flowtask.md docs/README.md .flowtask/package.json`
+4. `rm -rf .opencode/plugins/agent-model-selector-opencode`
+5. `flowtask update`
+
+La configuración de modelos del usuario no se modifica durante el rollback.
 
 #### Deprecados
 

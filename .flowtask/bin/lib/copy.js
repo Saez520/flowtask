@@ -93,9 +93,10 @@ export function isFileChanged(srcPath, destPath) {
  * @param {string[]} preservePaths - Dest path fragments to skip (never overwrite)
  * @param {Set<string>} visited
  * @param {string|null} rootSrc
+ * @param {string[]|null} includePaths - Top-level entry names to copy; null copies everything
  * @returns {{ copied: number, skipped: number }}
  */
-export function copyDirectoryDelta(src, dest, preservePaths = [], visited = new Set(), rootSrc = null) {
+export function copyDirectoryDelta(src, dest, preservePaths = [], visited = new Set(), rootSrc = null, includePaths = null) {
   const destStat = fs.lstatSync(dest, { throwIfNoEntry: false });
   if (destStat && (!destStat.isDirectory() || destStat.isSymbolicLink())) {
     if (!removeEntryPreserving(dest, path.basename(dest), preservePaths)) return { copied: 0, skipped: 1 };
@@ -111,6 +112,7 @@ export function copyDirectoryDelta(src, dest, preservePaths = [], visited = new 
   let skipped = 0;
 
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    if (src === rootSrc && Array.isArray(includePaths) && !includePaths.includes(entry.name)) { skipped++; continue; }
     if (SKIP_DIRS.has(entry.name) || SKIP_FILES.has(entry.name)) { skipped++; continue; }
 
     const srcPath = path.join(src, entry.name);

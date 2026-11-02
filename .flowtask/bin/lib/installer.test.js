@@ -236,8 +236,8 @@ function createManifest({ hookEnabled = false, tuiEnabled = false } = {}) {
       enabled: tuiEnabled,
     },
     {
-      name: "flowtask-model-selector",
-      path: "flowtask-model-selector",
+      name: "agent-model-selector-opencode",
+      path: "agent-model-selector/packages/opencode",
       kind: "tui",
       destinations: ["opencode"],
       entrypoint: "dist/tui.js",
@@ -359,36 +359,36 @@ test("disabled default does not install classifier plugins", () => {
 
   assert.equal(fs.existsSync(path.join(root, ".opencode", "plugins", "flowtask-classifier-hook")), false);
   assert.equal(fs.existsSync(path.join(root, ".opencode", "plugins", "flowtask-classifier-tui")), false);
-  assert.ok(fs.existsSync(path.join(root, ".opencode", "plugins", "flowtask-model-selector")));
+  assert.ok(fs.existsSync(path.join(root, ".opencode", "plugins", "agent-model-selector-opencode")));
   assert.deepEqual(nativeTuiEntries(root), [
-    "./plugins/flowtask-model-selector/dist/tui.js",
+    "./plugins/agent-model-selector-opencode/dist/tui.js",
   ]);
 });
 
 test("CLI plugin installation writes V2 cli config and canonical declaration", () => {
   const { root, flowtaskDir } = createFixture();
-  const manifest = [{ name: "flowtask-model-selector", path: "flowtask-model-selector", kind: "cli", destinations: ["opencode"], entrypoint: "dist/tui.js" }];
+  const manifest = [{ name: "agent-model-selector-opencode", path: "agent-model-selector/packages/opencode", kind: "cli", destinations: ["opencode"], entrypoint: "dist/tui.js" }];
   createSources(flowtaskDir, manifest);
   fs.mkdirSync(path.join(root, ".opencode"), { recursive: true });
   writeJson(path.join(root, ".opencode", "cli.json"), { $schema: "https://opencode.ai/cli.json", plugins: ["./plugins/user-cli/index.js"] });
   installManifestPlugins(root, manifest, flowtaskDir);
   assert.deepEqual(readJson(path.join(root, ".opencode", "cli.json")).plugins, [
-    "./plugins/user-cli/index.js", "./plugins/flowtask-model-selector/dist/tui.js",
+    "./plugins/user-cli/index.js", "./plugins/agent-model-selector-opencode/dist/tui.js",
   ]);
   assert.deepEqual(readJson(path.join(flowtaskDir, "cli.json")).plugins, [
-    "./plugins/flowtask-model-selector/dist/tui.js",
+    "./plugins/agent-model-selector/packages/opencode/dist/tui.js",
   ]);
   assert.equal(fs.existsSync(path.join(root, ".opencode", "tui.json")), false);
 });
 
 test("CLI installation removes a stale TUI registration for the same plugin", () => {
   const { root, flowtaskDir } = createFixture();
-  const manifest = [{ name: "flowtask-model-selector", path: "flowtask-model-selector", kind: "cli", destinations: ["opencode"], entrypoint: "dist/tui.js" }];
+  const manifest = [{ name: "agent-model-selector-opencode", path: "agent-model-selector/packages/opencode", kind: "cli", destinations: ["opencode"], entrypoint: "dist/tui.js" }];
   createSources(flowtaskDir, manifest);
   writeJson(path.join(root, ".opencode", "tui.json"), {
     $schema: "https://opencode.ai/tui.json",
-    plugin: ["./plugins/user-tui/index.js", "./plugins/flowtask-model-selector/dist/tui.js"],
-    plugins: ["./plugins/user-tui/index.js", "./plugins/flowtask-model-selector/dist/tui.js"],
+    plugin: ["./plugins/user-tui/index.js", "./plugins/agent-model-selector-opencode/dist/tui.js"],
+    plugins: ["./plugins/user-tui/index.js", "./plugins/agent-model-selector-opencode/dist/tui.js"],
     keybinds: { input_submit: "return" },
   });
 
@@ -398,18 +398,18 @@ test("CLI installation removes a stale TUI registration for the same plugin", ()
   assert.deepEqual(tuiConfig.plugin, ["./plugins/user-tui/index.js"]);
   assert.deepEqual(tuiConfig.plugins, ["./plugins/user-tui/index.js"]);
   assert.deepEqual(tuiConfig.keybinds, { input_submit: "return" });
-  assert.ok(readJson(path.join(root, ".opencode", "cli.json")).plugins.includes("./plugins/flowtask-model-selector/dist/tui.js"));
-  assert.ok(fs.existsSync(path.join(root, ".opencode", "plugins", "flowtask-model-selector", "dist", "tui.js")));
+  assert.ok(readJson(path.join(root, ".opencode", "cli.json")).plugins.includes("./plugins/agent-model-selector-opencode/dist/tui.js"));
+  assert.ok(fs.existsSync(path.join(root, ".opencode", "plugins", "agent-model-selector-opencode", "dist", "tui.js")));
 });
 
 test("TUI installation removes a stale CLI registration for the same plugin", () => {
   const { root, flowtaskDir } = createFixture();
-  const manifest = [{ name: "flowtask-model-selector", path: "flowtask-model-selector", kind: "tui", destinations: ["opencode"], entrypoint: "dist/tui.js" }];
+  const manifest = [{ name: "agent-model-selector-opencode", path: "agent-model-selector/packages/opencode", kind: "tui", destinations: ["opencode"], entrypoint: "dist/tui.js" }];
   createSources(flowtaskDir, manifest);
   writeJson(path.join(root, ".opencode", "cli.json"), {
     $schema: "https://opencode.ai/cli.json",
-    plugins: ["./plugins/user-cli/index.js", "./plugins/flowtask-model-selector/dist/tui.js"],
-    plugin: ["./plugins/user-cli/index.js", "./plugins/flowtask-model-selector/dist/tui.js"],
+    plugins: ["./plugins/user-cli/index.js", "./plugins/agent-model-selector-opencode/dist/tui.js"],
+    plugin: ["./plugins/user-cli/index.js", "./plugins/agent-model-selector-opencode/dist/tui.js"],
     custom: { keep: true },
   });
 
@@ -419,8 +419,199 @@ test("TUI installation removes a stale CLI registration for the same plugin", ()
   assert.deepEqual(cliConfig.plugins, ["./plugins/user-cli/index.js"]);
   assert.deepEqual(cliConfig.plugin, ["./plugins/user-cli/index.js"]);
   assert.deepEqual(cliConfig.custom, { keep: true });
-  assert.ok(readJson(path.join(root, ".opencode", "tui.json")).plugin.includes("./plugins/flowtask-model-selector/dist/tui.js"));
-  assert.ok(fs.existsSync(path.join(root, ".opencode", "plugins", "flowtask-model-selector", "dist", "tui.js")));
+  assert.ok(readJson(path.join(root, ".opencode", "tui.json")).plugin.includes("./plugins/agent-model-selector-opencode/dist/tui.js"));
+  assert.ok(fs.existsSync(path.join(root, ".opencode", "plugins", "agent-model-selector-opencode", "dist", "tui.js")));
+});
+
+function createSelectorSource(flowtaskDir, { withExtras = false } = {}) {
+  const source = path.join(flowtaskDir, "plugins", "agent-model-selector", "packages", "opencode");
+  fs.mkdirSync(path.join(source, "dist"), { recursive: true });
+  fs.writeFileSync(path.join(source, "dist", "tui.js"), "export default {};\n");
+  fs.writeFileSync(path.join(source, "package.json"), JSON.stringify({ name: "agent-model-selector-opencode" }), "utf8");
+  fs.writeFileSync(path.join(source, "README.md"), "# agent-model-selector-opencode\n", "utf8");
+  if (withExtras) {
+    fs.mkdirSync(path.join(source, "src"), { recursive: true });
+    fs.writeFileSync(path.join(source, "src", "internal.ts"), "export {};\n");
+    fs.mkdirSync(path.join(source, "node_modules", "dep"), { recursive: true });
+    fs.writeFileSync(path.join(source, "node_modules", "dep", "index.js"), "module.exports = {};\n");
+    fs.mkdirSync(path.join(source, "tests"), { recursive: true });
+    fs.writeFileSync(path.join(source, "tests", "extra.test.js"), "test\n");
+  }
+  return source;
+}
+
+function selectorManifest(overrides = {}) {
+  return {
+    name: "agent-model-selector-opencode",
+    path: "agent-model-selector/packages/opencode",
+    kind: "cli",
+    destinations: ["opencode"],
+    entrypoint: "dist/tui.js",
+    files: ["dist", "package.json", "README.md"],
+    ...overrides,
+  };
+}
+
+test("manifest files allowlist copies only the declared entries", () => {
+  const { root, flowtaskDir } = createFixture();
+  createSelectorSource(flowtaskDir, { withExtras: true });
+
+  installManifestPlugins(root, [selectorManifest()], flowtaskDir);
+
+  const dest = path.join(root, ".opencode", "plugins", "agent-model-selector-opencode");
+  assert.deepEqual(fs.readdirSync(dest).sort(), ["README.md", "dist", "package.json"]);
+  assert.ok(fs.existsSync(path.join(dest, "dist", "tui.js")));
+  assert.equal(fs.existsSync(path.join(dest, "src")), false);
+  assert.equal(fs.existsSync(path.join(dest, "node_modules")), false);
+  assert.equal(fs.existsSync(path.join(dest, "tests")), false);
+});
+
+test("legacy model selector install is removed after the replacement is installed", () => {
+  const { root, flowtaskDir } = createFixture();
+  createSelectorSource(flowtaskDir);
+  const legacyDir = path.join(root, ".opencode", "plugins", "flowtask-model-selector");
+  fs.mkdirSync(path.join(legacyDir, "dist"), { recursive: true });
+  fs.writeFileSync(path.join(legacyDir, "dist", "tui.js"), "export default 'legacy';\n");
+  writeJson(path.join(root, ".opencode", "cli.json"), {
+    $schema: "https://opencode.ai/cli.json",
+    plugins: ["./plugins/user-cli/index.js", "./plugins/flowtask-model-selector/dist/tui.js"],
+  });
+  writeJson(path.join(flowtaskDir, "cli.json"), {
+    $schema: "https://opencode.ai/cli.json",
+    plugins: ["./plugins/flowtask-model-selector/dist/tui.js"],
+  });
+  writeJson(path.join(root, ".opencode", "tui.json"), {
+    $schema: "https://opencode.ai/tui.json",
+    plugin: ["./plugins/flowtask-model-selector/dist/tui.js", "./plugins/user-tui/index.js"],
+  });
+
+  installManifestPlugins(root, [selectorManifest()], flowtaskDir);
+
+  assert.equal(fs.existsSync(legacyDir), false);
+  assert.deepEqual(readJson(path.join(root, ".opencode", "cli.json")).plugins, [
+    "./plugins/user-cli/index.js",
+    "./plugins/agent-model-selector-opencode/dist/tui.js",
+  ]);
+  assert.deepEqual(readJson(path.join(flowtaskDir, "cli.json")).plugins, [
+    "./plugins/agent-model-selector/packages/opencode/dist/tui.js",
+  ]);
+  assert.deepEqual(readJson(path.join(root, ".opencode", "tui.json")).plugin, [
+    "./plugins/user-tui/index.js",
+  ]);
+});
+
+test("a missing model selector source preserves the legacy installation", () => {
+  const { root, flowtaskDir } = createFixture();
+  const legacyDir = path.join(root, ".opencode", "plugins", "flowtask-model-selector");
+  fs.mkdirSync(path.join(legacyDir, "dist"), { recursive: true });
+  fs.writeFileSync(path.join(legacyDir, "dist", "tui.js"), "export default 'legacy';\n");
+  writeJson(path.join(root, ".opencode", "cli.json"), {
+    $schema: "https://opencode.ai/cli.json",
+    plugins: ["./plugins/flowtask-model-selector/dist/tui.js"],
+  });
+
+  const originalLog = console.log;
+  const output = [];
+  console.log = (message) => output.push(String(message));
+  try {
+    installManifestPlugins(root, [selectorManifest()], flowtaskDir);
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.ok(fs.existsSync(legacyDir));
+  assert.deepEqual(readJson(path.join(root, ".opencode", "cli.json")).plugins, [
+    "./plugins/flowtask-model-selector/dist/tui.js",
+  ]);
+  assert.equal(fs.existsSync(path.join(root, ".opencode", "plugins", "agent-model-selector-opencode")), false);
+  assert.match(output.join("\n"), /Plugin source not found/);
+});
+
+test("a second update of the allowlisted plugin changes nothing", () => {
+  const { root, flowtaskDir } = createFixture();
+  createSelectorSource(flowtaskDir);
+  const manifest = [selectorManifest()];
+
+  installManifestPlugins(root, manifest, flowtaskDir);
+  const digest = treeDigest(root);
+  installManifestPlugins(root, manifest, flowtaskDir);
+
+  assert.equal(treeDigest(root), digest);
+});
+
+test("the repository manifest declares the submodule selector and not the legacy entry", () => {
+  const manifest = readJson(new URL("../../plugins/flowtask-plugins.json", import.meta.url));
+  const entry = manifest.find((item) => item.name === "agent-model-selector-opencode");
+  assert.ok(entry);
+  assert.equal(entry.path, "agent-model-selector/packages/opencode");
+  assert.equal(entry.kind, "cli");
+  assert.deepEqual(entry.destinations, ["opencode"]);
+  assert.equal(entry.entrypoint, "dist/tui.js");
+  assert.deepEqual(entry.files, ["dist", "package.json", "README.md"]);
+  assert.equal(manifest.some((item) => item.name === "flowtask-model-selector"), false);
+});
+
+test("manifest entries without files keep copying the full source tree", () => {
+  const { root, flowtaskDir } = createFixture();
+  createSelectorSource(flowtaskDir, { withExtras: true });
+
+  installManifestPlugins(root, [selectorManifest({ files: undefined })], flowtaskDir);
+
+  const dest = path.join(root, ".opencode", "plugins", "agent-model-selector-opencode");
+  assert.ok(fs.existsSync(path.join(dest, "dist", "tui.js")));
+  assert.ok(fs.existsSync(path.join(dest, "src", "internal.ts")));
+  assert.ok(fs.existsSync(path.join(dest, "tests", "extra.test.js")));
+  assert.equal(fs.existsSync(path.join(dest, "node_modules")), false);
+});
+
+test("the files allowlist prunes stale destination entries from a previous install", () => {
+  const { root, flowtaskDir } = createFixture();
+  createSelectorSource(flowtaskDir);
+  const dest = path.join(root, ".opencode", "plugins", "agent-model-selector-opencode");
+  fs.mkdirSync(path.join(dest, "node_modules", "dep"), { recursive: true });
+  fs.writeFileSync(path.join(dest, "node_modules", "dep", "index.js"), "module.exports = {};\n");
+  fs.mkdirSync(path.join(dest, "src"), { recursive: true });
+  fs.writeFileSync(path.join(dest, "src", "stale.ts"), "export {};\n");
+  fs.writeFileSync(path.join(dest, "package.json"), '{"name":"stale-playground"}\n', "utf8");
+
+  installManifestPlugins(root, [selectorManifest()], flowtaskDir);
+
+  assert.deepEqual(fs.readdirSync(dest).sort(), ["README.md", "dist", "package.json"]);
+  assert.deepEqual(readJson(path.join(dest, "package.json")), { name: "agent-model-selector-opencode" });
+  assert.equal(fs.existsSync(path.join(dest, "src")), false);
+  assert.equal(fs.existsSync(path.join(dest, "node_modules")), false);
+});
+
+test("a manifest that still declares the legacy selector preserves its installation", () => {
+  const { root, flowtaskDir } = createFixture();
+  createSelectorSource(flowtaskDir);
+  const legacySource = path.join(flowtaskDir, "plugins", "flowtask-model-selector", "dist");
+  fs.mkdirSync(legacySource, { recursive: true });
+  fs.writeFileSync(path.join(legacySource, "tui.js"), "export default 'legacy';\n");
+
+  const legacyDir = path.join(root, ".opencode", "plugins", "flowtask-model-selector");
+  fs.mkdirSync(path.join(legacyDir, "dist"), { recursive: true });
+  fs.writeFileSync(path.join(legacyDir, "dist", "tui.js"), "export default 'legacy';\n");
+  writeJson(path.join(root, ".opencode", "cli.json"), {
+    $schema: "https://opencode.ai/cli.json",
+    plugins: ["./plugins/flowtask-model-selector/dist/tui.js"],
+  });
+  const legacyEntry = {
+    name: "flowtask-model-selector",
+    path: "flowtask-model-selector",
+    kind: "cli",
+    destinations: ["opencode"],
+    entrypoint: "dist/tui.js",
+  };
+
+  installManifestPlugins(root, [selectorManifest(), legacyEntry], flowtaskDir);
+
+  assert.ok(fs.existsSync(legacyDir));
+  const plugins = readJson(path.join(root, ".opencode", "cli.json")).plugins;
+  assert.ok(plugins.includes("./plugins/agent-model-selector-opencode/dist/tui.js"));
+  assert.ok(plugins.includes("./plugins/flowtask-model-selector/dist/tui.js"));
+  assert.equal(readJson(path.join(flowtaskDir, "cli.json")).plugins.some((plugin) =>
+    plugin.includes("flowtask-model-selector")), true);
 });
 
 test("enabled pair installs and registers both classifier plugins", () => {
@@ -446,7 +637,7 @@ test("mismatch removes both components and emits the exact deprecation alert onc
   writeJson(path.join(root, "tui.json"), {
     plugin: [
       "./.opencode/plugins/flowtask-classifier-tui/dist/tui.js",
-      "./.opencode/plugins/flowtask-model-selector/dist/tui.js",
+      "./.opencode/plugins/agent-model-selector-opencode/dist/tui.js",
     ],
   });
   writeJson(path.join(root, ".opencode", "opencode.json"), {
@@ -469,7 +660,7 @@ test("mismatch removes both components and emits the exact deprecation alert onc
   assert.equal(fs.existsSync(path.join(pluginRoot, "flowtask-classifier-tui")), false);
   assert.equal(output.join("\n").split("el plugin de clasificación fue deprecado").length - 1, 1);
   assert.deepEqual(nativeTuiEntries(root), [
-    "./plugins/flowtask-model-selector/dist/tui.js",
+    "./plugins/agent-model-selector-opencode/dist/tui.js",
   ]);
   assert.deepEqual(installedPluginEntries(path.join(root, "tui.json")), [
     "./.opencode/plugins/flowtask-classifier-tui/dist/tui.js",
@@ -486,13 +677,13 @@ test("cleanup preserves unrelated plugin directories and config entries", () => 
   const pluginRoot = path.join(root, ".opencode", "plugins");
   fs.mkdirSync(path.join(pluginRoot, "flowtask-classifier-hook"), { recursive: true });
   fs.mkdirSync(path.join(pluginRoot, "flowtask-classifier-tui"), { recursive: true });
-  fs.mkdirSync(path.join(pluginRoot, "flowtask-model-selector"), { recursive: true });
+  fs.mkdirSync(path.join(pluginRoot, "flowtask-unmanaged"), { recursive: true });
   writeJson(path.join(root, "tui.json"), {
     "$schema": "https://opencode.ai/tui.json",
     keybinds: { input_submit: "return" },
     plugin: [
       "./.opencode/plugins/flowtask-classifier-tui/dist/tui.js",
-      "./.opencode/plugins/flowtask-model-selector/dist/tui.js",
+      "./.opencode/plugins/flowtask-unmanaged/dist/tui.js",
       "./plugins/user-tui/dist/index.js",
     ],
   });
@@ -512,15 +703,16 @@ test("cleanup preserves unrelated plugin directories and config entries", () => 
 
   installManifestPlugins(root, manifest, flowtaskDir);
 
-  assert.ok(fs.existsSync(path.join(pluginRoot, "flowtask-model-selector")));
+  assert.ok(fs.existsSync(path.join(pluginRoot, "flowtask-unmanaged")));
   assert.deepEqual(readJson(path.join(root, "tui.json")).keybinds, { input_submit: "return" });
   assert.deepEqual(installedPluginEntries(path.join(root, "tui.json")), [
     "./.opencode/plugins/flowtask-classifier-tui/dist/tui.js",
+    "./.opencode/plugins/flowtask-unmanaged/dist/tui.js",
     "./plugins/user-tui/dist/index.js",
   ]);
   assert.deepEqual(nativeTuiEntries(root), [
     "./plugins/user-tui/dist/index.js",
-    "./plugins/flowtask-model-selector/dist/tui.js",
+    "./plugins/agent-model-selector-opencode/dist/tui.js",
   ]);
   assert.deepEqual(readJson(path.join(root, ".opencode", "tui.json")).keybinds, { input_submit: "tab" });
   assert.equal(readJson(path.join(root, ".opencode", "tui.json")).$schema, "https://custom/tui-schema.json");
@@ -947,7 +1139,7 @@ test("update preserves divergent valid profiles independently across two targets
 
 test("does not accept a TUI write failure as a successful registration", () => {
   assert.equal(
-    registerPluginArrayEntry("/dev/null/flowtask/tui.json", "../.opencode/plugins/flowtask-model-selector/dist/tui.js"),
+    registerPluginArrayEntry("/dev/null/flowtask/tui.json", "../.opencode/plugins/agent-model-selector-opencode/dist/tui.js"),
     false,
   );
 });
@@ -959,7 +1151,7 @@ test("does not remove a manifest TUI entry when its source was not copied", () =
   writeJson(path.join(root, "tui.json"), {
     plugin: [
       "./.opencode/plugins/flowtask-classifier-tui/dist/tui.js",
-      "./.opencode/plugins/flowtask-model-selector/dist/tui.js",
+      "./.opencode/plugins/agent-model-selector-opencode/dist/tui.js",
       "./plugins/user-tui/dist/index.js",
     ],
   });
@@ -967,7 +1159,7 @@ test("does not remove a manifest TUI entry when its source was not copied", () =
   installManifestPlugins(root, manifest, flowtaskDir);
 
   assert.deepEqual(installedPluginEntries(path.join(root, "tui.json")), [
-    "./.opencode/plugins/flowtask-model-selector/dist/tui.js",
+    "./.opencode/plugins/agent-model-selector-opencode/dist/tui.js",
     "./plugins/user-tui/dist/index.js",
   ]);
   assert.deepEqual(nativeTuiEntries(root), [
@@ -1012,12 +1204,12 @@ test("preserves a legacy entry when installation TUI registration fails", () => 
   createSources(flowtaskDir, manifest);
   fs.mkdirSync(path.join(root, ".opencode", "tui.json"), { recursive: true });
   writeJson(path.join(root, "tui.json"), {
-    plugin: ["./.opencode/plugins/flowtask-model-selector/dist/tui.js"],
+    plugin: ["./.opencode/plugins/agent-model-selector-opencode/dist/tui.js"],
   });
 
   assert.throws(() => installManifestPlugins(root, manifest, flowtaskDir));
   assert.deepEqual(installedPluginEntries(path.join(root, "tui.json")), [
-    "./.opencode/plugins/flowtask-model-selector/dist/tui.js",
+    "./.opencode/plugins/agent-model-selector-opencode/dist/tui.js",
   ]);
   assert.equal(fs.existsSync(path.join(root, ".opencode", "tui.json")), true);
 });
@@ -1028,9 +1220,9 @@ test("removes duplicate legacy entries when one TUI plugin is migrated", () => {
   createSources(flowtaskDir, manifest);
   writeJson(path.join(root, "tui.json"), {
     plugin: [
-      "./.opencode/plugins/flowtask-model-selector/dist/tui.js",
+      "./.opencode/plugins/agent-model-selector-opencode/dist/tui.js",
       "./plugins/user-tui/dist/index.js",
-      "./.opencode/plugins/flowtask-model-selector/dist/tui.js",
+      "./.opencode/plugins/agent-model-selector-opencode/dist/tui.js",
     ],
   });
 
@@ -1042,7 +1234,7 @@ test("removes duplicate legacy entries when one TUI plugin is migrated", () => {
     "./plugins/user-tui/dist/index.js",
   ]);
   assert.deepEqual(nativeTuiEntries(root), [
-    "./plugins/flowtask-model-selector/dist/tui.js",
+    "./plugins/agent-model-selector-opencode/dist/tui.js",
   ]);
   assert.equal(fs.readFileSync(path.join(root, ".opencode", "tui.json"), "utf8"), firstNative);
 });
@@ -1055,13 +1247,13 @@ test("regenerates canonical standalone TUI and discards contaminated residual", 
     plugin: ["/Users/other-project/ClipLab/plugins/foreign/dist/tui.js"],
   });
   writeJson(path.join(root, "tui.json"), {
-    plugin: ["./.opencode/plugins/flowtask-model-selector/dist/tui.js"],
+    plugin: ["./.opencode/plugins/agent-model-selector-opencode/dist/tui.js"],
   });
 
   regenerateCanonicalTui(root, flowtaskDir, manifest);
   assert.deepEqual(readJson(path.join(flowtaskDir, "tui.json")), {
     $schema: "https://opencode.ai/tui.json",
-    plugin: ["./plugins/flowtask-model-selector/dist/tui.js"],
+    plugin: ["./plugins/agent-model-selector/packages/opencode/dist/tui.js"],
   });
   assert.equal(removeLegacyConsumerFiles(root, ["tui.json"]), true);
   assert.equal(fs.existsSync(path.join(root, "tui.json")), false);
@@ -1098,7 +1290,7 @@ test("preserves legacy keybinds and other top-level fields before removing root 
     theme: "custom-dark",
     editor: { tabSize: 4 },
     $schema: "https://opencode.ai/tui.json",
-    plugin: ["./plugins/flowtask-model-selector/dist/tui.js"],
+    plugin: ["./plugins/agent-model-selector/packages/opencode/dist/tui.js"],
   });
   assert.equal(removeLegacyConsumerFiles(root, ["tui.json"]), true);
   assert.equal(fs.existsSync(path.join(root, "tui.json")), false);

@@ -31,6 +31,7 @@ Esta carpeta separa operación vigente de diseños retirados. La fuente de verda
 - `.flowtask/commands/` — comandos instalables.
 - `.flowtask/skills/` — protocolos cargables.
 - `.flowtask/plugins/flowtask-plugins.json` — manifiesto.
+- `.flowtask/plugins/agent-model-selector/` — submodule del selector de modelos agnóstico.
 - `.flowtask/bin/` — CLI e instalador.
 - `.flowtask/scripts/` — scripts operativos.
 
