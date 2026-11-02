@@ -62,6 +62,28 @@ Rules:
 
 ---
 
+## Verificación por criterio
+
+Every material criterion declares its verification path.
+
+| ID | Criterio | Vía | Referencia | Defecto | Por qué la vía no lo detecta |
+|----|----------|-----|------------|---------|------------------------------|
+| C1 | [criterio material] | [existing_test / command / manual / gap] | [archivo y caso, comando, o pasos] | [defecto que quedaría sin detectar] | [motivo] |
+
+Rules:
+- Every material criterion has a row.
+- `existing_test` cites the file and the case; `command` cites the command and the
+  expected result; `manual` cites the steps and the observation.
+- `gap` requires a defect and `why_not_detected`.
+- A criterion without a path is marked `gap` with its defect and reason; it is never
+  filled with a fictitious check.
+- The plan does not write test code: tasks may run existing tests, commands or manual
+  checks, but never create or edit test files.
+- No generic templates, no assertions about literal prose unless that text is a format
+  consumed by another component, and no duplicate coverage.
+
+---
+
 ## Scope
 
 **INCLUDES:**
@@ -117,8 +139,8 @@ Execute in this order (respecting dependencies):
 - Model → DTO → Repository → Service → API
 - Config before code that consumes it
 - Constants/enums before classes that use them
-- Tests after implementation (or RED-GREEN-REFACTOR if applicable)
-- Implementation + test = ONE task, never separate
+- Verification after implementation (or RED-GREEN-REFACTOR if applicable)
+- Implementation + verification = ONE task, never separate
 
 ---
 
@@ -158,6 +180,9 @@ If applicable:
     Steps: trigger error condition
     Expected: graceful failure with correct error handling
   ```
+
+  Prohibited: generic scenarios, assertions about literal prose not consumed by another
+  component, and scenarios that duplicate coverage.
 ```
 
 ---
@@ -165,9 +190,15 @@ If applicable:
 ## Key Rules
 
 - **Decision complete**: ZERO decisions left for the constructor.
-- **Implementation + Test = ONE task**: Never separate.
+- **Implementation + verification = ONE task**: Never separate.
 - **Every task MUST have**: References, Acceptance Criteria, QA Scenarios.
 - **QA Scenarios**: Specific tool + concrete steps + exact assertions. Both happy-path AND failure.
+- **No test code in the plan**: tasks may run existing tests, commands or manual checks;
+  only the Tester writes tests, and only for declared gaps.
+- **Every material criterion has a verification path**: a `gap` declares its defect and
+  `why_not_detected`.
+- **No filler**: no generic templates, no assertions about literal prose not consumed by
+  another component, and no duplicate coverage.
 - **Only verified files**: Do not reference files that have not been found via Engram or scan.
 - **Conventions resolved**: The planner resolves all conventions. The constructor follows them, does not re-search.
 - **Material data cites its record**: Every material datum behind a decision cites its VR record, with source and state.

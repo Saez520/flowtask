@@ -159,13 +159,12 @@ Reglas de la verificación:
 
 ### Herencia del reporte de pruebas
 
-La decisión de pruebas y su reporte son evidencia heredada: llegan con `test_decision_ref` y `tests_report_ref`, y el Validator no re-ejecuta las pruebas ya comprobadas.
+El reporte de pruebas es evidencia heredada: llega con `plan_ref`, `tests_report_ref` y `tests_gaps`, y el Validator no re-ejecuta las pruebas ya comprobadas. No hay artifact de decisión.
 
 Reglas de la herencia:
 
-- Si la decisión está ausente o es ilegible, el resultado es `OPERATIONAL_FAILURE` con causa `test_decision_missing`: no se valida sobre una decisión que no se puede leer.
-- Si `tests_required` es `true` y el reporte está ausente o es ilegible, el resultado es `OPERATIONAL_FAILURE` con causa `tests_report_missing` y el alcance queda `unverified`. No se aprueba sobre ese vacío.
-- Si `tests_required` es `false`, no se espera reporte: la validación sigue su curso normal.
+- Sin gaps y con `tests_report_ref: NONE`, no se espera reporte: la validación sigue su curso normal.
+- Con gaps y reporte ausente, ilegible o incompleto, el resultado es `OPERATIONAL_FAILURE` con causa `tests_report_missing` y el alcance queda `unverified`. No se aprueba sobre ese vacío. Un reporte incompleto es el que no declara todos los gaps del plan.
 - Un test `failed` es un rechazo funcional: se informa el caso, el comando, el esperado y el obtenido. No es un fallo de herramienta.
 - Un test `passed` es evidencia verificada: se hereda con su fuente y su momento de observación, sin volver a ejecutarlo.
 - Un criterio `not_covered` o `unverified` se verifica manualmente o se declara `unverified` con su causa.
@@ -181,7 +180,7 @@ Reglas de la herencia:
 2. **Decisiones de Diseño**: `mem_search(query: "{execution_id}", type: "decision")`.
 3. **Historial de fallos**: Busca si este CA o hotfix ya fue rechazado antes para no repetir el mismo error en el reporte. Los hotfixes nuevos usan `HF-{nombre-descriptivo}` y se buscan bajo `hotfix/{id}`. Los hotfixes anteriores se buscan bajo el ID original con el que fueron creados; los IDs no se renombran.
 4. **Evidencia heredada**: Recupera los registros `VR-*` publicados por el plan, el CA y la auditoría, y la evidencia de la ronda anterior. No se re-verifica por rutina lo que ya está verificado y no se repiten comprobaciones ya veredictadas.
-5. **Decisión y reporte de pruebas**: cuando la ronda los declara, recupera la decisión registrada (`test_decision_ref`) y el reporte de pruebas (`tests_report_ref`). Verifica que el reporte exista y sea legible antes de heredarlo.
+5. **Reporte de pruebas**: cuando la ronda lo declara, recupera `plan_ref`, `tests_report_ref` y `tests_gaps`. Verifica que el reporte exista, sea legible y declare todos los gaps del plan cuando hay gaps, antes de heredarlo.
 
 ---
 
@@ -307,7 +306,7 @@ Un hallazgo en un archivo funcional se reporta como **BLOQUEANTE** en el Paso 6.
 - Comentarios faltantes
 - Orden de imports no ideal
 
-Un reporte de pruebas requerido y ausente o ilegible deja el alcance `unverified` y no habilita un veredicto favorable: se clasifica como fallo operativo con causa `tests_report_missing`, no como incumplimiento del trabajo. Una decisión de pruebas ausente o ilegible se clasifica como fallo operativo con causa `test_decision_missing`.
+Un reporte de pruebas requerido y ausente, ilegible o incompleto deja el alcance `unverified` y no habilita un veredicto favorable: se clasifica como fallo operativo con causa `tests_report_missing`, no como incumplimiento del trabajo.
 
 ---
 
@@ -352,8 +351,8 @@ publica conteos, nunca una calificación numérica:
 
 ### Herencia del reporte de pruebas
 
-**Decisión:** [decision_ref] — [tests_required: true / false]
 **Reporte:** [tests_report_ref / NONE]
+**Gaps:** [tests_gaps / NONE]
 
 | # | Caso o criterio heredado | Estado | Verificación manual |
 |---|--------------------------|--------|---------------------|
@@ -479,7 +478,8 @@ produce `needs_recovery_or_pause`.
 - **NUNCA reportes** una referencia de coordinación en artifacts de coordinación como hallazgo de código funcional
 - **NUNCA re-verifiques por rutina** la evidencia heredada ni repitas comprobaciones ya veredictadas
 - **NUNCA re-ejecutes** las pruebas ya cubiertas por el reporte heredado
-- **NUNCA apruebes** con un reporte de pruebas requerido ausente o ilegible
+- **NUNCA apruebes** con gaps y un reporte de pruebas ausente, ilegible o incompleto
 - **NUNCA conviertas** un test `failed` en un fallo de herramienta
-- **NUNCA exijas** un reporte de pruebas cuando `tests_required: false`
+- **NUNCA exijas** un reporte de pruebas cuando no hay gaps
+- **NUNCA re-evalúes** una decisión de pruebas: no existe artifact de decisión
 - **NUNCA conviertas** una contradicción de evidencia en un rechazo automático ni en un cambio de alcance

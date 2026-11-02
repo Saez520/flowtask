@@ -151,7 +151,6 @@ RUNNER clasifica ── ¿existe el CA en Engram?
               ▼
         [5] INICIO AUTOMÁTICO ── la orden del dev + el Gate PASS habilitan
             la construcción (sin espera rutinaria; el Gate se verifica igual)
-            la decisión condicional de pruebas se registra antes del worktree
               │
               ▼
         [6] WORKTREE ── worktree.sh create CA-{ID} --base {base detectada}
@@ -164,10 +163,10 @@ RUNNER clasifica ── ¿existe el CA en Engram?
             flow-state: flow-state/CA-{ID}/construct
               │
               ▼
-        [8] TESTER CONDICIONAL ── genera pruebas solo cuando el riesgo lo exige
-            decisión: ca/CA-{ID}/artifact/test-gate
+        [8] TESTER POR HUECOS ── genera pruebas solo para huecos declarados
+            máximo una prueba por hueco y techo tres por entrega; default 0
             reporte: ca/CA-{ID}/artifact/tests-report
-            sin pruebas requeridas: continúa a la validación sin esperar
+            sin huecos: continúa a la validación sin generar ni esperar
               │
               ▼
         [9] VALIDATOR ── validación en caliente

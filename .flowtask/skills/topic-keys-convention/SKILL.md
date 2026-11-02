@@ -29,14 +29,12 @@ Cada topic_key tiene un **owner** que es el único agente (o grupo) autorizado a
 | `ca/CA-{ID}/artifact/audit` | Plan-Auditor | Review y verificación del plan | Runner, Validator |
 | `ca/CA-{ID}/artifact/validacion` | Validator | Reporte de validación del CA | Runner |
 | `ca/CA-{ID}/artifact/logging-report` | Logger | Reporte de instrumentación | — |
-| `ca/CA-{ID}/artifact/test-gate` | Tester | Decisión condicional de pruebas | Runner, Validator |
-| `ca/CA-{ID}/artifact/tests-report` | Tester | Reporte de tests generados | Runner, Validator |
+| `ca/CA-{ID}/artifact/tests-report` | Tester | Reporte de pruebas por huecos | Runner, Validator |
 | `flow-state/CA-{ID}/create` | CA-Writer | Estado del flujo CA-Writer | Runner |
 | `flow-state/CA-{ID}/plan` | Planner | Estado del flujo Planner | Runner |
 | `flow-state/CA-{ID}/audit` | Plan-Auditor | Estado del flujo Plan-Auditor | Runner |
 | `flow-state/{execution_id}/construct` | Constructor | Estado del flujo Constructor | Runner |
 | `flow-state/{execution_id}/validate` | Validator | Estado del flujo Validator | Runner |
-| `flow-state/CA-{ID}/test-gate` | Tester | Estado de la decisión de pruebas | Runner, Validator |
 | `flow-state/{ID}/tests` | Tester | Estado del flujo Tester | Runner, Validator |
 | `flow-state/{CA-ID}/review` | Review-Orchestrator | Estado del flujo Review | Runner |
 | `flow-state/{ID}/logging` | Logger | Estado del flujo Logger | Runner |
@@ -88,7 +86,6 @@ Esta excepción está documentada en `memory-contract` y el onboarder la referen
 | `flow-state/CA-{ID}/audit` | Plan-Auditor | `flow-state/CA-021/audit` |
 | `flow-state/{execution_id}/construct` | Constructor | `flow-state/CA-021/construct` |
 | `flow-state/{execution_id}/validate` | Validator | `flow-state/CA-021/validate` |
-| `flow-state/CA-{ID}/test-gate` | Tester | `flow-state/CA-021/test-gate` |
 | `flow-state/{ID}/tests` | Tester | `flow-state/CA-021/tests` |
 | `flow-state/{CA-ID}/review` | Review-Orchestrator | `flow-state/CA-021/review` |
 | `flow-state/{ID}/logging` | Logger | `flow-state/CA-021/logging` |

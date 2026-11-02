@@ -281,7 +281,7 @@ intención. Permanece activa durante investigación, diagnóstico y ejecución.
 | `flowtask-inspector`    | pregunta sobre el proyecto o pide análisis                        |
 | `flowtask-initializer`  | necesita escanear proyecto                                        |
 | `flowtask-logger`       | necesita instrumentar logging                                     |
-| `flowtask-tester`       | necesita decidir si se necesitan tests y generarlos cuando corresponde |
+| `flowtask-tester`       | necesita generar pruebas solo para huecos de verificación (máximo una por hueco y techo tres) |
 | `flowtask-graphify-docs-media` | necesita generar docs/media de Graphify (background, tras aceptación) |
 
 Formato para invocar:
@@ -902,34 +902,12 @@ Invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/CA-{ID}
 
 ### Paso 4 — Constructor
 
-El orden de inicio es: `AgentRunRecord` → decisión de pruebas → worktree → Constructor.
+El orden de inicio es: `AgentRunRecord` → worktree → Constructor.
 
 Antes de despachar al Constructor, abre la ejecución con el `AgentRunRecord` que incluye la
 evidencia del Gate en `autonomy.decisions` y confírmalo por lectura. El worktree y la
-construcción son la ronda 1.
-
-#### Decisión de pruebas
-
-La decisión ocurre después del Gate de Ejecución y antes de abrir el worktree. No es una
-confirmación humana: no se pide confirmación por generar o no generar pruebas, no hay espera
-rutinaria y el `AgentRunRecord` no se modifica.
-
-1. Invoca `flowtask-tester` con `mode: decide`, `execution_id`, `artifact_namespace`,
-   `plan_ref`, `audit_ref`, `ca_ref`, el alcance, el `profile` con su `report_detail`, el
-   input literal y el `decision_ref` previo. Hilo fresco, tratamiento ligero.
-2. Si el artifact de decisión ya existe para el mismo `execution_id` y el mismo `plan_ref`,
-   leelo y no re-invokes al Tester: el flujo no re-evalúa la decisión.
-3. Si la respuesta trae `persistencia_fallida` o `state: blocked`, pausa con
-   `progress_unavailable` y el mensaje canónico de tres líneas. No abras worktree, no
-   invoqués al Constructor ni al Validator.
-4. Si la respuesta trae `tests_required: false`, imprime
-   `✔ Decisión de pruebas: no requeridas (ninguna condición; evidencia negativa registrada)`
-   y continuá al worktree con `tests_required: false`.
-5. Si la respuesta trae `tests_required: true`, imprime
-   `✔ Decisión de pruebas: requeridas ({conditions})` y pasá al Constructor el
-   `test_decision_ref` y el `tests_required` como referencias citables.
-6. Si la respuesta no trae la decisión, el flujo no infiere `tests_required`: pausa con
-   `progress_unavailable` y el mensaje canónico de tres líneas.
+construcción son la ronda 1. No hay una decisión de pruebas antes del worktree: la
+generación por huecos ocurre después de la construcción, en el Paso 4.5.
 
 ### Política de worktrees — adapter consumidor obligatorio por CA
 
@@ -983,25 +961,33 @@ Prompt: flow state del plan desde Engram y contexto actual del CA.
 
 ***
 
-### Paso 4.5 — Generación de pruebas
+### Paso 4.5 — Generación de pruebas por huecos
 
-La generación ocurre después de la construcción y antes de la validación.
+La generación ocurre después de la construcción y antes de la validación. No se pide
+confirmación para avanzar y no existe una decisión previa que re-evaluar.
 
-1. Si la decisión registrada trae `tests_required: false`, saltá al Paso 5 con
-   `tests_report_ref: NONE`.
-2. Si trae `tests_required: true`, invoca `flowtask-tester` con `mode: generate`,
-   `execution_id`, `artifact_namespace`, `test_decision_ref`, `tests_required: true`, el
-   worktree, el alcance, el `profile` con su `report_detail` y el reporte previo. Hilo
-   fresco, tratamiento ligero.
-3. La generación reutiliza la decisión registrada: el flujo no re-evalúa las condiciones. Un
-   cambio material de alcance desde la decisión pausa y exige una decisión nueva; el flujo
-   no infiere el alcance de la prueba.
-4. Si la respuesta trae `persistencia_fallida`, `state: blocked` o el reporte ausente, pausa
-   con `progress_unavailable` y el mensaje canónico de tres líneas. No invoqués al Validator
-   ni anuncies la entrega como lista para validar.
-5. Si el Tester responde `tests_not_required` con `tests_required: true`, es una
-   inconsistencia: pausa y no infieras el alcance de la prueba.
-6. Pasá al Validator el `test_decision_ref` y el `tests_report_ref`.
+1. Leé la sección `## Verificación por criterio` del plan y reuní los huecos declarados
+   (`Vía: gap`) con su criterio, defecto y `why_not_detected`.
+2. Considerá el input literal: un pedido que nombra un criterio del plan y un defecto no
+   cubierto se registra como hueco `explicit_request`; un pedido genérico no bloquea si hay
+   huecos declarados; un pedido genérico sin huecos devuelve `needs_decision`.
+3. Si no hay huecos declarados ni pedido válido, imprimí
+   `✔ Sin huecos declarados: no se generan pruebas` y continuá al Paso 5 con
+   `tests_report_ref: NONE` y `tests_gaps: NONE`.
+4. Si hay huecos o pedido válido, invocá `flowtask-tester` con `execution_id`,
+   `artifact_namespace`, `plan_ref`, `gap_refs` (criterio, defecto y `why_not_detected`),
+   el worktree, el alcance, el `profile` con su `report_detail`, el input literal y el
+   reporte previo. Hilo fresco, tratamiento ligero.
+5. Manejo de respuestas:
+   - `needs_decision` → pausa con `authority_block` y el mensaje canónico de tres líneas.
+   - `no_gaps` con huecos declarados → inconsistencia; pausa con `progress_unavailable`.
+   - `state: blocked` o `persistencia_fallida` → pausa con `progress_unavailable`.
+   - `tests_generated` → conservá `tests_report_ref` y `tests_gaps`.
+   - reporte requerido ausente → pausa con `progress_unavailable`.
+6. La generación reutiliza el plan y sus huecos: no re-evalúa una decisión. Un cambio
+   material del plan o de los huecos pausa y exige una generación nueva; el flujo no infiere
+   el alcance de la prueba.
+7. Pasá al Validator `plan_ref`, `tests_report_ref` y `tests_gaps`.
 
 ***
 
@@ -1023,10 +1009,10 @@ ni contexto de sesión anterior.
 El prompt de despacho incluye: `execution_id`, `artifact_namespace`, la ronda
 (`round=closure` o `round=intermediate`), el alcance declarado (`scope.goal`,
 `scope.files`, `scope.criteria`), `plan_ref` (obligatorio en `round=closure` y
-opcional en `round=intermediate`), `environment`, la decisión de pruebas
-(`test_decision_ref` y `tests_required`) y el reporte de pruebas
-(`tests_report_ref`, `NONE` cuando no se generaron) y, cuando existe, la
-referencia al reporte de validación anterior como referencia citable.
+opcional en `round=intermediate`), `environment`, el reporte de pruebas
+(`tests_report_ref`, `NONE` cuando no se generaron), `tests_gaps` (`NONE` cuando
+no hay huecos) y, cuando existe, la referencia al reporte de validación anterior
+como referencia citable.
 
 **Veredictos.**
 
@@ -1090,7 +1076,7 @@ Una nueva ronda después del diagnóstico requiere una hipótesis fundada, disti
 
 Un fallo operativo (comando fallido, herramienta/servicio indisponible o limitación externa) no es rechazo funcional y no incrementa rondas. Conserva worktree, cambios, artifacts e historial; intenta recuperación operativa pertinente o pausa si no puede verificar. Nunca interpretes el fallo como aprobación ni pidas correcciones al Constructor por un fallo operativo.
 
-La validación hereda el reporte de pruebas: un test `failed` es un rechazo funcional con su evidencia y una herramienta caída es un fallo operativo. La generación reutiliza la decisión registrada sin re-evaluarla; un cambio material de alcance desde la decisión pausa y exige una decisión nueva.
+La validación hereda el reporte de pruebas: un test `failed` es un rechazo funcional con su evidencia y una herramienta caída es un fallo operativo. La generación reutiliza el plan y sus huecos sin re-evaluarlos; un cambio material del plan o de los huecos pausa y exige una generación nueva.
 
 Un fallo irrecuperable declarado con evidencia y diagnóstico cierra por causa externa conservando trabajo, historial y diagnóstico. Un fallo externo no verificable no se declara irrecuperable: es un fallo operativo, produce pausa y nunca es un rechazo funcional.
 

@@ -136,6 +136,23 @@ Answer ONE question: "Can a capable developer execute this plan without getting 
 
 **No es falla**: un dato periférico sin verificar, o una tarea sin datos materiales propios.
 
+### 7. Verificación por criterio y gobierno de pruebas
+
+- ¿Existe la sección `## Verificación por criterio`?
+- ¿Cada criterio material tiene una fila?
+- ¿La vía declarada es `existing_test`, `command`, `manual` o `gap`?
+- ¿Las referencias de `existing_test`, `command` y `manual` son resolubles?
+- ¿Cada `gap` declara un defecto y `why_not_detected`?
+- ¿El plan deja claro que no escribe código de prueba y que solo el Tester escribe tests para gaps?
+- ¿Ninguna tarea crea o edita archivos de test?
+- ¿Se evitan las plantillas genéricas, la prosa literal no consumida y la cobertura duplicada?
+- ¿Un gap con cobertura existente se marca como gap de relleno?
+
+**PASA si**: La sección existe, cada criterio material tiene una vía válida y los gaps declaran defecto y motivo.
+**FALLA si**: Falta la sección, un gap no declara defecto o motivo, un gap tiene cobertura existente, una tarea crea o edita tests, o una comprobación es genérica, de estructura interna, sobre prosa literal no consumida o duplicada.
+
+**No es falla**: un plan sin tareas de prueba. La ausencia de tareas de prueba no es un blocker; una tarea genérica o un gap sin defecto sí lo es.
+
 ---
 
 ## Lo que NO verificas
@@ -158,8 +175,9 @@ Answer ONE question: "Can a capable developer execute this plan without getting 
 4. **Verificar executabilidad**: ¿Cada tarea se puede empezar?
 5. **Verificar higiene de coordinación**: ¿El contenido funcional queda libre de referencias al CA, su ID y namespaces?
 6. **Verificar QA scenarios**: ¿Cada tarea tiene QA scenarios ejecutables?
-7. **Verificar evidencia material**: ¿La sección de evidencia verificada existe y cada dato material declara su fuente y su estado? Un dato material `unverified` o `discrepant` fuera de las decisiones pendientes y de los bloqueos es un blocker.
-8. **Decidir**: ¿Hay issues bloqueantes? No = OKAY. Sí = REJECT con máximo 3 issues.
+7. **Verificar la verificación por criterio y el gobierno de pruebas**: ¿Cada criterio material tiene una vía válida? ¿Los gaps declaran defecto y motivo? ¿Hay tareas que crean o editan tests, plantillas genéricas, prosa literal no consumida o cobertura duplicada?
+8. **Verificar evidencia material**: ¿La sección de evidencia verificada existe y cada dato material declara su fuente y su estado? Un dato material `unverified` o `discrepant` fuera de las decisiones pendientes y de los bloqueos es un blocker.
+9. **Decidir**: ¿Hay issues bloqueantes? No = OKAY. Sí = REJECT con máximo 3 issues.
 
 ---
 
@@ -182,6 +200,12 @@ Emite REJECT SOLO cuando:
 - Tarea es completamente imposible de empezar (cero contexto)
 - El plan contiene contradicciones internas
 - El plan inyecta referencias de coordinación (CA, su ID, namespaces) en código o archivos funcionales, en lugar de dejarlas en los artifacts de coordinación
+- Falta la sección `## Verificación por criterio`
+- Un gap sin defecto o sin motivo
+- Un gap con cobertura existente (gap de relleno)
+- Una tarea que crea o edita tests
+- Una comprobación genérica, de estructura interna o sobre prosa literal no consumida
+- Cobertura duplicada
 
 **Máximo 3 issues por rejection.** Si encontraste más, lista solo los 3 más críticos.
 
@@ -201,6 +225,7 @@ Cada issue debe ser:
 - "El enfoque en tarea 5 podría ser subóptimo"
 - "Falta documentación para caso borde X" (a menos que X sea el caso principal)
 - "La evidencia verificada omite un dato periférico"
+- "Un plan donde no hay tareas de prueba": la ausencia de tareas de prueba no es blocker
 - Rechazar porque tú lo harías diferente
 
 ### SÍ son Blockers
@@ -210,6 +235,9 @@ Cada issue debe ser:
 - "Las tareas 2 y 4 se contradicen en el flujo de datos"
 - "La tarea 7 propone nombrar el módulo con el ID del CA, dejando la referencia de coordinación dentro del código funcional"
 - "La decisión 3 se apoya en un dato material sin fuente resoluble, o el plan deja un dato material `unverified` fuera de las decisiones pendientes y de los bloqueos"
+- "Falta la sección de verificación por criterio, o un gap sin defecto o motivo"
+- "Un gap con cobertura existente, una tarea que crea o edita tests o una comprobación de relleno"
+- "Una comprobación sobre prosa literal no consumida por otro componente o una cobertura duplicada"
 
 ---
 

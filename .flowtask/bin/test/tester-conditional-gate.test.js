@@ -15,374 +15,303 @@ const flat = (text) => text.replace(/\s+/g, " ");
 const TESTER = ".flowtask/agents/tester.md";
 const RUNNER = ".flowtask/agents/runner.md";
 const VALIDATOR = ".flowtask/agents/validator.md";
-const MEMORY_CONTRACT = ".flowtask/skills/memory-contract/SKILL.md";
-const TOPIC_KEYS = ".flowtask/skills/topic-keys-convention/SKILL.md";
-const CHECKPOINT_MIXIN = ".flowtask/skills/checkpoint-mixin/SKILL.md";
-const PACKAGE = ".flowtask/package.json";
-const OPENCODE = "opencode.json";
-const AGENTS_DIR = path.join(ROOT, ".flowtask", "agents");
+const PLANNER = ".flowtask/agents/planner.md";
+const PLAN_AUDITOR = ".flowtask/agents/plan-auditor.md";
+const PLAN_TEMPLATE = ".flowtask/skills/plan-template/SKILL.md";
 
-// El identificador de la ejecución y el de la fase se componen por partes:
-// la prueba no publica identificadores de coordinación.
-const COORDINATION_ID = ["CA", "tester", "conditional", "gate"].join("-");
-const COORDINATION_PATTERN = new RegExp(COORDINATION_ID, "i");
-const PHASE_PATTERN = new RegExp(["F", "2", "\\.", "5"].join(""));
+function assertDeclares(text, tokens, file) {
+  for (const token of tokens) {
+    assert.ok(text.includes(token), `${file} debe declarar ${token}`);
+  }
+}
 
-const FUNCTIONAL_FILES = [
-  TESTER,
-  RUNNER,
-  VALIDATOR,
-  MEMORY_CONTRACT,
-  TOPIC_KEYS,
-  CHECKPOINT_MIXIN,
-];
-
-const TESTER_TOKENS = [
-  "## Modo de invocación",
-  "mode: decide | generate",
-  "## Decisión condicional",
-  "regression_risk",
-  "business_logic",
-  "ambiguous_criterion",
-  "explicit_test_request",
-  "risk_not_discardable",
-  "tests_required",
-  "negative_evidence",
-  "decision_id",
-  "test-gate",
-  "tests-report",
-  "tests_not_required",
-  "not_covered",
-  "failed",
-  "unverified",
-  "no modifica producción",
-  "no re-evalúa",
-  "no inventa la lectura",
-  "no agrega dependencias",
-  "hilo fresco",
-];
-
-const RUNNER_TOKENS = [
-  "#### Decisión de pruebas",
-  "### Paso 4.5 — Generación de pruebas",
-  "test_decision_ref",
-  "tests_report_ref",
-  "tests_required",
-  "persistencia_fallida",
-  "progress_unavailable",
-  "no se pide confirmación",
-  "no re-evalúa",
-  "✔ Decisión de pruebas:",
-];
-
-const VALIDATOR_TOKENS = [
-  "### Herencia del reporte de pruebas",
-  "test_decision_ref",
-  "tests_report_ref",
-  "tests_required",
-  "tests_report_missing",
-  "test_decision_missing",
-  "failed",
-  "unverified",
-  "no re-ejecuta",
-];
-
-// El orden de inicio del flujo: registro, decisión, worktree, construcción,
-// generación y validación.
-const RUNNER_ORDER = [
-  "abre la ejecución con el `AgentRunRecord`",
-  "#### Decisión de pruebas",
-  "### Política de worktrees",
-  "invoca constructor usando el formato canónico",
-  "### Paso 4.5 — Generación de pruebas",
-  "### Paso 5 — Validator",
-];
-
-// Una pregunta al desarrollador por las pruebas devuelve la espera rutinaria
-// que el gate eliminó.
-const TEST_QUESTION_PATTERNS = [
-  /¿[^\n]{0,160}\bpruebas\b/i,
-  /[^\n]{0,80}\bconfirmame\b[^\n]{0,80}\bpruebas\b/i,
-];
-
-// Un interruptor por entrega devuelve la configuración estática que el
-// contrato excluye.
-const TEST_SWITCH_PATTERNS = [
-  /[^\n]{0,80}\b(switch|interruptor|feature[_-]?flag|toggle)\b[^\n]{0,80}\bpruebas\b/i,
-  /[^\n]{0,40}\b(tests_enabled|test_generation|generar_pruebas)\b[^\n]{0,40}\b(config|configuraci[óo]n|setting|option|flag)\b/i,
-];
+function assertOmits(text, tokens, file) {
+  for (const token of tokens) {
+    assert.ok(!text.includes(token), `${file} no debe reintroducir ${token}`);
+  }
+}
 
 /**
- * Contrato del Tester: dos modos, decisión condicional con evidencia negativa
- * y default conservador, y generación acotada con reporte y taxonomía.
+ * Contrato del Tester: invocación por huecos, presupuesto 1/3/0 y reporte sin
+ * decisión previa. Las secciones y marcas son el contrato que consume el Runner.
  */
-function assertTesterContract(tester) {
-  const testerFlat = flat(tester);
+function assertTesterGapContract(tester) {
+  const text = flat(tester);
 
-  for (const token of TESTER_TOKENS) {
-    assert.ok(testerFlat.includes(token), `tester.md debe declarar ${token}`);
-  }
+  assertDeclares(
+    text,
+    [
+      "## Invocación por huecos",
+      "## Huecos de verificación",
+      "## Presupuesto",
+      "## Requisitos de cada prueba",
+      "## Generación por huecos",
+      "## Reporte de pruebas",
+      "1 prueba por hueco",
+      "techo 3",
+      "default 0",
+      "budget_limit",
+      "missing_verification_path",
+      "needs_decision",
+      "no_gaps",
+      "gaps_declared",
+      "gaps_covered",
+      "gaps_not_covered",
+      "plan_ref",
+      "`defecto`",
+      "`why_not_detected`",
+      "no incluye `decision_ref`",
+    ],
+    "tester.md",
+  );
 
-  assert.ok(
-    testerFlat.includes("`failed` es un incumplimiento funcional"),
-    "tester.md debe declarar la distinción failed: incumplimiento funcional",
-  );
-  assert.ok(
-    testerFlat.includes("`unverified` es una limitación de herramienta"),
-    "tester.md debe declarar la distinción unverified: limitación de herramienta",
-  );
-  assert.ok(
-    testerFlat.includes("`negative_evidence`") &&
-      testerFlat.includes("`tests_required: false` solo es válido con `negative_evidence`"),
-    "tester.md debe exigir evidencia negativa de las cuatro condiciones",
-  );
-  assert.ok(
-    testerFlat.includes("`risk_not_discardable`"),
-    "tester.md debe registrar el riesgo no descartable ante evidencia insuficiente",
-  );
-  assert.ok(
-    testerFlat.includes("`decision_id`") && testerFlat.includes("`ca/CA-{ID}/artifact/test-gate`"),
-    "tester.md debe declarar el artifact de decisión",
-  );
-  assert.ok(
-    testerFlat.includes("`ca/CA-{ID}/artifact/tests-report`"),
-    "tester.md debe declarar el artifact de reporte de pruebas",
+  assertOmits(
+    text,
+    [
+      "mode: decide",
+      "mode: generate",
+      "test-gate",
+      "tests_required",
+      "test_decision_ref",
+      "regression_risk",
+      "business_logic",
+      "ambiguous_criterion",
+      "risk_not_discardable",
+    ],
+    "tester.md",
   );
 }
 
 /**
- * Contrato del Runner: decisión previa al worktree, generación posterior a la
- * construcción y herencia al Validator, sin espera rutinaria.
+ * Contrato del flujo: registro, worktree y Constructor sin decisión previa; el
+ * Paso 4.5 genera por huecos y el Validator exige el reporte cuando hay gaps.
  */
-function assertRunnerContract(runner) {
-  const runnerFlat = flat(runner);
+function assertRunnerValidatorFlow(runner, validator) {
+  const runnerText = flat(runner);
+  const validatorText = flat(validator);
 
-  for (const token of RUNNER_TOKENS) {
-    assert.ok(runnerFlat.includes(token), `runner.md debe declarar ${token}`);
-  }
-
-  assert.ok(
-    runnerFlat.includes(
-      "El orden de inicio es: `AgentRunRecord` → decisión de pruebas → worktree → Constructor.",
-    ),
-    "runner.md debe declarar el orden de inicio del flujo",
+  assertDeclares(
+    runnerText,
+    [
+      "El orden de inicio es: `AgentRunRecord` → worktree → Constructor.",
+      "### Paso 4.5 — Generación de pruebas por huecos",
+      "tests_report_ref: NONE",
+      "tests_gaps: NONE",
+      "`needs_decision` → pausa con `authority_block`",
+      "`state: blocked` o `persistencia_fallida` → pausa con `progress_unavailable`",
+      "`tests_generated` → conservá `tests_report_ref` y `tests_gaps`",
+      "Pasá al Validator `plan_ref`, `tests_report_ref` y `tests_gaps`",
+      "no re-evalúa una decisión",
+    ],
+    "runner.md",
   );
 
+  assertOmits(
+    runnerText,
+    ["#### Decisión de pruebas", "test_decision_ref", "tests_required", "mode: decide", "mode: generate"],
+    "runner.md",
+  );
+
+  const order = [
+    "El orden de inicio es: `AgentRunRecord` → worktree → Constructor.",
+    "### Política de worktrees",
+    "invoca constructor usando el formato canónico",
+    "### Paso 4.5 — Generación de pruebas por huecos",
+    "### Paso 5 — Validator",
+  ];
+
   let previous = -1;
-  for (const marker of RUNNER_ORDER) {
+  for (const marker of order) {
     const index = runner.indexOf(marker);
     assert.ok(index > previous, `runner.md debe declarar ${marker} en orden`);
     previous = index;
   }
-}
 
-/**
- * Contrato del Validator: herencia del reporte de pruebas y veredicto según
- * la decisión registrada.
- */
-function assertValidatorContract(validator) {
-  const validatorFlat = flat(validator);
-
-  for (const token of VALIDATOR_TOKENS) {
-    assert.ok(validatorFlat.includes(token), `validator.md debe declarar ${token}`);
-  }
-
-  assert.ok(
-    validatorFlat.includes("no se espera reporte"),
-    "validator.md debe declarar que no se espera reporte cuando no hay pruebas requeridas",
+  assertDeclares(
+    validatorText,
+    [
+      "### Herencia del reporte de pruebas",
+      "`plan_ref`, `tests_report_ref` y `tests_gaps`",
+      "No hay artifact de decisión.",
+      "Sin gaps y con `tests_report_ref: NONE`, no se espera reporte",
+      "`OPERATIONAL_FAILURE` con causa `tests_report_missing`",
+      "Un reporte incompleto es el que no declara todos los gaps del plan.",
+      "el Validator no re-ejecuta las pruebas ya comprobadas",
+      "Un test `failed` es un rechazo funcional",
+      "Un test `unverified` por herramienta ausente no se convierte en incumplimiento del trabajo",
+    ],
+    "validator.md",
   );
-  assert.ok(
-    validatorFlat.includes("tests_required: false"),
-    "validator.md debe declarar la decisión sin pruebas requeridas",
-  );
-}
 
-/**
- * Contrato de memoria: claves, owners, lectores y sufijos de la decisión
- * condicional y del reporte de pruebas.
- */
-function assertMemoryContract(memoryContract, topicKeys, checkpointMixin) {
-  const memoryFlat = flat(memoryContract);
-  const topicFlat = flat(topicKeys);
-  const checkpointFlat = flat(checkpointMixin);
-
-  for (const row of [
-    "| `ca/CA-{ID}/artifact/test-gate` | tester | Runner, Validator | `ca-artifact` |",
-    "| `flow-state/CA-{ID}/test-gate` | tester | Runner, Validator | `decision` |",
-    "| `ca/CA-{ID}/artifact/tests-report` | tester | Runner, Validator | `ca-artifact` |",
-    "| `flow-state/{ID}/tests` | tester | Runner, Validator | `decision` |",
-  ]) {
-    assert.ok(memoryFlat.includes(row), `memory-contract debe declarar la fila ${row}`);
-  }
-
-  for (const row of [
-    "| `ca/CA-{ID}/artifact/test-gate` | Tester | Decisión condicional de pruebas | Runner, Validator |",
-    "| `flow-state/CA-{ID}/test-gate` | Tester | Estado de la decisión de pruebas | Runner, Validator |",
-    "| `flow-state/CA-{ID}/test-gate` | Tester | `flow-state/CA-021/test-gate` |",
-  ]) {
-    assert.ok(topicFlat.includes(row), `topic-keys-convention debe declarar la fila ${row}`);
-  }
-
-  assert.ok(
-    checkpointFlat.includes("| tester | `tests` (generación), `test-gate` (decisión) |"),
-    "checkpoint-mixin debe mapear el tester a los sufijos de generación y decisión",
-  );
-  assert.ok(
-    checkpointFlat.includes("El Tester mantiene tratamiento ligero en los dos checkpoints"),
-    "checkpoint-mixin debe declarar que el tester conserva el tratamiento ligero",
-  );
-  assert.ok(
-    checkpointFlat.includes("Ninguno de los dos habilita continuidad de sesión"),
-    "checkpoint-mixin debe declarar que la decisión no habilita continuidad de sesión",
+  assertOmits(
+    validatorText,
+    ["test_decision_ref", "test_decision_missing", "tests_required", "test-gate"],
+    "validator.md",
   );
 }
 
 /**
- * Higiene: sin identificadores de coordinación en las superficies funcionales,
- * sin agente nuevo, sin interruptor y sin cambio de versión.
+ * Contrato de gobernanza: el plan declara una vía por criterio, la plantilla
+ * prohíbe tareas de test y relleno, y la auditoría rechaza gaps inválidos.
  */
-function assertHygiene(opencode, packageJson, agentFiles) {
-  for (const relPath of FUNCTIONAL_FILES) {
-    const content = read(relPath);
-    assert.doesNotMatch(
-      content,
-      COORDINATION_PATTERN,
-      `${relPath} no debe publicar el identificador de la ejecución`,
+function assertPlannerAuditorGovernance(planner, planAuditor, planTemplate) {
+  const plannerText = flat(planner);
+  const auditorText = flat(planAuditor);
+  const templateText = flat(planTemplate);
+
+  assertDeclares(
+    plannerText,
+    [
+      "## Verificación por criterio y gobierno de pruebas",
+      "`existing_test`, `command`, `manual` o `gap`",
+      "`gap` exige un defecto nombrado y `why_not_detected`.",
+      "El plan no escribe código de prueba",
+      "Solo el Tester escribe pruebas",
+      "No se usan plantillas genéricas.",
+      "No se duplica cobertura ya existente.",
+      "No se comprueba dos veces el mismo comportamiento.",
+      "formato consumido por otro componente",
+    ],
+    "planner.md",
+  );
+
+  assertDeclares(
+    templateText,
+    [
+      "## Verificación por criterio",
+      "`gap` requires a defect and `why_not_detected`.",
+      "The plan does not write test code",
+      "No generic templates",
+      "no duplicate coverage",
+      "Implementation + verification = ONE task",
+    ],
+    "plan-template/SKILL.md",
+  );
+
+  assertOmits(
+    templateText,
+    ["Tests after implementation", "Implementation + Test = ONE task"],
+    "plan-template/SKILL.md",
+  );
+
+  assertDeclares(
+    auditorText,
+    [
+      "### 7. Verificación por criterio y gobierno de pruebas",
+      "¿Cada `gap` declara un defecto y `why_not_detected`?",
+      "Un gap sin defecto o sin motivo",
+      "Un gap con cobertura existente (gap de relleno)",
+      "Una tarea que crea o edita tests",
+      "Cobertura duplicada",
+      "Un plan donde no hay tareas de prueba",
+      "prosa literal no consumida",
+    ],
+    "plan-auditor.md",
+  );
+}
+
+describe("guarda del contrato gap-driven", () => {
+  /**
+   * gap_ref: G-1
+   * criterio: el Tester conserva la invocación por huecos y el presupuesto 1/3/0.
+   * defecto: reintroducir `mode: decide`, `test-gate` o las condiciones por riesgo,
+   *   o quitar el presupuesto, deja de ser visible.
+   * why_not_detected: la guarda heredada afirma el contrato risk-driven; si se
+   *   reintroduce, sus aserciones pasan. Ninguna otra prueba lee tester.md.
+   * comportamiento observable: el contrato vigente pasa; una copia con
+   *   `mode: decide` o sin `techo 3` hace fallar la guarda.
+   */
+  it("G-1: reintroducir la decisión por riesgo o quitar el presupuesto 1/3/0 rompe la guarda del Tester", () => {
+    const tester = read(TESTER);
+    assertTesterGapContract(tester);
+
+    const withDecision = `${tester}\n\n## Modo de invocación\n\nmode: decide | generate\n`;
+    assert.notEqual(withDecision, tester, "la copia mutada debe diferir del contrato");
+    assert.throws(() => assertTesterGapContract(withDecision), /mode: decide/);
+
+    const withoutCeiling = tester.replaceAll("techo 3", "techo ilimitado");
+    assert.notEqual(withoutCeiling, tester, "la copia mutada debe diferir del contrato");
+    assert.throws(() => assertTesterGapContract(withoutCeiling), /techo 3/);
+  });
+
+  /**
+   * gap_ref: G-2
+   * criterio: el flujo va del registro al worktree y al Constructor, y el
+   *   Validator falla con `tests_report_missing` cuando hay gaps sin reporte.
+   * defecto: una decisión antes del worktree, la pérdida de `tests_report_ref`
+   *   o `tests_gaps`, o un Validator que no falla con `tests_report_missing`
+   *   pasan inadvertidos.
+   * why_not_detected: la guarda heredada exige `test_decision_ref` y el orden
+   *   con decisión; no conoce `tests_gaps` y espera `test_decision_missing`.
+   * comportamiento observable: el flujo vigente pasa; insertar
+   *   `#### Decisión de pruebas` antes del worktree, quitar `tests_gaps` del
+   *   Runner o `tests_report_missing` del Validator hace fallar la guarda.
+   */
+  it("G-2: reintroducir una decisión antes del worktree o perder el reporte de gaps rompe la guarda del flujo", () => {
+    const runner = read(RUNNER);
+    const validator = read(VALIDATOR);
+    assertRunnerValidatorFlow(runner, validator);
+
+    const withDecision = runner.replace(
+      "### Política de worktrees",
+      "#### Decisión de pruebas\n\nSe decide si generar pruebas antes del worktree.\n\n### Política de worktrees",
     );
-    assert.doesNotMatch(
-      content,
-      PHASE_PATTERN,
-      `${relPath} no debe publicar el identificador de la fase`,
+    assert.notEqual(withDecision, runner, "la copia mutada debe diferir del contrato");
+    assert.throws(() => assertRunnerValidatorFlow(withDecision, validator), /Decisión de pruebas/);
+
+    const withoutGaps = runner.replaceAll("tests_gaps", "gaps");
+    assert.notEqual(withoutGaps, runner, "la copia mutada debe diferir del contrato");
+    assert.throws(() => assertRunnerValidatorFlow(withoutGaps, validator), /tests_gaps/);
+
+    const withoutReportFailure = validator.replaceAll("tests_report_missing", "reporte_ausente");
+    assert.notEqual(withoutReportFailure, validator, "la copia mutada debe diferir del contrato");
+    assert.throws(
+      () => assertRunnerValidatorFlow(runner, withoutReportFailure),
+      /tests_report_missing/,
     );
-  }
-
-  assert.doesNotMatch(
-    opencode,
-    /flowtask-test-gate/,
-    "opencode.json no debe registrar flowtask-test-gate: el Tester ya está registrado",
-  );
-  assert.ok(
-    opencode.includes('"flowtask-tester"'),
-    "opencode.json debe conservar el registro del Tester",
-  );
-  assert.ok(
-    !agentFiles.includes("test-gate.md"),
-    "no debe agregarse un agente nuevo para la decisión de pruebas",
-  );
-  assert.ok(
-    packageJson.includes('"version": "1.26.0"'),
-    "la versión vigente no debe cambiar",
-  );
-}
-
-/**
- * El contrato no admite una pregunta por las pruebas ni un interruptor por
- * entrega: las dos devolvieron la espera y la configuración estática.
- */
-function assertNoWaitNorSwitch(contents) {
-  const joined = contents.map(flat).join(" ");
-  for (const pattern of TEST_QUESTION_PATTERNS) {
-    assert.doesNotMatch(joined, pattern, `pregunta por pruebas: ${pattern}`);
-  }
-  for (const pattern of TEST_SWITCH_PATTERNS) {
-    assert.doesNotMatch(joined, pattern, `interruptor por pruebas: ${pattern}`);
-  }
-}
-
-describe("contrato de la decisión condicional de pruebas", () => {
-  it("declara los dos modos y la decisión condicional del Tester", () => {
-    assertTesterContract(read(TESTER));
   });
 
-  it("declara la decisión previa y la generación posterior en el Runner", () => {
-    assertRunnerContract(read(RUNNER));
-  });
+  /**
+   * gap_ref: G-3
+   * criterio: Planner, plantilla y Plan-Auditor impiden gaps sin defecto, tareas
+   *   de test y cobertura duplicada.
+   * defecto: un gap sin defecto o motivo, una tarea que crea tests o cobertura
+   *   duplicada pasan la auditoría.
+   * why_not_detected: no existe guarda de la verificación por criterio ni del
+   *   rechazo de relleno; el QA del plan es una lectura manual de la regla y
+   *   `planner-mediated-references.test.js` solo cubre comunicación mediada.
+   * comportamiento observable: el contrato vigente pasa; quitar la regla de
+   *   defecto/motivo del Planner, quitar el rechazo del Plan-Auditor o volver a
+   *   `Tests after implementation` en la plantilla hace fallar la guarda.
+   */
+  it("G-3: aprobar un gap sin defecto, una tarea de test genérica o cobertura duplicada rompe la guarda de gobernanza", () => {
+    const planner = read(PLANNER);
+    const planAuditor = read(PLAN_AUDITOR);
+    const planTemplate = read(PLAN_TEMPLATE);
+    assertPlannerAuditorGovernance(planner, planAuditor, planTemplate);
 
-  it("declara la herencia del reporte de pruebas en el Validator", () => {
-    assertValidatorContract(read(VALIDATOR));
-  });
-
-  it("declara las claves, los owners, los lectores y los sufijos", () => {
-    assertMemoryContract(read(MEMORY_CONTRACT), read(TOPIC_KEYS), read(CHECKPOINT_MIXIN));
-  });
-
-  it("conserva la higiene de coordinación, el registro y la versión", () => {
-    const agentFiles = fs
-      .readdirSync(AGENTS_DIR)
-      .filter((name) => name.endsWith(".md"))
-      .sort();
-    assertHygiene(read(OPENCODE), read(PACKAGE), agentFiles);
-  });
-
-  it("no admite una pregunta por las pruebas ni un interruptor por entrega", () => {
-    assertNoWaitNorSwitch([read(TESTER), read(RUNNER), read(VALIDATOR)]);
-  });
-});
-
-describe("mutaciones del contrato de la decisión condicional", () => {
-  it("rechaza una copia que pierde la decisión", () => {
-    const original = read(TESTER);
-    const mutated = original.replaceAll("tests_required", "flag");
-    assert.notEqual(mutated, original, "la copia mutada debe diferir del contrato");
-    assert.throws(() => assertTesterContract(mutated), /tests_required/);
-  });
-
-  it("rechaza una copia que renombra el riesgo no descartable", () => {
-    const original = read(TESTER);
-    const mutated = original.replaceAll("risk_not_discardable", "riesgo_ignorado");
-    assert.notEqual(mutated, original, "la copia mutada debe diferir del contrato");
-    assert.throws(() => assertTesterContract(mutated), /risk_not_discardable/);
-  });
-
-  it("rechaza una copia que pregunta al desarrollador por las pruebas", () => {
-    const original = read(RUNNER);
-    const mutated = `${original}\n\n¿Confirmás que genere las pruebas antes de validar?\n`;
-    assert.notEqual(mutated, original, "la copia mutada debe diferir del contrato");
-    assert.throws(() => assertNoWaitNorSwitch([mutated]), /pregunta por pruebas/);
-  });
-
-  it("rechaza una copia que agrega un interruptor por entrega", () => {
-    const original = read(TESTER);
-    const mutated = `${original}\n\n- Si \`tests_enabled\` está activo en la configuración, genera pruebas.\n`;
-    assert.notEqual(mutated, original, "la copia mutada debe diferir del contrato");
-    assert.throws(() => assertNoWaitNorSwitch([mutated]), /interruptor por pruebas/);
-  });
-
-  it("rechaza una copia que quita la respuesta de pruebas no requeridas", () => {
-    const original = read(TESTER);
-    const mutated = original.replaceAll("tests_not_required", "skip");
-    assert.notEqual(mutated, original, "la copia mutada debe diferir del contrato");
-    assert.throws(() => assertTesterContract(mutated), /tests_not_required/);
-  });
-
-  it("rechaza una copia que quita la distinción entre fallo funcional y herramienta", () => {
-    const original = read(TESTER);
-    const mutated = original.replace(
-      "`unverified` es una limitación de herramienta o de entorno: no se pudo comprobar.",
+    const withoutGapRule = planner.replace(
+      "`gap` exige un defecto nombrado y `why_not_detected`.",
       "",
     );
-    assert.notEqual(mutated, original, "la copia mutada debe diferir del contrato");
-    assert.throws(() => assertTesterContract(mutated), /unverified/);
-  });
-
-  it("rechaza una copia que quita el artifact de decisión", () => {
-    const original = read(TESTER);
-    const mutated = original.replaceAll("test-gate", "decision-record");
-    assert.notEqual(mutated, original, "la copia mutada debe diferir del contrato");
-    assert.throws(() => assertTesterContract(mutated), /test-gate/);
-  });
-
-  it("rechaza una copia que registra un agente nuevo para la decisión", () => {
-    const original = read(OPENCODE);
-    const mutated = `${original}\n`;
-    assert.notEqual(mutated, original, "la copia mutada debe diferir del contrato");
-    const agentFiles = fs
-      .readdirSync(AGENTS_DIR)
-      .filter((name) => name.endsWith(".md"))
-      .sort();
+    assert.notEqual(withoutGapRule, planner, "la copia mutada debe diferir del contrato");
     assert.throws(
-      () => assertHygiene(`${mutated}\n"flowtask-test-gate": {}\n`, read(PACKAGE), agentFiles),
-      /flowtask-test-gate/,
+      () => assertPlannerAuditorGovernance(withoutGapRule, planAuditor, planTemplate),
+      /why_not_detected/,
+    );
+
+    const withoutRejection = planAuditor.replace("Un gap sin defecto o sin motivo", "Un gap incompleto");
+    assert.notEqual(withoutRejection, planAuditor, "la copia mutada debe diferir del contrato");
+    assert.throws(
+      () => assertPlannerAuditorGovernance(planner, withoutRejection, planTemplate),
+      /gap sin defecto/,
+    );
+
+    const withFiller = `${planTemplate}\n\n- Tests after implementation\n`;
+    assert.notEqual(withFiller, planTemplate, "la copia mutada debe diferir del contrato");
+    assert.throws(
+      () => assertPlannerAuditorGovernance(planner, planAuditor, withFiller),
+      /Tests after implementation/,
     );
   });
 });

@@ -214,6 +214,35 @@ Si un ingeniero pudiera preguntar "pero ¿cuál enfoque?", el plan no está list
 
 ---
 
+## Verificación por criterio y gobierno de pruebas
+
+Todo plan con criterios de comportamiento incluye la sección `## Verificación por criterio` con una fila por criterio material:
+
+| Criterio | Vía | Referencia | Defecto | Por qué la vía no lo detecta |
+|----------|-----|------------|---------|------------------------------|
+| [criterio material] | `existing_test`, `command`, `manual` o `gap` | [archivo y caso, comando, o pasos manuales] | [defecto que quedaría sin detectar] | [motivo por el que la vía no lo observa] |
+
+Reglas:
+
+- Toda criterio material tiene su fila.
+- `existing_test` cita el archivo y el caso que lo cubre.
+- `command` cita el comando y el resultado esperado.
+- `manual` cita los pasos y la observación esperada.
+- `gap` exige un defecto nombrado y `why_not_detected`.
+- Un criterio sin vía se marca `gap` con defecto y motivo; nunca se rellena con una comprobación ficticia.
+- El plan no escribe código de prueba: las tareas pueden ejecutar pruebas existentes, comandos o comprobaciones manuales, pero no crear ni editar archivos de test.
+- Solo el Tester escribe pruebas, y solo para huecos declarados.
+
+Anti-relleno:
+
+- No se usan plantillas genéricas.
+- No se afirma sobre prosa literal salvo que ese texto sea un formato consumido por otro componente: instrucciones de agente, salida de CLI, esquema o formato exportado.
+- No se duplica cobertura ya existente.
+- No se comprueba dos veces el mismo comportamiento.
+- Los QA Scenarios son específicos y están ligados a un criterio.
+
+---
+
 ## Comunicación mediada
 
 ### R1 — Canal único
@@ -420,6 +449,10 @@ Antes de guardar, verifica internamente:
 - ¿Ningún dato material en estado `unverified` o `discrepant` sostiene una decisión o una tarea?
 - ¿No queda ninguna derivación pendiente ni ningún hueco de negocio sin resolver?
 - ¿La evidencia heredada declara su fuente y su `observed_at`, y distingue el registro heredado de una observación nueva?
+- ¿Existe la sección `## Verificación por criterio` con una fila por criterio material?
+- ¿Cada fila declara una vía y una referencia resoluble; cada gap declara defecto y `why_not_detected`?
+- ¿Ninguna tarea crea ni edita archivos de test?
+- ¿Las comprobaciones evitan plantillas genéricas, prosa literal no consumida y cobertura duplicada?
 
 `pending_decisions: []` solo es correcto cuando no queda ningún dato material en estado `unverified` o `discrepant`: cada uno de ellos se registra como una decisión pendiente concreta o como un blocker.
 
@@ -524,6 +557,9 @@ next: ready_for_audit | ready_for_construction | awaiting_decisions | waiting_fo
 ## Restricciones
 
 - **NUNCA generes código**, solo rutas, nombres y descripciones
+- **NUNCA escribas código de prueba** ni incluyas tareas que creen o editen archivos de test: el plan solo declara la vía de verificación
+- **SIEMPRE incluye** una fila por criterio material con su vía y su referencia; un gap declara defecto y `why_not_detected`
+- **NUNCA propongas** comprobaciones de relleno, sobre prosa literal no consumida o con cobertura duplicada
 - **SIEMPRE describe el código funcional por comportamiento**, separando las referencias de coordinación (CA, su ID, namespaces y topic_keys) en los artifacts de coordinación del flujo, donde sí corresponden
 - **NUNCA asumas** qué debe hacer una clase sin evidencia de Engram o escaneo
 - **NUNCA omitas** la sección "Decisiones de diseño" si hay ambigüedad
