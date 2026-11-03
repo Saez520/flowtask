@@ -33,7 +33,7 @@ or `flowtask update` and requires restarting OpenCode. There is no native fallba
   execution of interpreters/scripts/tests/builds, forced loss, and options with
   external effects are explicitly blocked. Ambiguous or unanalyzable syntax is
   also blocked and returns exactly:
-  `Recordá que debés delegar esta operación al subagente correspondiente.`
+  `Remember that you must delegate this operation to the corresponding subagent.`
 
 ## Permissions layer
 
@@ -65,19 +65,19 @@ be valid. Candidates are tried in order: `.opencode/flowtask/config`,
 
 | Situation | Result |
 |-----------|--------|
-| `permissions.json` is missing in the source | Denial with `[FlowTask Permission Gate] Capa de permisos ausente o inválida.` |
+| `permissions.json` is missing in the source | Denial with `[FlowTask Permission Gate] Missing or invalid permissions layer.` |
 | `permissions.json` has an unknown `envelope` | Denial with the same cause and the unknown value named. |
-| `autonomy.json` is missing in the source | Denial with `[FlowTask Permission Gate] Capa de autonomía ausente o inválida.` |
+| `autonomy.json` is missing in the source | Denial with `[FlowTask Permission Gate] Missing or invalid autonomy layer.` |
 | `autonomy.json` has an unknown `profile` | Denial with the same cause and the unknown value named. |
 | The target declares no layer configuration | The check does not apply: the current technical envelope (the allowlist) remains the limit. |
 
 The denial message names the layer, the file, the cause, and the action:
 
 ```text
-[FlowTask Permission Gate] Capa de permisos ausente o inválida.
-Archivo: <ruta de permissions.json>
-Causa: <causa>
-Acción: corregí la capa o ejecutá flowtask update; el Runner no ejecuta herramientas con límites ampliados.
+[FlowTask Permission Gate] Missing or invalid permissions layer.
+File: <path to permissions.json>
+Cause: <cause>
+Action: fix the layer or run flowtask update; the Runner does not execute tools with expanded limits.
 ```
 
 **Scope.** The check applies only to the runner's tools. The universal commit
@@ -117,7 +117,7 @@ Contract rules:
 - Nothing omitted is presented as a complete answer.
 
 The full detail lives in
-[architecture/contexto-degradacion.md](architecture/contexto-degradacion.md).
+[architecture/context-degradation.md](architecture/context-degradation.md).
 
 ## Commits, denials, and identity
 
@@ -348,6 +348,6 @@ fixture tests only verify the script and do not replace this test.
 8. Test the permissions layer: delete
    `.opencode/flowtask/config/permissions.json`, restart OpenCode, and invoke
    a runner tool. Expected result: the tool is denied
-   with `[FlowTask Permission Gate] Capa de permisos ausente o inválida.` and the
+   with `[FlowTask Permission Gate] Missing or invalid permissions layer.` and the
    cause and recommended action. Restore the file, restart OpenCode, and
    repeat: the allowed operation works again.

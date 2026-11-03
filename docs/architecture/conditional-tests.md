@@ -164,7 +164,7 @@ failure with tool failure.
 ## Related references
 
 - [INDEX.md](./INDEX.md) — index of the current architecture.
-- [validacion.md](./validacion.md) — live validation, executed evidence, and single verdict.
+- [validation.md](./validation.md) — live validation, executed evidence, and single verdict.
 - [../core-flowtask.md](../core-flowtask.md) — main flow of an execution.
 - `.flowtask/agents/tester.md` — contract of the agent that generates gap-driven tests.
 - `.flowtask/agents/runner.md` — dispatch of gap-driven generation.

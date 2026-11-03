@@ -2,16 +2,16 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /**
- * Parser de las capas almacenadas que el gate valida antes de aplicar la
- * allowlist técnica del runner. No autoriza herramientas: solo comprueba que
- * la capa de autonomía y la de permisos existan y sean válidas en el target.
+ * Parser of the stored layers that the gate validates before applying the
+ * runner's technical allowlist. It does not authorize tools: it only checks
+ * that the autonomy and permissions layers exist and are valid in the target.
  */
 
 export const AUTONOMY_PROFILES = ["assistant", "autonomous-dev", "hermes"];
 
 export const PERMISSION_ENVELOPES = ["standard"];
 
-/** Directorios candidatos de configuración, probados en orden dentro de cada raíz. */
+/** Candidate configuration directories, tried in order within each root. */
 export const LAYER_DIR_CANDIDATES = [
   ".opencode/flowtask/config",
   ".claude/flowtask/config",
@@ -32,7 +32,7 @@ const PERMISSIONS_FILE = "permissions.json";
  */
 
 /**
- * Valida el contenido de la capa de autonomía.
+ * Validates the content of the autonomy layer.
  *
  * @param {string} raw
  * @returns {LayerParseResult}
@@ -42,16 +42,16 @@ export function parseAutonomyLayer(raw) {
   if (!parsed.ok) return parsed;
   const value = parsed.value;
   if (value.version !== 1) {
-    return { ok: false, value: null, reason: `versión de autonomía inválida: ${describe(value.version)}` };
+    return { ok: false, value: null, reason: `invalid autonomy version: ${describe(value.version)}` };
   }
   if (!AUTONOMY_PROFILES.includes(value.profile)) {
-    return { ok: false, value: null, reason: `perfil de autonomía desconocido: ${describe(value.profile)}` };
+    return { ok: false, value: null, reason: `unknown autonomy profile: ${describe(value.profile)}` };
   }
   return { ok: true, value: { version: 1, profile: value.profile }, reason: null };
 }
 
 /**
- * Valida el contenido de la capa de permisos.
+ * Validates the content of the permissions layer.
  *
  * @param {string} raw
  * @returns {LayerParseResult}
@@ -61,10 +61,10 @@ export function parsePermissionsLayer(raw) {
   if (!parsed.ok) return parsed;
   const value = parsed.value;
   if (value.version !== 1) {
-    return { ok: false, value: null, reason: `versión de permisos inválida: ${describe(value.version)}` };
+    return { ok: false, value: null, reason: `invalid permissions version: ${describe(value.version)}` };
   }
   if (!PERMISSION_ENVELOPES.includes(value.envelope)) {
-    return { ok: false, value: null, reason: `envelope desconocido: ${describe(value.envelope)}` };
+    return { ok: false, value: null, reason: `unknown envelope: ${describe(value.envelope)}` };
   }
   return { ok: true, value: { version: 1, envelope: value.envelope }, reason: null };
 }
@@ -82,10 +82,10 @@ function parseJsonObject(raw) {
   try {
     value = JSON.parse(raw);
   } catch {
-    return { ok: false, value: null, reason: "JSON inválido: el archivo no es parseable" };
+    return { ok: false, value: null, reason: "invalid JSON: the file is not parseable" };
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { ok: false, value: null, reason: "el archivo no contiene un objeto JSON" };
+    return { ok: false, value: null, reason: "the file does not contain a JSON object" };
   }
   return { ok: true, value, reason: null };
 }
@@ -96,20 +96,20 @@ function readLayerFile(filePath, parse) {
     raw = readFileSync(filePath, "utf8");
   } catch (error) {
     if (error && error.code === "ENOENT") {
-      return { ok: false, value: null, reason: "capa ausente: no se encontró el archivo de la capa" };
+      return { ok: false, value: null, reason: "missing layer: the layer file was not found" };
     }
-    return { ok: false, value: null, reason: "no se pudo leer el archivo de la capa" };
+    return { ok: false, value: null, reason: "the layer file could not be read" };
   }
   return parse(raw);
 }
 
 /**
- * Resuelve las capas operativas de un target.
+ * Resolves the operational layers of a target.
  *
- * El primer directorio candidato que contiene `autonomy.json` o
- * `permissions.json` es la fuente: ahí ambos archivos deben existir y ser
- * válidos. Cuando ningún candidato contiene una capa, el target no declara
- * configuración de capas y la comprobación no aplica.
+ * The first candidate directory that contains `autonomy.json` or
+ * `permissions.json` is the source: both files must exist and be valid there.
+ * When no candidate contains a layer, the target declares no layer
+ * configuration and the check does not apply.
  *
  * @param {string[]} directories
  * @returns {OperationalLayersOk | OperationalLayersError}
@@ -147,24 +147,24 @@ export function readOperationalLayers(directories) {
   return {
     ok: false,
     layer: "permissions",
-    reason: "capa de permisos ausente: el target no declara ninguna configuración de capas",
+    reason: "missing permissions layer: the target declares no layer configuration",
     path: join(resolve(firstRoot, LAYER_DIR_CANDIDATES[0]), PERMISSIONS_FILE),
     configDir: null,
   };
 }
 
 /**
- * Mensaje operativo de una capa ausente o inválida.
+ * Operational message for a missing or invalid layer.
  *
  * @param {{ layer?: string, reason?: string, path?: string | null }} error
  * @returns {string}
  */
 export function buildLayerBlockMessage(error) {
-  const layerLabel = error && error.layer === "autonomy" ? "autonomía" : "permisos";
+  const layerLabel = error && error.layer === "autonomy" ? "autonomy" : "permissions";
   return [
-    `[FlowTask Permission Gate] Capa de ${layerLabel} ausente o inválida.`,
-    `Archivo: ${error && error.path ? error.path : "no identificado"}`,
-    `Causa: ${error && error.reason ? error.reason : "capa inválida"}`,
-    "Acción: corregí la capa o ejecutá flowtask update; el Runner no ejecuta herramientas con límites ampliados.",
+    `[FlowTask Permission Gate] Missing or invalid ${layerLabel} layer.`,
+    `File: ${error && error.path ? error.path : "unidentified"}`,
+    `Cause: ${error && error.reason ? error.reason : "invalid layer"}`,
+    "Action: fix the layer or run flowtask update; the Runner does not execute tools with expanded limits.",
   ].join("\n");
 }

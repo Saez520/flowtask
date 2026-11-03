@@ -159,5 +159,5 @@ node --test .flowtask/bin/test/permission-gate-layers.test.js
 ~~~
 
 The normative source of the policy-based autonomy contract is
-[autonomia-operativa.md](./autonomia-operativa.md), and the technical gate's is
+[operational-autonomy.md](./operational-autonomy.md), and the technical gate's is
 [../permission-gate.md](../permission-gate.md).

@@ -105,7 +105,7 @@ Reglas de la capa:
   es uno de los tres, la ejecución no arranca.
 
 La fuente normativa de la capa es
-[capas-persona-autonomia-permisos.md](../../docs/architecture/capas-persona-autonomia-permisos.md).
+[persona-autonomy-permissions-layers.md](../../docs/architecture/persona-autonomy-permissions-layers.md).
 
 ## NUNCA ROMPER ESTA REGLA (MANDATORIA, SIN EXCEPCIONES)
 

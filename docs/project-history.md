@@ -52,11 +52,11 @@ This section preserves concepts that existed but no longer describe current inst
 
 ### Old anatomy
 
-`anatomia-workspace.md` presented `.flowtask` as a static installation, `.workspace` as the main dynamic data, and Engram as separate storage. The current model uses `.opencode/flowtask`, `.claude/flowtask`, `.vscode/flowtask`, or standalone `.flowtask` targets; new artifacts are stored in Engram and `.workspace` remains only as compatibility for old CAs.
+`workspace-anatomy.md` presented `.flowtask` as a static installation, `.workspace` as the main dynamic data, and Engram as separate storage. The current model uses `.opencode/flowtask`, `.claude/flowtask`, `.vscode/flowtask`, or standalone `.flowtask` targets; new artifacts are stored in Engram and `.workspace` remains only as compatibility for old CAs.
 
 ### Archivist and sub-orchestrators
 
-`sub-agent-archivista.md`, `flowtask-sistematico.md`, `flujo-orquestacion.md`, and `initializer.md` described `flowtask-archivist`, `TECH-LEAD-ORCHESTRATOR`, and stack experts not registered in `opencode.json`. The actual close uses `.flowtask/scripts/worktree.sh` and the agents registered by the installed configuration.
+`archivist-sub-agent.md`, `systematic-flowtask.md`, `orchestration-flow.md`, and `initializer.md` described `flowtask-archivist`, `TECH-LEAD-ORCHESTRATOR`, and stack experts not registered in `opencode.json`. The actual close uses `.flowtask/scripts/worktree.sh` and the agents registered by the installed configuration.
 
 ### Classifier
 
@@ -68,10 +68,10 @@ The previous index, `Flowtask-Architecture/README.md`, and `docs/architecture/fl
 
 ### Conceptual installation
 
-`architecture/instalacion.md` did not describe interactive selection, manifest, markers, or derived configuration. The normative guide is now `docs/installation.md`.
+`architecture/installation.md` did not describe interactive selection, manifest, markers, or derived configuration. The normative guide is now `docs/installation.md`.
 
 ### Unverified claims
 
-`lsp-ast-grep.md`, `sdd.md`, and `presentacion-flowtask.md` contain proposals, figures, or roadmap items not supported by current contracts. Do not cite them as available capabilities.
+`lsp-ast-grep.md`, `sdd.md`, and `flowtask-presentation.md` contain proposals, figures, or roadmap items not supported by current contracts. Do not cite them as available capabilities.
 
 The historical documents that remain physically present begin with a notice that points to this file and to `docs/README.md`. They are not deleted because they may be external NotebookLM inputs.

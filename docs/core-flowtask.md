@@ -59,7 +59,7 @@ orchestration rules.
 Personality only defines tone and depth; it does not authorize or restrict actions.
 Technical authorization lives in the permissions layer and initiative in the
 autonomy layer. The contract for the three layers is in
-[architecture/capas-persona-autonomia-permisos.md](architecture/capas-persona-autonomia-permisos.md).
+[architecture/persona-autonomy-permissions-layers.md](architecture/persona-autonomy-permissions-layers.md).
 
 ### How to read this document
 

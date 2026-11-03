@@ -78,19 +78,19 @@ describe("parser de la capa de autonomia del gate", () => {
   it("rejects an unknown profile", () => {
     const parsed = parseAutonomyLayer(JSON.stringify({ version: 1, profile: "root" }));
     assert.equal(parsed.ok, false);
-    assert.match(parsed.reason, /perfil de autonomía desconocido/);
+    assert.match(parsed.reason, /unknown autonomy profile/);
   });
 
   it("rejects an invalid version", () => {
     const parsed = parseAutonomyLayer(JSON.stringify({ version: 2, profile: "assistant" }));
     assert.equal(parsed.ok, false);
-    assert.match(parsed.reason, /versión de autonomía inválida/);
+    assert.match(parsed.reason, /invalid autonomy version/);
   });
 
   it("rejects a malformed document", () => {
     const parsed = parseAutonomyLayer("{not json");
     assert.equal(parsed.ok, false);
-    assert.match(parsed.reason, /JSON inválido/);
+    assert.match(parsed.reason, /invalid JSON/);
   });
 });
 
@@ -104,26 +104,26 @@ describe("parser de la capa de permisos del gate", () => {
   it("rejects an unknown envelope", () => {
     const parsed = parsePermissionsLayer(JSON.stringify({ version: 1, envelope: "god-mode" }));
     assert.equal(parsed.ok, false);
-    assert.match(parsed.reason, /envelope desconocido/);
+    assert.match(parsed.reason, /unknown envelope/);
   });
 
   it("rejects a document without an envelope", () => {
     const parsed = parsePermissionsLayer(JSON.stringify({ version: 1 }));
     assert.equal(parsed.ok, false);
-    assert.match(parsed.reason, /envelope desconocido/);
+    assert.match(parsed.reason, /unknown envelope/);
   });
 
   it("rejects an invalid permissions version", () => {
     const parsed = parsePermissionsLayer(JSON.stringify({ version: 2, envelope: "standard" }));
     assert.equal(parsed.ok, false);
-    assert.match(parsed.reason, /versión de permisos inválida/);
+    assert.match(parsed.reason, /invalid permissions version/);
   });
 
   it("rejects a document that is not a JSON object", () => {
     for (const parse of [parseAutonomyLayer, parsePermissionsLayer]) {
       const parsed = parse("[]");
       assert.equal(parsed.ok, false);
-      assert.match(parsed.reason, /no contiene un objeto JSON/);
+      assert.match(parsed.reason, /does not contain a JSON object/);
     }
   });
 });
@@ -149,8 +149,8 @@ describe("resolucion de las capas operativas del gate", () => {
 
     assert.equal(result.ok, false);
     assert.equal(result.layer, "permissions");
-    assert.match(result.reason, /ausente/);
-    assert.match(buildLayerBlockMessage(result), /\[FlowTask Permission Gate\] Capa de permisos ausente o inválida\./);
+    assert.match(result.reason, /missing/);
+    assert.match(buildLayerBlockMessage(result), /\[FlowTask Permission Gate\] Missing or invalid permissions layer\./);
   });
 
   it("fails when the autonomy layer is absent in the source", () => {
@@ -160,8 +160,8 @@ describe("resolucion de las capas operativas del gate", () => {
 
     assert.equal(result.ok, false);
     assert.equal(result.layer, "autonomy");
-    assert.match(result.reason, /ausente/);
-    assert.match(buildLayerBlockMessage(result), /\[FlowTask Permission Gate\] Capa de autonomía ausente o inválida\./);
+    assert.match(result.reason, /missing/);
+    assert.match(buildLayerBlockMessage(result), /\[FlowTask Permission Gate\] Missing or invalid autonomy layer\./);
   });
 
   it("fails when the envelope is unknown", () => {
@@ -174,7 +174,7 @@ describe("resolucion de las capas operativas del gate", () => {
 
     assert.equal(result.ok, false);
     assert.equal(result.layer, "permissions");
-    assert.match(result.reason, /envelope desconocido/);
+    assert.match(result.reason, /unknown envelope/);
   });
 
   it("reports a target without any layer configuration", () => {
@@ -193,7 +193,7 @@ describe("resolucion de las capas operativas del gate", () => {
     const denied = !result.ok && Boolean(result.configDir);
 
     assert.equal(denied, true, "an incomplete layer configuration must be denied");
-    assert.match(buildLayerBlockMessage(result), /Capa de permisos ausente o inválida\./);
+    assert.match(buildLayerBlockMessage(result), /Missing or invalid permissions layer\./);
   });
 
   it("does not apply the check when the target declares no layer configuration", () => {
@@ -219,7 +219,7 @@ describe("resolucion de las capas operativas del gate", () => {
     assert.equal(result.layer, "permissions");
     assert.equal(result.configDir, path.join(root, ".opencode", "flowtask", "config"));
     assert.equal(result.path, path.join(root, ".opencode", "flowtask", "config", "permissions.json"));
-    assert.match(result.reason, /ausente/);
+    assert.match(result.reason, /missing/);
   });
 
   it("uses the next candidate when the earlier candidates declare no layer", () => {
@@ -256,10 +256,10 @@ describe("resolucion de las capas operativas del gate", () => {
     assert.equal(
       message,
       [
-        "[FlowTask Permission Gate] Capa de permisos ausente o inválida.",
-        `Archivo: ${path.join(root, ".opencode", "flowtask", "config", "permissions.json")}`,
-        "Causa: capa ausente: no se encontró el archivo de la capa",
-        "Acción: corregí la capa o ejecutá flowtask update; el Runner no ejecuta herramientas con límites ampliados.",
+        "[FlowTask Permission Gate] Missing or invalid permissions layer.",
+        `File: ${path.join(root, ".opencode", "flowtask", "config", "permissions.json")}`,
+        "Cause: missing layer: the layer file was not found",
+        "Action: fix the layer or run flowtask update; the Runner does not execute tools with expanded limits.",
       ].join("\n"),
     );
   });
@@ -273,10 +273,10 @@ describe("resolucion de las capas operativas del gate", () => {
     assert.equal(
       message,
       [
-        "[FlowTask Permission Gate] Capa de autonomía ausente o inválida.",
-        `Archivo: ${path.join(root, ".opencode", "flowtask", "config", "autonomy.json")}`,
-        "Causa: capa ausente: no se encontró el archivo de la capa",
-        "Acción: corregí la capa o ejecutá flowtask update; el Runner no ejecuta herramientas con límites ampliados.",
+        "[FlowTask Permission Gate] Missing or invalid autonomy layer.",
+        `File: ${path.join(root, ".opencode", "flowtask", "config", "autonomy.json")}`,
+        "Cause: missing layer: the layer file was not found",
+        "Action: fix the layer or run flowtask update; the Runner does not execute tools with expanded limits.",
       ].join("\n"),
     );
   });
@@ -356,9 +356,9 @@ describe("documentacion de la capa de permisos", () => {
   });
 
   it("publishes the failure table and the operational message", () => {
-    assert.ok(page.includes("[FlowTask Permission Gate] Capa de permisos ausente o inválida."), "missing the block message");
-    assert.ok(page.includes("[FlowTask Permission Gate] Capa de autonomía ausente o inválida."), "missing the autonomy block message");
-    assert.ok(page.includes("Acción: corregí la capa o ejecutá flowtask update"), "missing the recommended action");
+    assert.ok(page.includes("[FlowTask Permission Gate] Missing or invalid permissions layer."), "missing the block message");
+    assert.ok(page.includes("[FlowTask Permission Gate] Missing or invalid autonomy layer."), "missing the autonomy block message");
+    assert.ok(page.includes("Action: fix the layer or run flowtask update"), "missing the recommended action");
   });
 
   it("declares the scope and the smoke with a restart", () => {

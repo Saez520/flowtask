@@ -1,4 +1,4 @@
-export const RUNNER_DELEGATION_MESSAGE = "Recordá que debés delegar esta operación al subagente correspondiente.";
+export const RUNNER_DELEGATION_MESSAGE = "Remember that you must delegate this operation to the corresponding subagent.";
 export const WORKTREE_CONSUMER_TOOL = "flowtask_worktree_consume";
 /** The worktree bridge is available only to the exact FlowTask runner identity. */
 export function isAuthorizedWorktreeConsumer(agent, tool) {
@@ -254,27 +254,27 @@ function hasBlockedEffects(tokens) {
     }
     return false;
 }
-/** Flags read-only adicionales permitidos en git log (no cuentan como límite). */
+/** Additional read-only flags allowed in git log (they do not count as a limit). */
 const GIT_LOG_READONLY_FLAGS = new Set([
     "--oneline", "--format", "--stat", "--name-only", "--no-merges",
     "--first-parent", "--all", "--no-patch", "--decorate", "--graph",
     "--abbrev-commit", "--no-abbrev-commit", "--oneline", "--raw",
 ]);
 /**
- * Valida argumentos de git log: exige límite máximo 10 commits.
- * Acepta -n <N>, --max-count=<N> y forma corta -<N> con entero 1..10.
- * Permite flags read-only adicionales y paths tras --.
- * Rechaza git log sin límite, con límite > 10 o con argumentos no reconocidos.
+ * Validates git log arguments: requires a maximum limit of 10 commits.
+ * Accepts -n <N>, --max-count=<N>, and the short form -<N> with an integer 1..10.
+ * Allows additional read-only flags and paths after --.
+ * Rejects git log without a limit, with a limit > 10, or with unrecognized arguments.
  */
 function isAuthorizedGitLog(args) {
     let hasLimit = false;
     let index = 0;
     while (index < args.length) {
         const token = args[index];
-        // Paths tras --
+        // Paths after --
         if (token === "--")
             return hasLimit;
-        // Forma corta -<N> (ej. -5, -10)
+        // Short form -<N> (e.g. -5, -10)
         if (/^-[1-9]\d*$/.test(token)) {
             const n = Number(token.slice(1));
             if (n < 1 || n > 10)
@@ -283,7 +283,7 @@ function isAuthorizedGitLog(args) {
             index += 1;
             continue;
         }
-        // -n <N> o --max-count=<N>
+        // -n <N> or --max-count=<N>
         if (token === "-n" || token === "--max-count") {
             const next = args[index + 1];
             if (!next || !/^\d+$/.test(next))
@@ -303,19 +303,19 @@ function isAuthorizedGitLog(args) {
             index += 1;
             continue;
         }
-        // --format=<val> o --format <val> (consumir valor si existe)
+        // --format=<val> or --format <val> (consume the value if present)
         if (token.startsWith("--format=") || token === "--format") {
             if (token === "--format")
-                index += 1; // saltar el valor
+                index += 1; // skip the value
             index += 1;
             continue;
         }
-        // Flags read-only conocidos (sin valor)
+        // Known read-only flags (no value)
         if (GIT_LOG_READONLY_FLAGS.has(token)) {
             index += 1;
             continue;
         }
-        // Cualquier otro token no reconocido → rechazar
+        // Any other unrecognized token → reject
         return false;
     }
     return hasLimit;

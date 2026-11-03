@@ -1,52 +1,53 @@
 /**
- * Presupuesto de contexto para las herramientas de lectura del runner.
+ * Context budget for the runner's read tools.
  *
- * Gate transparente en herramienta vía `tool.execute.after` (OpenCode 1.18.15,
- * output mutable). Mide `output.output.length` (proxy chars/4 tokens) y degrada
- * la entrega por niveles antes de omitirla:
+ * Transparent tool gate via `tool.execute.after` (OpenCode 1.18.15,
+ * mutable output). Measures `output.output.length` (proxy chars/4 tokens) and
+ * degrades the delivery by levels before omitting it:
  *
- * 1. `notice` — el primer pedido amplio del turno se anuncia con la forma de
- *    acotar y no se ejecuta.
- * 2. `reduced` — la entrega que excede el presupuesto por llamada se reduce:
- *    declara qué se omitió, cuánto pesaba y a quién delegar, sin preview.
- * 3. `turn_omitted` — la suma del turno alcanza el presupuesto acumulado: lo
- *    siguiente se omite aunque cada pieza por separado quepa.
+ * 1. `notice` — the first broad request of the turn is announced with the way
+ *    to narrow it and is not executed.
+ * 2. `reduced` — a delivery that exceeds the per-call budget is reduced:
+ *    it declares what was omitted, how much it weighed, and who to delegate to,
+ *    without a preview.
+ * 3. `turn_omitted` — the turn total reaches the accumulated budget: the next
+ *    delivery is omitted even if each piece fits on its own.
  *
- * Los adjuntos imagen/PDF se delegan (`attachment_delegated`) y una salida que
- * no se puede medir se entrega intacta con traza (`measurement_unavailable`).
+ * Image/PDF attachments are delegated (`attachment_delegated`) and output that
+ * cannot be measured is delivered intact with a trace (`measurement_unavailable`).
  *
- * Los límites viven EXCLUSIVAMENTE en esta herramienta; el runner no conoce los
- * umbrales ni se le exponen en el prompt: los mensajes nombran el ámbito del
- * presupuesto aplicado y el tamaño real omitido, nunca la cifra. Override
- * opcional por archivo en `.flowtask/config/context-budget.json` (fail-open a
+ * The limits live EXCLUSIVELY in this tool; the runner does not know the
+ * thresholds and they are not exposed in the prompt: messages name the scope of
+ * the applied budget and the real omitted size, never the figure. Optional
+ * per-file override in `.flowtask/config/context-budget.json` (fail-open to
  * defaults).
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-/** Umbral por llamada — read (chars de `output.output`). */
+/** Per-call threshold — read (chars of `output.output`). */
 export const DEFAULT_READ_THRESHOLD = 16000;
-/** Umbral por llamada — grep (chars de `output.output`). */
+/** Per-call threshold — grep (chars of `output.output`). */
 export const DEFAULT_GREP_THRESHOLD = 8000;
-/** Umbral por llamada — glob (chars de `output.output`). */
+/** Per-call threshold — glob (chars of `output.output`). */
 export const DEFAULT_GLOB_THRESHOLD = 8000;
-/** Suma máxima de chars entregados por turno del runner (reset por chat.message). */
+/** Maximum chars delivered per runner turn (reset by chat.message). */
 export const DEFAULT_TURN_ACCUMULATED = 32000;
-/** `stat.size` (bytes) que sin `limit`/`offset` dispara el pre-gate de read. */
+/** `stat.size` (bytes) that without `limit`/`offset` triggers the read pre-gate. */
 export const PREVENTIVE_READ_STAT_LIMIT = 50 * 1024;
-/** Patterns glob que sin path acotado disparan el pre-gate (lista cerrada). */
+/** Glob patterns that without a bounded path trigger the pre-gate (closed list). */
 export const PREVENTIVE_GLOB_PATTERNS = ["**/*", "**"];
-/** grep sin `include` sobre la raíz dispara el pre-gate. */
+/** grep without `include` on the root triggers the pre-gate. */
 export const PREVENTIVE_GREP_NO_INCLUDE_ROOT = true;
-/** Attachment imagen/PDF bloqueado al runner (delegación al Inspector). */
+/** Image/PDF attachment blocked for the runner (delegation to the Inspector). */
 export const IMAGE_PDF_BLOCKED = true;
 
 export type BudgetTool = "read" | "glob" | "grep";
 
-/** Ámbito del presupuesto aplicado: por llamada o acumulado del turno. */
+/** Scope of the applied budget: per call or accumulated per turn. */
 export type BudgetScope = "call" | "turn";
 
-/** Nivel de degradación observable de una entrega. */
+/** Observable degradation level of a delivery. */
 export type DegradationLevel =
   | "notice"
   | "reduced"
@@ -54,37 +55,37 @@ export type DegradationLevel =
   | "attachment_delegated"
   | "measurement_unavailable";
 
-/** Quién puede tratar lo omitido por contexto. */
+/** Who can handle what was omitted for context. */
 export const DELEGATION_TARGET = "Inspector";
 
-/** Qué se omite en cada herramienta, nombrado en el mensaje de entrega reducida. */
+/** What is omitted in each tool, named in the reduced-delivery message. */
 export const CONTENT_LABEL: Record<BudgetTool, string> = {
-  read: "contenido del archivo",
-  grep: "coincidencias",
-  glob: "rutas",
+  read: "file content",
+  grep: "matches",
+  glob: "paths",
 };
 
-/** Cómo acotar un pedido amplio, nombrado en el aviso previo. */
+/** How to narrow a broad request, named in the prior notice. */
 export const NARROWING: Record<BudgetTool, string> = {
-  read: "usá `limit`/`offset` o delegá el archivo completo al Inspector",
-  grep: "acotá con `include` y `path`, o delegá la búsqueda al Inspector",
-  glob: "acotá `path` o usá un patrón más específico, o delegá el listado al Inspector",
+  read: "use `limit`/`offset` or delegate the full file to the Inspector",
+  grep: "narrow with `include` and `path`, or delegate the search to the Inspector",
+  glob: "narrow `path` or use a more specific pattern, or delegate the listing to the Inspector",
 };
 
 export type ContextBudgetConfig = {
-  /** Umbral por llamada read (chars). */
+  /** Per-call read threshold (chars). */
   readThreshold: number;
-  /** Umbral por llamada grep (chars). */
+  /** Per-call grep threshold (chars). */
   grepThreshold: number;
-  /** Umbral por llamada glob (chars). */
+  /** Per-call glob threshold (chars). */
   globThreshold: number;
-  /** Suma máxima de chars entregados por turno. */
+  /** Maximum chars delivered per turn. */
   turnAccumulated: number;
-  /** `stat.size` (bytes) que sin limit/offset dispara el pre-gate de read. */
+  /** `stat.size` (bytes) that without limit/offset triggers the read pre-gate. */
   preventiveReadStatLimit: number;
-  /** Patterns glob amplios de la lista cerrada del pre-gate. */
+  /** Broad glob patterns from the pre-gate closed list. */
   preventiveGlobPatterns: string[];
-  /** Segmentos de path considerados no acotados (p.ej. node_modules). */
+  /** Path segments considered unbounded (e.g. node_modules). */
   blockedPaths: string[];
 };
 
@@ -114,20 +115,20 @@ function isStringArray(value: unknown): value is string[] {
 }
 
 /**
- * Parsea el override file. Fail-open observable: JSON inválido o campos no
- * numéricos/≤0 → `console.warn` + defaults. Nunca lanza.
+ * Parses the override file. Observable fail-open: invalid JSON or
+ * non-numeric/≤0 fields → `console.warn` + defaults. Never throws.
  */
 function parseContextBudgetConfig(raw: string, filePath: string): ContextBudgetConfig {
   let value: unknown;
   try {
     value = JSON.parse(raw);
   } catch {
-    console.warn(`[FlowTask Context Budget] JSON inválido en ${filePath}; se usan defaults.`);
+    console.warn(`[FlowTask Context Budget] invalid JSON in ${filePath}; using defaults.`);
     return defaultConfig();
   }
 
   if (!value || typeof value !== "object") {
-    console.warn(`[FlowTask Context Budget] Configuración inválida en ${filePath}; se usan defaults.`);
+    console.warn(`[FlowTask Context Budget] invalid configuration in ${filePath}; using defaults.`);
     return defaultConfig();
   }
 
@@ -149,7 +150,7 @@ function parseContextBudgetConfig(raw: string, filePath: string): ContextBudgetC
       (config as Record<string, unknown>)[key] = record[key];
     } else {
       invalid = true;
-      console.warn(`[FlowTask Context Budget] Campo "${key}" no es un número positivo en ${filePath}; se usan defaults.`);
+      console.warn(`[FlowTask Context Budget] field "${key}" is not a positive number in ${filePath}; using defaults.`);
     }
   }
   for (const key of array) {
@@ -158,20 +159,20 @@ function parseContextBudgetConfig(raw: string, filePath: string): ContextBudgetC
       config[key] = [...record[key]];
     } else {
       invalid = true;
-      console.warn(`[FlowTask Context Budget] Campo "${key}" no es un array de strings en ${filePath}; se usan defaults.`);
+      console.warn(`[FlowTask Context Budget] field "${key}" is not a string array in ${filePath}; using defaults.`);
     }
   }
 
   if (invalid) {
-    console.warn(`[FlowTask Context Budget] Configuración inválida en ${filePath}; se usan defaults.`);
+    console.warn(`[FlowTask Context Budget] invalid configuration in ${filePath}; using defaults.`);
     return defaultConfig();
   }
   return config;
 }
 
 /**
- * Carga la config con defaults; si existe un override file legible en workdir
- * (primero) o sessionDir (fallback), lo aplica. Fail-open: nunca lanza.
+ * Loads the config with defaults; if a readable override file exists in workdir
+ * (first) or sessionDir (fallback), applies it. Fail-open: never throws.
  */
 export function loadContextBudgetConfig(workdir: string, sessionDir?: string): ContextBudgetConfig {
   const directories = [workdir, sessionDir].filter(
@@ -185,7 +186,7 @@ export function loadContextBudgetConfig(workdir: string, sessionDir?: string): C
         raw = readFileSync(filePath, "utf8");
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-        console.warn(`[FlowTask Context Budget] No se pudo leer ${filePath}; se usan defaults.`);
+        console.warn(`[FlowTask Context Budget] could not read ${filePath}; using defaults.`);
         continue;
       }
       return parseContextBudgetConfig(raw, filePath);
@@ -195,47 +196,47 @@ export function loadContextBudgetConfig(workdir: string, sessionDir?: string): C
 }
 
 /**
- * Aviso de acotación previo: el primer pedido amplio del turno se anuncia con
- * la forma de acotar y no se ejecuta. No expone cifras ni contenido.
+ * Prior narrowing notice: the first broad request of the turn is announced with
+ * the way to narrow it and is not executed. It exposes no figures or content.
  */
 export function buildNarrowingNotice(tool: BudgetTool, args: Record<string, unknown>): string {
-  return `Pedido amplio de \`${tool}\` (\`${narrowingTarget(tool, args)}\`): \`${NARROWING[tool]}\`.`;
+  return `Broad \`${tool}\` request (\`${narrowingTarget(tool, args)}\`): \`${NARROWING[tool]}\`.`;
 }
 
 /**
- * Entrega reducida: nombra qué se omitió, cuánto pesaba y a quién delegar, sin
- * preview del contenido omitido. El presupuesto se nombra por su ámbito, nunca
- * por su cifra.
+ * Reduced delivery: names what was omitted, how much it weighed, and who to
+ * delegate to, without a preview of the omitted content. The budget is named by
+ * its scope, never by its figure.
  */
 export function buildReducedDelivery(tool: BudgetTool, actual: number, scope: BudgetScope = "call"): string {
-  const budget = scope === "turn" ? "el presupuesto acumulado del turno" : "el presupuesto por llamada";
+  const budget = scope === "turn" ? "the accumulated turn budget" : "the per-call budget";
   return (
-    `Resultado de \`${tool}\` reducido: se omitieron \`${actual}\` chars de \`${CONTENT_LABEL[tool]}\` por \`${budget}\`. ` +
-    `Delegá lo omitido al Inspector o acotá path/pattern/limit/include.`
+    `\`${tool}\` result reduced: \`${actual}\` chars of \`${CONTENT_LABEL[tool]}\` were omitted due to \`${budget}\`. ` +
+    `Delegate the omitted content to the Inspector or narrow path/pattern/limit/include.`
   );
 }
 
 /**
- * Entrega de un adjunto imagen/PDF: el texto medido no refleja el costo real
- * del adjunto, así que el adjunto se delega y no se entrega.
+ * Delivery of an image/PDF attachment: the measured text does not reflect the
+ * real cost of the attachment, so the attachment is delegated and not delivered.
  */
 export function buildAttachmentDelivery(tool: BudgetTool, actual: number): string {
   return (
-    `Adjunto de \`${tool}\` omitido: \`${actual}\` chars de texto medidos más un adjunto imagen/PDF. ` +
-    `Delegá el adjunto al Inspector; el runner no recibe adjuntos.`
+    `\`${tool}\` attachment omitted: \`${actual}\` chars of measured text plus an image/PDF attachment. ` +
+    `Delegate the attachment to the Inspector; the runner receives no attachments.`
   );
 }
 
 /**
- * Fallback exacto sin preview. `tool` es literal read/glob/grep, `actual` el
- * tamaño real medido y `threshold` el umbral aplicable; la cifra no se
- * publica: el mensaje nombra el ámbito del presupuesto por llamada.
+ * Exact fallback without preview. `tool` is a literal read/glob/grep, `actual`
+ * the real measured size, and `threshold` the applicable threshold; the figure
+ * is not published: the message names the scope of the per-call budget.
  */
 export function buildFallback(tool: BudgetTool, actual: number, _threshold: number): string {
   return buildReducedDelivery(tool, actual, "call");
 }
 
-/** Marca de degradación observable sobre la metadata de la entrega. */
+/** Observable degradation mark on the delivery metadata. */
 export function buildDegradationMetadata(
   level: DegradationLevel,
   options: { budget?: BudgetScope; omittedChars?: number } = {},
@@ -247,15 +248,15 @@ export function buildDegradationMetadata(
   return { degradation };
 }
 
-/** Objetivo del pedido amplio: el archivo o el patrón, o la ausencia de ventana. */
+/** Target of the broad request: the file or the pattern, or the absence of a window. */
 function narrowingTarget(tool: BudgetTool, args: Record<string, unknown>): string {
   const candidate = tool === "read" ? args?.file : args?.pattern;
-  return typeof candidate === "string" && candidate ? candidate : "sin ventana acotada";
+  return typeof candidate === "string" && candidate ? candidate : "no bounded window";
 }
 
 /**
- * Identidad del pedido amplio. El prefijo de herramienta evita colisiones
- * entre los conjuntos de campos de cada una.
+ * Identity of the broad request. The tool prefix prevents collisions between
+ * each tool's field sets.
  */
 export function noticeKey(tool: BudgetTool, args: Record<string, unknown>): string {
   const field = (value: unknown): string => (typeof value === "string" ? value : "");
@@ -264,13 +265,14 @@ export function noticeKey(tool: BudgetTool, args: Record<string, unknown>): stri
   return `grep|${field(args?.pattern)}|${field(args?.path)}|${field(args?.include)}`;
 }
 
-/** Avisos de acotación ya emitidos, por sesión y por pedido amplio. */
+/** Narrowing notices already issued, per session and per broad request. */
 export const PRE_GATE_NOTICES = new Map<string, Set<string>>();
 
 /**
- * Registra el aviso de un pedido amplio. Devuelve `true` la primera vez (el
- * aviso se emite y el pedido no se ejecuta) y `false` si ya se emitió en este
- * turno (el pedido se permite y la entrega se reduce después).
+ * Registers the notice for a broad request. Returns `true` the first time (the
+ * notice is emitted and the request is not executed) and `false` if it was
+ * already emitted in this turn (the request is allowed and the delivery is
+ * reduced afterward).
  */
 export function registerNarrowingNotice(sessionID: string, tool: BudgetTool, args: Record<string, unknown>): boolean {
   const key = noticeKey(tool, args);
@@ -284,7 +286,7 @@ export function registerNarrowingNotice(sessionID: string, tool: BudgetTool, arg
   return true;
 }
 
-/** Reinicia los avisos de acotación de una sesión o de todas. */
+/** Resets the narrowing notices of one session or all of them. */
 export function resetNarrowingNotices(sessionID?: string): void {
   if (sessionID === undefined) {
     PRE_GATE_NOTICES.clear();
@@ -294,9 +296,9 @@ export function resetNarrowingNotices(sessionID?: string): void {
 }
 
 /**
- * Pre-gate barato de read: archivo sin `limit`/`offset` cuyo `stat.size` supera
- * el límite preventivo. `statSize` puede venir de un `statSync` previo del
- * llamador; si es `undefined` (stat falló) NO se bloquea: el post-gate decide.
+ * Cheap read pre-gate: file without `limit`/`offset` whose `stat.size` exceeds
+ * the preventive limit. `statSize` may come from the caller's prior `statSync`;
+ * if it is `undefined` (stat failed), it does NOT block: the post-gate decides.
  */
 export function shouldPreventiveBlockRead(args: Record<string, unknown>, statSize?: number): boolean {
   const file = args?.file;
@@ -307,7 +309,7 @@ export function shouldPreventiveBlockRead(args: Record<string, unknown>, statSiz
   return false;
 }
 
-/** Pre-gate de glob: pattern amplio de la lista cerrada sin path acotado o con node_modules. */
+/** Glob pre-gate: broad pattern from the closed list without a bounded path or with node_modules. */
 export function shouldPreventiveBlockGlob(args: Record<string, unknown>): boolean {
   const pattern = String(args?.pattern ?? "");
   if (!PREVENTIVE_GLOB_PATTERNS.includes(pattern)) return false;
@@ -319,7 +321,7 @@ export function shouldPreventiveBlockGlob(args: Record<string, unknown>): boolea
   return unboundedPath || hitsNodeModules;
 }
 
-/** Pre-gate de grep: sin `include` cuando el path es la raíz / no está acotado. */
+/** grep pre-gate: no `include` when the path is the root / unbounded. */
 export function shouldPreventiveBlockGrep(args: Record<string, unknown>): boolean {
   if (!PREVENTIVE_GREP_NO_INCLUDE_ROOT) return false;
   const include = args?.include;
@@ -333,9 +335,9 @@ export function shouldPreventiveBlockGrep(args: Record<string, unknown>): boolea
 type ToolOutput = { output?: unknown; metadata?: Record<string, unknown> };
 
 /**
- * Detecta entrega de attachment imagen/PDF: la tool devuelve un texto corto
- * (`Image read successfully`) más un attachment base64 que no se refleja en
- * `string.length` pero sí satura contexto multimodal/memoria.
+ * Detects image/PDF attachment delivery: the tool returns a short text
+ * (`Image read successfully`) plus a base64 attachment that is not reflected in
+ * `string.length` but does saturate multimodal context/memory.
  */
 export function isImageOrPdfOutput(output: ToolOutput | undefined): boolean {
   if (!output) return false;

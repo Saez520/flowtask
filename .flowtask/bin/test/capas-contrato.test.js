@@ -34,11 +34,11 @@ export function assertNoRetiredPhrase(content, label = "documento") {
 }
 
 describe("capas de persona, autonomia y permisos — contrato", () => {
-  const page = read("docs/architecture/capas-persona-autonomia-permisos.md");
+  const page = read("docs/architecture/persona-autonomy-permissions-layers.md");
   const flatPage = flat(page);
 
   it("publishes the page with its nine sections", () => {
-    assert.ok(exists("docs/architecture/capas-persona-autonomia-permisos.md"), "missing the layers page");
+    assert.ok(exists("docs/architecture/persona-autonomy-permissions-layers.md"), "missing the layers page");
     for (const section of [
       "## Purpose",
       "## Layers",
@@ -118,7 +118,7 @@ describe("capas de persona, autonomia y permisos — contrato", () => {
   });
 
   it("does not reintroduce the retired per-flow switch rule", () => {
-    assertNoRetiredPhrase(page, "capas-persona-autonomia-permisos.md");
+    assertNoRetiredPhrase(page, "persona-autonomy-permissions-layers.md");
   });
 
   it("rejects a regressed copy of the page", () => {
@@ -133,8 +133,8 @@ describe("capas de persona, autonomia y permisos — contrato", () => {
 
 describe("reconciliacion del contrato de autonomia", () => {
   it("replaces the retired rule in the autonomy page", () => {
-    const page = read("docs/architecture/autonomia-operativa.md");
-    assertNoRetiredPhrase(page, "autonomia-operativa.md");
+    const page = read("docs/architecture/operational-autonomy.md");
+    assertNoRetiredPhrase(page, "operational-autonomy.md");
     assert.ok(
       flat(page).includes("The autonomy layer declares initiative"),
       "the autonomy page must declare the initiative layer",
@@ -144,7 +144,7 @@ describe("reconciliacion del contrato de autonomia", () => {
       "the autonomy page must preserve the execution policy",
     );
     assert.ok(
-      page.includes("capas-persona-autonomia-permisos.md"),
+      page.includes("persona-autonomy-permissions-layers.md"),
       "the autonomy page must link the layers page",
     );
   });
@@ -166,10 +166,10 @@ describe("reconciliacion del contrato de autonomia", () => {
 
   it("links the layers page from the index and the core flow", () => {
     const index = read("docs/architecture/INDEX.md");
-    assert.ok(index.includes("capas-persona-autonomia-permisos.md"), "the index must link the layers page");
+    assert.ok(index.includes("persona-autonomy-permissions-layers.md"), "the index must link the layers page");
 
     const core = read("docs/core-flowtask.md");
-    assert.ok(core.includes("capas-persona-autonomia-permisos.md"), "the core flow must link the layers page");
+    assert.ok(core.includes("persona-autonomy-permissions-layers.md"), "the core flow must link the layers page");
     assert.ok(
       flat(core).includes("Personality only defines tone and depth; it does not authorize or restrict actions"),
       "the core flow must declare that the persona does not authorize",
@@ -209,7 +209,7 @@ describe("configuracion local y documentacion de migracion", () => {
     assert.ok(configReadme.includes("permissions.json"), ".flowtask/config/README.md must document permissions.json");
     assert.ok(configReadme.includes("autonomous-dev"), ".flowtask/config/README.md must document the autonomy migration default");
     assert.ok(configReadme.includes("standard"), ".flowtask/config/README.md must document the permissions migration default");
-    assert.match(configReadme, /no un fallback de runtime/, ".flowtask/config/README.md must state that the default is not a runtime fallback");
-    assert.match(configReadme, /Una capa inválida nunca se repara con un default/, ".flowtask/config/README.md must forbid repairing an invalid layer");
+    assert.match(configReadme, /not a runtime fallback/, ".flowtask/config/README.md must state that the default is not a runtime fallback");
+    assert.match(configReadme, /An invalid layer is never repaired with a default/, ".flowtask/config/README.md must forbid repairing an invalid layer");
   });
 });

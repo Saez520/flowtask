@@ -7,33 +7,33 @@
  * @typedef {{ ok: false, layer: string, reason: string, path: string | null, configDir: string | null }} OperationalLayersError
  */
 /**
- * Valida el contenido de la capa de autonomía.
+ * Validates the content of the autonomy layer.
  *
  * @param {string} raw
  * @returns {LayerParseResult}
  */
 export function parseAutonomyLayer(raw: string): LayerParseResult;
 /**
- * Valida el contenido de la capa de permisos.
+ * Validates the content of the permissions layer.
  *
  * @param {string} raw
  * @returns {LayerParseResult}
  */
 export function parsePermissionsLayer(raw: string): LayerParseResult;
 /**
- * Resuelve las capas operativas de un target.
+ * Resolves the operational layers of a target.
  *
- * El primer directorio candidato que contiene `autonomy.json` o
- * `permissions.json` es la fuente: ahí ambos archivos deben existir y ser
- * válidos. Cuando ningún candidato contiene una capa, el target no declara
- * configuración de capas y la comprobación no aplica.
+ * The first candidate directory that contains `autonomy.json` or
+ * `permissions.json` is the source: both files must exist and be valid there.
+ * When no candidate contains a layer, the target declares no layer
+ * configuration and the check does not apply.
  *
  * @param {string[]} directories
  * @returns {OperationalLayersOk | OperationalLayersError}
  */
 export function readOperationalLayers(directories: string[]): OperationalLayersOk | OperationalLayersError;
 /**
- * Mensaje operativo de una capa ausente o inválida.
+ * Operational message for a missing or invalid layer.
  *
  * @param {{ layer?: string, reason?: string, path?: string | null }} error
  * @returns {string}
@@ -44,13 +44,13 @@ export function buildLayerBlockMessage(error: {
     path?: string | null;
 }): string;
 /**
- * Parser de las capas almacenadas que el gate valida antes de aplicar la
- * allowlist técnica del runner. No autoriza herramientas: solo comprueba que
- * la capa de autonomía y la de permisos existan y sean válidas en el target.
+ * Parser of the stored layers that the gate validates before applying the
+ * runner's technical allowlist. It does not authorize tools: it only checks
+ * that the autonomy and permissions layers exist and are valid in the target.
  */
 export const AUTONOMY_PROFILES: string[];
 export const PERMISSION_ENVELOPES: string[];
-/** Directorios candidatos de configuración, probados en orden dentro de cada raíz. */
+/** Candidate configuration directories, tried in order within each root. */
 export const LAYER_DIR_CANDIDATES: string[];
 export type AutonomyParse = {
     ok: true;

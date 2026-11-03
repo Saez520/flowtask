@@ -57,7 +57,7 @@ flowtask layers resolve --json
 ```
 
 The full contract is in
-[architecture/capas-persona-autonomia-permisos.md](architecture/capas-persona-autonomia-permisos.md).
+[architecture/persona-autonomy-permissions-layers.md](architecture/persona-autonomy-permissions-layers.md).
 
 ## Targets
 

@@ -15,7 +15,7 @@ test decision, and consents; integration is serialized and spending is attribute
 execution.
 
 The layer that declares initiative is defined together with the persona and permissions layers in
-[capas-persona-autonomia-permisos.md](./capas-persona-autonomia-permisos.md). That page fixes the
+[persona-autonomy-permissions-layers.md](./persona-autonomy-permissions-layers.md). That page fixes the
 autonomy values, the `permissions > autonomy > persona` precedence, and per-layer failure.
 
 ## Automatic transition after the gate

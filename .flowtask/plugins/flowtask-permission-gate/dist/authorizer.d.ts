@@ -1,4 +1,4 @@
-export declare const RUNNER_DELEGATION_MESSAGE = "Record\u00E1 que deb\u00E9s delegar esta operaci\u00F3n al subagente correspondiente.";
+export declare const RUNNER_DELEGATION_MESSAGE = "Remember that you must delegate this operation to the corresponding subagent.";
 export declare const WORKTREE_CONSUMER_TOOL = "flowtask_worktree_consume";
 /** The worktree bridge is available only to the exact FlowTask runner identity. */
 export declare function isAuthorizedWorktreeConsumer(agent: unknown, tool: unknown): boolean;

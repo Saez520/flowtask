@@ -20,9 +20,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const SKILL_REL = ".flowtask/skills/parallel-orchestration/SKILL.md";
 const CONFIG_EXAMPLE_REL = ".flowtask/config/parallel.json.example";
 const CONFIG_README_REL = ".flowtask/config/README.md";
-const ARCH_DOC_REL = "docs/architecture/orquestacion-paralela.md";
+const ARCH_DOC_REL = "docs/architecture/parallel-orchestration.md";
 const ARCH_INDEX_REL = "docs/architecture/INDEX.md";
-const AUTONOMY_DOC_REL = "docs/architecture/autonomia-operativa.md";
+const AUTONOMY_DOC_REL = "docs/architecture/operational-autonomy.md";
 
 /** The sections of the architecture page. */
 const ARCH_SECTIONS = [
@@ -263,13 +263,13 @@ describe("parallel orchestration configuration contract", () => {
 
   it("documents the capacity, the conservative degradation and the visible queue", () => {
     const readme = flat(read(CONFIG_README_REL));
-    assert.ok(readme.includes("Orquestación paralela"), "falta la sección de la configuración");
+    assert.ok(readme.includes("Parallel orchestration"), "falta la sección de la configuración");
     for (const token of [
       "maxParallel",
-      "sin valor por defecto",
-      "secuencial",
-      "cola FIFO",
-      "integración serializada",
+      "without a declared default value",
+      "sequential",
+      "FIFO queue",
+      "Serialized integration",
     ]) {
       assert.ok(readme.includes(token), `el README de configuración debe declarar ${token}`);
     }
@@ -315,7 +315,7 @@ describe("parallel orchestration documentation contract", () => {
 
   it("links the page from the architecture index", () => {
     const index = read(ARCH_INDEX_REL);
-    assert.ok(index.includes("orquestacion-paralela.md"), "falta el enlace del índice");
+    assert.ok(index.includes("parallel-orchestration.md"), "falta el enlace del índice");
   });
 
   it("declares in the autonomy page that the bounded parallelism relaxes no control", () => {

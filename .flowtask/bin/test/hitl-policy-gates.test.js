@@ -91,8 +91,8 @@ describe("investigacion hotfix start signal contract", () => {
 
 describe("autonomy documentation contract", () => {
   it("publishes the autonomy page", () => {
-    assert.ok(exists("docs/architecture/autonomia-operativa.md"), "missing the autonomy page");
-    const page = read("docs/architecture/autonomia-operativa.md");
+    assert.ok(exists("docs/architecture/operational-autonomy.md"), "missing the autonomy page");
+    const page = read("docs/architecture/operational-autonomy.md");
     const flatPage = flat(page);
     for (const section of [
       "## Purpose",
@@ -117,7 +117,7 @@ describe("autonomy documentation contract", () => {
 
   it("links the autonomy page from the architecture index", () => {
     const index = read("docs/architecture/INDEX.md");
-    assert.ok(index.includes("autonomia-operativa.md"), "the index must link the autonomy page");
+    assert.ok(index.includes("operational-autonomy.md"), "the index must link the autonomy page");
   });
 
   it("describes the automatic start in the core flow", () => {
@@ -130,7 +130,7 @@ describe("autonomy documentation contract", () => {
   it("keeps the hotfix start signal in the core flow, readme and presentation", () => {
     const core = read("docs/core-flowtask.md");
     const readme = read("README.md");
-    const presentation = read("presentacion-flowtask.md");
+    const presentation = read("flowtask-presentation.md");
 
     assert.ok(
       flat(core).includes("that acceptance is the start signal and a second confirmation is not required"),
@@ -152,7 +152,7 @@ describe("autonomy documentation contract", () => {
     for (const [name, content] of [
       ["core-flowtask.md", core],
       ["README.md", readme],
-      ["presentacion-flowtask.md", presentation],
+      ["flowtask-presentation.md", presentation],
     ]) {
       assertNoRoutineWait(content);
       assert.doesNotMatch(content, /CHECKPOINT HUMANO/, `${name} must not restore the human checkpoint`);
@@ -163,7 +163,7 @@ describe("autonomy documentation contract", () => {
   it("leaves the historical architecture documents untouched", () => {
     for (const historical of [
       "docs/architecture/sdd.md",
-      "docs/architecture/flowtask-sistematico.md",
+      "docs/architecture/systematic-flowtask.md",
     ]) {
       assert.ok(exists(historical), `missing ${historical}`);
     }

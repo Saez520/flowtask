@@ -953,10 +953,10 @@ describe("control loop evidence contract", () => {
   });
 });
 
-const VERIFICATION_DOC = "docs/architecture/verificacion-material.md";
+const VERIFICATION_DOC = "docs/architecture/material-verification.md";
 const verificationDoc = read(VERIFICATION_DOC);
 const verificationDocFlat = flat(verificationDoc);
-const autonomyDoc = read("docs/architecture/autonomia-operativa.md");
+const autonomyDoc = read("docs/architecture/operational-autonomy.md");
 
 describe("verification material documentation", () => {
   it("publica la página de verificación material", () => {
@@ -1026,9 +1026,9 @@ describe("verification material documentation", () => {
   });
 
   it("enlaza la página desde el índice y desde la página de validación", () => {
-    assert.ok(flat(read("docs/architecture/INDEX.md")).includes("verificacion-material.md"), "falta el enlace del índice");
+    assert.ok(flat(read("docs/architecture/INDEX.md")).includes("material-verification.md"), "falta el enlace del índice");
     assert.ok(
-      flat(read("docs/architecture/validacion.md")).includes("verificacion-material.md"),
+      flat(read("docs/architecture/validation.md")).includes("material-verification.md"),
       "falta el enlace de la página de validación",
     );
   });
@@ -1055,7 +1055,7 @@ describe("verification material documentation", () => {
   });
 
   it("no publica identificadores concretos ni historia de implementación", () => {
-    for (const document of [verificationDoc, flat(read("docs/architecture/validacion.md"))]) {
+    for (const document of [verificationDoc, flat(read("docs/architecture/validation.md"))]) {
       assert.doesNotMatch(document, /CA-[a-z0-9]/);
       assert.doesNotMatch(document, /HF-[a-z0-9]/);
       assert.doesNotMatch(document, /F2\.7/);

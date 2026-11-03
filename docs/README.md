@@ -15,7 +15,7 @@ This folder separates current operation from retired designs. The source of trut
 - [Handshake](./architecture/handshake.md)
 - [Worktrees](./architecture/worktree.md)
 - [Worktree Manager documentation](./worktree-manager/README.md) — English inventory, interfaces, operations, compatibility, and release procedure.
-- [Skills](./architecture/integracion-skills.md)
+- [Skills](./architecture/skills-integration.md)
 
 ## Roadmap
 

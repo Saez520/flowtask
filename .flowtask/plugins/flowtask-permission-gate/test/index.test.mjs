@@ -379,7 +379,7 @@ test("accepts a stamp within the default TTL and rejects an expired one with ela
   writeStamp(expiredStamp, "main", -31); // 31 minutos atrás: expirado
   const expiredHooks = await plugin({ directory: expiredRoot });
   await assert.rejects(runGate(expiredHooks, expiredRoot), (error) =>
-    error instanceof Error && /expirado hace \d+ min \(TTL vigente: 30 min\)/.test(error.message),
+    error instanceof Error && /expired \d+ min ago \(current TTL: 30 min\)/.test(error.message),
   );
 });
 
@@ -389,7 +389,7 @@ test("honours stampTtlMinutes override from review.json", async () => {
   writeStamp(strictStamp, "main", -10); // fuera del TTL corto
   const strictHooks = await plugin({ directory: strictRoot });
   await assert.rejects(runGate(strictHooks, strictRoot), (error) =>
-    error instanceof Error && error.message.includes("(TTL vigente: 5 min)"),
+    error instanceof Error && error.message.includes("(current TTL: 5 min)"),
   );
 
   const laxRoot = makeRepo(makeTemp("flowtask-gate-ttl120-"));
@@ -407,7 +407,7 @@ test("binds the stamp to the current branch of the commit repository", async () 
 
   await assert.rejects(runGate(hooks, root), (error) =>
     error instanceof Error &&
-    /branch mismatch \(esperada 'feature\/otra-rama', encontrada 'main'\)/.test(error.message),
+    /branch mismatch \(expected 'feature\/otra-rama', found 'main'\)/.test(error.message),
   );
   assert.equal(fs.existsSync(stampPath), true);
 });
@@ -420,7 +420,7 @@ test("rejects legacy flat ISO stamps with an explicit obsolete-format cause", as
   const hooks = await plugin({ directory: root });
 
   await assert.rejects(runGate(hooks, root), (error) =>
-    error instanceof Error && /formato obsoleto \(ISO-8601 plano\)/.test(error.message),
+    error instanceof Error && /obsolete format \(plain ISO-8601\)/.test(error.message),
   );
 });
 
@@ -432,7 +432,7 @@ test("rejects unparseable stamps as invalid format", async () => {
   const hooks = await plugin({ directory: root });
 
   await assert.rejects(runGate(hooks, root), (error) =>
-    error instanceof Error && error.message.includes("formato inválido"),
+    error instanceof Error && error.message.includes("invalid format"),
   );
 });
 
@@ -443,9 +443,9 @@ test("missing stamp blocks reporting the exact absolute path searched", async ()
 
   await assert.rejects(runGate(hooks, root), (error) => {
     assert.ok(error instanceof Error);
-    assert.ok(error.message.includes("Causa: stamp inexistente"), error.message);
-    assert.ok(error.message.includes(`Stamp buscado en: ${stampPath}`), error.message);
-    assert.ok(/Config aplicada: .+review\.json/.test(error.message), error.message);
+    assert.ok(error.message.includes("Cause: missing stamp"), error.message);
+    assert.ok(error.message.includes(`Stamp looked up at: ${stampPath}`), error.message);
+    assert.ok(/Applied config: .+review\.json/.test(error.message), error.message);
     return true;
   });
 });
@@ -457,7 +457,7 @@ test("diff stats reflect real pending changes with an empty index (unstaged edit
   const hooks = await plugin({ directory: root });
 
   await assert.rejects(runGate(hooks, root), (error) =>
-    error instanceof Error && error.message.includes("📊 Diff: 1 archivo(s), 2 línea(s) pendientes."),
+    error instanceof Error && error.message.includes("📊 Diff: 1 file(s), 2 line(s) pending."),
   );
 });
 
@@ -468,7 +468,7 @@ test("diff stats count untracked pending files even when HEAD diff is empty", as
   const hooks = await plugin({ directory: root });
 
   await assert.rejects(runGate(hooks, root), (error) =>
-    error instanceof Error && error.message.includes("📊 Diff: 1 archivo(s), 0 línea(s) pendientes."),
+    error instanceof Error && error.message.includes("📊 Diff: 1 file(s), 0 line(s) pending."),
   );
 });
 
@@ -491,7 +491,7 @@ test("bypass --no-verify denegado para cambio > 5 líneas (review obligatorio)",
     runGateWith(hooks, root, 'git commit --no-verify -m "big"'),
     (error) =>
       error instanceof Error &&
-      error.message.includes("Commit bloqueado") &&
+      error.message.includes("Commit blocked") &&
       error.message.includes("flowtask-review-orchestrator"),
   );
 });
@@ -676,15 +676,15 @@ test("context-budget: loadContextBudgetConfig aplica override válido en workdir
 test("context-budget: los mensajes nombran el ámbito del presupuesto y nunca la cifra", () => {
   assert.equal(
     buildReducedDelivery("read", 60383, "call"),
-    "Resultado de `read` reducido: se omitieron `60383` chars de `contenido del archivo` por `el presupuesto por llamada`. Delegá lo omitido al Inspector o acotá path/pattern/limit/include.",
+    "`read` result reduced: `60383` chars of `file content` were omitted due to `the per-call budget`. Delegate the omitted content to the Inspector or narrow path/pattern/limit/include.",
   );
   assert.equal(
     buildReducedDelivery("grep", 6000, "turn"),
-    "Resultado de `grep` reducido: se omitieron `6000` chars de `coincidencias` por `el presupuesto acumulado del turno`. Delegá lo omitido al Inspector o acotá path/pattern/limit/include.",
+    "`grep` result reduced: `6000` chars of `matches` were omitted due to `the accumulated turn budget`. Delegate the omitted content to the Inspector or narrow path/pattern/limit/include.",
   );
   assert.equal(
     buildNarrowingNotice("read", { file: "big.txt" }),
-    "Pedido amplio de `read` (`big.txt`): `usá `limit`/`offset` o delegá el archivo completo al Inspector`.",
+    "Broad `read` request (`big.txt`): `use `limit`/`offset` or delegate the full file to the Inspector`.",
   );
   for (const message of [
     buildReducedDelivery("read", 60383, "call"),
@@ -736,7 +736,7 @@ test("context-budget: la salida que no se puede medir se entrega intacta con tra
     assert.deepEqual(output.output, { not: "a string" }, "la salida no medible se entrega intacta");
     assert.equal(output.metadata.degradation.level, "measurement_unavailable");
     assert.equal(warnings.length, 1, "la medición no disponible deja una traza");
-    assert.ok(warnings[0].includes("no se pudo medir"), warnings[0]);
+    assert.ok(warnings[0].includes("could not measure"), warnings[0]);
   } finally {
     console.warn = originalWarn;
   }

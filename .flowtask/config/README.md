@@ -1,79 +1,81 @@
-# flowtask/config — Configuración del ecosistema
+# flowtask/config — Ecosystem configuration
 
-## Capas de persona, autonomía y permisos
+## Persona, autonomy, and permissions layers
 
-Cada target instalado tiene su propia configuración de capas en
-`<target>/config/`. Los tres archivos son estado local: no se versionan.
+Each installed target has its own layer configuration in
+`<target>/config/`. The three files are local state: they are not versioned.
 
-| Archivo | Capa | Valores |
-|---------|------|---------|
-| `profile.json` | Persona (tono) | `level`: `training`, `mid`, `senior`, `custom`. `persona`: identidad de tono. `onboarded`: estado del onboarding. |
-| `autonomy.json` | Autonomía (iniciativa) | `version`: `1`. `profile`: `assistant`, `autonomous-dev` o `hermes`. |
-| `permissions.json` | Permisos (sobre técnico) | `version`: `1`. `envelope`: `standard`. |
+| File | Layer | Values |
+|------|-------|--------|
+| `profile.json` | Persona (tone) | `level`: `training`, `mid`, `senior`, `custom`. `persona`: tone identity. `onboarded`: onboarding state. |
+| `autonomy.json` | Autonomy (initiative) | `version`: `1`. `profile`: `assistant`, `autonomous-dev`, or `hermes`. |
+| `permissions.json` | Permissions (technical envelope) | `version`: `1`. `envelope`: `standard`. |
 
-- La precedencia entre capas es `permisos > autonomía > persona`: la persona no
-  autoriza ni restringe, y la autonomía no amplía el sobre de permisos.
-- `install` y `update` crean `autonomy.json` y `permissions.json` **solo cuando
-  la capa no existe**, con `autonomous-dev` y `standard` como valores de
-  instalación. Ese default es una migración, no un fallback de runtime: en
-  ejecución, una capa ausente o inválida es un fallo con mensaje operativo.
-- Una capa inválida nunca se repara con un default: la operación falla y el
-  archivo se conserva.
-- Una persona ausente o inválida deja un aviso y la ejecución continúa sin
-  persona, sin tocar autonomía ni permisos.
-- `flowtask layers resolve` muestra las capas resueltas de un target y el
-  origen de cada una.
+- The precedence between layers is `permissions > autonomy > persona`: persona
+  neither authorizes nor restricts, and autonomy does not widen the permissions
+  envelope.
+- `install` and `update` create `autonomy.json` and `permissions.json` **only when
+  the layer does not exist**, with `autonomous-dev` and `standard` as the
+  installation values. That default is a migration, not a runtime fallback: at
+  runtime, a missing or invalid layer is a failure with an operational message.
+- An invalid layer is never repaired with a default: the operation fails and the
+  file is preserved.
+- A missing or invalid persona leaves a warning and execution continues without a
+  persona, without touching autonomy or permissions.
+- `flowtask layers resolve` shows the resolved layers of a target and the
+  origin of each one.
 
-La fuente normativa del contrato de las tres capas es
-`docs/architecture/capas-persona-autonomia-permisos.md`.
+The normative source of the three-layer contract is
+`docs/architecture/persona-autonomy-permissions-layers.md`.
 
-## Presupuesto de contexto (context-budget)
+## Context budget (context-budget)
 
-El gate de presupuesto de contexto del runner es un **gate transparente en
-herramienta vía `tool.execute.after` mutable**: vive en el
-plugin `flowtask-permission-gate` (hook post-ejecución + pre-gate barato en
+The runner's context budget gate is a **transparent tool gate via mutable
+`tool.execute.after`**: it lives in the
+`flowtask-permission-gate` plugin (post-execution hook + cheap pre-gate in
 `tool.execute.before`).
 
-- Límites por llamada: `read=16.000` chars, `grep=8.000`, `glob=8.000`.
-- Acumulado por turno del runner: `32.000` chars entregados.
-- Degradación por niveles: aviso de acotación, entrega reducida sin preview y
-  omisión por acumulado. El runner ve qué se omitió, el tamaño real y a quién
-  delegar; nunca ve un preview del contenido omitido.
-- Attachments imagen/PDF bloqueados al runner (delegación al Inspector).
-- Los umbrales no se exponen en mensajes: se nombra el presupuesto aplicado, no
-  su cifra.
-- Si el tamaño no se puede medir, se registra una traza y se entrega sin recortar.
+- Per-call limits: `read=16,000` chars, `grep=8,000`, `glob=8,000`.
+- Accumulated per runner turn: `32,000` chars delivered.
+- Degradation by levels: narrowing notice, reduced delivery without preview, and
+  omission by accumulated total. The runner sees what was omitted, the real size,
+  and who to delegate to; it never sees a preview of the omitted content.
+- Image/PDF attachments blocked for the runner (delegation to the Inspector).
+- Thresholds are not exposed in messages: the applied budget is named, not
+  its figure.
+- If the size cannot be measured, a trace is recorded and the delivery is made
+  without trimming.
 
-### Regla de oro
+### Golden rule
 
-**El runner no conoce los umbrales.** No se exponen en el prompt
-(`.flowtask/agents/runner.md`) ni via env; solo viven en el plugin y en este
-archivo opcional de override:
+**The runner does not know the thresholds.** They are not exposed in the prompt
+(`.flowtask/agents/runner.md`) or via env; they only live in the plugin and in this
+optional override file:
 
-- `context-budget.json.example` — valores por defecto documentados (opcional).
-- Para overrides reales, copiar a `context-budget.json` (fail-open: JSON
-  inválido/ilegible → `console.warn` + defaults; nunca lanza).
-- `bash` queda fuera del gate (solo `read`, `glob`, `grep` del runner).
+- `context-budget.json.example` — documented default values (optional).
+- For real overrides, copy to `context-budget.json` (fail-open: invalid or
+  unreadable JSON → `console.warn` + defaults; it never throws).
+- `bash` stays outside the gate (only the runner's `read`, `glob`, and `grep`).
 
-Revalidar el contrato de mutación del hook con
-`.flowtask/plugins/flowtask-permission-gate/test/context-budget-smoke.mjs` al
-actualizar OpenCode (version drift).
+Revalidate the hook mutation contract with
+`.flowtask/plugins/flowtask-permission-gate/test/context-budget-smoke.mjs` when
+updating OpenCode (version drift).
 
-## Orquestación paralela (parallel)
+## Parallel orchestration (parallel)
 
-La capacidad de avance en paralelo se declara por proyecto y es opcional.
+The ability to advance in parallel is declared per project and is optional.
 
-- `parallel.json.example` es opcional: el ejemplo documenta la forma, sin valor activo.
-- Para declararla, copiar el ejemplo a `parallel.json` y setear `maxParallel`.
-- `maxParallel` es un entero mayor o igual a 2. Ausente, `null` o inválido equivale a
-  capacidad 1 y a avance secuencial.
-- No se inventa una capacidad: el avance sin valor por defecto declarado es secuencial, y
-  la primera ventana de observación no calibra una cifra.
-- La cola FIFO conserva el orden de llegada y muestra la posición de cada trabajo.
-- La integración serializada: el cierre se ejecuta de a uno por vez sobre la misma base.
-- El detalle de los avisos sigue `policy.profile`: desarrollo con referencias y último
-  comando verificado, producción conciso.
-- No se exponen cifras internas de cerrojos ni de registros.
+- `parallel.json.example` is optional: the example documents the shape, with no active value.
+- To declare it, copy the example to `parallel.json` and set `maxParallel`.
+- `maxParallel` is an integer greater than or equal to 2. Missing, `null`, or invalid is
+  equivalent to capacity 1 and sequential advancement.
+- A capacity is not invented: advancement without a declared default value is sequential, and
+  the first observation window does not calibrate a figure.
+- The FIFO queue preserves arrival order and shows the position of each job.
+- Serialized integration: closing runs one at a time on the same base.
+- The detail of notices follows `policy.profile`: development with references and the last
+  verified command, production concise.
+- Internal figures for locks or records are not exposed.
 
-La fuente normativa de la política es la skill `parallel-orchestration` y su integración
-vive en `.flowtask/agents/runner.md`.
+The normative source of the policy is the `parallel-orchestration` skill and its integration
+lives in `.flowtask/agents/runner.md`.

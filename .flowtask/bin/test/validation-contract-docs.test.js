@@ -22,7 +22,7 @@ const readOptional = (relative) => (
 const skill = flat(read(".flowtask/skills/validation-contract/SKILL.md"));
 const validator = flat(read(".flowtask/agents/validator.md"));
 const runner = flat(read(".flowtask/agents/runner.md"));
-const validationDoc = readOptional("docs/architecture/validacion.md");
+const validationDoc = readOptional("docs/architecture/validation.md");
 const index = flat(read("docs/architecture/INDEX.md"));
 const coreFlow = flat(read("docs/core-flowtask.md"));
 
@@ -178,11 +178,11 @@ describe("runner", () => {
 
 describe("documentación", () => {
   it("existe el documento de arquitectura de la validación", () => {
-    assert.equal(fs.existsSync(path.join(ROOT, "docs", "architecture", "validacion.md")), true);
+    assert.equal(fs.existsSync(path.join(ROOT, "docs", "architecture", "validation.md")), true);
   });
 
   it("enlaza el documento nuevo desde el índice", () => {
-    assert.match(index, /validacion\.md/);
+    assert.match(index, /validation\.md/);
   });
 
   it("alinea el bloque del flujo principal con las rondas y la evidencia", () => {

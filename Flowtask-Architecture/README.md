@@ -48,7 +48,7 @@ FlowTask rests on three pillars that differentiate it from conventional assistan
 **Why it matters**: It is the guarantee that an autonomous agent **cannot corrupt the developer's code**. Without this pillar, FlowTask would be an assistance tool; with it, it is a delegable system with integrity safety.
 
 **ASCII diagram**: See [`docs/architecture/worktree.md`](../docs/architecture/worktree.md) — conceptual design of the lifecycle with Git Worktrees.  
-**Related artifact**: [`docs/architecture/sub-agent-archivista.md`](../docs/architecture/sub-agent-archivista.md) — Archivist subagent flow.
+**Related artifact**: [`docs/architecture/archivist-sub-agent.md`](../docs/architecture/archivist-sub-agent.md) — Archivist subagent flow.
 
 ### Pillar 2 — Persistence and Self-Healing (Engram + Handshake)
 
@@ -176,11 +176,11 @@ All technical documentation is in [`docs/architecture/`](../docs/architecture/).
 **Conceptual design documents** (originally in `New Architecture/`):
 - [`flowtask-core.md`](../docs/architecture/flowtask-core.md) — Core ecosystem
 - [`handshake.md`](../docs/architecture/handshake.md) — Handshake Protocol
-- [`anatomia-workspace.md`](../docs/architecture/anatomia-workspace.md) — Workspace anatomy
+- [`workspace-anatomy.md`](../docs/architecture/workspace-anatomy.md) — Workspace anatomy
 
 **ASCII diagrams of the pillars**:
 - [`worktree.md`](../docs/architecture/worktree.md) — Pillar 1: Git Worktrees
-- [`sub-agent-archivista.md`](../docs/architecture/sub-agent-archivista.md) — Archivist flow
+- [`archivist-sub-agent.md`](../docs/architecture/archivist-sub-agent.md) — Archivist flow
 - [`engram-cloud.md`](../docs/architecture/engram-cloud.md) — Pillar 2: Engram structure
 - [`lsp-ast-grep.md`](../docs/architecture/lsp-ast-grep.md) — Pillar 3: LSP+AST-Grep optimization
 

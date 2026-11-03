@@ -147,8 +147,8 @@ and it is not hidden.
 ## Related references
 
 - [INDEX.md](./INDEX.md) — index of the current architecture.
-- [validacion.md](./validacion.md) — live validation, executed evidence, and single verdict.
-- [verificacion-material.md](./verificacion-material.md) — material verification, citable evidence, and inheritance across roles.
+- [validation.md](./validation.md) — live validation, executed evidence, and single verdict.
+- [material-verification.md](./material-verification.md) — material verification, citable evidence, and inheritance across roles.
 - [../permission-gate.md](../permission-gate.md) — permissions, context budget, and review-stamp.
 - `.flowtask/skills/context-degradation/SKILL.md` — canonical contract for degradation and recovery.
 - `.flowtask/plugins/flowtask-permission-gate/src/context-budget.ts` — degradation levels and warning state.

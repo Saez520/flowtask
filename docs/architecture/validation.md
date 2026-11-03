@@ -240,7 +240,7 @@ standard input, and with `--json` it emits the complete result.
 
 - [INDEX.md](./INDEX.md) — index of the current architecture.
 - [handshake.md](./handshake.md) — identity, continuity, and checkpoints.
-- [verificacion-material.md](./verificacion-material.md) — material verification, citable evidence, and inheritance across roles.
+- [material-verification.md](./material-verification.md) — material verification, citable evidence, and inheritance across roles.
 - [../core-flowtask.md](../core-flowtask.md) — main flow of an execution.
 - `.flowtask/agents/validator.md` — behavior of the agent that runs
   validation.

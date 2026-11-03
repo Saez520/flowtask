@@ -30,7 +30,7 @@ const {
 describe("context budget degradation", () => {
   it("announces a broad request with the way to narrow it and without figures", () => {
     const notice = buildNarrowingNotice("read", { file: "big.txt" });
-    assert.ok(notice.includes("Pedido amplio"), notice);
+    assert.ok(notice.includes("Broad"), notice);
     assert.ok(notice.includes("limit"), notice);
     assert.ok(notice.includes("offset"), notice);
     assert.ok(notice.includes("Inspector"), notice);
@@ -40,21 +40,21 @@ describe("context budget degradation", () => {
   it("names the call budget and the real omitted size in a reduced delivery", () => {
     const message = buildReducedDelivery("read", 60383, "call");
     assert.ok(message.includes("60383"), message);
-    assert.ok(message.includes("contenido del archivo"), message);
-    assert.ok(message.includes("presupuesto por llamada"), message);
+    assert.ok(message.includes("file content"), message);
+    assert.ok(message.includes("per-call budget"), message);
     assert.ok(message.includes("Inspector"), message);
     assert.equal(message.includes("16000"), false, message);
   });
 
   it("names the turn budget when the accumulated delivery is omitted", () => {
     const message = buildReducedDelivery("grep", 6000, "turn");
-    assert.ok(message.includes("presupuesto acumulado del turno"), message);
+    assert.ok(message.includes("accumulated turn budget"), message);
     assert.equal(message.includes("32000"), false, message);
   });
 
   it("delegates an attachment and declares the measured text", () => {
     const message = buildAttachmentDelivery("read", 23);
-    assert.ok(message.includes("imagen/PDF"), message);
+    assert.ok(message.includes("image/PDF"), message);
     assert.ok(message.includes("Inspector"), message);
     assert.ok(message.includes("23"), message);
   });
