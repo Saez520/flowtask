@@ -349,7 +349,7 @@ describe("documentacion de la capa de permisos", () => {
   const page = fs.readFileSync(path.join(ROOT, "docs", "permission-gate.md"), "utf8");
 
   it("publishes the section with the schema and the envelope", () => {
-    assert.ok(page.includes("## Capa de permisos"), "missing the permissions layer section");
+    assert.ok(page.includes("## Permissions layer"), "missing the permissions layer section");
     assert.ok(page.includes('"envelope": "standard"'), "missing the envelope schema");
     assert.ok(page.includes('"profile": "autonomous-dev"'), "missing the autonomy schema");
     assert.ok(page.includes("`standard`"), "missing the standard envelope");
@@ -362,9 +362,9 @@ describe("documentacion de la capa de permisos", () => {
   });
 
   it("declares the scope and the smoke with a restart", () => {
-    assert.ok(page.includes("solo a las herramientas del runner"), "missing the scope of the layer check");
-    assert.ok(page.includes("reiniciar OpenCode"), "missing the restart in the smoke");
-    assert.ok(page.includes("borrar"), "missing the deletion step of the smoke");
-    assert.ok(page.includes("Restaurar el archivo"), "missing the restore step of the smoke");
+    assert.ok(page.includes("only to the runner's tools"), "missing the scope of the layer check");
+    assert.ok(page.includes("restart OpenCode"), "missing the restart in the smoke");
+    assert.ok(page.includes("delete"), "missing the deletion step of the smoke");
+    assert.ok(page.includes("restore the file"), "missing the restore step of the smoke");
   });
 });

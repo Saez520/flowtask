@@ -106,7 +106,7 @@ export async function generateDocsMedia(projectDir, opts = {}) {
       attemptStatus: "failed",
       outputPaths: [],
       finishedAt: finishedAt(),
-      diagnostic: "projectDir está bajo .worktrees/ — docs/media requiere el repositorio principal.",
+      diagnostic: "projectDir is under .worktrees/ — docs/media requires the main repository.",
     });
   }
 
@@ -116,7 +116,7 @@ export async function generateDocsMedia(projectDir, opts = {}) {
       attemptStatus: "failed",
       outputPaths: [],
       finishedAt: finishedAt(),
-      diagnostic: "Graphify no está instalado. Instala Graphify antes de reintentar docs/media.",
+      diagnostic: "Graphify is not installed. Install Graphify before retrying docs/media.",
     });
   }
 
@@ -135,7 +135,7 @@ export async function generateDocsMedia(projectDir, opts = {}) {
       attemptStatus: "failed",
       outputPaths: [],
       finishedAt: finishedAt(),
-      diagnostic: `Excepción durante generación: ${err.message}`,
+      diagnostic: `Exception during generation: ${err.message}`,
       terminationConfirmed: false,
     };
   }
@@ -146,8 +146,8 @@ export async function generateDocsMedia(projectDir, opts = {}) {
       outputPaths: [],
       finishedAt: finishedAt(),
       diagnostic: execution.terminationConfirmed
-        ? `Graphify excedió el timeout de ${execution.timeoutMs} ms y su terminación fue confirmada. Reintenta docs/media en otra conversación.`
-        : `Graphify excedió el timeout de ${execution.timeoutMs} ms, pero su terminación no pudo confirmarse. Reintenta docs/media en otra conversación.`,
+        ? `Graphify exceeded the ${execution.timeoutMs} ms timeout and its termination was confirmed. Retry docs/media in another conversation.`
+        : `Graphify exceeded the ${execution.timeoutMs} ms timeout, but its termination could not be confirmed. Retry docs/media in another conversation.`,
       terminationConfirmed: execution.terminationConfirmed,
     };
   }
@@ -160,7 +160,7 @@ export async function generateDocsMedia(projectDir, opts = {}) {
       attemptStatus: "failed",
       outputPaths: [],
       finishedAt: finishedAt(),
-      diagnostic: "Graphify binario no encontrado durante ejecución. Instala Graphify antes de reintentar.",
+      diagnostic: "Graphify binary not found during execution. Install Graphify before retrying.",
       terminationConfirmed: true,
     };
   }
@@ -170,7 +170,7 @@ export async function generateDocsMedia(projectDir, opts = {}) {
       attemptStatus: "failed",
       outputPaths: [],
       finishedAt: finishedAt(),
-      diagnostic: `Excepción durante generación: ${execution.error.message}`,
+      diagnostic: `Exception during generation: ${execution.error.message}`,
       terminationConfirmed: true,
     };
   }
@@ -181,7 +181,7 @@ export async function generateDocsMedia(projectDir, opts = {}) {
       attemptStatus: "failed",
       outputPaths: [],
       finishedAt: finishedAt(),
-      diagnostic: `graphify extract falló con exit code ${exitCode}.`,
+      diagnostic: `graphify extract failed with exit code ${exitCode}.`,
       terminationConfirmed: true,
     };
   }
@@ -199,7 +199,7 @@ export async function generateDocsMedia(projectDir, opts = {}) {
             attemptStatus: "inconclusive",
             outputPaths: [],
             finishedAt: finishedAt(),
-            diagnostic: `Output incompleto: ${artifact} está vacío o no es un archivo.`,
+            diagnostic: `Incomplete output: ${artifact} is empty or is not a file.`,
           };
         }
         fs.accessSync(fullPath, fs.constants.R_OK);
@@ -209,7 +209,7 @@ export async function generateDocsMedia(projectDir, opts = {}) {
           attemptStatus: "inconclusive",
           outputPaths: [],
           finishedAt: finishedAt(),
-          diagnostic: `Output incompleto: ${artifact} no existe o no es legible.`,
+          diagnostic: `Incomplete output: ${artifact} does not exist or is not readable.`,
         };
       }
     }

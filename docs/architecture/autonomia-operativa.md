@@ -1,152 +1,152 @@
-# Autonomía operativa por políticas
+# Operational autonomy by policies
 
-## Propósito
+## Purpose
 
-La ejecución avanza por política y no por espera rutinaria. El control técnico se verifica
-primero y, cuando pasa, la construcción arranca sin pedir una segunda confirmación.
+Execution advances by policy, not by routine waiting. Technical control is verified
+first and, when it passes, construction starts without asking for a second confirmation.
 
-La autonomía **no elimina controles**. El gate técnico, la auditoría del plan y la validación
-de la implementación siguen siendo obligatorios. Lo que se elimina es la confirmación
-rutinaria posterior al gate: la orden original del desarrollador que autoriza el trabajo y el
-resultado `PASS` del gate son la señal de inicio.
+Autonomy **does not remove controls**. The technical gate, plan audit, and
+implementation validation remain mandatory. What is removed is the routine
+confirmation after the gate: the developer's original order authorizing the work and the
+gate's `PASS` result are the start signal.
 
-El paralelismo acotado no relaja estos controles: cada trabajo conserva su Gate, auditoría,
-decisión de pruebas y consentimientos; la integración se serializa y el gasto se atribuye por
-ejecución.
+Bounded parallelism does not relax these controls: each job keeps its Gate, audit,
+test decision, and consents; integration is serialized and spending is attributed per
+execution.
 
-La capa que declara la iniciativa se define junto con la capa de persona y la de permisos en
-[capas-persona-autonomia-permisos.md](./capas-persona-autonomia-permisos.md). Esa página fija los
-valores de autonomía, la precedencia `permisos > autonomía > persona` y el fallo por capa.
+The layer that declares initiative is defined together with the persona and permissions layers in
+[capas-persona-autonomia-permisos.md](./capas-persona-autonomia-permisos.md). That page fixes the
+autonomy values, the `permissions > autonomy > persona` precedence, and per-layer failure.
 
-## Transición automática tras el gate
+## Automatic transition after the gate
 
-- **Gate `PASS`** habilita la construcción. El runner informa el resultado en una línea,
-  registra la evidencia del gate como decisión de política y continúa con el worktree y el
-  Constructor. No hay espera intermedia.
-- **Gate `FAIL`** no construye nada. El runner informa el motivo en una sola línea, no crea
-  worktree, no abre ejecución y no invoca al Constructor ni al Validator. El plan conserva su
-  estado de gate como evidencia.
+- **Gate `PASS`** enables construction. The runner reports the result in one line,
+  records the gate evidence as a policy decision, and continues with the worktree and the
+  Constructor. There is no intermediate wait.
+- **Gate `FAIL`** builds nothing. The runner reports the reason in a single line, does not create
+  a worktree, does not open an execution, and does not invoke the Constructor or the Validator.
+  The plan keeps its gate state as evidence.
 
-En un hotfix, la señal de inicio es la aceptación explícita del diagnóstico acordado. No se
-exige una segunda palabra, y las acciones de riesgo conservan su consentimiento explícito.
+In a hotfix, the start signal is explicit acceptance of the agreed diagnosis. A second
+confirmation is not required, and risk actions keep their explicit consent.
 
-## Consentimientos que se conservan
+## Consents that are preserved
 
-Estos consentimientos nunca se derivan de la política vigente ni de un indicador de invocación:
+These consents are never derived from the current policy or from an invocation flag:
 
-- Preservar los cambios sin consolidar del destino (`--preserve-dirty`).
-- Descartar trabajo no integrado (`cleanup --discard`).
-- Publicar o mover trabajo a remoto.
-- Eliminar trabajo ajeno o pendiente-manual.
-- Modificar archivos protegidos.
+- Preserving the destination's uncommitted changes (`--preserve-dirty`).
+- Discarding unintegrated work (`cleanup --discard`).
+- Publishing or moving work to a remote.
+- Deleting someone else's or pending-manual work.
+- Modifying protected files.
 
-Un cierre con destino sucio se escala al desarrollador sin limpiar el destino: el rechazo es
-seguro y deja todo intacto.
+A close with a dirty destination is escalated to the developer without cleaning the destination:
+the rejection is safe and leaves everything intact.
 
-## Pausa por excepción
+## Pause by exception
 
-La ejecución se detiene solo por excepción. Nunca se pausa por rutina: si el gate permite y no
-falta un consentimiento, se avanza.
+Execution stops only by exception. It never pauses by routine: if the gate allows and no
+consent is missing, it advances.
 
-| Situación operativa | Motivo de pausa |
+| Operational situation | Pause reason |
 |--------------------|-----------------|
-| Falta de autoridad, cambio de alcance o requisitos, o consentimiento de riesgo ausente. | `authority_block` |
-| Límite expreso del trabajo alcanzado con efecto de pausa. | `explicit_limit` |
-| Ausencia de hipótesis o de progreso verificable. | `no_verifiable_progress` |
-| Invariante violado. | `invariant_violation` |
-| Fallo externo no verificable o registro ilegible. | `progress_unavailable` |
+| Lack of authority, scope or requirement change, or missing risk consent. | `authority_block` |
+| Explicit work limit reached with a pause effect. | `explicit_limit` |
+| Absence of hypotheses or verifiable progress. | `no_verifiable_progress` |
+| Invariant violated. | `invariant_violation` |
+| Unverifiable external failure or unreadable record. | `progress_unavailable` |
 
-La pausa se informa con un mensaje canónico de tres líneas:
+The pause is reported with a canonical three-line message:
 
 ~~~
-⏸ Pausa por excepción: {motivo}
-Estado conservado: {worktree/branch; artifacts; última ronda confirmada; checkpoint si aplica}
-Para reanudar: {condición exacta}
+⏸ Pause by exception: {reason}
+Preserved state: {worktree/branch; artifacts; last confirmed round; checkpoint if applicable}
+To resume: {exact condition}
 ~~~
 
-El detalle se ajusta al perfil vigente de la ejecución: el perfil de desarrollo agrega
-referencias de evidencia y el último comando verificado; el perfil de producción mantiene las
-tres líneas concisas. La verificación técnica para reanudar es la misma en ambos perfiles.
+The detail adjusts to the execution's current profile: the development profile adds
+evidence references and the last verified command; the production profile keeps the
+three concise lines. The technical verification to resume is the same in both profiles.
 
-Un fallo operativo no es un rechazo funcional: no es una ronda, no incrementa contadores y no
-pide correcciones al Constructor. Un fallo irrecuperable declarado con evidencia y diagnóstico
-cierra por causa externa conservando trabajo, historial y diagnóstico; un fallo externo no
-verificable no se declara irrecuperable y produce una pausa.
+An operational failure is not a functional rejection: it is not a round, it does not increment counters, and it does not
+ask the Constructor for corrections. An unrecoverable failure declared with evidence and diagnosis
+closes for an external cause while preserving work, history, and diagnosis; an unverifiable
+external failure is not declared unrecoverable and produces a pause.
 
-## Reanudación
+## Resumption
 
-Reanudar exige, en conjunto:
+Resuming requires, together:
 
-1. Una señal explícita de reanudación.
-2. La misma ejecución: la identidad no cambia.
-3. La causa resuelta, conforme al motivo de la pausa.
-4. La lectura del registro de ejecución y del registro de progreso.
+1. An explicit resumption signal.
+2. The same execution: identity does not change.
+3. The cause resolved, according to the pause reason.
+4. Reading the execution record and the progress record.
 
-La reanudación reutiliza la evidencia de la última ronda y de las decisiones de política: no
-repite comprobaciones ya verificadas ni reinicia contadores. Las acciones no idempotentes cuyo
-efecto anterior sea incierto no se repiten: se detienen y se escalan.
+Resumption reuses the evidence from the last round and the policy decisions: it does not
+repeat already verified checks or reset counters. Non-idempotent actions whose
+previous effect is uncertain are not repeated: they stop and escalate.
 
-## Registro de decisiones automáticas
+## Automatic decision record
 
-El registro de ejecución `AgentRunRecord` incluye un bloque `autonomy`:
+The `AgentRunRecord` execution record includes an `autonomy` block:
 
-| Campo | Valor |
+| Field | Value |
 |-------|-------|
-| `autonomy.policy` | `gate-then-auto` — el gate técnico se verifica primero y, cuando pasa, el avance es automático. |
-| `autonomy.decisions[]` | Lista append-only de decisiones de política. |
+| `autonomy.policy` | `gate-then-auto` — the technical gate is verified first and, when it passes, advancement is automatic. |
+| `autonomy.decisions[]` | Append-only list of policy decisions. |
 
-Cada gate `PASS`, cada pausa por excepción y cada reanudación agregan **exactamente una**
-entrada. Cada entrada describe una decisión de política:
+Each gate `PASS`, each pause by exception, and each resumption adds **exactly one**
+entry. Each entry describes a policy decision:
 
-| Campo | Contenido |
+| Field | Content |
 |-------|-----------|
-| `id` | Identidad monotónica de la decisión. |
-| `kind` | `gate`, `pause` o `resume`. |
-| `policy` | `execution_gate`, `exception_pause` o `resume_gate`. |
-| `outcome` | `pass`, `fail`, `pause`, `resume` o `reject`. |
-| `verified` | `true` solo si la evidencia se leyó y confirmó. |
-| `reason` | `null` o el motivo de pausa vigente. |
-| `command` | Comando ejecutado cuando aplica. |
-| `result` | Resultado resumido y verificable. |
-| `evidence_refs` | Referencias citable de la decisión. |
-| `at` | Momento de la evaluación. |
+| `id` | Monotonic decision identity. |
+| `kind` | `gate`, `pause`, or `resume`. |
+| `policy` | `execution_gate`, `exception_pause`, or `resume_gate`. |
+| `outcome` | `pass`, `fail`, `pause`, `resume`, or `reject`. |
+| `verified` | `true` only if the evidence was read and confirmed. |
+| `reason` | `null` or the current pause reason. |
+| `command` | Command executed when applicable. |
+| `result` | Summarized and verifiable result. |
+| `evidence_refs` | Citable references for the decision. |
+| `at` | Time of evaluation. |
 
-Una decisión con `verified: false` nunca autoriza un permiso de riesgo ni un cierre: habilita
-como máximo una pausa.
+A decision with `verified: false` never authorizes a risk permission or a close: it enables
+at most a pause.
 
-## Modo automático
+## Automatic mode
 
-El indicador de invocación `--auto` **no agrega permisos**: declara que no hay espera
-rutinaria. No altera el gate ni los consentimientos, no habilita la preservación ni el
-descarte de cambios, no autoriza publicar, no habilita el borrado de trabajo ajeno y no
-habilita la modificación de archivos protegidos.
+The `--auto` invocation flag **does not add permissions**: it declares that there is no routine
+wait. It does not alter the gate or consents, does not enable preservation or
+discard of changes, does not authorize publishing, does not enable deletion of someone else's work, and does not
+enable modification of protected files.
 
-## Límites
+## Limits
 
-- La capa de autonomía declara la iniciativa (`assistant`, `autonomous-dev`, `hermes`); no es un
-  interruptor por flujo y no altera el gate, la auditoría, la validación ni los consentimientos. La
-  política de ejecución sigue siendo `gate-then-auto`.
-- No hay espacios de persistencia nuevos: las decisiones de política viven en el registro de
-  ejecución.
-- No hay agentes ni contratos nuevos: se extienden las superficies vigentes de runner,
-  constructor, control del loop y terminación.
-- El contrato de validación en caliente conserva su esquema y su veredicto: la
-  verificación material se apoya en su distinción entre verificado y no verificado
-  y en la herencia de evidencia.
+- The autonomy layer declares initiative (`assistant`, `autonomous-dev`, `hermes`); it is not a
+  per-flow switch and does not alter the gate, audit, validation, or consents. The
+  execution policy remains `gate-then-auto`.
+- There are no new persistence spaces: policy decisions live in the execution
+  record.
+- There are no new agents or contracts: the current surfaces of runner,
+  constructor, loop control, and termination are extended.
+- The live validation contract keeps its schema and its verdict: material
+  verification relies on its distinction between verified and unverified
+  and on evidence inheritance.
 
-## Verificación
+## Verification
 
 ~~~
 node --test .flowtask/bin/test/hitl-policy-gates.test.js
 node --test .flowtask/bin/test/capas-contrato.test.js
 ~~~
 
-La prueba contractual verifica la política `gate-then-auto`, la señal de inicio sin segunda
-confirmación, el registro de decisiones de política, los motivos de pausa, el mensaje canónico
-de tres líneas, los consentimientos preservados y la coherencia de la documentación funcional.
+The contract test verifies the `gate-then-auto` policy, the start signal without a second
+confirmation, the policy decision record, the pause reasons, the canonical
+three-line message, the preserved consents, and the coherence of the functional documentation.
 
-La prueba del contrato de capas verifica los valores de autonomía, la precedencia entre capas,
-la tabla de fallo por capa y los defaults de migración.
+The layers contract test verifies the autonomy values, the precedence between layers,
+the per-layer failure table, and the migration defaults.
 
-La fuente normativa del contrato es la skill `agent-loop-run` y, para la terminación, la skill
-`agent-loop-termination`.
+The normative source of the contract is the `agent-loop-run` skill and, for termination, the
+`agent-loop-termination` skill.

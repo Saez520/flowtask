@@ -8,7 +8,7 @@ import { COLORS, log } from "./logger.js";
  */
 export async function showInteractiveSelector(readline) {
   if (!process.stdin.isTTY) {
-    throw new Error("No hay TTY para seleccionar targets. Pasá una selección explícita en un terminal interactivo.");
+    throw new Error("No TTY available to select targets. Provide an explicit selection in an interactive terminal.");
   }
 
   const options = [
@@ -35,7 +35,7 @@ export async function showInteractiveSelector(readline) {
         const checkStr  = opt.selected  ? COLORS.green + "[*]" + COLORS.reset : "[ ]";
         return `${cursorStr}${checkStr} ${opt.name}`;
       }),
-      `\n${COLORS.dim}↑/↓: navegar, Espacio: marcar, Enter: confirmar, Ctrl+C: cancelar${COLORS.reset}`,
+      `\n${COLORS.dim}↑/↓: navigate, Space: mark, Enter: confirm, Ctrl+C: cancel${COLORS.reset}`,
     ];
     const output = lines.join("\n");
     process.stdout.write(output + "\n");

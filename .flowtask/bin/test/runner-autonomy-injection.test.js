@@ -118,7 +118,7 @@ describe("inyeccion de autonomia en el runner", () => {
 
     assert.equal(
       blockBetween(injected, AUTONOMY_START, AUTONOMY_END).trim(),
-      "Autonomía vigente: autonomous-dev (origen: project).",
+      "Current autonomy: autonomous-dev (source: project).",
     );
     assert.equal(
       injected.slice(0, injected.indexOf(AUTONOMY_START)),
@@ -157,7 +157,7 @@ describe("inyeccion de autonomia en el runner", () => {
         () => injectAutonomyIntoRunnerContent(runner, descriptor),
         (error) => {
           assert.equal(error.code, "autonomy_descriptor_invalid");
-          assert.match(error.message, /descriptor de autonomía inválido/);
+          assert.match(error.message, /invalid autonomy descriptor/);
           return true;
         },
       );
@@ -173,7 +173,7 @@ describe("inyeccion de autonomia en el runner", () => {
     const written = fs.readFileSync(path.join(targetDir, "agents", "runner.md"), "utf8");
     assert.equal(
       blockBetween(written, AUTONOMY_START, AUTONOMY_END).trim(),
-      "Autonomía vigente: assistant (origen: team).",
+      "Current autonomy: assistant (source: team).",
     );
   });
 
@@ -184,7 +184,7 @@ describe("inyeccion de autonomia en el runner", () => {
       () => injectAutonomyIntoRunner(targetDir, { profile: "assistant", source: "team" }),
       (error) => {
         assert.equal(error.code, "autonomy_runner_missing");
-        assert.match(error.message, /runner\.md no encontrado/);
+        assert.match(error.message, /runner\.md not found/);
         return true;
       },
     );
@@ -253,7 +253,7 @@ describe("migracion y sincronizacion de capas", () => {
       () => ensureTargetLayers(targetDir),
       (error) => {
         assert.equal(error.code, "autonomy_invalid");
-        assert.match(error.message, /\[FlowTask Layers\] Capa de autonomía ausente o inválida\./);
+        assert.match(error.message, /\[FlowTask Layers\] autonomy layer missing or invalid\./);
         return true;
       },
     );

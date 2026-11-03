@@ -1,232 +1,232 @@
-> **Histórico:** esta presentación conserva un roadmap y afirmaciones de diseño que no describen necesariamente el sistema vigente. Consultá [docs/README.md](docs/README.md).
+> **Historical:** this presentation preserves a roadmap and design claims that do not necessarily describe the current system. See [docs/README.md](docs/README.md).
 
-# FlowTask — Guía de Presentación
+# FlowTask — Presentation Guide
 
-> Audiencia: Líder de IA (técnico)
-> Foco principal: Engram como sistema de memoria persistente
-> Formato: Talking points por tema
-
----
-
-## 1. ¿Qué es FlowTask?
-
-- Un sistema **multi-agente orquestado** para desarrollo de software
-- No es un chatbot — es un pipeline de agentes especializados con memoria compartida
-- Cada agente tiene un rol acotado, reglas estrictas, y NO puede salirse de su scope
-- El desarrollador habla con UN solo punto de entrada: el **Runner** (orquestador)
-- Funciona sobre Claude Code y OpenCode (soporte dual)
+> Audience: AI Lead (technical)
+> Main focus: Engram as a persistent memory system
+> Format: Talking points by topic
 
 ---
 
-## 2. Sistema de Delegación
+## 1. What is FlowTask?
 
-**Concepto clave**: El Runner nunca ejecuta — solo clasifica y delega.
+- An **orchestrated multi-agent system** for software development
+- It is not a chatbot — it is a pipeline of specialized agents with shared memory
+- Each agent has a bounded role, strict rules, and CANNOT leave its scope
+- The developer talks to a SINGLE entry point: the **Runner** (orchestrator)
+- It works on Claude Code and OpenCode (dual support)
+
+---
+
+## 2. Delegation System
+
+**Key concept**: The Runner never executes — it only classifies and delegates.
 
 ```
-Developer → Runner → Clasifica intención → Delega al agente correcto
+Developer → Runner → Classifies intent → Delegates to the right agent
 ```
 
-### Flujo principal (5 agentes en secuencia):
+### Main flow (5 agents in sequence):
 
 ```
 CA-Writer → Planner → Constructor → Validator
     ↑                                    |
-    └──── Runner (orquesta todo) ────────┘
+    └──── Runner (orchestrates everything) ────────┘
 ```
 
-1. **CA-Writer**: Define el requisito (qué se va a hacer)
-2. **Planner**: Genera el plan técnico (cómo se hace)
-3. **Constructor**: Implementa el plan (escribe código)
-4. **Validator**: Valida que lo implementado cumple el plan
+1. **CA-Writer**: Defines the requirement (what will be done)
+2. **Planner**: Generates the technical plan (how it will be done)
+3. **Constructor**: Implements the plan (writes code)
+4. **Validator**: Validates that the implementation meets the plan
 
-### Otros agentes (existen, no profundizar):
-- **Inspector**: Explora y responde preguntas del proyecto
-- **Tester**: Genera tests
-- **Logger**: Instrumenta logging
-- **Initializer**: Escanea y mapea el proyecto
-- **Plan Auditor**: Audita planes complejos
-
----
-
-## 3. Reglas Clave por Agente (las 2 más importantes)
-
-| Agente | Regla 1 | Regla 2 |
-|--------|---------|---------|
-| **Runner** | Nunca ejecuta directamente — solo delega | Nunca salta checkpoints sin confirmación del dev |
-| **CA-Writer** | Conduce conversación hasta eliminar ambigüedades | No genera plan ni código — solo la spec |
-| **Planner** | Genera plan decision-complete (sin supuestos) | Respeta convenciones del proyecto leídas de Engram |
-| **Constructor** | Solo implementa lo que dice el plan — nada más | No toma decisiones de diseño |
-| **Validator** | Valida contra el plan, no contra opinión propia | Máximo 2 rechazos — luego escala al dev |
+### Other agents (they exist, do not go deeper):
+- **Inspector**: Explores and answers questions about the project
+- **Tester**: Generates tests
+- **Logger**: Instruments logging
+- **Initializer**: Scans and maps the project
+- **Plan Auditor**: Audits complex plans
 
 ---
 
-## 4. El Flujo de Ejecución
+## 3. Key Rules per Agent (the 2 most important)
+
+| Agent | Rule 1 | Rule 2 |
+|-------|--------|--------|
+| **Runner** | Never executes directly — only delegates | Never skips checkpoints without developer confirmation |
+| **CA-Writer** | Leads the conversation until ambiguities are removed | Does not generate plan or code — only the spec |
+| **Planner** | Generates a decision-complete plan (no assumptions) | Respects project conventions read from Engram |
+| **Constructor** | Only implements what the plan says — nothing more | Does not make design decisions |
+| **Validator** | Validates against the plan, not personal opinion | Maximum 2 rejections — then escalates to the developer |
+
+---
+
+## 4. The Execution Flow
 
 ```
 CA-{ID}
 ```
 
-**Paso 1** — ¿Existe el CA? Si no → CA-Writer lo crea con el dev
-**Paso 2** — Planner genera el plan técnico
-**Paso 3** — **Gate técnico**: verifica plan/auditoría; si pasa, la construcción inicia sin espera
-**Paso 4** — Constructor implementa
-**Paso 5** — Validator valida
-**Paso 6** — Si rechaza 2 veces → escala al dev
+**Step 1** — Does the CA exist? If not → CA-Writer creates it with the developer
+**Step 2** — Planner generates the technical plan
+**Step 3** — **Technical gate**: verifies plan/audit; if it passes, construction starts without waiting
+**Step 4** — Constructor implements
+**Step 5** — Validator validates
+**Step 6** — If it rejects twice → escalates to the developer
 
-- Las correcciones acordadas se ejecutan como Hotfix (HF), sin ceremonia de CA
-- `--auto` no agrega permisos: declara que no hay espera rutinaria
+- Agreed corrections run as a Hotfix (HF), without CA ceremony
+- `--auto` does not add permissions: it declares that there is no routine wait
 
 ---
 
-## 5. ⭐ ENGRAM — Memoria Persistente (FOCO PRINCIPAL)
+## 5. ⭐ ENGRAM — Persistent Memory (MAIN FOCUS)
 
-### ¿Qué es?
+### What is it?
 
-- **Engram** es el sistema de memoria compartida entre todos los agentes
-- Persiste entre sesiones — los agentes "recuerdan" lo que pasó antes
-- Es la diferencia entre un chatbot sin estado y un equipo con contexto
+- **Engram** is the shared memory system across all agents
+- It persists across sessions — agents "remember" what happened before
+- It is the difference between a stateless chatbot and a team with context
 
-### ¿Qué problema resuelve?
+### What problem does it solve?
 
-Los LLMs no tienen memoria entre sesiones. Cada conversación empieza de cero.
-Engram le da a FlowTask:
-- **Continuidad**: Un agente retoma donde otro dejó
-- **Contexto compartido**: Todos los agentes ven las mismas decisiones
-- **Trazabilidad**: Cada decisión queda registrada con su "por qué"
+LLMs have no memory across sessions. Every conversation starts from scratch.
+Engram gives FlowTask:
+- **Continuity**: One agent resumes where another left off
+- **Shared context**: All agents see the same decisions
+- **Traceability**: Every decision is recorded with its "why"
 
-### ¿Cómo lo usan los agentes?
+### How do agents use it?
 
-**Protocolo de memoria (contrato de datos):**
+**Memory protocol (data contract):**
 ```
-mem_save()    → Persiste decisiones, hallazgos, estados
-mem_search()  → Busca información histórica
-mem_context() → Recupera eventos recientes
-mem_session_summary() → Cierra sesión con reporte
+mem_save()    → Persists decisions, findings, states
+mem_search()  → Searches historical information
+mem_context() → Recovers recent events
+mem_session_summary() → Closes a session with a report
 ```
 
-**Cada entrada tiene estructura:**
-- **What**: Qué se hizo o encontró
-- **Why**: Por qué se tomó esa decisión
-- **Where**: Qué archivos/módulos afecta
-- **Learned**: Lecciones aprendidas (opcional)
+**Each entry has structure:**
+- **What**: What was done or found
+- **Why**: Why that decision was made
+- **Where**: Which files/modules it affects
+- **Learned**: Lessons learned (optional)
 
-### ¿Qué hace el Runner con Engram al iniciar cada sesión?
+### What does the Runner do with Engram when each session starts?
 
-Cada vez que el Runner arranca (nueva conversación o sesión), ejecuta este flujo:
+Every time the Runner starts (new conversation or session), it runs this flow:
 
-1. **Clasifica la intención** del desarrollador (¿nuevo CA? ¿continuar uno existente?)
-2. **Busca en Engram** si ya existe un mapa de instancias para ese CA
+1. **Classifies the developer's intent** (new CA? continue an existing one?)
+2. **Searches Engram** for an existing instance map for that CA
    - `mem_search("flow-state/{CA-ID}/instances")`
-3. **Recupera o asigna identidad**:
-   - Si encuentra mapa → recupera el BaseName (ej: "Aitana") y los task_ids activos
-   - Si no existe → asigna el siguiente nombre disponible de la lista
-4. **Decide: ¿nuevo hilo o reanudación?**
-   - Si hay task_id activo → construye un **Resume Prompt** con el último checkpoint
-   - Si no hay → crea un **Initial Prompt** con contexto inyectado desde Engram
-5. **Inyecta contexto** antes de delegar:
-   - `mem_context()` + `mem_search()` → todo lo relevante del CA
-   - Lo envuelve en un bloque `<project_context>` dentro del prompt del agente
-6. **Delega al agente** con toda la información — el agente nunca empieza de cero
+3. **Recovers or assigns identity**:
+   - If it finds a map → recovers the BaseName (e.g., "Aitana") and the active task_ids
+   - If none exists → assigns the next available name from the list
+4. **Decides: new thread or resumption?**
+   - If there is an active task_id → builds a **Resume Prompt** with the last checkpoint
+   - If not → creates an **Initial Prompt** with context injected from Engram
+5. **Injects context** before delegating:
+   - `mem_context()` + `mem_search()` → everything relevant about the CA
+   - Wraps it in a `<project_context>` block inside the agent prompt
+6. **Delegates to the agent** with all the information — the agent never starts from scratch
 
-> **En resumen**: El Runner usa Engram como su "disco duro" — cada sesión nueva es una reanudación inteligente, no un arranque en frío.
+> **In short**: The Runner uses Engram as its "hard drive" — every new session is an intelligent resumption, not a cold start.
 
-### Casos de uso concretos en FlowTask:
+### Concrete use cases in FlowTask:
 
-**1. Handshake Protocol (Identidad de agentes)**
-- Cada CA tiene un "nombre base" asignado (ej: Aitana, Kael, Lyra...)
-- Los agentes se instancian como `Aitana-planner`, `Aitana-constructor`
-- Este mapa se persiste en Engram → si la sesión se cae, se recupera
-- El Runner busca en Engram antes de crear un agente: ¿ya existe? → lo reanuda
+**1. Handshake Protocol (Agent identity)**
+- Each CA has an assigned "base name" (e.g., Aitana, Kael, Lyra...)
+- Agents are instantiated as `Aitana-planner`, `Aitana-constructor`
+- This map is persisted in Engram → if the session crashes, it is recovered
+- The Runner searches Engram before creating an agent: does it already exist? → resumes it
 
-**2. Flow State (Estado del flujo)**
-- Cada paso del pipeline guarda su estado en Engram
-- Si el Constructor termina y la sesión se cierra, el Validator sabe exactamente dónde quedó
+**2. Flow State (Flow status)**
+- Each pipeline step stores its state in Engram
+- If the Constructor finishes and the session closes, the Validator knows exactly where it left off
 - Topic keys: `flow-state/{CA-ID}/planner`, `flow-state/{CA-ID}/constructor`, etc.
 
-**3. Context Injection (Inyección de contexto)**
-- Antes de invocar un agente, el Runner consulta Engram
-- Inyecta el contexto relevante en el prompt del agente
-- El agente no empieza de cero — arranca con las decisiones previas
+**3. Context Injection**
+- Before invoking an agent, the Runner queries Engram
+- It injects the relevant context into the agent prompt
+- The agent does not start from scratch — it starts with prior decisions
 
 **4. Checkpoint & Resume**
-- Si un hilo se pierde (timeout, crash), el Runner detecta el fallo
-- Busca el último checkpoint en Engram
-- Relanza el agente con un "Resume Prompt" que incluye el mini-resumen
-- **Self-Healing**: limpia el task_id fallido y reintenta automáticamente
+- If a thread is lost (timeout, crash), the Runner detects the failure
+- It searches for the last checkpoint in Engram
+- It relaunches the agent with a "Resume Prompt" that includes the mini-summary
+- **Self-Healing**: clears the failed task_id and retries automatically
 
-**5. Convenciones del Proyecto**
-- El Initializer escanea el proyecto y guarda convenciones en Engram
-- El Planner las lee antes de generar un plan → respeta patrones existentes
-- El Constructor las lee antes de implementar → código consistente
+**5. Project Conventions**
+- The Initializer scans the project and stores conventions in Engram
+- The Planner reads them before generating a plan → respects existing patterns
+- The Constructor reads them before implementing → consistent code
 
 **6. Session Summaries**
-- Al final de cada flujo, se guarda un resumen:
-  - Objetivo, lo logrado, descubrimientos, próximos pasos, archivos clave
-- Esto alimenta la memoria a largo plazo del proyecto
+- At the end of each flow, a summary is stored:
+  - Goal, what was achieved, discoveries, next steps, key files
+- This feeds the project's long-term memory
 
-**7. Resiliencia (Buffer Protocol)**
-- Si Engram no está disponible, los agentes serializan a archivos temporales
-- Cuando Engram vuelve, se sincronizan automáticamente
-- Nunca se pierde información
+**7. Resilience (Buffer Protocol)**
+- If Engram is unavailable, agents serialize to temporary files
+- When Engram returns, they synchronize automatically
+- No information is lost
 
-### ¿Por qué es la joya?
+### Why is it the jewel?
 
-> Sin Engram, FlowTask sería un pipeline de agentes sin memoria.
-> Con Engram, es un equipo que aprende, recuerda y se recupera de fallos.
+> Without Engram, FlowTask would be an agent pipeline without memory.
+> With Engram, it is a team that learns, remembers, and recovers from failures.
 
-La memoria convierte agentes independientes en un **sistema coherente con estado**.
-
----
-
-## 6. Lo que viene (Roadmap)
-
-### Estabilización activa
-
-| Item | Qué implica |
-|------|-------------|
-| Persistencia de task_id en Handshake | El Runner asigna identidad pero a veces no persiste — fix en progreso |
-| Refuerzo de identidad del Runner | Asegurar que siempre asuma su rol correcto al iniciar sesión |
-| Consistencia de IDs de CA | El CA-Writer debe verificar el consecutivo real antes de asignar |
-| Verificación post-save en Engram | Confirmar que los datos realmente se guardaron antes de reportar éxito |
-
-### Mejoras en pipeline
-
-| Item | Qué implica |
-|------|-------------|
-| Validator más riguroso | Integración con Tester, validación de runtime (no solo estático) |
-| Mitigación de degradación de contexto | Mecanismo de inyección progresiva de reglas cuando el contexto crece |
-| Protocolo Zero-Assumptions | Auditar prompts de todos los agentes para eliminar supuestos no verificados |
-
-### Evolución arquitectónica
-
-| Item | Qué implica |
-|------|-------------|
-| Orquestación paralela | Runner ejecutando agentes independientes en paralelo |
-| FlowTask 2.0 — Hybrid Context | Engram como MCP Server, integración LSP/ast-grep, workspace efímero |
-| Workspace compartible | Protocolo para compartir `.workspace` entre equipos sin colisiones |
-| Purge Protocol | Limpieza automática de task_ids expirados en Engram |
-
-### Integración: sdd-engram-plugin
-
-- **Plugin para configurar modelos de IA directamente por sub-agente** desde el TUI
-- Gestión de perfiles SDD (Spec-Driven Development)
-- Permite cambiar provider/modelo para cualquier agente sin reiniciar
-- Fallback por agente: si un modelo falla, cae al modelo secundario configurado
-- Bulk actions para asignar modelos a todo el perfil de una vez
-- Versionado de perfiles: preview y rollback antes de cambios riesgosos
-- Detección automática del perfil activo
-- **¿Por qué importa?** Control granular sobre qué modelo usa cada agente del pipeline
+Memory turns independent agents into a **coherent system with state**.
 
 ---
 
-## 7. Cierre
+## 6. What's Next (Roadmap)
 
-**FlowTask no es solo un wrapper de LLMs.**
-Es un sistema de agentes con:
-- Roles estrictos y acotados
-- Flujo verificable con checkpoints
-- Memoria persistente compartida (Engram)
-- Self-healing ante fallos
-- Y un roadmap hacia orquestación inteligente
+### Active stabilization
 
-La memoria es lo que transforma "agentes sueltos" en un **equipo con contexto**.
+| Item | What it involves |
+|------|------------------|
+| task_id persistence in Handshake | The Runner assigns identity but sometimes does not persist it — fix in progress |
+| Runner identity reinforcement | Ensure it always assumes its correct role when starting a session |
+| CA ID consistency | The CA-Writer must verify the real sequence before assigning |
+| Post-save verification in Engram | Confirm that data was actually saved before reporting success |
+
+### Pipeline improvements
+
+| Item | What it involves |
+|------|------------------|
+| Stricter Validator | Integration with Tester, runtime validation (not only static) |
+| Context degradation mitigation | Progressive rule injection mechanism when context grows |
+| Zero-Assumptions Protocol | Audit all agent prompts to eliminate unverified assumptions |
+
+### Architectural evolution
+
+| Item | What it involves |
+|------|------------------|
+| Parallel orchestration | Runner executing independent agents in parallel |
+| FlowTask 2.0 — Hybrid Context | Engram as an MCP Server, LSP/ast-grep integration, ephemeral workspace |
+| Shareable workspace | Protocol to share `.workspace` across teams without collisions |
+| Purge Protocol | Automatic cleanup of expired task_ids in Engram |
+
+### Integration: sdd-engram-plugin
+
+- **Plugin to configure AI models directly per subagent** from the TUI
+- SDD (Spec-Driven Development) profile management
+- Allows changing provider/model for any agent without restarting
+- Per-agent fallback: if a model fails, it falls back to the configured secondary model
+- Bulk actions to assign models to the entire profile at once
+- Profile versioning: preview and rollback before risky changes
+- Automatic detection of the active profile
+- **Why does it matter?** Granular control over which model each pipeline agent uses
+
+---
+
+## 7. Closing
+
+**FlowTask is not just a wrapper around LLMs.**
+It is a system of agents with:
+- Strict, bounded roles
+- A verifiable flow with checkpoints
+- Shared persistent memory (Engram)
+- Self-healing on failure
+- And a roadmap toward intelligent orchestration
+
+Memory is what transforms "loose agents" into a **team with context**.

@@ -1,17 +1,17 @@
-# Documentación de FlowTask
+# FlowTask documentation
 
-Esta carpeta separa operación vigente de diseños retirados. La fuente de verdad de contratos sigue siendo `.flowtask` y la configuración del target instalado.
+This folder separates current operation from retired designs. The source of truth for contracts remains `.flowtask` and the configuration of the installed target.
 
-## Empezar
+## Getting started
 
 - [README](../README.md)
-- [Instalación y actualización](./installation.md)
-- [Modelo técnico vigente](./core-flowtask.md)
+- [Installation and update](./installation.md)
+- [Current technical model](./core-flowtask.md)
 - [Permission Gate](./permission-gate.md)
 
-## Arquitectura vigente
+## Current architecture
 
-- [Índice](./architecture/INDEX.md)
+- [Index](./architecture/INDEX.md)
 - [Handshake](./architecture/handshake.md)
 - [Worktrees](./architecture/worktree.md)
 - [Worktree Manager documentation](./worktree-manager/README.md) — English inventory, interfaces, operations, compatibility, and release procedure.
@@ -19,20 +19,20 @@ Esta carpeta separa operación vigente de diseños retirados. La fuente de verda
 
 ## Roadmap
 
-- [Plan de implementación — Agent Loop y Hermes](./roadmap/agent-loop-hermes.md) — fases, dependencias, gates de Hermes y convención de commits.
+- [Implementation plan — Agent Loop and Hermes](./roadmap/agent-loop-hermes.md) — phases, dependencies, Hermes gates, and commit convention.
 
-## Histórico
+## Historical
 
-- [Historial](./project-history.md)
+- [History](./project-history.md)
 
-## Fuentes ejecutables
+## Executable sources
 
-- `.flowtask/agents/` — contratos del runner y subagentes.
-- `.flowtask/commands/` — comandos instalables.
-- `.flowtask/skills/` — protocolos cargables.
-- `.flowtask/plugins/flowtask-plugins.json` — manifiesto.
-- `.flowtask/plugins/agent-model-selector/` — submodule del selector de modelos agnóstico.
-- `.flowtask/bin/` — CLI e instalador.
-- `.flowtask/scripts/` — scripts operativos.
+- `.flowtask/agents/` — runner and subagent contracts.
+- `.flowtask/commands/` — installable commands.
+- `.flowtask/skills/` — loadable protocols.
+- `.flowtask/plugins/flowtask-plugins.json` — manifest.
+- `.flowtask/plugins/agent-model-selector/` — submodule for the agnostic model selector.
+- `.flowtask/bin/` — CLI and installer.
+- `.flowtask/scripts/` — operational scripts.
 
-Si una afirmación contradice CLI, instalador, manifiesto o contratos instalables, prevalece el código y el conflicto se corrige o se registra en `project-history`.
+If a statement contradicts the CLI, installer, manifest, or installable contracts, the code prevails and the conflict is corrected or recorded in `project-history`.

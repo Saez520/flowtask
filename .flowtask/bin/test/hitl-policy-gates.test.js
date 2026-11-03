@@ -95,22 +95,22 @@ describe("autonomy documentation contract", () => {
     const page = read("docs/architecture/autonomia-operativa.md");
     const flatPage = flat(page);
     for (const section of [
-      "## Propósito",
-      "## Transición automática tras el gate",
-      "## Consentimientos que se conservan",
-      "## Pausa por excepción",
-      "## Reanudación",
-      "## Registro de decisiones automáticas",
-      "## Modo automático",
-      "## Límites",
-      "## Verificación",
+      "## Purpose",
+      "## Automatic transition after the gate",
+      "## Consents that are preserved",
+      "## Pause by exception",
+      "## Resumption",
+      "## Automatic decision record",
+      "## Automatic mode",
+      "## Limits",
+      "## Verification",
     ]) {
       assert.ok(page.includes(section), `missing section ${section}`);
     }
     assert.ok(flatPage.includes("gate-then-auto"), "missing the autonomy policy");
-    assert.ok(flatPage.includes("⏸ Pausa por excepción: {motivo}"), "missing the canonical pause message");
-    assert.ok(flatPage.includes("Estado conservado:"), "missing the preserved state line");
-    assert.ok(flatPage.includes("Para reanudar:"), "missing the resume condition line");
+    assert.ok(flatPage.includes("⏸ Pause by exception: {reason}"), "missing the canonical pause message");
+    assert.ok(flatPage.includes("Preserved state:"), "missing the preserved state line");
+    assert.ok(flatPage.includes("To resume:"), "missing the resume condition line");
     assert.ok(flatPage.includes("verified: false"), "missing the verified distinction");
     assertNoRoutineWait(page);
   });
@@ -122,8 +122,8 @@ describe("autonomy documentation contract", () => {
 
   it("describes the automatic start in the core flow", () => {
     const core = read("docs/core-flowtask.md");
-    assert.ok(core.includes("INICIO AUTOMÁTICO"), "missing the automatic start block");
-    assert.ok(core.includes("sin espera"), "missing the no-routine-wait note");
+    assert.ok(core.includes("AUTOMATIC START"), "missing the automatic start block");
+    assert.ok(core.includes("no routine wait"), "missing the no-routine-wait note");
     assertNoRoutineWait(core);
   });
 
@@ -133,19 +133,19 @@ describe("autonomy documentation contract", () => {
     const presentation = read("presentacion-flowtask.md");
 
     assert.ok(
-      flat(core).includes("esa aceptación es la señal de inicio y no se exige una segunda palabra"),
+      flat(core).includes("that acceptance is the start signal and a second confirmation is not required"),
       "the core flow must describe the explicit acceptance as start signal",
     );
     assert.ok(
-      readme.includes("acepta explícitamente la corrección acordada"),
+      readme.includes("explicitly accepts the agreed correction"),
       "the readme must describe the explicit acceptance",
     );
     assert.ok(
-      presentation.includes("Gate técnico") && presentation.includes("sin espera"),
+      presentation.includes("Technical gate") && presentation.includes("without waiting"),
       "the presentation must describe the technical gate without a routine wait",
     );
     assert.ok(
-      presentation.includes("`--auto` no agrega permisos: declara que no hay espera rutinaria"),
+      presentation.includes("`--auto` does not add permissions: it declares that there is no routine wait"),
       "the presentation must describe --auto without permissions",
     );
 

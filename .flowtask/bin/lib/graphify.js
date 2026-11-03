@@ -165,21 +165,21 @@ export function migrateProjectState(projectDir, targetDirs) {
   if (!fs.existsSync(legacy) || destinations.every((destination) => path.resolve(destination) === path.resolve(legacy) || fs.existsSync(destination))) return true;
   try {
     const state = readJsonSafe(legacy);
-    if (!state || state.schema !== 1) throw new Error("JSON inválido");
+    if (!state || state.schema !== 1) throw new Error("invalid JSON");
     for (const destination of destinations) {
       if (path.resolve(destination) === path.resolve(legacy) || fs.existsSync(destination)) continue;
-      if (!writeJsonAtomic(destination, state) || !fs.existsSync(destination)) throw new Error(`no se pudo verificar ${destination}`);
+      if (!writeJsonAtomic(destination, state) || !fs.existsSync(destination)) throw new Error(`could not verify ${destination}`);
     }
     for (const destination of destinations) {
       if (path.resolve(destination) === path.resolve(legacy)) continue;
       const verified = readJsonSafe(destination);
-      if (JSON.stringify(verified) !== JSON.stringify(state)) throw new Error(`la verificación de ${destination} falló`);
+      if (JSON.stringify(verified) !== JSON.stringify(state)) throw new Error(`verification of ${destination} failed`);
     }
     fs.rmSync(legacy);
-    logSuccess(`Graphify: estado migrado a ${destinations.join(", ")}`);
+    logSuccess(`Graphify: state migrated to ${destinations.join(", ")}`);
     return true;
   } catch (err) {
-    logWarn(`Graphify: no se pudo migrar ${legacy} a ${destinations.join(", ")}: ${err.message}. Verifica permisos/espacio y reintenta con flowtask update.`);
+    logWarn(`Graphify: could not migrate ${legacy} to ${destinations.join(", ")}: ${err.message}. Check permissions/space and retry with flowtask update.`);
     return false;
   }
 }
@@ -204,7 +204,7 @@ export function detectGraphify(globalState, opts = {}) {
   globalState.lastCheckedAt = new Date().toISOString();
 
   if (!saveGlobalState(globalState)) {
-    logWarn("Graphify: no se pudo persistir estado global. Reintenta con flowtask update o contacta a un administrador.");
+    logWarn("Graphify: could not persist global state. Retry with flowtask update or contact an administrator.");
   }
   return globalState;
 }
@@ -220,7 +220,7 @@ export async function promptInstallGraphify(readline) {
   const answer = await new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     rl.question(
-      `${COLORS.cyan}?${COLORS.reset} Graphify no está instalado. ¿Instalarlo ahora? ${COLORS.dim}(Y/n):${COLORS.reset} `,
+      `${COLORS.cyan}?${COLORS.reset} Graphify is not installed. Install it now? ${COLORS.dim}(Y/n):${COLORS.reset} `,
       (ans) => { rl.close(); resolve(ans.trim().toLowerCase()); },
     );
   });
@@ -236,7 +236,7 @@ export async function promptEnableGraphify(readline) {
   const answer = await new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     rl.question(
-      `${COLORS.cyan}?${COLORS.reset} ¿Habilitar Graphify para este proyecto? ${COLORS.dim}(Y/n):${COLORS.reset} `,
+      `${COLORS.cyan}?${COLORS.reset} Enable Graphify for this project? ${COLORS.dim}(Y/n):${COLORS.reset} `,
       (ans) => { rl.close(); resolve(ans.trim().toLowerCase()); },
     );
   });
@@ -252,7 +252,7 @@ export async function promptInstallHooks(readline) {
   const answer = await new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     rl.question(
-      `${COLORS.cyan}?${COLORS.reset} ¿Instalar hooks Git de Graphify? ${COLORS.dim}(Y/n):${COLORS.reset} `,
+      `${COLORS.cyan}?${COLORS.reset} Install Graphify Git hooks? ${COLORS.dim}(Y/n):${COLORS.reset} `,
       (ans) => { rl.close(); resolve(ans.trim().toLowerCase()); },
     );
   });
@@ -277,7 +277,7 @@ export function defaultInstallCommand(opts = {}) {
 }
 
 const MAX_INSTALL_STDERR = 2048;
-const NO_INSTALLER_DIAGNOSTIC = "No hay instalador disponible: instala pipx o uv y reintenta con flowtask update o contacta a un administrador.";
+const NO_INSTALLER_DIAGNOSTIC = "No installer available: install pipx or uv and retry with flowtask update or contact an administrator.";
 const MCP_PREFLIGHT_TIMEOUT_MS = 5000;
 
 function truncateStderr(stderr) {
@@ -326,7 +326,7 @@ export function installGraphify(opts = {}) {
     }
     return {
       success: false,
-      warning: `Graphify: instalación falló (exit ${exitCode}). Reintenta con flowtask update o contacta a un administrador.`,
+      warning: `Graphify: installation failed (exit ${exitCode}). Retry with flowtask update or contact an administrator.`,
       method,
       command: cmd,
       exitCode,
@@ -335,7 +335,7 @@ export function installGraphify(opts = {}) {
   } catch (err) {
     return {
       success: false,
-      warning: `Graphify: instalación falló (${err.message}). Reintenta con flowtask update o contacta a un administrador.`,
+      warning: `Graphify: installation failed (${err.message}). Retry with flowtask update or contact an administrator.`,
       method,
       command: cmd,
       exitCode: null,
@@ -360,7 +360,7 @@ export function verifyGraphifyMcp(opts = {}) {
     return {
       ok: false,
       python: null,
-      error: "no se encontró un intérprete Python para el entorno Graphify",
+      error: "no Python interpreter was found for the Graphify environment",
     };
   }
 
@@ -463,7 +463,7 @@ export function resolveGraphifyPackageDir(opts = {}) {
     return {
       packageDir: null,
       source: null,
-      error: "no se encontró un intérprete Python para el entorno Graphify",
+      error: "no Python interpreter was found for the Graphify environment",
     };
   }
 
@@ -484,7 +484,7 @@ export function resolveGraphifyPackageDir(opts = {}) {
       return {
         packageDir: null,
         source: null,
-        error: `no se pudo resolver el paquete graphify desde ${python} (${cause})`,
+        error: `could not resolve the graphify package from ${python} (${cause})`,
       };
     }
     return { packageDir: path.dirname(moduleFile), source: "interpreter", error: null };
@@ -492,7 +492,7 @@ export function resolveGraphifyPackageDir(opts = {}) {
     return {
       packageDir: null,
       source: null,
-      error: `no se pudo resolver el paquete graphify desde ${python} (${err.message})`,
+      error: `could not resolve the graphify package from ${python} (${err.message})`,
     };
   }
 }
@@ -515,10 +515,10 @@ export function resolveGraphifyPackageDir(opts = {}) {
 export function registerOpencodeSkill({ projectDir, run, detectFn } = {}) {
   try {
     if (!projectDir) {
-      const error = "projectDir requerido";
+      const error = "projectDir required";
       return {
         status: "failed",
-        warning: `Graphify skill-registration: ${error}. Reintenta con flowtask update.`,
+        warning: `Graphify skill-registration: ${error}. Retry with flowtask update.`,
         diagnostic: error,
         packageDir: null,
         copied: [],
@@ -528,10 +528,10 @@ export function registerOpencodeSkill({ projectDir, run, detectFn } = {}) {
 
     const resolution = resolveGraphifyPackageDir({ runFn: run, detectFn });
     if (resolution.error || !resolution.packageDir) {
-      const error = resolution.error || "no se pudo resolver el directorio del paquete graphify";
+      const error = resolution.error || "could not resolve the graphify package directory";
       return {
         status: "failed",
-        warning: `Graphify skill-registration: ${error}. Reintenta con flowtask update.`,
+        warning: `Graphify skill-registration: ${error}. Retry with flowtask update.`,
         diagnostic: error,
         packageDir: null,
         copied: [],
@@ -548,10 +548,10 @@ export function registerOpencodeSkill({ projectDir, run, detectFn } = {}) {
       if (!isFile(path.join(refsSourceDir, name))) missingSources.push(`skills/opencode/references/${name}`);
     }
     if (missingSources.length > 0) {
-      const error = `el paquete Graphify no contiene archivos de la skill (${missingSources.join(", ")})`;
+      const error = `the Graphify package does not contain the skill files (${missingSources.join(", ")})`;
       return {
         status: "failed",
-        warning: `Graphify skill-registration: ${error}. Reintenta con flowtask update.`,
+        warning: `Graphify skill-registration: ${error}. Retry with flowtask update.`,
         diagnostic: error,
         packageDir: resolution.packageDir,
         copied: [],
@@ -583,10 +583,10 @@ export function registerOpencodeSkill({ projectDir, run, detectFn } = {}) {
     }
 
     if (failures.length > 0) {
-      const error = `no se pudieron copiar ${failures.length} archivo(s) de la skill (${failures.join(", ")})`;
+      const error = `could not copy ${failures.length} skill file(s) (${failures.join(", ")})`;
       return {
         status: "failed",
-        warning: `Graphify skill-registration: ${error}. Reintenta con flowtask update.`,
+        warning: `Graphify skill-registration: ${error}. Retry with flowtask update.`,
         diagnostic: error,
         packageDir: resolution.packageDir,
         copied,
@@ -603,10 +603,10 @@ export function registerOpencodeSkill({ projectDir, run, detectFn } = {}) {
       skipped,
     };
   } catch (err) {
-    const error = `fallo inesperado (${err.message})`;
+    const error = `unexpected failure (${err.message})`;
     return {
       status: "failed",
-      warning: `Graphify skill-registration: ${error}. Reintenta con flowtask update.`,
+      warning: `Graphify skill-registration: ${error}. Retry with flowtask update.`,
       diagnostic: error,
       packageDir: null,
       copied: [],
@@ -673,12 +673,12 @@ export function installHooks(projectDir, opts = {}) {
     }
     return {
       success: false,
-      warning: `Graphify: hooks fallaron (exit ${result.status}). Reintenta con flowtask update o contacta a un administrador.`,
+      warning: `Graphify: hooks failed (exit ${result.status}). Retry with flowtask update or contact an administrator.`,
     };
   } catch (err) {
     return {
       success: false,
-      warning: `Graphify: hooks fallaron (${err.message}). Reintenta con flowtask update o contacta a un administrador.`,
+      warning: `Graphify: hooks failed (${err.message}). Retry with flowtask update or contact an administrator.`,
     };
   }
 }
@@ -766,14 +766,14 @@ export async function runExtension(phaseName, context) {
     const result = await handler(context);
     // Validate: graphPath can only be written if status is "success"
     if (result && result.graphPath && result.status !== "success") {
-      logWarn(`Graphify: extensión "${phaseName}" devolvió graphPath sin status=success; se ignora graphPath.`);
+      logWarn(`Graphify: extension "${phaseName}" returned graphPath without status=success; graphPath is ignored.`);
       result.graphPath = null;
     }
     return result || null;
   } catch (err) {
     return {
       status: "failed",
-      warning: `Graphify: extensión "${phaseName}" falló (${err.message}). Reintenta con flowtask update o contacta a un administrador.`,
+      warning: `Graphify: extension "${phaseName}" failed (${err.message}). Retry with flowtask update or contact an administrator.`,
       diagnostic: err.message,
     };
   }
@@ -812,7 +812,7 @@ export function registerGrafoExtensions(opts = {}) {
       const result = extractFn(projectDir, { runFn: run });
 
       if (result.ok) {
-        logger.logSuccess(`Graphify extract: grafo generado en ${result.graphPath}`);
+        logger.logSuccess(`Graphify extract: graph generated at ${result.graphPath}`);
       } else if (result.warning) {
         logger.logWarn(result.warning);
       }
@@ -831,11 +831,11 @@ export function registerGrafoExtensions(opts = {}) {
 
       // Only configure MCP if extract succeeded and graphPath is available
       if (!state.graphPath) {
-        logger.logWarn("Graphify query: sin graphPath disponible; se omite configuración MCP.");
+        logger.logWarn("Graphify query: no graphPath available; MCP configuration is skipped.");
         return {
           status: "skipped",
-          diagnostic: "graphPath no disponible — extract no ejecutado o fallido.",
-          warning: "Graphify query: MCP omitido por falta de graphPath.",
+          diagnostic: "graphPath not available — extract was not run or failed.",
+          warning: "Graphify query: MCP omitted because graphPath is missing.",
         };
       }
 
@@ -850,7 +850,7 @@ export function registerGrafoExtensions(opts = {}) {
       if (mcpResult.status === "success") {
         const preflight = mcpPreflightFn({ detectFn });
         if (!preflight.ok) {
-          const warning = `Graphify MCP: configuración aplicada, pero el entorno no pasó la verificación de importación de mcp (${preflight.error}).`;
+          const warning = `Graphify MCP: configuration applied, but the environment did not pass the mcp import check (${preflight.error}).`;
           logger.logWarn(warning);
           return {
             status: "degraded",
@@ -858,7 +858,7 @@ export function registerGrafoExtensions(opts = {}) {
             warning,
           };
         }
-        logger.logSuccess("Graphify MCP: configuración aplicada; entorno de importación MCP verificado.");
+        logger.logSuccess("Graphify MCP: configuration applied; MCP import environment verified.");
       } else if (mcpResult.warning) {
         logger.logWarn(mcpResult.warning);
        }
@@ -902,7 +902,7 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
 
   const migrated = migrateProjectState(projectDir, targetDir);
   if (!migrated) {
-    const warning = `Graphify: no se pudo migrar el estado a ${projectStatePath(projectDir, targetDir)}. Se conserva el legacy; verifica permisos/espacio y reintenta con flowtask update.`;
+    const warning = `Graphify: could not migrate state to ${projectStatePath(projectDir, targetDir)}. The legacy state is preserved; check permissions/space and retry with flowtask update.`;
     logWarn(warning);
     return { projectState: createProjectState(), globalState, warnings: [warning] };
   }
@@ -918,7 +918,7 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
       projectState.selectedClis = selectedClis;
       projectState.updatedAt = new Date().toISOString();
       saveProjectState(projectDir, projectState, targetDir);
-      return { projectState, globalState, warnings: ["Graphify: instalación rechazada por el desarrollador."] };
+      return { projectState, globalState, warnings: ["Graphify: installation rejected by the developer."] };
     }
 
     const installResult = installGraphify({
@@ -934,7 +934,7 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
     globalState.lastInstallResult = installResult.success ? "success" : "failed";
     globalState.lastWarning = installResult.warning;
     if (!saveGlobalState(globalState)) {
-      const persistWarning = "Graphify: no se pudo persistir el diagnóstico de instalación. Reintenta con flowtask update o contacta a un administrador.";
+      const persistWarning = "Graphify: could not persist the installation diagnosis. Retry with flowtask update or contact an administrator.";
       logWarn(persistWarning);
       warnings.push(persistWarning);
     }
@@ -957,7 +957,7 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
 
   // ── 3. Enable opt-in ────────────────────────────────────────────────────
   if (projectState.enabled === true) {
-    logInfo("Graphify ya habilitado para este proyecto; se conserva la habilitación.");
+    logInfo("Graphify is already enabled for this project; enablement is preserved.");
   } else {
     const wantsEnable = await promptEnableGraphify(readline);
     if (!wantsEnable) {
@@ -967,7 +967,7 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
       projectState.selectedClis = selectedClis;
       projectState.updatedAt = new Date().toISOString();
       saveProjectState(projectDir, projectState, targetDir);
-      return { projectState, globalState, warnings: ["Graphify: habilitación rechazada por el desarrollador."] };
+      return { projectState, globalState, warnings: ["Graphify: enablement rejected by the developer."] };
     }
 
     projectState.enabled = true;
@@ -994,14 +994,14 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
       logWarn(skillResult.warning);
       warnings.push(skillResult.warning);
     } else if (skillResult.status === "success") {
-      logSuccess(`Graphify skill opencode registrada en .opencode/skills/graphify (${skillResult.copied.length} copiado(s), ${skillResult.skipped.length} al día).`);
+      logSuccess(`Graphify opencode skill registered in .opencode/skills/graphify (${skillResult.copied.length} copied, ${skillResult.skipped.length} up to date).`);
     }
   } else {
     projectState.opencodeSkillRegistered = "skipped";
   }
 
   // ── 5. Warn about later phases ──────────────────────────────────────────
-  logInfo("Graphify: la extracción code-only, consulta MCP y docs/media son fases posteriores (plan-grafo / plan-docs-media). Este coordinador no ejecuta --code-only.");
+  logInfo("Graphify: code-only extraction, MCP query, and docs/media are later phases (plan-grafo / plan-docs-media). This coordinator does not run --code-only.");
 
   // ── 6. .gitignore ───────────────────────────────────────────────────────
   ensureGitignoreEntries(projectDir);
@@ -1015,7 +1015,7 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
       runFn: opts.runFn,
     })) {
       projectState.hooksInstalled = false;
-      const warning = "Graphify: proyecto sin repositorio git; hooks omitidos.";
+      const warning = "Graphify: project has no git repository; hooks skipped.";
       logWarn(warning);
       warnings.push(warning);
     } else {
@@ -1072,7 +1072,7 @@ export async function coordinateGraphify({ projectDir, targetDir = path.join(pro
   projectState.updatedAt = new Date().toISOString();
 
   if (!saveProjectState(projectDir, projectState, targetDir)) {
-    const w = "Graphify: no se pudo persistir estado de proyecto. Reintenta con flowtask update o contacta a un administrador.";
+    const w = "Graphify: could not persist project state. Retry with flowtask update or contact an administrator.";
     warnings.push(w);
     logWarn(w);
   }

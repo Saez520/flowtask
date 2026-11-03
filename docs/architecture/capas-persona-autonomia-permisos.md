@@ -1,155 +1,154 @@
-# Capas de persona, autonomía y permisos
+# Persona, autonomy, and permissions layers
 
-## Propósito
+## Purpose
 
-FlowTask separa en tres capas almacenadas y evaluadas por separado lo que el
-runner ** dice**, lo que el runner ** hace sin preguntar** y lo que el runner
-** está técnicamente permitido a hacer**. Cada capa tiene su propio contrato,
-su propio archivo y su propia forma de fallo.
+FlowTask separates into three layers, stored and evaluated separately, what the
+runner **says**, what the runner **does without asking**, and what the runner
+**is technically allowed to do**. Each layer has its own contract,
+its own file, and its own failure mode.
 
-La separación evita que un cambio de tono amplíe la iniciativa o los límites, y
-que un cambio de iniciativa amplíe los límites. La precedencia entre capas es
-estructural y no depende del caso: `permisos > autonomía > persona`.
+The separation prevents a tone change from expanding initiative or limits, and
+prevents an initiative change from expanding limits. Precedence between layers is
+structural and does not depend on the case: `permissions > autonomy > persona`.
 
-## Capas
+## Layers
 
-| Capa | Pregunta que responde | Archivo | Efecto |
+| Layer | Question it answers | File | Effect |
 |------|-----------------------|---------|--------|
-| Persona | ¿Cómo habla y cuánto explica? | `profile.json` | Tono y profundidad de la conversación. |
-| Autonomía | ¿Qué hace sin preguntar? | `autonomy.json` | Iniciativa: si arranca trabajo por su cuenta o espera la orden. |
-| Permisos | ¿Qué está técnicamente permitido? | `permissions.json` | Sobre técnico: qué herramientas y acciones puede ejecutar. |
+| Persona | How does it speak and how much does it explain? | `profile.json` | Tone and depth of the conversation. |
+| Autonomy | What does it do without asking? | `autonomy.json` | Initiative: whether it starts work on its own or waits for the order. |
+| Permissions | What is technically allowed? | `permissions.json` | Technical envelope: which tools and actions it can execute. |
 
-Ninguna capa autoriza por sí sola. La persona no autoriza ni restringe: solo
-define el tono. La autonomía declara la iniciativa y no amplía el sobre
-técnico. El sobre de permisos es el único límite que acota la acción.
+No layer authorizes on its own. Persona does not authorize or restrict: it only
+defines tone. Autonomy declares initiative and does not expand the technical
+envelope. The permissions envelope is the only limit that bounds action.
 
-## Valores y esquema
+## Values and schema
 
-**Persona.** `profile.json` conserva su forma vigente: `{level, persona,
-onboarded}`. Los niveles válidos son `training`, `mid`, `senior` y `custom`. El
-nivel heredado `junior` se acepta solo como alias de lectura y se normaliza a
-`training`; ninguna escritura nueva lo emite.
+**Persona.** `profile.json` keeps its current shape: `{level, persona,
+onboarded}`. Valid levels are `training`, `mid`, `senior`, and `custom`. The
+legacy `junior` level is accepted only as a read alias and is normalized to
+`training`; no new write emits it.
 
-**Autonomía.** `autonomy.json` es una capa nueva y separada, con versión de
-esquema explícita:
+**Autonomy.** `autonomy.json` is a new and separate layer, with an explicit
+schema version:
 
 ```json
 { "version": 1, "profile": "assistant" }
 ```
 
-Los valores de `profile` son exactamente tres:
+The values of `profile` are exactly three:
 
-| Valor | Semántica |
+| Value | Semantics |
 |-------|-----------|
-| `assistant` | No inicia ejecución autónoma: espera una orden explícita por trabajo. |
-| `autonomous-dev` | Ejecuta el loop completo bajo gates, auditoría, validación y permisos. |
-| `hermes` | Opera dominios generalistas bajo la policy de capacidades y los permisos de dominio; sin esa policy no amplía el sobre técnico. |
+| `assistant` | Does not start autonomous execution: waits for an explicit order per job. |
+| `autonomous-dev` | Runs the full loop under gates, audit, validation, and permissions. |
+| `hermes` | Operates general-purpose domains under the capability policy and domain permissions; without that policy it does not expand the technical envelope. |
 
-**Permisos.** `permissions.json` es una capa nueva y separada:
+**Permissions.** `permissions.json` is a new and separate layer:
 
 ```json
 { "version": 1, "envelope": "standard" }
 ```
 
-`standard` es el único sobre técnico de esta fase y equivale al gate técnico
-vigente: no agrega ninguna capacidad.
+`standard` is the only technical envelope in this phase and is equivalent to the current
+technical gate: it adds no capability.
 
-## Resolución por capa
+## Per-layer resolution
 
-Las fuentes lógicas son dos: `team` (base) y `project` (override). La
-resolución se hace **por capa** y con **reemplazo completo**:
+There are two logical sources: `team` (base) and `project` (override). Resolution
+is done **per layer** and with **full replacement**:
 
-- Si el proyecto define la capa, el proyecto manda entero.
-- Si el proyecto no la define, rige la base de equipo.
-- Si ninguna la define, la capa está ausente.
+- If the project defines the layer, the project governs entirely.
+- If the project does not define it, the team base applies.
+- If neither defines it, the layer is absent.
 
-No hay mezcla de campos entre fuentes: una capa resuelve completa o no resuelve.
-Una capa inválida del proyecto **no** cae a la base de equipo: es inválida, y
-eso es un fallo.
+There is no field mixing between sources: a layer resolves completely or does not resolve.
+An invalid project layer **does not** fall back to the team base: it is invalid, and
+that is a failure.
 
-La precedencia de las capas, una vez resueltas, es:
+Once resolved, layer precedence is:
 
 ```
-permisos > autonomía > persona
+permissions > autonomy > persona
 ```
 
-## Precedencia
+## Precedence
 
-Para cualquier decisión, el orden es estructural:
+For any decision, the order is structural:
 
-1. **Permisos** define el límite técnico. Es el único que puede impedir una
-   acción.
-2. **Autonomía** define la iniciativa dentro de ese límite. Solo puede
-   restringir; nunca amplía el sobre de permisos.
-3. **Persona** define el tono. No participa de ninguna autorización.
+1. **Permissions** define the technical limit. It is the only layer that can prevent an
+   action.
+2. **Autonomy** defines initiative within that limit. It can only
+   restrict; it never expands the permissions envelope.
+3. **Persona** defines tone. It does not participate in any authorization.
 
-Consecuencias observables:
+Observable consequences:
 
-- Una acción sugerida por la autonomía y fuera del sobre de permisos se deniega.
-- Un cambio de persona no altera qué se hace sin preguntar ni qué está
-  permitido.
-- Un cambio de autonomía no altera el sobre de permisos.
+- An action suggested by autonomy and outside the permissions envelope is denied.
+- A persona change does not alter what is done without asking or what is
+  allowed.
+- An autonomy change does not alter the permissions envelope.
 
-## Fallo por capa
+## Per-layer failure
 
-| Capa ausente o inválida | Comportamiento | Resultado |
+| Missing or invalid layer | Behavior | Result |
 |--------------------------|----------------|-----------|
-| Permisos | Fallo operativo con mensaje | No se ejecuta ninguna acción con límites ampliados. |
-| Autonomía | Fallo operativo con mensaje | No se inicia ninguna ejecución. |
-| Persona | Aviso visible y continuación | Se continúa sin inyección de persona, con autonomía y permisos intactos. |
+| Permissions | Operational failure with message | No action with expanded limits is executed. |
+| Autonomy | Operational failure with message | No execution starts. |
+| Persona | Visible warning and continuation | Continues without persona injection, with autonomy and permissions intact. |
 
-El fallo operativo de permisos o autonomía no tiene valor por defecto: no se
-continúa con un valor inventado ni con límites ampliados. El fallo de persona
-tampoco repara nada: no inventa un tono y no altera las otras capas.
+The operational failure of permissions or autonomy has no default value: it does not
+continue with an invented value or expanded limits. Persona failure
+does not repair anything either: it does not invent a tone and does not alter the other layers.
 
-## Puntos de enforcement
+## Enforcement points
 
-| Punto | Qué verifica | Alcance |
+| Point | What it verifies | Scope |
 |-------|---------------|---------|
-| Inyección en el runner | El valor de autonomía resuelto se inyecta en el agente runner entre sus marcadores. | Solo el runner. |
-| Gate de permisos | Antes de aplicar la allowlist técnica, el gate valida que la capa de autonomía y la de permisos existan y sean válidas en el target. | Solo las herramientas del runner. |
+| Runner injection | The resolved autonomy value is injected into the runner agent between its markers. | Runner only. |
+| Permissions gate | Before applying the technical allowlist, the gate validates that the autonomy and permissions layers exist and are valid in the target. | Runner tools only. |
 
-El gate **no lee la autonomía para autorizar herramientas**: la autonomía no
-autoriza. Si la capa de permisos o la de autonomía falta o es inválida, el gate
-deniega con su mensaje operativo. Los agentes que no son el runner no quedan
-sujetos a esta comprobación, y el gate universal de commits conserva su
-comportamiento.
+The gate **does not read autonomy to authorize tools**: autonomy does not
+authorize. If the permissions or autonomy layer is missing or invalid, the gate
+denies with its operational message. Agents other than the runner are not subject
+to this check, and the universal commit gate keeps its behavior.
 
-## Migración
+## Migration
 
-Las instalaciones existentes siguen funcionando. `install` y `update` crean las
-capas nuevas **solo cuando la capa no existe**:
+Existing installations keep working. `install` and `update` create the new
+layers **only when the layer does not exist**:
 
-| Capa ausente | Archivo creado | Contenido |
-|--------------|----------------|-----------|
-| Autonomía | `autonomy.json` | `{ "version": 1, "profile": "autonomous-dev" }` |
-| Permisos | `permissions.json` | `{ "version": 1, "envelope": "standard" }` |
+| Missing layer | File created | Content |
+|--------------|----------------|---------|
+| Autonomy | `autonomy.json` | `{ "version": 1, "profile": "autonomous-dev" }` |
+| Permissions | `permissions.json` | `{ "version": 1, "envelope": "standard" }` |
 
-Los defaults de migración conservan el comportamiento instalado. Son una
-migración, **no** un fallback de runtime: en ejecución, una capa ausente o
-inválida es un fallo.
+Migration defaults preserve installed behavior. They are a
+migration, **not** a runtime fallback: at runtime, a missing or
+invalid layer is a failure.
 
-Una capa inválida nunca se repara con un default: la operación falla y el
-archivo se conserva tal como estaba. Una capa válida se preserva. El cambio de
-persona conserva su archivo y no toca las capas de autonomía y permisos.
+An invalid layer is never repaired with a default: the operation fails and the
+file is preserved as it was. A valid layer is preserved. A persona change
+preserves its file and does not touch the autonomy and permissions layers.
 
-Los archivos de capa viven junto a `profile.json` en el directorio de
-configuración del target y se ignoran en git: son estado local, no contenido
-versionado. La ruta definitiva de la base por equipo y del registro por proyecto
-la definen las fases de instalación por equipo y de registro por proyecto; el
-resolver de capas recibe fuentes lógicas y no fija esa ruta.
+Layer files live next to `profile.json` in the target's configuration
+directory and are ignored in git: they are local state, not versioned content.
+The definitive path for the team base and the project registry is defined by the per-team
+installation and per-project registry phases; the layer resolver receives logical
+sources and does not fix that path.
 
-## Frontera con la policy de dominio
+## Boundary with the domain policy
 
-Esta fase define **solo el mecanismo de enforcement** del sobre técnico. La
-policy de capacidades y los permisos de dominio de Hermes pertenecen a la fase
-de permisos de dominio y no se implementan aquí.
+This phase defines **only the enforcement mechanism** of the technical envelope. The
+capability policy and Hermes domain permissions belong to the domain permissions
+phase and are not implemented here.
 
-En consecuencia, `hermes` declara la iniciativa para dominios generalistas, pero
-sin la policy de capacidades y sin los permisos de dominio no amplía el sobre
-técnico: el gate técnico vigente sigue siendo el límite.
+Consequently, `hermes` declares initiative for general-purpose domains, but
+without the capability policy and without domain permissions it does not expand the technical
+envelope: the current technical gate remains the limit.
 
-## Verificación
+## Verification
 
 ~~~
 node --test .flowtask/bin/test/capas-contrato.test.js
@@ -159,6 +158,6 @@ node --test .flowtask/bin/test/runner-autonomy-injection.test.js
 node --test .flowtask/bin/test/permission-gate-layers.test.js
 ~~~
 
-La fuente normativa del contrato de autonomía por política es
-[autonomia-operativa.md](./autonomia-operativa.md) y la del gate técnico es
+The normative source of the policy-based autonomy contract is
+[autonomia-operativa.md](./autonomia-operativa.md), and the technical gate's is
 [../permission-gate.md](../permission-gate.md).

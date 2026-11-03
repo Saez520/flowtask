@@ -962,36 +962,36 @@ describe("verification material documentation", () => {
   it("publica la página de verificación material", () => {
     assert.ok(exists(VERIFICATION_DOC), "falta la página de verificación material");
     assert.ok(
-      verificationDoc.startsWith("# Verificación material y evidencia citable"),
+      verificationDoc.startsWith("# Material verification and citable evidence"),
       "falta el título de la página",
     );
   });
 
   it("declara las secciones de la página", () => {
     for (const section of [
-      "## Propósito",
-      "## Orden de verificación",
-      "## Registro de evidencia",
-      "## Incertidumbre y discrepancia",
-      "## Alcance por rol",
-      "## Herencia de evidencia",
-      "## Pausa y reanudación",
-      "## Límites",
-      "## Verificación",
+      "## Purpose",
+      "## Verification order",
+      "## Evidence record",
+      "## Uncertainty and discrepancy",
+      "## Scope by role",
+      "## Evidence inheritance",
+      "## Pause and resumption",
+      "## Limits",
+      "## Verification",
     ]) {
       assert.ok(verificationDoc.includes(section), `falta la sección ${section}`);
     }
   });
 
   it("describe los tres pasos, el registro y los estados", () => {
-    assert.ok(verificationDocFlat.includes("Memoria del proyecto"), "falta el primer paso");
+    assert.ok(verificationDocFlat.includes("Project memory"), "falta el primer paso");
     assert.ok(
-      verificationDocFlat.includes("Documentación, código y estado del repositorio"),
+      verificationDocFlat.includes("Documentation, code, and repository state"),
       "falta el segundo paso",
     );
-    assert.ok(verificationDocFlat.includes("La persona"), "falta el tercer paso");
+    assert.ok(verificationDocFlat.includes("The person"), "falta el tercer paso");
     assert.ok(
-      verificationDocFlat.includes("la ausencia de fuente no confirma nada"),
+      verificationDocFlat.includes("the absence of a source confirms nothing"),
       "falta la consecuencia de la fuente ausente",
     );
     for (const field of ["schema", "id", "datum", "materiality", "source_kind", "source_ref", "status", "observed_at"]) {
@@ -1003,24 +1003,24 @@ describe("verification material documentation", () => {
   });
 
   it("documenta el alcance por rol, la herencia y la pausa", () => {
-    assert.ok(verificationDocFlat.includes("Redacta, planifica y explora"), "falta el rol de análisis");
-    assert.ok(verificationDocFlat.includes("Construye y valida"), "falta el rol de ejecución");
-    assert.ok(verificationDocFlat.includes("Orquesta"), "falta el rol de orquestación");
+    assert.ok(verificationDocFlat.includes("Writes, plans, and explores"), "falta el rol de análisis");
+    assert.ok(verificationDocFlat.includes("Builds and validates"), "falta el rol de ejecución");
+    assert.ok(verificationDocFlat.includes("Orchestrates"), "falta el rol de orquestación");
     assert.ok(
-      verificationDocFlat.includes("no se re-verifica por rutina"),
+      verificationDocFlat.includes("is not re-verified by routine"),
       "falta la herencia sin re-verificación",
     );
-    assert.ok(verificationDocFlat.includes("⏸ Pausa por excepción: {motivo}"), "falta el mensaje de pausa");
-    assert.ok(verificationDocFlat.includes("Estado conservado:"), "falta el estado conservado");
-    assert.ok(verificationDocFlat.includes("Para reanudar:"), "falta la condición de reanudación");
+    assert.ok(verificationDocFlat.includes("⏸ Pause by exception: {reason}"), "falta el mensaje de pausa");
+    assert.ok(verificationDocFlat.includes("Preserved state:"), "falta el estado conservado");
+    assert.ok(verificationDocFlat.includes("To resume:"), "falta la condición de reanudación");
   });
 
   it("declara los límites sin bloqueo automático ni namespace nuevo", () => {
-    assert.ok(verificationDocFlat.includes("No hay bloqueo automático"), "falta el límite de bloqueo");
-    assert.ok(verificationDocFlat.includes("No hay puntaje de confianza"), "falta el límite de puntaje");
-    assert.ok(verificationDocFlat.includes("No hay interruptores por rol"), "falta el límite de interruptores");
+    assert.ok(verificationDocFlat.includes("There is no automatic blocking"), "falta el límite de bloqueo");
+    assert.ok(verificationDocFlat.includes("There is no confidence score"), "falta el límite de puntaje");
+    assert.ok(verificationDocFlat.includes("There are no per-role switches"), "falta el límite de interruptores");
     assert.ok(
-      verificationDocFlat.includes("No hay espacios de nombres nuevos"),
+      verificationDocFlat.includes("There are no new namespaces"),
       "falta el límite de namespace",
     );
   });
@@ -1035,9 +1035,9 @@ describe("verification material documentation", () => {
 
   it("alinea el flujo principal con la evidencia verificada y el gate", () => {
     const coreFlow = flat(read("docs/core-flowtask.md"));
-    assert.ok(coreFlow.includes("evidencia verificada"), "falta la evidencia verificada en el flujo");
+    assert.ok(coreFlow.includes("verified evidence"), "falta la evidencia verificada en el flujo");
     assert.ok(
-      coreFlow.includes("sin datos materiales no verificados"),
+      coreFlow.includes("no unverified material data"),
       "falta el criterio de evidencia material en el gate",
     );
   });
@@ -1045,11 +1045,11 @@ describe("verification material documentation", () => {
   it("corrige la afirmación sobre el contrato de validación", () => {
     assert.doesNotMatch(
       autonomyDoc,
-      /El contrato de validación en caliente no se modifica/,
+      /The live validation contract is not modified/,
       "la página ya no afirma que el contrato de validación no se modifica",
     );
     assert.ok(
-      flat(autonomyDoc).includes("El contrato de validación en caliente conserva su esquema y su veredicto"),
+      flat(autonomyDoc).includes("The live validation contract keeps its schema and its verdict"),
       "falta la frase corregida",
     );
   });

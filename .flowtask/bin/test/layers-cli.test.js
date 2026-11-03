@@ -58,9 +58,9 @@ describe("flowtask layers resolve", () => {
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.match(result.stdout, /Target: opencode/);
     assert.match(result.stdout, /Persona: tutor-senior \[project\]/);
-    assert.match(result.stdout, /Autonomía: autonomous-dev \[project\]/);
-    assert.match(result.stdout, /Permisos: standard \[project\]/);
-    assert.match(result.stdout, /Precedencia: permisos > autonomía > persona/);
+    assert.match(result.stdout, /Autonomy: autonomous-dev \[project\]/);
+    assert.match(result.stdout, /Permissions: standard \[project\]/);
+    assert.match(result.stdout, /Precedence: permissions > autonomy > persona/);
   });
 
   it("fails with the operational message when the permissions layer is absent", () => {
@@ -74,9 +74,9 @@ describe("flowtask layers resolve", () => {
     const result = runLayers(root, ["--target", "opencode"]);
 
     assert.equal(result.status, 2);
-    assert.match(result.stderr, /\[FlowTask Layers\] Capa de permisos ausente o inválida\./);
-    assert.match(result.stderr, /Causa: /);
-    assert.match(result.stderr, /Acción: definí "envelope": "standard"/);
+    assert.match(result.stderr, /\[FlowTask Layers\] permissions layer missing or invalid\./);
+    assert.match(result.stderr, /Cause: /);
+    assert.match(result.stderr, /Action: define "envelope": "standard"/);
   });
 
   it("fails with the operational message when the autonomy layer is invalid", () => {
@@ -91,8 +91,8 @@ describe("flowtask layers resolve", () => {
     const result = runLayers(root, ["--target", "opencode"]);
 
     assert.equal(result.status, 2);
-    assert.match(result.stderr, /\[FlowTask Layers\] Capa de autonomía ausente o inválida\./);
-    assert.match(result.stderr, /perfil de autonomía desconocido: "root"/);
+    assert.match(result.stderr, /\[FlowTask Layers\] autonomy layer missing or invalid\./);
+    assert.match(result.stderr, /unknown autonomy profile: "root"/);
   });
 
   it("publishes the resolved layers as JSON", () => {
@@ -127,7 +127,7 @@ describe("flowtask layers resolve", () => {
     const result = runLayers(root, []);
 
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /\[FlowTask Layers\] No se encontró una configuración de capas en el proyecto actual\./);
+    assert.match(result.stderr, /\[FlowTask Layers\] No layer configuration was found in the current project\./);
   });
 
   it("fails when the declared target does not exist", () => {
@@ -136,7 +136,7 @@ describe("flowtask layers resolve", () => {
     const result = runLayers(root, ["--target", "vscode"]);
 
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /No se encontró una configuración de capas/);
+    assert.match(result.stderr, /No layer configuration was found/);
   });
 
   it("fails with a usage error on an unknown target", () => {
@@ -145,7 +145,7 @@ describe("flowtask layers resolve", () => {
     const result = runLayers(root, ["--target", "emacs"]);
 
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /--target debe ser uno de: opencode, claude, vscode, standalone/);
+    assert.match(result.stderr, /--target must be one of: opencode, claude, vscode, standalone/);
   });
 
   it("fails with a usage error on an unknown subcommand", () => {
@@ -158,7 +158,7 @@ describe("flowtask layers resolve", () => {
     });
 
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /\[FlowTask Layers\] Subcomando desconocido: inspect/);
+    assert.match(result.stderr, /\[FlowTask Layers\] Unknown subcommand: inspect/);
   });
 
   it("publishes the command in the help message", () => {
@@ -185,8 +185,8 @@ describe("flowtask layers resolve", () => {
     const result = runLayers(root, ["--target", "opencode"]);
 
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-    assert.match(result.stdout, /Persona: inválida \[project\]/);
-    assert.match(result.stdout, /Aviso: /);
+    assert.match(result.stdout, /Persona: invalid \[project\]/);
+    assert.match(result.stdout, /Warning: /);
   });
 
   it("resolves the standalone target from the root config directory", () => {
@@ -196,8 +196,8 @@ describe("flowtask layers resolve", () => {
 
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.match(result.stdout, /Target: standalone/);
-    assert.match(result.stdout, /Autonomía: autonomous-dev \[project\]/);
-    assert.match(result.stdout, /Permisos: standard \[project\]/);
+    assert.match(result.stdout, /Autonomy: autonomous-dev \[project\]/);
+    assert.match(result.stdout, /Permissions: standard \[project\]/);
   });
 
   it("prefers opencode when several targets declare a configuration", () => {
@@ -215,6 +215,6 @@ describe("flowtask layers resolve", () => {
 
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.match(result.stdout, /Target: opencode/);
-    assert.match(result.stdout, /Autonomía: assistant \[project\]/);
+    assert.match(result.stdout, /Autonomy: assistant \[project\]/);
   });
 });

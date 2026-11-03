@@ -1,5 +1,4 @@
 # Version Watcher - Engram Infrastructure Monitoring
-# CA-005 Implementation
 
 param (
     [string]$SnapshotPath = ".flowtask/.temp/engram-signature.json",
@@ -8,26 +7,26 @@ param (
 
 function Get-EngramSignature {
     try {
-        # Ejecutar engram help y capturar comandos
+        # Run engram help and capture commands
         $helpOutput = engram help
-        
-        # Extraer comandos (buscando líneas con indentación y luego el nombre del comando)
-        $commands = $helpOutput | Where-Object { $_ -match "^\s{2}[a-z][a-z-]+" } | ForEach-Object { 
+
+        # Extract commands (find indented lines and then the command name)
+        $commands = $helpOutput | Where-Object { $_ -match "^\s{2}[a-z][a-z-]+" } | ForEach-Object {
             $line = $_.Trim()
             if ($line -match "^([a-z-]+)") {
                 $matches[1]
             }
         } | Sort-Object -Unique
-        
+
         $signature = @{
             timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
             commands = $commands
             count = $commands.Count
         }
-        
+
         return $signature | ConvertTo-Json
     } catch {
-        Write-Error "Error al obtener firma de Engram: $($_.Exception.Message)"
+        Write-Error "Error getting Engram signature: $($_.Exception.Message)"
         return $null
     }
 }
@@ -41,28 +40,28 @@ if (-not (Test-Path $SnapshotPath) -or $Update) {
         New-Item -ItemType Directory -Path (Split-Path $SnapshotPath) -Force | Out-Null
     }
     $currentSignatureJson | Out-File -FilePath $SnapshotPath -Encoding utf8
-    Write-Host "Snapshot actualizado en $SnapshotPath"
+    Write-Host "Snapshot updated at $SnapshotPath"
     exit 0
 }
 
 $savedSignatureJson = Get-Content -Path $SnapshotPath -Raw
 $savedSignature = $savedSignatureJson | ConvertFrom-Json
 
-# Comparar comandos
+# Compare commands
 $newCommands = Compare-Object -ReferenceObject $savedSignature.commands -DifferenceObject $currentSignature.commands | Where-Object { $_.SideIndicator -eq "=>" } | ForEach-Object { $_.InputObject }
 $obsoleteCommands = Compare-Object -ReferenceObject $savedSignature.commands -DifferenceObject $currentSignature.commands | Where-Object { $_.SideIndicator -eq "<=" } | ForEach-Object { $_.InputObject }
 
 if ($newCommands -or $obsoleteCommands) {
-    Write-Host "[WATCHER: HIGH SEVERITY] Se han detectado cambios en la infraestructura de Engram!"
+    Write-Host "[WATCHER: HIGH SEVERITY] Changes have been detected in the Engram infrastructure!"
     if ($newCommands) {
-        Write-Host ("  Nuevos comandos: " + ($newCommands -join ', '))
+        Write-Host ("  New commands: " + ($newCommands -join ', '))
     }
     if ($obsoleteCommands) {
-        Write-Host ("  Comandos eliminados/obsoletos: " + ($obsoleteCommands -join ', '))
+        Write-Host ("  Removed/obsolete commands: " + ($obsoleteCommands -join ', '))
     }
-    Write-Host ("  Hash/Count previo: " + $savedSignature.count + " | Actual: " + $currentSignature.count)
-    exit 2 # Código de salida para indicar cambios
+    Write-Host ("  Previous hash/count: " + $savedSignature.count + " | Current: " + $currentSignature.count)
+    exit 2 # Exit code to indicate changes
 } else {
-    Write-Host "Verificando infraestructura de Engram... OK"
+    Write-Host "Checking Engram infrastructure... OK"
     exit 0
 }

@@ -26,16 +26,16 @@ const AUTONOMY_DOC_REL = "docs/architecture/autonomia-operativa.md";
 
 /** The sections of the architecture page. */
 const ARCH_SECTIONS = [
-  "## Propósito",
-  "## Soporte actual y frontera",
-  "## Independencia verificable",
-  "## Decisión de lote y cola",
-  "## Despacho acotado y join",
-  "## Identidad y trazas",
-  "## Contención de conflictos",
-  "## Integración serializada",
-  "## Superficies heredadas",
-  "## Referencias",
+  "## Purpose",
+  "## Current support and boundary",
+  "## Verifiable independence",
+  "## Batch decision and queue",
+  "## Bounded dispatch and join",
+  "## Identity and traces",
+  "## Conflict containment",
+  "## Serialized integration",
+  "## Inherited surfaces",
+  "## References",
 ];
 
 /** The contracts live in Markdown with arbitrary line breaks. */
@@ -280,7 +280,7 @@ describe("parallel orchestration documentation contract", () => {
   it("publishes the architecture page with its sections", () => {
     assert.equal(fs.existsSync(path.join(ROOT, ARCH_DOC_REL)), true);
     const doc = read(ARCH_DOC_REL);
-    assert.ok(doc.startsWith("# Orquestación paralela segura"), "falta el título de la página");
+    assert.ok(doc.startsWith("# Safe parallel orchestration"), "falta el título de la página");
     for (const section of ARCH_SECTIONS) {
       assert.ok(doc.includes(section), `falta la sección ${section}`);
     }
@@ -289,25 +289,25 @@ describe("parallel orchestration documentation contract", () => {
   it("describes the current support, the boundary and the inherited surfaces", () => {
     const doc = flat(read(ARCH_DOC_REL));
     for (const token of [
-      "despacho en segundo plano",
-      "No existe motor paralelo",
-      "autoridad del lifecycle",
-      "archivos previstos",
+      "Background dispatch exists",
+      "There is no parallel engine",
+      "lifecycle authority",
+      "Planned files",
       "topic_key",
       "worktree",
       "maxParallel",
-      "cola FIFO",
+      "FIFO queue",
       "background: true",
       "sessionID",
       "resource_locked",
       "concurrent_write_suspected",
-      "no sobrescribe",
-      "no reintenta a ciegas",
-      "no inventa identificadores",
+      "do not overwrite",
+      "do not blindly retry",
+      "do not invent identifiers",
       "agent-loop-progress",
       "checkpoint-mixin",
       "context-degradation",
-      "pruebas condicionales",
+      "conditional test gate",
     ]) {
       assert.ok(doc.includes(token), `la página de arquitectura debe declarar ${token}`);
     }
@@ -321,11 +321,11 @@ describe("parallel orchestration documentation contract", () => {
   it("declares in the autonomy page that the bounded parallelism relaxes no control", () => {
     const autonomy = flat(read(AUTONOMY_DOC_REL));
     assert.ok(
-      autonomy.includes("paralelismo acotado no relaja"),
+      autonomy.includes("Bounded parallelism does not relax"),
       "la página de autonomía debe declarar que el paralelismo no relaja los controles",
     );
     assert.ok(
-      autonomy.includes("la integración se serializa"),
+      autonomy.includes("integration is serialized"),
       "la página de autonomía debe declarar la integración serializada",
     );
   });

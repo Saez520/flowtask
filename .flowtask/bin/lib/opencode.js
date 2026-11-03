@@ -152,7 +152,7 @@ export function registerPluginArrayEntry(configPath, entry, schema = "https://op
         const content = fs.readFileSync(configPath, "utf8").trim();
         config = content ? JSON.parse(content) : {};
       } catch {
-        logError(`${configPath} es inválido o ilegible. Corrígelo y reintenta con flowtask update.`);
+        logError(`${configPath} is invalid or unreadable. Fix it and retry with flowtask update.`);
         return false;
       }
     } else {
@@ -211,7 +211,7 @@ export function registerPluginArrayEntry(configPath, entry, schema = "https://op
       fs.writeFileSync(tempPath, JSON.stringify(config, null, 2), "utf8");
       fs.renameSync(tempPath, configPath);
       const verified = JSON.parse(fs.readFileSync(configPath, "utf8"));
-      if (JSON.stringify(verified) !== JSON.stringify(config)) throw new Error("la verificación del destino falló");
+      if (JSON.stringify(verified) !== JSON.stringify(config)) throw new Error("destination verification failed");
     } catch (err) {
       try {
         if (original) fs.writeFileSync(configPath, original);
@@ -223,7 +223,7 @@ export function registerPluginArrayEntry(configPath, entry, schema = "https://op
     logSuccess(`Plugin entry registered in ${path.basename(configPath)}`);
     return true;
   } catch (err) {
-    logError(`Failed to register plugin entry en ${configPath}: ${err.message}. Verifica permisos/espacio y reintenta con flowtask update.`);
+    logError(`Failed to register plugin entry in ${configPath}: ${err.message}. Check permissions/space and retry with flowtask update.`);
     return false;
   }
 }
@@ -306,7 +306,7 @@ export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
       fs.writeFileSync(tempPath, content, "utf8");
       fs.renameSync(tempPath, ideConfigPath);
       const verified = JSON.parse(fs.readFileSync(ideConfigPath, "utf8"));
-      if (JSON.stringify(verified) !== JSON.stringify(ideConfig)) throw new Error("la verificación del destino falló");
+      if (JSON.stringify(verified) !== JSON.stringify(ideConfig)) throw new Error("destination verification failed");
     } catch (writeError) {
       try {
         if (original) fs.writeFileSync(ideConfigPath, original);

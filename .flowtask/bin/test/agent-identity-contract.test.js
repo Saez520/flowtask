@@ -47,7 +47,7 @@ describe("contrato de identidad por capas", () => {
     }
     assert.match(handshake, /Hermes/);
     assert.match(handshake, /reserva nominal dev-only/);
-    assert.match(docs, /reserva nominal dev-only/);
+    assert.match(docs, /dev-only nominal reservation/);
   });
 
   it("expone el parámetro work_kind y el contrato de salida completo", () => {
@@ -64,8 +64,8 @@ describe("contrato de identidad por capas", () => {
   it("detiene ante Engram no disponible y conserva el registro previo", () => {
     assert.match(handshake, /Si `mem_search` falla[\s\S]*detenerse/);
     assert.match(handshake, /Registro previo conservado|conserva lo previamente registrado/);
-    assert.match(docs, /Engram no disponible detiene/);
-    assert.match(docs, /conserva lo previo/);
+    assert.match(docs, /Engram unavailable stops/);
+    assert.match(docs, /preserves the previous state/);
   });
 
   it("detiene ante identidad faltante o distinta sin escenario sustituto", () => {
@@ -74,7 +74,7 @@ describe("contrato de identidad por capas", () => {
     assert.match(handshake, /topic_mismatch/);
     assert.match(docs, /topic_unverifiable/);
     assert.match(docs, /topic_mismatch/);
-    assert.match(docs, /no asigna un nombre sustituto/);
+    assert.match(docs, /does not assign a substitute name/);
   });
 
   it("no conserva las reglas fail-open retiradas", () => {
@@ -88,7 +88,7 @@ describe("contrato de identidad por capas", () => {
 
   it("impone la unicidad de nombres entre trabajos activos", () => {
     assert.match(handshake, /No se reutiliza el nombre de un trabajo activo/);
-    assert.match(docs, /nunca reutiliza el nombre de un trabajo activo/);
+    assert.match(docs, /never reuses the name of an active job/);
   });
 
   it("registra la capa en checkpoints y en el payload normativo", () => {

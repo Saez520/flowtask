@@ -15,13 +15,13 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Directorio raíz de FlowTask (un nivel arriba de bin/)
+// FlowTask root directory (one level above bin/)
 export const FLOWTASK_DIR = path.resolve(__dirname, "..");
 
 const args = process.argv.slice(2);
 const command = args[0] || "install";
 
-/** Directorio de configuración de capas de cada target, en orden de detección. */
+/** Layer configuration directory for each target, in detection order. */
 const LAYER_TARGETS = [
   { id: "opencode", dir: ".opencode/flowtask/config" },
   { id: "claude", dir: ".claude/flowtask/config" },
@@ -36,7 +36,7 @@ function parseOptions(commandArgs) {
 
   const value = commandArgs[personaIndex + 1];
   if (!PERSONA_LEVELS.includes(value)) {
-    throw new Error(`--persona debe ser uno de: ${PERSONA_LEVELS.join(", ")}`);
+    throw new Error(`--persona must be one of: ${PERSONA_LEVELS.join(", ")}`);
   }
   options.persona = value;
   return options;
@@ -54,7 +54,7 @@ function parseLayersOptions(commandArgs) {
     if (argument === "--target") {
       const value = commandArgs[index + 1];
       if (!value || value.startsWith("--")) {
-        throw new Error("--target requiere un valor: opencode, claude, vscode o standalone");
+        throw new Error("--target requires a value: opencode, claude, vscode, or standalone");
       }
       options.target = value;
       index += 1;
@@ -64,12 +64,12 @@ function parseLayersOptions(commandArgs) {
       options.target = argument.slice("--target=".length);
       continue;
     }
-    throw new Error(`Opción desconocida: ${argument}`);
+    throw new Error(`Unknown option: ${argument}`);
   }
 
   const known = LAYER_TARGETS.map((target) => target.id);
   if (options.target && !known.includes(options.target)) {
-    throw new Error(`--target debe ser uno de: ${known.join(", ")}`);
+    throw new Error(`--target must be one of: ${known.join(", ")}`);
   }
   return options;
 }
@@ -81,10 +81,10 @@ function layerValueText(layer, key) {
 }
 
 function layerStateText(layer) {
-  if (!layer) return "ausente";
-  if (layer.status === "valid") return "válida";
-  if (layer.status === "invalid") return "inválida";
-  return "ausente";
+  if (!layer) return "missing";
+  if (layer.status === "valid") return "valid";
+  if (layer.status === "invalid") return "invalid";
+  return "missing";
 }
 
 function runLayersResolve(commandArgs) {
@@ -106,7 +106,7 @@ function runLayersResolve(commandArgs) {
     target = known.id;
     configDir = path.join(projectDir, known.dir);
     if (!fs.existsSync(configDir)) {
-      process.stderr.write("[FlowTask Layers] No se encontró una configuración de capas en el proyecto actual.\n");
+      process.stderr.write("[FlowTask Layers] No layer configuration was found in the current project.\n");
       process.exit(1);
       return;
     }
@@ -119,7 +119,7 @@ function runLayersResolve(commandArgs) {
       break;
     }
     if (!configDir) {
-      process.stderr.write("[FlowTask Layers] No se encontró una configuración de capas en el proyecto actual.\n");
+      process.stderr.write("[FlowTask Layers] No layer configuration was found in the current project.\n");
       process.exit(1);
       return;
     }
@@ -142,12 +142,12 @@ function runLayersResolve(commandArgs) {
     console.log(JSON.stringify(payload, null, 2));
   } else {
     console.log(`Target: ${target}`);
-    console.log(`Persona: ${layerValueText(persona, "persona") ?? layerStateText(persona)} [${persona.source ?? "sin inyección"}]`);
-    console.log(`Autonomía: ${layerValueText(autonomy, "profile") ?? layerStateText(autonomy)} [${autonomy.source ?? "sin origen"}]`);
-    console.log(`Permisos: ${layerValueText(permissions, "envelope") ?? layerStateText(permissions)} [${permissions.source ?? "sin origen"}]`);
-    console.log("Precedencia: permisos > autonomía > persona");
+    console.log(`Persona: ${layerValueText(persona, "persona") ?? layerStateText(persona)} [${persona.source ?? "no injection"}]`);
+    console.log(`Autonomy: ${layerValueText(autonomy, "profile") ?? layerStateText(autonomy)} [${autonomy.source ?? "no source"}]`);
+    console.log(`Permissions: ${layerValueText(permissions, "envelope") ?? layerStateText(permissions)} [${permissions.source ?? "no source"}]`);
+    console.log("Precedence: permissions > autonomy > persona");
     for (const warning of resolution.warnings) {
-      console.log(`Aviso: ${warning}`);
+      console.log(`Warning: ${warning}`);
     }
   }
 
@@ -180,7 +180,7 @@ switch (command) {
   case "layers": {
     const subCommand = args[1];
     if (subCommand !== "resolve") {
-      process.stderr.write(`[FlowTask Layers] Subcomando desconocido: ${subCommand ?? "(ninguno)"}. Usa: layers resolve.\n`);
+      process.stderr.write(`[FlowTask Layers] Unknown subcommand: ${subCommand ?? "(none)"}. Use: layers resolve.\n`);
       process.exitCode = 1;
       break;
     }
@@ -193,13 +193,13 @@ switch (command) {
     const subCommand = args[1];
     if (subCommand === "query") {
       process.stderr.write(
-        "[graphify] Deprecated: graphify query ya no ejecuta consultas locales. " +
-        "Usa graphify_query_graph por MCP; si no está disponible, escala al Inspector " +
-        "o usa la búsqueda normal del proyecto.\n",
+        "[graphify] Deprecated: graphify query no longer runs local queries. " +
+        "Use graphify_query_graph through MCP; if it is unavailable, escalate to the Inspector " +
+        "or use the project's normal search.\n",
       );
       process.exitCode = 1;
     } else {
-      process.stderr.write(`[graphify] Subcomando desconocido: ${subCommand}. Usa: graphify query (deprecated).\n`);
+      process.stderr.write(`[graphify] Unknown subcommand: ${subCommand}. Use: graphify query (deprecated).\n`);
       process.exitCode = 1;
     }
     break;

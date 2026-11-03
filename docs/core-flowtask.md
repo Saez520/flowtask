@@ -1,327 +1,326 @@
 # FlowTask Core
 
-> Este documento es la referencia técnica vigente de FlowTask; sus afirmaciones
-> se contrastan con los contratos ejecutables bajo `.flowtask/` y con la
-> documentación versionada bajo `docs/`. No depende de un archivo PDF externo.
+> This document is the current technical reference for FlowTask; its statements
+> are checked against the executable contracts under `.flowtask/` and the
+> versioned documentation under `docs/`. It does not depend on an external PDF file.
 
-## Tabla de contenidos
+## Table of contents
 
-- [Bloque 0 — Qué es FlowTask](#bloque-0--qué-es-flowtask)
-- [Bloque A — Ecosistema core](#bloque-a--ecosistema-core)
-- [Bloque B — Delegación](#bloque-b--delegación)
-- [Bloque C — Flujo CA (Criterio de Aceptación)](#bloque-c--flujo-ca-criterio-de-aceptación)
-- [Bloque D — Flujo HF (Hotfix acordado)](#bloque-d--flujo-hf-hotfix-acordado)
-- [Bloque E — Plugins](#bloque-e--plugins)
+- [Block 0 — What FlowTask is](#block-0--what-flowtask-is)
+- [Block A — Core ecosystem](#block-a--core-ecosystem)
+- [Block B — Delegation](#block-b--delegation)
+- [Block C — CA flow (Acceptance Criterion)](#block-c--ca-flow-acceptance-criterion)
+- [Block D — HF flow (Agreed hotfix)](#block-d--hf-flow-agreed-hotfix)
+- [Block E — Plugins](#block-e--plugins)
 
 ---
 
-## Bloque 0 — Qué es FlowTask
+## Block 0 — What FlowTask is
 
-### Qué es FlowTask
+### What FlowTask is
 
-FlowTask es un sistema de workflow de desarrollo asistido por IA con memoria
-persistente (Engram). No es un agente: es un **orquestador**. Un agente primario
-—el RUNNER— recibe al desarrollador y coordina subagentes registrados que se
-reparten el trabajo de punta a punta: capturar requisitos, planificar,
-implementar y validar.
+FlowTask is an AI-assisted development workflow system with persistent memory
+(Engram). It is not an agent: it is an **orchestrator**. A primary agent
+—the RUNNER— receives the developer and coordinates registered subagents that
+split the work end to end: capture requirements, plan, implement, and validate.
 
-El desarrollador habla SOLO con el runner. El runner investiga, clasifica la
-intención, delega en el subagente correspondiente y reporta el resultado. El
-runner nunca escribe código ni archivos.
+The developer talks ONLY to the runner. The runner investigates, classifies the
+intent, delegates to the corresponding subagent, and reports the result. The
+runner never writes code or files.
 
-### Problema que resuelve
+### The problem it solves
 
-Automatizar el ciclo de desarrollo sin perder trazabilidad ni control humano:
-cada paso deja un artefacto persistente en Engram (requisito, plan, auditoría,
-validación) y las decisiones quedan auditables entre sesiones.
+Automate the development cycle without losing traceability or human control:
+each step leaves a persistent artifact in Engram (requirement, plan, audit,
+validation) and decisions remain auditable across sessions.
 
-### Los pilares
+### The pillars
 
-| Pilar | Nombre | Función |
+| Pillar | Name | Function |
 | --- | --- | --- |
-| **P1** | Git Worktrees | Aislamiento: cada trabajo corre en su propio `worktree`/`branch`; varios flujos en paralelo sin pisarse. |
-| **P2** | Engram + Handshake | Memoria e identidad: artefactos y estado operativo persisten; los agentes se reanudan con contexto. |
+| **P1** | Git Worktrees | Isolation: each job runs in its own `worktree`/`branch`; several flows in parallel without stepping on each other. |
+| **P2** | Engram + Handshake | Memory and identity: artifacts and operational state persist; agents resume with context. |
 
-### Dos flujos de ejecución
+### Two execution flows
 
-- **CA (Criterio de Aceptación)** — ciclo completo y trazable: requisito → plan →
-  auditoría → gate → implementación → validación.
-- **HF (Hotfix acordado)** — corrección YA diagnosticada y acordada, sin abrir el
-  ciclo CA completo.
+- **CA (Acceptance Criterion)** — full, traceable cycle: requirement → plan →
+  audit → gate → implementation → validation.
+- **HF (Agreed hotfix)** — a correction that is ALREADY diagnosed and agreed,
+  without opening the full CA cycle.
 
-### Sistema de personalidades
+### Personality system
 
-Una capa que le da voz propia al runner. No hay un registro único: FlowTask
-define tres personalidades — tutor didáctico, mentor de pares y par técnico que
-debate de igual a igual — y el runner adopta una según el perfil del
-desarrollador. La personalidad cambia el tono y la profundidad de la
-conversación, no las reglas de orquestación.
+A layer that gives the runner its own voice. There is no single registry: FlowTask
+defines three personalities — didactic tutor, peer mentor, and technical peer who
+debates as an equal — and the runner adopts one according to the developer's
+profile. Personality changes the tone and depth of the conversation, not the
+orchestration rules.
 
-La personalidad solo define tono y profundidad; no autoriza ni restringe acciones.
-La autorización técnica vive en la capa de permisos y la iniciativa en la capa de
-autonomía. El contrato de las tres capas está en
+Personality only defines tone and depth; it does not authorize or restrict actions.
+Technical authorization lives in the permissions layer and initiative in the
+autonomy layer. The contract for the three layers is in
 [architecture/capas-persona-autonomia-permisos.md](architecture/capas-persona-autonomia-permisos.md).
 
-### Cómo leer este documento
+### How to read this document
 
-| Bloque | Contenido |
+| Block | Content |
 | --- | --- |
-| Bloque A | ecosistema core |
-| Bloque B | delegación y contratos de runtime, sin inventario editorial |
-| Bloque C | flujo CA |
-| Bloque D | flujo HF |
-| Bloque E | plugins |
+| Block A | core ecosystem |
+| Block B | delegation and runtime contracts, without an editorial inventory |
+| Block C | CA flow |
+| Block D | HF flow |
+| Block E | plugins |
 
 ---
 
-## Bloque A — Ecosistema core
+## Block A — Core ecosystem
 
-### FlowTask Core — Ecosistema
+### FlowTask Core — Ecosystem
 
 ```mermaid
 flowchart TB
-    U["USUARIO<br/>(habla SOLO con el runner)"]
-    R["RUNNER — agente primario<br/>investiga → clasifica → delega → reporta<br/>read-only: no escribe código ni modifica archivos"]
+    U["USER<br/>(talks ONLY to the runner)"]
+    R["RUNNER — primary agent<br/>investigates → classifies → delegates → reports<br/>read-only: does not write code or modify files"]
 
-    U -- "input literal" --> R
+    U -- "literal input" --> R
 
-    R -- "task()" --> A["AGENTES<br/>(bloque B)"]
+    R -- "task()" --> A["AGENTS<br/>(block B)"]
     R -- "skill()" --> S["SKILLS<br/>on-demand"]
-    R -- "mem_* (Engram)" --> E["ENGRAM<br/>memoria persistente"]
+    R -- "mem_* (Engram)" --> E["ENGRAM<br/>persistent memory"]
 
-    A -- "editan código en aislamiento" --> W["WORKSPACE FÍSICO<br/>.worktrees/&lt;ID&gt;/ · branch worktree/&lt;ID&gt;<br/>commit → squash-merge → branch base (development → main → trunk; fallback main)"]
+    A -- "edit code in isolation" --> W["PHYSICAL WORKSPACE<br/>.worktrees/&lt;ID&gt;/ · branch worktree/&lt;ID&gt;<br/>commit → squash-merge → base branch (development → main → trunk; fallback main)"]
 
-    P["PLUGINS — hooks runtime que vigilan al runner (bloque E)<br/>permission-gate · context-checkpoint · model-selector"]
+    P["PLUGINS — runtime hooks that watch the runner (block E)<br/>permission-gate · context-checkpoint · model-selector"]
     R -.-> P
 ```
 
-Pilares documentados: Git Worktrees (aislamiento) · Engram + Handshake
-(memoria e identidad).
+Documented pillars: Git Worktrees (isolation) · Engram + Handshake
+(memory and identity).
 
-El runner enruta por intención; los comandos explícitos se retiraron y su
-relato queda en `docs/project-history.md`.
-
----
-
-## Bloque B — Delegación
-
-Los subagentes que el runtime puede invocar se registran en la configuración del
-target y sus contratos ejecutables viven bajo `.flowtask/agents/`. Este documento
-no duplica ese inventario editorial: las secciones CA y HF describen únicamente
-el orden observable del flujo y la documentación de instalación explica cómo se
-instalan y actualizan esos recursos.
+The runner routes by intent; explicit commands were retired and their story
+remains in `docs/project-history.md`.
 
 ---
 
-## Bloque C — Flujo CA (Criterio de Aceptación)
+## Block B — Delegation
 
-### Flujo CA — Criterio de Aceptación
+The subagents that the runtime can invoke are registered in the target
+configuration and their executable contracts live under `.flowtask/agents/`.
+This document does not duplicate that editorial inventory: the CA and HF
+sections describe only the observable order of the flow, and the installation
+documentation explains how those resources are installed and updated.
 
-*(runner delega; nunca ejecuta el trabajo)*
+---
+
+## Block C — CA flow (Acceptance Criterion)
+
+### CA flow — Acceptance Criterion
+
+*(runner delegates; never executes the work)*
 
 ```text
-input del dev: CHANGE_REQUEST · CA_MENTION · CA-{ID}
+dev input: CHANGE_REQUEST · CA_MENTION · CA-{ID}
 │
 ▼
-RUNNER clasifica ── ¿existe el CA en Engram?
+RUNNER classifies ── does the CA exist in Engram?
 │
-├─ no existe ──▶ [1] ESCRITOR DEL CA
-│                 conversación de clarificación: comportamiento observable,
-│                 condiciones de fallo, reglas de negocio, tradeoffs y GAPs
-│                 salida: ca/CA-{ID}/artifact/ca
+├─ does not exist ──▶ [1] CA WRITER
+│                 clarification conversation: observable behavior,
+│                 failure conditions, business rules, tradeoffs, and GAPs
+│                 output: ca/CA-{ID}/artifact/ca
 │                 flow-state: flow-state/CA-{ID}/create
 │
-└─ ya existe ──┐
+└─ already exists ──┐
               ▼
-        [2] PLANNER ── plan decision-complete
-            salida: ca/CA-{ID}/artifact/plan (incluye gate_status y evidencia verificada)
+        [2] PLANNER ── decision-complete plan
+            output: ca/CA-{ID}/artifact/plan (includes gate_status and verified evidence)
             flow-state: flow-state/CA-{ID}/plan
               │
               ▼
-        [3] PLAN-AUDITOR ── solo si >5 tareas o Evolution Mode
-            salida: ca/CA-{ID}/artifact/audit (verdict OKAY, 0 blockers)
+        [3] PLAN-AUDITOR ── only if >5 tasks or Evolution Mode
+            output: ca/CA-{ID}/artifact/audit (verdict OKAY, 0 blockers)
               │
               ▼
-        [4] GATE DE EJECUCIÓN
-            verifica: plan final existe + gate_status con blockers NONE y
-            pending_decisions [] + audit OKAY si audit_required +
-            evidencia material: sin datos materiales no verificados
-            FAIL → aborta (sin worktree, sin constructor) — ni --auto lo salta
+        [4] EXECUTION GATE
+            checks: final plan exists + gate_status with blockers NONE and
+            pending_decisions [] + audit OKAY if audit_required +
+            material evidence: no unverified material data
+            FAIL → aborts (no worktree, no constructor) — not even --auto skips it
               │ PASS
               ▼
-        [5] INICIO AUTOMÁTICO ── la orden del dev + el Gate PASS habilitan
-            la construcción (sin espera rutinaria; el Gate se verifica igual)
+        [5] AUTOMATIC START ── the dev's order + Gate PASS enable
+            construction (no routine wait; the Gate is still checked)
               │
               ▼
-        [6] WORKTREE ── worktree.sh create CA-{ID} --base {base detectada}
-            (orden: development → main → trunk; fallback main)
+        [6] WORKTREE ── worktree.sh create CA-{ID} --base {detected base}
+            (order: development → main → trunk; fallback main)
             → .worktrees/CA-{ID} · branch worktree/CA-{ID}
               │
               ▼
-        [7] CONSTRUCTOR ── implementa el plan en el worktree
-            no decide diseño; sigue el orden y las convenciones del plan
+        [7] CONSTRUCTOR ── implements the plan in the worktree
+            does not decide design; follows the plan's order and conventions
             flow-state: flow-state/CA-{ID}/construct
               │
               ▼
-        [8] TESTER POR HUECOS ── genera pruebas solo para huecos declarados
-            máximo una prueba por hueco y techo tres por entrega; default 0
-            reporte: ca/CA-{ID}/artifact/tests-report
-            sin huecos: continúa a la validación sin generar ni esperar
+        [8] GAP-DRIVEN TESTER ── generates tests only for declared gaps
+            at most one test per gap and a ceiling of three per delivery; default 0
+            report: ca/CA-{ID}/artifact/tests-report
+            no gaps: continues to validation without generating or waiting
               │
               ▼
-        [9] VALIDATOR ── validación en caliente
-            hereda el reporte de pruebas sin repetir lo comprobado
-            N1: cumplimiento del plan
-            N2: convenciones del proyecto
-            N3: higiene de coordinación (escáner de referencias)
-            comprobaciones ejecutadas con comando y resultado
-            ronda: closure (cierra) | intermediate (verifica lo alcanzado)
-            veredicto único: APPROVED | REJECTED | OPERATIONAL_FAILURE
-            evidencia reutilizable: ca/CA-{ID}/artifact/validacion
+        [9] VALIDATOR ── live validation
+            inherits the test report without repeating what was checked
+            N1: plan compliance
+            N2: project conventions
+            N3: coordination hygiene (reference scanner)
+            checks executed with command and result
+            round: closure (closes) | intermediate (verifies what was reached)
+            single verdict: APPROVED | REJECTED | OPERATIONAL_FAILURE
+            reusable evidence: ca/CA-{ID}/artifact/validacion
               │
-              ├─ REJECTED ──▶ vuelve a [7] con la evidencia del rechazo
-              │              segundo rechazo → Inspector → vuelve a [7]
+              ├─ REJECTED ──▶ returns to [7] with the rejection evidence
+              │              second rejection → Inspector → returns to [7]
               │
-              ├─ OPERATIONAL_FAILURE ──▶ conserva estado e historial
-              │                          recuperación operativa o pausa
+              ├─ OPERATIONAL_FAILURE ──▶ preserves state and history
+              │                          operational recovery or pause
               │
-              ▼ APPROVED con final=true
-        [10] CIERRE ── commit → worktree.sh complete (squash-merge a la base, con --title/--body dicientes)
-              → ca_status: closed + purga de task_id huérfanos + session summary
+              ▼ APPROVED with final=true
+        [10] CLOSE ── commit → worktree.sh complete (squash-merge to the base, with meaningful --title/--body)
+              → ca_status: closed + purge of orphan task_ids + session summary
 ```
 
-### Gestor portable y cierre seguro
+### Portable manager and safe close
 
-`worktree.sh` puede operar sobre un repositorio genérico con `--repo` y un
-archivo de configuración `key=value` pasado con `--config`; no necesita CA,
-Engram ni FlowTask. La configuración no se ejecuta como shell y solo admite
-las claves documentadas en el README. `create` no instala dependencias ni
-ejecuta pruebas por detección: `--prepare` y `--verify` son opt-in, requieren
-comandos declarados y se ejecutan en ese orden.
+`worktree.sh` can operate on a generic repository with `--repo` and a
+`key=value` configuration file passed with `--config`; it does not need a CA,
+Engram, or FlowTask. The configuration is not executed as a shell and only accepts
+the keys documented in the README. `create` does not install dependencies or
+run tests by detection: `--prepare` and `--verify` are opt-in, require declared
+commands, and run in that order.
 
-El cierre conserva el squash, pero su limpieza usa una capacidad interna
-efímera y verificada: después de validar identidad, estado, de-inicialización y
-journal, `complete` ejecuta `git worktree remove --force` sobre el worktree
-cerrado y elimina la branch con una actualización condicionada al SHA esperado.
-`complete` no expone `--discard` ni `git branch -D`. En cambio,
-`cleanup --discard` es la única vía pública para retirar trabajo no integrado y
-requiere autorización explícita. Esa capacidad interna no es alcanzable desde
-`recover` ni desde la configuración: si un recover termina un squash, deja el
-worktree y la rama en su sitio y el retiro posterior pasa por el `cleanup`
-público.
-`complete`, `recover` y `cleanup` comparten locks ordenados de destino/trabajo;
-el segundo proceso falla inmediatamente y no toca backups. Los resultados
-distinguen operación, resultado, acciones omitidas o fallidas, recuperación y
-limpieza; nunca se informa cierre completo mientras quede un recurso o
-restauración pendiente.
+The close preserves the squash, but its cleanup uses an internal ephemeral and
+verified capability: after validating identity, state, de-initialization, and
+journal, `complete` runs `git worktree remove --force` on the closed worktree
+and deletes the branch with an update conditioned on the expected SHA.
+`complete` does not expose `--discard` or `git branch -D`. Instead,
+`cleanup --discard` is the only public path to remove unintegrated work and
+requires explicit authorization. That internal capability is not reachable from
+`recover` or from configuration: if a recover finishes a squash, it leaves the
+worktree and branch in place, and later removal goes through the public
+`cleanup`.
+`complete`, `recover`, and `cleanup` share ordered target/work locks;
+the second process fails immediately and does not touch backups. Results
+distinguish operation, result, skipped or failed actions, recovery, and
+cleanup; a complete close is never reported while any resource or
+restoration remains pending.
 
-La ruta CA2 target-direct requiere target explícito (`--repo` del submodule,
-`--parent-repo`, `--target submodule` y `--submodule-path`). El parent sólo
-puede recibir un gitlink staged mediante `link-parent --link-parent staged-only`;
-no se crea un worktree parent ni se hace commit, push o merge. `abort` usa el
-snapshot binario del índice y bloquea ante drift ajeno. El gestor requiere Git
-2.17.0 o posterior (`git worktree remove`); la versión no se comprueba en
-tiempo de ejecución. Parent-only conserva su contrato anterior.
+The CA2 target-direct path requires an explicit target (`--repo` of the submodule,
+`--parent-repo`, `--target submodule`, and `--submodule-path`). The parent can only
+receive a staged gitlink through `link-parent --link-parent staged-only`;
+no parent worktree is created and no commit, push, or merge is made. `abort` uses the
+binary index snapshot and blocks on foreign drift. The manager requires Git
+2.17.0 or later (`git worktree remove`); the version is not checked at
+runtime. Parent-only preserves its previous contract.
 
 ---
 
-## Bloque D — Flujo HF (Hotfix acordado)
+## Block D — HF flow (Agreed hotfix)
 
-### Flujo HF — Hotfix acordado (sin CA)
+### HF flow — Agreed hotfix (without a CA)
 
-**Origen.** El runner investiga y diagnostica conversacionalmente (skill
-`investigacion` + Graphify + Engram). El dev converge en una corrección y la
-acepta explícitamente: esa aceptación es la señal de inicio y no se exige una
-segunda palabra.
+**Origin.** The runner investigates and diagnoses conversationally (skill
+`investigacion` + Graphify + Engram). The dev converges on a correction and
+explicitly accepts it: that acceptance is the start signal and a second
+confirmation is not required.
 
-**Para qué.** Ejecutar una corrección YA diagnosticada y acordada, sin abrir el
-ciclo CA completo.
+**Purpose.** Execute a correction that is ALREADY diagnosed and agreed, without
+opening the full CA cycle.
 
-**Por qué.** El flujo CA exige intermediar requisitos (`ca-writer`),
-planificación (`planner`) y auditoría (`plan-auditor`): eso agrega latencia y
-separa la conversación de diagnóstico de la decisión de actuar. El HF
-conserva lo esencial —investigación persistida, plan mínimo, worktree aislado,
-validación y cierre por squash-merge— pero NO crea CA ni invoca
-`ca-writer`/`planner`/`plan-auditor`.
+**Why.** The CA flow requires intermediating requirements (`ca-writer`),
+planning (`planner`), and audit (`plan-auditor`): that adds latency and
+separates the diagnostic conversation from the decision to act. The HF
+preserves the essentials —persisted research, a minimal plan, an isolated
+worktree, validation, and close by squash-merge— but does NOT create a CA or
+invoke `ca-writer`/`planner`/`plan-auditor`.
 
-> **Origen:** flujo de hotfix, introducido como segundo camino acotado en agosto de 2026.
-> **Tradeoff asumido:** segundo flujo y contrato de persistencia a cambio de menos fricción.
-> **Garantía:** aunque no haya CA, ningún hotfix pierde investigación, plan mínimo, worktree ni validación.
+> **Origin:** hotfix flow, introduced as a second bounded path in August 2026.
+> **Assumed tradeoff:** a second flow and persistence contract in exchange for less friction.
+> **Guarantee:** even without a CA, no hotfix loses research, minimal plan, worktree, or validation.
 
 ```text
-[1] ID ── slug kebab-case → HF-{slug}
-    colisión → HF-{slug}-2, -3... (nunca sobrescribe historial)
-[2] PERSISTIR ── hotfix/{id}/artifact/investigacion
-                 hotfix/{id}/artifact/plan (archivos afectados, cambios
-                 acordados, criterios de aceptación verificables)
-[3] WORKTREE ── worktree.sh create hotfix/{id} --base {base detectada}
-    (orden: development → main → trunk; fallback main)
+[1] ID ── kebab-case slug → HF-{slug}
+    collision → HF-{slug}-2, -3... (never overwrites history)
+[2] PERSIST ── hotfix/{id}/artifact/investigacion
+                 hotfix/{id}/artifact/plan (affected files, agreed
+                 changes, verifiable acceptance criteria)
+[3] WORKTREE ── worktree.sh create hotfix/{id} --base {detected base}
+    (order: development → main → trunk; fallback main)
     → .worktrees/hotfix/{id} · branch worktree/hotfix/{id}
-[4] CONSTRUCTOR ── implementa el plan mínimo (execution_id=hotfix/{id})
-[5] VALIDATOR ── → hotfix/{id}/artifact/validacion (no pasa por plan-auditor)
-    REJECTED → vuelve a [4] con la evidencia del rechazo
-              segundo rechazo → Inspector → vuelve a [4]
-[6] CIERRE ── commit → worktree.sh complete (squash-merge a la base)
+[4] CONSTRUCTOR ── implements the minimal plan (execution_id=hotfix/{id})
+[5] VALIDATOR ── → hotfix/{id}/artifact/validacion (does not go through plan-auditor)
+    REJECTED → returns to [4] with the rejection evidence
+              second rejection → Inspector → returns to [4]
+[6] CLOSE ── commit → worktree.sh complete (squash-merge to the base)
 ```
 
-**Ejemplo real:** un hotfix de diagramas (23-sep-2026) convirtió los 14
-diagramas de `docs/architecture/` de `.txt` (CP1252 roto) a `.md` UTF-8 con Mermaid.
-Squash-merge a `main` en `198cf54` — es el hotfix que produjo ESTE archivo.
+**Real example:** a diagrams hotfix (Sep 23, 2026) converted the 14
+diagrams in `docs/architecture/` from `.txt` (broken CP1252) to UTF-8 `.md` with Mermaid.
+Squash-merge to `main` at `198cf54` — it is the hotfix that produced THIS file.
 
 ---
 
-## Bloque E — Plugins
+## Block E — Plugins
 
-### Plugins — hooks runtime de OpenCode
+### Plugins — OpenCode runtime hooks
 
 **Manifest:** `.flowtask/plugins/flowtask-plugins.json`
 
-#### Activos
+#### Active
 
-| Plugin | Kind | Función |
+| Plugin | Kind | Function |
 | --- | --- | --- |
-| `flowtask-permission-gate` | server | permisos del runner + gate de commit |
-| `flowtask-context-checkpoint` | server | checkpoint forzado al 70% de contexto |
-| `agent-model-selector-opencode` | cli (TUI) | elige modelo y variante por agente |
+| `flowtask-permission-gate` | server | runner permissions + commit gate |
+| `flowtask-context-checkpoint` | server | forced checkpoint at 70% context |
+| `agent-model-selector-opencode` | cli (TUI) | selects model and variant per agent |
 
-#### `flowtask-permission-gate` (detalle)
+#### `flowtask-permission-gate` (detail)
 
-- autoriza las tools del runner (`read`/`glob`/`grep`/`skill`/`mem_*`/`graphify`)
-- autoriza `bash` del runner (whitelist: `worktree.sh`, git read-only, commit)
-- bloquea `task()` a subagentes fuera de la lista → *"delegá al subagente"*
-- gate de commit: exige `.review-stamp` vigente (TTL 30 min; bypass ≤5 líneas)
-- presupuesto de contexto: degrada por niveles (aviso, entrega reducida, omisión por turno) y bloquea adjuntos al runner
+- authorizes the runner's tools (`read`/`glob`/`grep`/`skill`/`mem_*`/`graphify`)
+- authorizes the runner's `bash` (whitelist: `worktree.sh`, read-only git, commit)
+- blocks `task()` to subagents outside the list → *"delegate to the subagent"*
+- commit gate: requires a current `.review-stamp` (30 min TTL; bypass ≤5 lines)
+- context budget: degrades by levels (warning, reduced delivery, per-turn omission) and blocks attachments to the runner
 
-#### `flowtask-context-checkpoint` (detalle)
+#### `flowtask-context-checkpoint` (detail)
 
-- detecta child sessions (subagentes) y mide su ventana de contexto
-- al ≥70% inyecta la orden de checkpoint en Engram + tag de capacidad
-- si el subagente ignora 2 steps consecutivos → warning en logs
+- detects child sessions (subagents) and measures their context window
+- at ≥70% injects the checkpoint order in Engram + capability tag
+- if the subagent ignores 2 consecutive steps → warning in logs
 
-#### `agent-model-selector-opencode` (detalle)
+#### `agent-model-selector-opencode` (detail)
 
-- se instala desde el submodule `.flowtask/plugins/agent-model-selector/packages/opencode`
-- copia solo `dist`, `package.json` y `README.md` según la allowlist `files` del manifiesto
-- registra el entrypoint `dist/tui.js` en `.opencode/cli.json`
-- elimina la instalación legacy `flowtask-model-selector` (directorio y entradas de configuración) después de copiar y validar el reemplazo
+- installs from the submodule `.flowtask/plugins/agent-model-selector/packages/opencode`
+- copies only `dist`, `package.json`, and `README.md` according to the manifest's `files` allowlist
+- registers the entrypoint `dist/tui.js` in `.opencode/cli.json`
+- removes the legacy `flowtask-model-selector` installation (directory and configuration entries) after copying and validating the replacement
 
-#### Rollback del selector
+#### Selector rollback
 
 1. `git submodule deinit -f .flowtask/plugins/agent-model-selector`
-2. `git rm .flowtask/plugins/agent-model-selector` y quitar la entrada de `.gitmodules`
-3. `git checkout <commit-anterior> -- .flowtask/plugins/flowtask-model-selector .flowtask/plugins/flowtask-plugins.json .flowtask/bin/lib/installer.js .flowtask/bin/lib/installer.test.js .flowtask/bin/lib/copy.js docs/core-flowtask.md docs/README.md .flowtask/package.json`
+2. `git rm .flowtask/plugins/agent-model-selector` and remove the entry from `.gitmodules`
+3. `git checkout <previous-commit> -- .flowtask/plugins/flowtask-model-selector .flowtask/plugins/flowtask-plugins.json .flowtask/bin/lib/installer.js .flowtask/bin/lib/installer.test.js .flowtask/bin/lib/copy.js docs/core-flowtask.md docs/README.md .flowtask/package.json`
 4. `rm -rf .opencode/plugins/agent-model-selector-opencode`
 5. `flowtask update`
 
-La configuración de modelos del usuario no se modifica durante el rollback.
+The user's model configuration is not modified during rollback.
 
-#### Deprecados
+#### Deprecated
 
-Manifest: `"deprecated": true`, `"enabled": false` — no se instalan.
+Manifest: `"deprecated": true`, `"enabled": false` — they are not installed.
 
-- `flowtask-classifier-hook` (server) — inyectaba `FLOWTASK_CLASSIFICATION`
-- `flowtask-classifier-tui` (tui) — indicador visual del clasificador
+- `flowtask-classifier-hook` (server) — injected `FLOWTASK_CLASSIFICATION`
+- `flowtask-classifier-tui` (tui) — visual classifier indicator
 
 ---
-## Evolución planificada
-El plan de implementación del Agent Loop y Hermes, con fases, dependencias y gates, vive en [roadmap/agent-loop-hermes.md](./roadmap/agent-loop-hermes.md). Las etiquetas F0–F4 son de planificación y no se usan en mensajes de commit. Los commits describen qué se hizo.
+## Planned evolution
+The implementation plan for Agent Loop and Hermes, with phases, dependencies, and gates, lives in [roadmap/agent-loop-hermes.md](./roadmap/agent-loop-hermes.md). The F0–F4 labels are for planning and are not used in commit messages. Commits describe what was done.

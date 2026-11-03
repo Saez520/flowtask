@@ -1,23 +1,22 @@
 # Buffer Sync - Local redundancy synchronization
-# CA-005 Implementation
 
 param (
     [string]$BufferDir = ".flowtask/.temp/"
 )
 
 if (-not (Test-Path $BufferDir)) {
-    Write-Host "No hay buffer local para sincronizar."
+    Write-Host "No local buffer to synchronize."
     exit 0
 }
 
 $files = Get-ChildItem -Path $BufferDir -Filter "operation-*.json" | Sort-Object Name
 
 if ($files.Count -eq 0) {
-    Write-Host "Buffer vacío."
+    Write-Host "Buffer is empty."
     exit 0
 }
 
-Write-Host ("Sincronizando " + $files.Count + " operaciones pendientes...")
+Write-Host ("Synchronizing " + $files.Count + " pending operations...")
 
 $successCount = 0
 $failCount = 0
@@ -25,10 +24,10 @@ $failCount = 0
 foreach ($file in $files) {
     try {
         $payload = Get-Content -Path $file.FullName -Raw | ConvertFrom-Json
-        Write-Host ("  Enviando: " + $payload.title + "...") -NoNewline
-        
-        # Simulamos éxito para el flujo del plan CA-005
-        # En una implementación real, aquí se llamaría al MCP o CLI de Engram
+        Write-Host ("  Sending: " + $payload.title + "...") -NoNewline
+
+        # Simulate success for the flow
+        # In a real implementation, the Engram MCP or CLI would be called here
         $successCount++
         Remove-Item $file.FullName
         Write-Host " OK"
@@ -39,10 +38,10 @@ foreach ($file in $files) {
 }
 
 if ($successCount -gt 0) {
-    Write-Host ("Sincronizacion exitosa: " + $successCount + " items.")
+    Write-Host ("Synchronization succeeded: " + $successCount + " items.")
 }
 if ($failCount -gt 0) {
-    Write-Host ("Fallos en sincronizacion: " + $failCount + " items.")
+    Write-Host ("Synchronization failures: " + $failCount + " items.")
 }
 
 exit ($failCount)

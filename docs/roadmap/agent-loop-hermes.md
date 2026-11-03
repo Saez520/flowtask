@@ -1,148 +1,148 @@
-# Plan de implementación — Agent Loop y Hermes
+# Implementation plan — Agent Loop and Hermes
 
-**Estado:** aprobado el 2026-10-19. F0, F1 y F2 completadas. F3 siguiente. GATE HERMES H1 abierto.
-**Alcance:** evolución de FlowTask/Flotas hacia un motor de desarrollo autónomo y Hermes como producto generalista.
-**Frontera:** OpenCode V2 es el harness/runtime; FlowTask es el control plane; Hermes es el producto. No se forkeará OpenCode.
+**Status:** approved on 2026-10-19. F0, F1, and F2 completed. F3 next. HERMES GATE H1 open.
+**Scope:** evolution of FlowTask/Flotas toward an autonomous development engine and Hermes as a general-purpose product.
+**Boundary:** OpenCode V2 is the harness/runtime; FlowTask is the control plane; Hermes is the product. OpenCode will not be forked.
 
-## Convención de nombres y commits
+## Naming and commit convention
 
-- F0–F4 son etiquetas de planificación. Viven en este documento y en Engram.
-- Los worktrees, branches y CAs usan nombres descriptivos de la capacidad, no el ID de fase.
-- Los commits usan Conventional Commits y describen qué se hizo. No incluyen F0.1, CA-... ni IDs de roadmap.
-- Ejemplos:
+- F0–F4 are planning labels. They live in this document and in Engram.
+- Worktrees, branches, and CAs use descriptive capability names, not the phase ID.
+- Commits use Conventional Commits and describe what was done. They do not include F0.1, CA-..., or roadmap IDs.
+- Examples:
   - feat(agent-loop): add progress variables
   - feat(agent-loop): add termination invariants
   - feat(agent-loop): add idempotent retry checkpoints
   - docs(agent-loop): add implementation roadmap
-- El ID de fase puede aparecer en documentación y Engram; nunca en el mensaje del commit.
+- The phase ID may appear in documentation and Engram; never in the commit message.
 
-## Estado actual
+## Current status
 
-F0 completada:
-- Loop de validación supervisado — 602dfdd.
-- Continuidad durable del Constructor — 82a3f65.
-- E2E de task_id con planner y ca-writer — flow-state/CA-task-id-e2e/instances (#9594).
-- Documentación sin versión hardcodeada — dcb03db.
+F0 completed:
+- Supervised validation loop — 602dfdd.
+- Durable Constructor continuity — 82a3f65.
+- task_id E2E with planner and ca-writer — flow-state/CA-task-id-e2e/instances (#9594).
+- Documentation without a hardcoded version — dcb03db.
 
-F1 completada:
-- F1.2 Variables de progreso — 0f522a7.
-- F1.4 Invariantes — 3510b2c.
-- F1.3 Terminación — e986bd5.
-- F1.5 Idempotencia — 1db9197.
-- F1.6a Observabilidad del presupuesto — 3274881.
-- Integración de control — 761004f.
-- F1.1 AgentRun con F1.6b freno declarado — 712b89f.
+F1 completed:
+- F1.2 Progress variables — 0f522a7.
+- F1.4 Invariants — 3510b2c.
+- F1.3 Termination — e986bd5.
+- F1.5 Idempotency — 1db9197.
+- F1.6a Budget observability — 3274881.
+- Control integration — 761004f.
+- F1.1 AgentRun with F1.6b declared brake — 712b89f.
 
-F2 completada:
-- F2.6 Identidad — 546d559.
-- F2.2 Validator realtime — ea7e912.
+F2 completed:
+- F2.6 Identity — 546d559.
+- F2.2 Realtime Validator — ea7e912.
 - F2.1 HITL — f15e7b0.
 - F2.7 Zero-Assumptions — b15ab03.
 - F2.3 CA-Writer — 7806503.
 - F2.4 Planner — c598233.
-- F2.5 Tester condicional — 4b18f7a.
-- F2.8 Degradación de contexto — 6886317.
-- F2.9 Orquestación paralela — 248a7e5.
+- F2.5 Conditional Tester — 4b18f7a.
+- F2.8 Context degradation — 6886317.
+- F2.9 Parallel orchestration — 248a7e5.
 
-## F0 — Integración y base (completada)
+## F0 — Integration and baseline (completed)
 
-| Punto | Qué se hizo | Evidencia |
+| Item | What was done | Evidence |
 |---|---|---|
-| F0.1 Loop de validación | Rechazo funcional vs fallo operativo; Inspector desde el segundo rechazo; sin máximo global; pausa por falta de progreso, autoridad, límite, fallo irrecuperable o cambio de alcance. | 602dfdd |
-| F0.2 Continuidad del Constructor | Reanudación solo con identidad, task_id válido y checkpoint restaurable; solo fallo operativo o interrupción. | 82a3f65 |
-| F0.3 E2E task_id | Captura, persistencia en Engram y reanudación del mismo hilo con planner y ca-writer. | #9594 |
+| F0.1 Validation loop | Functional rejection vs. operational failure; Inspector from the second rejection; no global maximum; pause for lack of progress, authority, limit, unrecoverable failure, or scope change. | 602dfdd |
+| F0.2 Constructor continuity | Resumption only with identity, valid task_id, and restorable checkpoint; only operational failure or interruption. | 82a3f65 |
+| F0.3 task_id E2E | Capture, persistence in Engram, and resumption of the same thread with planner and ca-writer. | #9594 |
 
-## F1 — Núcleo del Agent Loop
+## F1 — Agent Loop core
 
-Objetivo: definir el controlador, el progreso, la terminación, los invariantes y la idempotencia.
+Objective: define the controller, progress, termination, invariants, and idempotency.
 
-| Punto | Estado | Dependencias / paralelo | Merge |
+| Item | Status | Dependencies / parallel | Merge |
 |---|---|---|---|
-| F1.2 Variables de progreso | Implementado y validado | Paralelo con F1.3, F1.4, F1.5, F1.6 | 0f522a7 |
-| F1.4 Invariantes | Implementado y validado | Paralelo con F1.2/F1.3/F1.5 | 3510b2c |
-| F1.3 Terminación | Implementado y validado | Depende de F1.2; paralelo con F1.4/F1.5 | e986bd5 |
-| F1.5 Idempotencia | Implementado y validado | Paralelo con F1.2/F1.3/F1.4 | 1db9197 |
-| F1.6a Presupuesto — observabilidad | Implementado y validado | Paralelo | 3274881 |
-| F1.6b Presupuesto — freno declarado | Implementado y validado | Vive dentro de AgentRun (F1.1) | 712b89f |
-| F1.1 AgentRun | Implementado y validado | Depende de F1.2–F1.5 | 712b89f |
-| Integración de control | Implementado y validado | Consolida el control de F1.2–F1.6 | 761004f |
+| F1.2 Progress variables | Implemented and validated | Parallel with F1.3, F1.4, F1.5, F1.6 | 0f522a7 |
+| F1.4 Invariants | Implemented and validated | Parallel with F1.2/F1.3/F1.5 | 3510b2c |
+| F1.3 Termination | Implemented and validated | Depends on F1.2; parallel with F1.4/F1.5 | e986bd5 |
+| F1.5 Idempotency | Implemented and validated | Parallel with F1.2/F1.3/F1.4 | 1db9197 |
+| F1.6a Budget — observability | Implemented and validated | Parallel | 3274881 |
+| F1.6b Budget — declared brake | Implemented and validated | Lives inside AgentRun (F1.1) | 712b89f |
+| F1.1 AgentRun | Implemented and validated | Depends on F1.2–F1.5 | 712b89f |
+| Control integration | Implemented and validated | Consolidates control from F1.2–F1.6 | 761004f |
 
-Orden de merge aplicado: progreso → invariantes → terminación → idempotencia → presupuesto → integración → AgentRun.
+Applied merge order: progress → invariants → termination → idempotency → budget → integration → AgentRun.
 
-GATE HERMES H0 — ABIERTO: el contrato de F1.1 fue validado.
+HERMES GATE H0 — OPEN: the F1.1 contract was validated.
 
-## F2 — Autonomía operativa
+## F2 — Operational autonomy
 
-Objetivo: reemplazar esperas humanas por políticas, reforzar validación, identidad y evolución de agentes.
+Objective: replace human waits with policies, strengthen validation, identity, and agent evolution.
 
-Grupos paralelos:
-- A fundacional: F2.6 identidad, F2.8 degradación de contexto, F2.9 orquestación paralela.
-- B evolución de agentes: F2.3 CA-Writer y F2.4 Planner, con coordinación.
-- C validación: F2.2 Validator realtime y F2.5 Tester condicional; F2.5 después de F2.2.
+Parallel groups:
+- A foundational: F2.6 identity, F2.8 context degradation, F2.9 parallel orchestration.
+- B agent evolution: F2.3 CA-Writer and F2.4 Planner, with coordination.
+- C validation: F2.2 Realtime Validator and F2.5 Conditional Tester; F2.5 after F2.2.
 
-Secuencia: F2.1 HITL después de F1.1 + F2.6 + F2.2. F2.7 Zero-Assumptions después de F2.6 + F2.1.
+Sequence: F2.1 HITL after F1.1 + F2.6 + F2.2. F2.7 Zero-Assumptions after F2.6 + F2.1.
 
-| Punto | Estado | Dependencias / paralelo | Merge |
+| Item | Status | Dependencies / parallel | Merge |
 |---|---|---|---|
-| F2.1 HITL | Implementado y validado | Validar en implementación cuándo aplica | f15e7b0 |
-| F2.2 Validator realtime | Implementado y validado | Herramientas del harness y validaciones no-plan | ea7e912 |
-| F2.3 CA-Writer | Implementado y validado | Auditoría de contradicciones antes de evolucionar | 7806503 |
-| F2.4 Planner | Implementado y validado | Comunicación mediada entre agentes | c598233 |
-| F2.5 Tester condicional | Implementado y validado | Gate tipo plan-auditor | 4b18f7a |
-| F2.6 Identidad | Implementado y validado | Bug histórico resuelto (#572); alcance Hermes | 546d559 |
-| F2.7 Zero-Assumptions | Implementado y validado | Formalizado para CA-Writer/Planner/Inspector; falta cobertura | b15ab03 |
-| F2.8 Degradación de contexto | Implementado y validado | Inyección progresiva | 6886317 |
-| F2.9 Orquestación paralela | Implementado y validado | Validar si ya se soporta | 248a7e5 |
+| F2.1 HITL | Implemented and validated | Validate during implementation when it applies | f15e7b0 |
+| F2.2 Realtime Validator | Implemented and validated | Harness tools and non-plan validations | ea7e912 |
+| F2.3 CA-Writer | Implemented and validated | Contradiction audit before evolving | 7806503 |
+| F2.4 Planner | Implemented and validated | Mediated communication between agents | c598233 |
+| F2.5 Conditional Tester | Implemented and validated | plan-auditor-like gate | 4b18f7a |
+| F2.6 Identity | Implemented and validated | Historical bug resolved (#572); Hermes scope | 546d559 |
+| F2.7 Zero-Assumptions | Implemented and validated | Formalized for CA-Writer/Planner/Inspector; coverage pending | b15ab03 |
+| F2.8 Context degradation | Implemented and validated | Progressive injection | 6886317 |
+| F2.9 Parallel orchestration | Implemented and validated | Validate whether it is already supported | 248a7e5 |
 
-Gate Hermes H1: F1 completo + F2.1 + F2.6 + F2.7 + F0.3. H1 puede correr en paralelo con F3.
+Hermes gate H1: F1 complete + F2.1 + F2.6 + F2.7 + F0.3. H1 can run in parallel with F3.
 
-## F3 — Producto y distribución
+## F3 — Product and distribution
 
-| Punto | Estado | Nota |
+| Item | Status | Note |
 |---|---|---|
-| F3.1 Instalación por equipo | Aprobado | Primera de F3; paralelo con F1/F2 |
-| F3.2 Registro/adaptador | Aprobado | Carpeta ignorada, no trackeada ni en raíz |
-| F3.3 --profile | Análisis | Después de F3.4 |
-| F3.4 Separación persona/autonomía/permisos | Análisis | Paralelo con F3.1 |
-| F3.5 npm/pnpm | Análisis | pnpm preferido; no retrasar |
-| F3.6 Post-save | Análisis | Independiente |
+| F3.1 Per-team installation | Approved | First of F3; parallel with F1/F2 |
+| F3.2 Registry/adapter | Approved | Ignored folder, not tracked and not at the root |
+| F3.3 --profile | Analysis | After F3.4 |
+| F3.4 Persona/autonomy/permissions separation | Analysis | Parallel with F3.1 |
+| F3.5 npm/pnpm | Analysis | pnpm preferred; do not delay |
+| F3.6 Post-save | Analysis | Independent |
 
-Gate Hermes H2: H1 + permisos de dominio (F4.8) + F3 + auditoría/rollback.
+Hermes gate H2: H1 + domain permissions (F4.8) + F3 + audit/rollback.
 
 ## F4 — Hermes
 
-| Etapa | Alcance | Dependencia |
+| Stage | Scope | Dependency |
 |---|---|---|
-| H0 Shell | Interfaz, configuración, registro de herramientas, esqueleto de permisos | Contrato de F1.1 |
-| H1 Hermes dev-only | Desarrollo usando FlowTask | F1 + F2.1 + F2.6 + F2.7 + F0.3 |
-| H2 Hermes generalista | Archivos, apps, terminal, navegador, automatizaciones | H1 + F4.8 + F3 + auditoría/rollback |
+| H0 Shell | Interface, configuration, tool registry, permissions skeleton | F1.1 contract |
+| H1 Hermes dev-only | Development using FlowTask | F1 + F2.1 + F2.6 + F2.7 + F0.3 |
+| H2 Hermes general-purpose | Files, apps, terminal, browser, automations | H1 + F4.8 + F3 + audit/rollback |
 
 Gates:
-- GATE HERMES H0 — ABIERTO: el contrato de F1.1 fue validado.
-- GATE HERMES H1 — ABIERTO: F1 + F2.1 + F2.6 + F2.7 + F0.3 satisfacen sus condiciones; se puede iniciar en paralelo con F3.
-- GATE HERMES H2 — se puede iniciar.
+- HERMES GATE H0 — OPEN: the F1.1 contract was validated.
+- HERMES GATE H1 — OPEN: F1 + F2.1 + F2.6 + F2.7 + F0.3 satisfy their conditions; it can start in parallel with F3.
+- HERMES GATE H2 — can start.
 
-H2 no se construye desde cero: base de runtime existente + controlador, permisos e interfaz.
+H2 is not built from scratch: existing runtime base + controller, permissions, and interface.
 
-## Descartados
+## Discarded
 
-- Persona no técnica: el producto no apunta a ese perfil.
-- Consistencia de IDs consecutivos: los CAs ya no usan consecutivos.
-- Workspace compartible: workspaces deprecados.
-- Purga automática de task_ids: overkill; manual suficiente.
+- Non-technical persona: the product does not target that profile.
+- Consecutive ID consistency: CAs no longer use consecutive IDs.
+- Shareable workspace: workspaces are deprecated.
+- Automatic task_id purge: overkill; manual is enough.
 
-## Independiente
+## Independent
 
-- LSP + AST-Grep: no bloquea el loop ni Hermes.
+- LSP + AST-Grep: does not block the loop or Hermes.
 
-## Versión
+## Version
 
-- La versión de FlowTask vive solo en .flowtask/package.json.
-- README y docs no hardcodean versión.
-- Bump por fase; release = bump + tag; hotfix = patch.
-- Hermes 1.0 tiene repo/versión propios; FlowTask queda como plugin/motor con versión independiente.
-- OpenCode no se bumpea desde FlowTask.
+- The FlowTask version lives only in .flowtask/package.json.
+- README and docs do not hardcode a version.
+- Bump per phase; release = bump + tag; hotfix = patch.
+- Hermes 1.0 has its own repo/version; FlowTask remains a plugin/engine with an independent version.
+- OpenCode is not bumped from FlowTask.
 
-## Relación con Engram
+## Relationship with Engram
 
-El índice operativo está en architecture/provisional-roadmap-agent-loop-hermes-index. Este documento es la versión humana del plan; Engram conserva el estado operativo y las memorias por punto.
+The operational index is in architecture/provisional-roadmap-agent-loop-hermes-index. This document is the human version of the plan; Engram preserves the operational state and the per-item memories.

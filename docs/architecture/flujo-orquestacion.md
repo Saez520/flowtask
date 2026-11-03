@@ -1,25 +1,25 @@
-> **Histórico:** este flujo conceptual contiene referencias a protocolos retirados. Consultá [../project-history.md](../project-history.md).
+> **Historical:** this conceptual flow contains references to retired protocols. See [../project-history.md](../project-history.md).
 
-# Flujo de orquestación del Runner
+# Runner orchestration flow
 
 ```mermaid
 flowchart TD
-    RUNNER["flowtask-runner<br/>(Lee skill y delega)"]
-    SKILL["SKILL 'flujo-orquestacion' APLICA REGLAS"]
+    RUNNER["flowtask-runner<br/>(Reads skill and delegates)"]
+    SKILL["SKILL 'flujo-orquestacion' APPLIES RULES"]
 
     SKILL --> SIL
     SKILL --> ESP
 
-    subgraph SIL["AGENTE SILENCIADO (Flowtask Genérico)"]
+    subgraph SIL["SILENCED AGENT (Generic Flowtask)"]
         C["[X] flowtask-constructor"]
         T["[X] flowtask-tester"]
         V["[X] flowtask-validator"]
     end
 
-    subgraph ESP["AGENTE ESPECIALIZADO USADO (Stack Técnico)"]
-        TL["[?] TECH-LEAD-ORCHESTRATOR<br/>(Constructor Multi-capa)"]
-        TE["[?] @AGENT-TEST-EXPERT<br/>(Pruebas JUnit/Mockito)"]
-        CR["[?] @AGENT-CODE-REVIEWER<br/>(Vulnerabilidades/Arquitectura)"]
+    subgraph ESP["SPECIALIZED AGENT USED (Technical Stack)"]
+        TL["[?] TECH-LEAD-ORCHESTRATOR<br/>(Multi-layer Constructor)"]
+        TE["[?] @AGENT-TEST-EXPERT<br/>(JUnit/Mockito tests)"]
+        CR["[?] @AGENT-CODE-REVIEWER<br/>(Vulnerabilities/Architecture)"]
     end
 
     RUNNER --> SKILL
@@ -30,10 +30,10 @@ flowchart TD
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ LEYENDA 2: La Skill de Enrutamiento (Comparativa de Silencio)              │
+│ LEGEND 2: The Routing Skill (Silence Comparison)                           │
 ├────────────────────────────────────────────────────────────────────────────┤
-│ Ilustra el contrato de exclusión. El 'runner' lee la skill y               │
-│ "silencia" (omite) a los validadores genéricos de Flowtask, cediendo       │
-│ el control a los expertos nativos del sub-orquestador (ej. Stack Técnico). │
+│ Illustrates the exclusion contract. The 'runner' reads the skill and       │
+│ "silences" (omits) Flowtask's generic validators, handing                    │
+│ control to the sub-orchestrator's native experts (e.g., Technical Stack).  │
 └────────────────────────────────────────────────────────────────────────────┘
 ```

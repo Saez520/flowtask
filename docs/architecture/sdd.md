@@ -1,18 +1,18 @@
-> **Histórico:** este diseño metodológico no es un contrato de ejecución vigente. Consultá [../project-history.md](../project-history.md).
+> **Historical:** this methodological design is not a current execution contract. See [../project-history.md](../project-history.md).
 
-# Specification-Driven Development en FlowTask
+# Specification-Driven Development in FlowTask
 
 ```mermaid
 flowchart TD
-    AR["ANALISTA DE REQUISITOS<br/>Metodologías: SDD (Spec-Driven) + BDD (Behavior-Driven)<br/>Acción: Traduce requerimientos a reglas de negocio (BDD)<br/>Entregable: #quot;master-spec.md#quot; (Especificación Épica)"]
+    AR["REQUIREMENTS ANALYST<br/>Methodologies: SDD (Spec-Driven) + BDD (Behavior-Driven)<br/>Action: Translates requirements into business rules (BDD)<br/>Deliverable: #quot;master-spec.md#quot; (Epic Specification)"]
 
-    TP["TRABAJO EN PARALELO"]
+    TP["PARALLEL WORK"]
 
-    DEV["DESARROLLADOR<br/>Metodologías: DDD + TDD<br/>Herramienta: Flowtask<br/>────────────<br/>1. Adaptación Spec:<br/>Usa agente modificado<br/>(ej. flowtask-subtasker)<br/>para dividir la épica<br/>en múltiples carpetas CA.<br/><br/>2. Arquitectura (DDD):<br/>Define reglas, capas y<br/>convenciones en la memoria<br/>persistente de Engram.<br/><br/>3. Planificación Técnica:<br/>Usa `flowtask-planner`.<br/><br/>4. CHECKPOINT HUMANO:<br/>Audita y aprueba el plan.<br/><br/>5. Implementación (TDD):<br/>Usa `flowtask-tester` para<br/>pruebas unitarias previas.<br/><br/>6. Construcción:<br/>`flowtask-constructor`<br/>escribe el código final."]
+    DEV["DEVELOPER<br/>Methodologies: DDD + TDD<br/>Tool: Flowtask<br/>────────────<br/>1. Spec adaptation:<br/>Uses a modified agent<br/>(e.g., flowtask-subtasker)<br/>to split the epic<br/>into multiple CA folders.<br/><br/>2. Architecture (DDD):<br/>Defines rules, layers, and<br/>conventions in Engram's<br/>persistent memory.<br/><br/>3. Technical Planning:<br/>Uses `flowtask-planner`.<br/><br/>4. HUMAN CHECKPOINT:<br/>Audits and approves the plan.<br/><br/>5. Implementation (TDD):<br/>Uses `flowtask-tester` for<br/>prior unit tests.<br/><br/>6. Construction:<br/>`flowtask-constructor`<br/>writes the final code."]
 
-    QA["QA<br/>Metodología: BDD<br/>Herramienta: Automatización<br/>────────────<br/>1. Preparación (Día 1):<br/>Toma el #quot;master-spec.md#quot;<br/>creado por el analista.<br/><br/>2. Desarrollo de Pruebas:<br/>Programa pruebas de UI<br/>y de integración (E2E)<br/>basadas en los escenarios<br/>Dado/Cuando/Entonces."]
+    QA["QA<br/>Methodology: BDD<br/>Tool: Automation<br/>────────────<br/>1. Preparation (Day 1):<br/>Takes the #quot;master-spec.md#quot;<br/>created by the analyst.<br/><br/>2. Test Development:<br/>Programs UI and<br/>integration (E2E) tests<br/>based on the<br/>Given/When/Then scenarios."]
 
-    VF["VALIDACIÓN FINAL<br/>QA ejecuta la suite E2E general<br/>contra el sistema ensamblado."]
+    VF["FINAL VALIDATION<br/>QA runs the general E2E suite<br/>against the assembled system."]
 
     AR --> TP
     TP --> DEV
@@ -23,18 +23,18 @@ flowchart TD
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│                  GLOSARIO DE ABREVIACIONES                  │
+│                  ABBREVIATION GLOSSARY                      │
 ├─────────────────────────────────────────────────────────────┤
-│ SDD : Spec-Driven Development (Desarrollo basado en la      │
-│       especificación principal)                             │
-│ BDD : Behavior-Driven Development (Desarrollo basado en el  │
-│       comportamiento: Dado que / Cuando / Entonces)         │
-│ DDD : Domain-Driven Design (Diseño guiado por el dominio:   │
-│       Definición de arquitectura y convenciones)            │
-│ TDD : Test-Driven Development (Desarrollo basado en pruebas:│
-│       Crear pruebas unitarias antes que el código)          │
-│ CA  : Criterio de Aceptación (La sub-tarea a desarrollar)   │
-│ E2E : End-to-End (Pruebas de extremo a extremo del sistema) │
-│ QA  : Quality Assurance (Aseguramiento de la Calidad)       │
+│ SDD : Spec-Driven Development (Development based on the     │
+│       main specification)                                   │
+│ BDD : Behavior-Driven Development (Development based on     │
+│       behavior: Given / When / Then)                        │
+│ DDD : Domain-Driven Design (Domain-guided design:           │
+│       Definition of architecture and conventions)           │
+│ TDD : Test-Driven Development (Test-based development:      │
+│       Create unit tests before the code)                    │
+│ CA  : Acceptance Criterion (The sub-task to develop)        │
+│ E2E : End-to-End (End-to-end system tests)                  │
+│ QA  : Quality Assurance                                     │
 └─────────────────────────────────────────────────────────────┘
 ```

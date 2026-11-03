@@ -1,158 +1,158 @@
-# Contexto degradado: niveles, reglas por momento y recuperación verificable
+# Degraded context: levels, rules by moment, and verifiable recovery
 
-El contexto de una ejecución crece con cada lectura, cada búsqueda y cada
-ronda. Este documento describe cómo el sistema degrada esa entrega antes de
-omitirla, cómo inyecta solo las reglas vigentes del momento actual y cómo
-recupera lo durable ya confirmado cuando el hilo pierde contexto o cambia de
-instancia.
+The context of an execution grows with every read, every search, and every
+round. This document describes how the system degrades that delivery before
+omitting it, how it injects only the current moment's rules, and how it
+recovers durable confirmed state when the thread loses context or changes
+instance.
 
-El contrato canónico vive en `.flowtask/skills/context-degradation/SKILL.md`; su
-implementación ejecutable vive en
-`.flowtask/plugins/flowtask-permission-gate/src/context-budget.ts` y su
-aplicación en el flujo, en `.flowtask/agents/runner.md`.
+The canonical contract lives in `.flowtask/skills/context-degradation/SKILL.md`; its
+executable implementation lives in
+`.flowtask/plugins/flowtask-permission-gate/src/context-budget.ts` and its
+application in the flow, in `.flowtask/agents/runner.md`.
 
-## Propósito
+## Purpose
 
-1. Degradar por niveles: avisar, entregar menos detalle y delegar lo omitido.
-2. Inyectar de forma progresiva: solo las reglas del momento actual.
-3. Recuperar de forma verificable: lo ya confirmado, con su fuente y su momento
-   de observación.
-4. No perder información en silencio: nada omitido se presenta como completo.
+1. Degrade by levels: warn, deliver less detail, and delegate what was omitted.
+2. Inject progressively: only the current moment's rules.
+3. Recover verifiably: what was already confirmed, with its source and observation
+   time.
+4. Do not lose information silently: nothing omitted is presented as complete.
 
-## Alcance
+## Scope
 
-| Incluye | Excluye |
+| Includes | Excludes |
 |---------|---------|
-| Los tres niveles de degradación de la entrega | La reescritura o compresión del historial |
-| El pack de reglas de cada momento | La ejecución simultánea de varios trabajos |
-| La recuperación desde los registros durables existentes | La calibración de presupuestos |
-| La herencia de la evidencia verificada | El respaldo de estado en disco |
-| Los avisos observables y su delegación | La decisión de terminación de un trabajo |
+| The three delivery degradation levels | History rewriting or compression |
+| The rule pack for each moment | Simultaneous execution of several jobs |
+| Recovery from existing durable records | Budget calibration |
+| Inheritance of verified evidence | State backup on disk |
+| Observable warnings and their delegation | The termination decision for a job |
 
-## Degradación por niveles
+## Degradation by levels
 
-La degradación ocurre en tres niveles y en ese orden. Un nivel nunca se salta
-para entregar menos sin avisar.
+Degradation occurs in three levels and in that order. A level is never skipped
+to deliver less without warning.
 
-| Nivel | Cuándo ocurre | Qué ve el operador |
+| Level | When it occurs | What the operator sees |
 |-------|---------------|--------------------|
-| Aviso de acotación | El primer pedido amplio del turno. | Qué se pidió, sobre qué ruta, patrón o ventana, y cómo acotarlo. |
-| Entrega reducida | La entrega supera el presupuesto por llamada. | Qué se omitió, cuánto pesaba lo omitido y a quién delegarlo. |
-| Omisión por turno | La suma del turno alcanza el presupuesto acumulado. | El mismo aviso, nombrando el presupuesto acumulado del turno. |
+| Scoping warning | The first broad request of the turn. | What was requested, on which path, pattern, or window, and how to narrow it. |
+| Reduced delivery | The delivery exceeds the per-call budget. | What was omitted, how much the omitted content weighed, and who to delegate it to. |
+| Per-turn omission | The turn total reaches the accumulated budget. | The same warning, naming the turn's accumulated budget. |
 
-### Prohibiciones
+### Prohibitions
 
-- Entregar contenido grande sin aviso.
-- Presentar un recorte como si fuera la respuesta completa.
-- Incluir un preview del contenido omitido.
-- Exponer la cifra del umbral: los mensajes nombran el ámbito del presupuesto
-  aplicado —por llamada o acumulado del turno— y el tamaño real omitido.
-- Recortar en silencio cuando el tamaño no se puede medir: en ese caso se emite
-  una traza con la causa y la entrega se realiza sin recortar.
-- Entregar un adjunto de imagen o documento al flujo que no lo maneja: se
-  delega con su tamaño medido.
+- Delivering large content without warning.
+- Presenting a cut as if it were the complete answer.
+- Including a preview of the omitted content.
+- Exposing the threshold figure: messages name the scope of the applied budget
+  —per call or accumulated per turn— and the real omitted size.
+- Cutting silently when the size cannot be measured: in that case a
+  trace is emitted with the cause and the delivery is made without cutting.
+- Delivering an image or document attachment to a flow that does not handle it: it is
+  delegated with its measured size.
 
-### Adjuntos y mediciones
+### Attachments and measurements
 
-| Situación | Comportamiento |
+| Situation | Behavior |
 |-----------|----------------|
-| La entrega incluye un adjunto de imagen o documento | El texto medido se declara, el adjunto se delega y no se entrega. |
-| La salida de la herramienta no es texto y no se puede medir | Se emite una traza con la causa, la entrega se realiza intacta y la entrega queda marcada como no medible. |
+| The delivery includes an image or document attachment | The measured text is declared, the attachment is delegated, and it is not delivered. |
+| The tool output is not text and cannot be measured | A trace is emitted with the cause, the delivery is made intact, and the delivery is marked as unmeasurable. |
 
-## Reglas por momento
+## Rules by moment
 
-El trabajo avanza por momentos. Cada momento tiene un pack mínimo de reglas
-vigentes: qué se espera, qué está prohibido y qué avisa. El manual completo no
-se repite en cada mensaje.
+Work advances through moments. Each moment has a minimal pack of current
+rules: what is expected, what is prohibited, and what warns. The full manual is not
+repeated in every message.
 
-| Momento | Qué se espera | Qué está prohibido | Qué avisa |
+| Moment | What is expected | What is prohibited | What warns |
 |---------|---------------|--------------------|-----------|
-| `intake` | Clasificación del pedido y encuadre del trabajo. | Arrancar la implementación sin clasificar. | Entrada ambigua. |
-| `define` | Requisito, comportamiento observable y condiciones de fallo. | Reglas de negocio no expresadas. | Requisito supuesto. |
-| `plan` | Tareas, dependencias y orden de ejecución. | Decisiones de diseño no resueltas. | Dependencia no satisfecha. |
-| `build` | Implementación conforme al plan aprobado. | Alcance fuera del plan. | Conflicto de alcance. |
-| `validate` | Evidencia ejecutada y veredicto. | Repetir comprobaciones ya resueltas. | Criterio no evaluable. |
-| `close` | Consolidación, cierre y registro. | Declarar cerrado lo no verificado. | Registro ausente o ilegible. |
+| `intake` | Classification of the request and framing of the work. | Starting implementation without classifying. | Ambiguous input. |
+| `define` | Requirement, observable behavior, and failure conditions. | Unexpressed business rules. | Assumed requirement. |
+| `plan` | Tasks, dependencies, and execution order. | Unresolved design decisions. | Unsatisfied dependency. |
+| `build` | Implementation according to the approved plan. | Scope outside the plan. | Scope conflict. |
+| `validate` | Executed evidence and verdict. | Repeating already resolved checks. | Non-evaluable criterion. |
+| `close` | Consolidation, close, and record. | Declaring unverified work closed. | Missing or unreadable record. |
 
-Reglas transversales:
+Cross-cutting rules:
 
-- Al cambiar de momento se carga el pack nuevo y lo ya resuelto se hereda por
-  referencia: la evidencia verificada no se re-verifica por rutina.
-- Si el pack no se muestra, se declara que no se mostró y el trabajo no se
-  presenta como identificado.
-- Si la memoria del proyecto no está disponible, se declara la fuente que
-  faltó y se continúa con la siguiente fuente disponible; la ausencia no se
-  trata como confirmación.
-- El pack describe conducta, no cifras: los umbrales no se muestran.
+- When changing moments, the new pack is loaded and what was already resolved is inherited by
+  reference: verified evidence is not re-verified by routine.
+- If the pack is not shown, it is declared that it was not shown and the work is not
+  presented as identified.
+- If project memory is unavailable, the missing source is declared and work continues
+  with the next available source; absence is not
+  treated as confirmation.
+- The pack describes behavior, not figures: thresholds are not shown.
 
-## Recuperación verificable
+## Verifiable recovery
 
-La recuperación se ejecuta antes de actuar cuando el hilo perdió contexto por
-compactación, cuando cambió de instancia por capacidad o cuando se abrió un
-hilo nuevo para continuar un trabajo en curso.
+Recovery runs before acting when the thread lost context due to
+compaction, when it changed instance due to capacity, or when a new
+thread was opened to continue an in-progress job.
 
-### Fuentes y orden de consulta
+### Sources and query order
 
-| Orden | Fuente | Qué aporta |
+| Order | Source | What it provides |
 |-------|--------|------------|
-| 1 | Mapa de instancias | Quién está a cargo, con qué tarea y en qué estado. |
-| 2 | Plan aprobado | Las tareas, su orden y las decisiones ya tomadas. |
-| 3 | Registro de ejecución | El estado de la ejecución, la ronda vigente y las referencias a los demás registros. |
-| 4 | Registro de progreso | La última instantánea confirmada y sus variables observables. |
-| 5 | Registro de gasto | Los totales acumulados y la última compuerta evaluada. |
+| 1 | Instance map | Who is in charge, with which task, and in what state. |
+| 2 | Approved plan | The tasks, their order, and the decisions already made. |
+| 3 | Execution record | The execution state, the current round, and references to the other records. |
+| 4 | Progress record | The last confirmed snapshot and its observable variables. |
+| 5 | Spend record | The accumulated totals and the last evaluated gate. |
 
-De esos registros se recuperan `round.number`, `variables`,
+From those records, `round.number`, `variables`,
 `integrity.last_snapshot_id`, `tokens.total`, `time.active_time_ms`,
-`cost.estimated_usd` e `integrity.last_confirmed_at`.
+`cost.estimated_usd`, and `integrity.last_confirmed_at` are recovered.
 
-### Bloque de declaración
+### Declaration block
 
-Todo lo recuperado se declara con su fuente y su momento de observación:
+Everything recovered is declared with its source and observation time:
 
 ```
-Recuperación de contexto:
-- Decisiones vigentes: {lista} (fuente: {ref}, observado: {ISO-8601})
-- Progreso confirmado: ronda {N}; tareas {A}/{B}; criterios {C}/{D} (fuente: {ref}, observado: {ISO-8601})
-- Gasto acumulado: tokens {T}; tiempo activo {A}; costo estimado {C} (fuente: {ref}, observado: {ISO-8601})
-- Última ronda confirmada: {N} (fuente: {ref})
-- Huecos no registrados: {lista o "ninguno"}
-- Para retomar: {qué falta o "nada"}
+Context recovery:
+- Current decisions: {list} (source: {ref}, observed: {ISO-8601})
+- Confirmed progress: round {N}; tasks {A}/{B}; criteria {C}/{D} (source: {ref}, observed: {ISO-8601})
+- Accumulated spend: tokens {T}; active time {A}; estimated cost {C} (source: {ref}, observed: {ISO-8601})
+- Last confirmed round: {N} (source: {ref})
+- Unrecorded gaps: {list or "none"}
+- To resume: {what is missing or "nothing"}
 ```
 
-### Pausa material y etiqueta periférica
+### Material pause and peripheral label
 
-| Situación | Respuesta |
+| Situation | Response |
 |-----------|-----------|
-| Lo material para continuar no está confirmado | Pausa con motivo `progress_unavailable` o `record_unavailable`, última confirmación conservada y condición exacta de reanudación. |
-| La ejecución activa es ambigua | Respuesta `no disponible` y pausa: no se elige por conveniencia. |
-| Un registro es ilegible o contradictorio | Se declara la contradicción y se pausa; no se sobrescribe ni se fusionan registros contradictorios. |
-| Falta un dato periférico | Se continúa etiquetándolo `[No verificado]`; la ausencia de una fuente menor no detiene el trabajo. |
-| Falta un dato material sin exigencia vigente | Se declara el hueco y se continúa en modo degradado declarado. |
+| What is material to continue is not confirmed | Pause with reason `progress_unavailable` or `record_unavailable`, last confirmation preserved, and exact resumption condition. |
+| The active execution is ambiguous | Response `no disponible` and pause: it is not chosen by convenience. |
+| A record is unreadable or contradictory | The contradiction is declared and the execution pauses; contradictory records are not overwritten or merged. |
+| A peripheral datum is missing | Work continues, labeling it `[No verificado]`; the absence of a minor source does not stop the work. |
+| A material datum is missing without a current requirement | The gap is declared and work continues in a declared degraded mode. |
 
-Nunca se declara cero por falta de datos: lo ausente se declara ausente.
+Zero is never declared for lack of data: what is absent is declared absent.
 
-## Herencia y discrepancia
+## Inheritance and discrepancy
 
-La evidencia heredada conserva su fuente y su momento de observación. La ronda
-siguiente solo verifica el dato nuevo material que introduce.
+Inherited evidence keeps its source and observation time. The next round
+only verifies the new material datum it introduces.
 
-| Situación | Efecto |
+| Situation | Effect |
 |-----------|--------|
-| La evidencia heredada contradice lo observado en la ronda | Se declara qué discrepa y en qué, y la ejecución se pausa antes de imponer un cambio de alcance. |
-| Un registro de un momento anterior sigue vigente | Se reutiliza por referencia: no se re-verifica por rutina. |
+| Inherited evidence contradicts what was observed in the round | What disagrees and how is declared, and execution pauses before imposing a scope change. |
+| A record from an earlier moment is still current | It is reused by reference: it is not re-verified by routine. |
 
-La contradicción no se resuelve suponiendo cuál de las dos fuentes tiene razón,
-y no se oculta.
+The contradiction is not resolved by assuming which of the two sources is right,
+and it is not hidden.
 
-## Referencias relacionadas
+## Related references
 
-- [INDEX.md](./INDEX.md) — índice de la arquitectura vigente.
-- [validacion.md](./validacion.md) — validación en caliente, evidencia ejecutada y veredicto único.
-- [verificacion-material.md](./verificacion-material.md) — verificación material, evidencia citable y herencia entre roles.
-- [../permission-gate.md](../permission-gate.md) — permisos, presupuesto de contexto y review-stamp.
-- `.flowtask/skills/context-degradation/SKILL.md` — contrato canónico de la degradación y la recuperación.
-- `.flowtask/plugins/flowtask-permission-gate/src/context-budget.ts` — niveles de degradación y estado de avisos.
-- `.flowtask/agents/runner.md` — packs por momento y bloque de recuperación.
+- [INDEX.md](./INDEX.md) — index of the current architecture.
+- [validacion.md](./validacion.md) — live validation, executed evidence, and single verdict.
+- [verificacion-material.md](./verificacion-material.md) — material verification, citable evidence, and inheritance across roles.
+- [../permission-gate.md](../permission-gate.md) — permissions, context budget, and review-stamp.
+- `.flowtask/skills/context-degradation/SKILL.md` — canonical contract for degradation and recovery.
+- `.flowtask/plugins/flowtask-permission-gate/src/context-budget.ts` — degradation levels and warning state.
+- `.flowtask/agents/runner.md` — packs by moment and recovery block.
 - `.flowtask/agents/ca-writer.md`, `.flowtask/agents/planner.md`,
-  `.flowtask/agents/constructor.md`, `.flowtask/agents/validator.md` — pack
-  vigente de cada momento.
+  `.flowtask/agents/constructor.md`, `.flowtask/agents/validator.md` — current
+  pack for each moment.

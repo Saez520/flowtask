@@ -298,7 +298,7 @@ describe("repo-cleanup skill: descubrimiento por directorio", () => {
   it("la documentacion declara la ausencia de registro editorial", () => {
     const doc = flat(read("docs/architecture/integracion-skills.md"));
     assert.ok(
-      doc.includes("no existe un skill registry editorial"),
+      doc.includes("there is no editorial skill registry"),
       "la documentacion debe declarar que no hay registro editorial de skills",
     );
   });

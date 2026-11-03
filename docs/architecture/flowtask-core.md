@@ -1,17 +1,17 @@
-> **Histórico:** este snapshot conceptual conserva referencias al classifier y módulos retirados. No describe la arquitectura vigente. Consultá [../README.md](../README.md).
+> **Historical:** this conceptual snapshot preserves references to the classifier and retired modules. It does not describe the current architecture. See [../README.md](../README.md).
 
-## 1. Arquitectura Global: El "Handshake" Modular
+## 1. Global Architecture: The Modular "Handshake"
 
-Este diagrama muestra cómo se conectan los módulos principales. El Runner no trabaja solo; orquestra la relación entre el Input, la Memoria (Engram) y los Sub-agentes.
+This diagram shows how the main modules connect. The Runner does not work alone; it orchestrates the relationship between Input, Memory (Engram), and Subagents.
 
 ```mermaid
 flowchart TD
     ECO["FLOWTASK CORE ECOSYSTEM"]
-    RUNNER["RUNNER (Orchestrator)<br/>(Identifica Intención -> Delega -> Reporta)"]
+    RUNNER["RUNNER (Orchestrator)<br/>(Identifies Intent -> Delegates -> Reports)"]
     PLUGINS["PLUGINS<br/>(Classifier)"]
     SKILLS["SKILLS<br/>(Protocols)"]
-    MEMORIA["MEMORIA<br/>(Engram)"]
-    AGENTES["AGENTES<br/>(Workers)"]
+    MEMORIA["MEMORY<br/>(Engram)"]
+    AGENTES["AGENTS<br/>(Workers)"]
     USER["USER INPUT"]
     WS["WORKSPACE"]
     FS["FS CHANGES"]

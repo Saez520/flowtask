@@ -1,13 +1,13 @@
-> **Histórico:** este diseño describe el classifier deprecado y la inyección `FLOWTASK_CLASSIFICATION`. No es el mecanismo vigente. Consultá [../project-history.md](../project-history.md).
+> **Historical:** this design describes the deprecated classifier and `FLOWTASK_CLASSIFICATION` injection. It is not the current mechanism. See [../project-history.md](../project-history.md).
 
-## 2. El Sistema de Clasificación (Plugin Link)
+## 2. The Classification System (Plugin Link)
 
-Cómo el plugin intercepta el mensaje antes de que el Runner lo procese, evitando que el Runner tenga que "adivinar".
+How the plugin intercepts the message before the Runner processes it, preventing the Runner from having to "guess".
 
 ```mermaid
 flowchart TD
     DEV["DEVELOPER"] --> IDE["IDE / CONSOLE"]
-    IDE --> PLUGIN["PLUGIN: flowtask-classifier<br/>(Intercepta 'chat.message')"]
-    PLUGIN --> INJECT["Inyecta: FLOWTASK_CLASSIFICATION<br/>en el System Prompt del Runner"]
-    INJECT --> RUNNER["RUNNER: Lee tag y elige Agente<br/>(ca-writer, planner, etc.)"]
+    IDE --> PLUGIN["PLUGIN: flowtask-classifier<br/>(Intercepts 'chat.message')"]
+    PLUGIN --> INJECT["Injects: FLOWTASK_CLASSIFICATION<br/>into the Runner's System Prompt"]
+    INJECT --> RUNNER["RUNNER: Reads tag and chooses Agent<br/>(ca-writer, planner, etc.)"]
 ```

@@ -364,8 +364,8 @@ describe("installGraphify", () => {
       runFn: () => ({ status: 1, stderr: "falló" }),
     });
     assert.equal(result.success, false);
-    assert.ok(result.warning.includes("Reintenta con flowtask update"));
-    assert.ok(result.warning.includes("contacta a un administrador"));
+    assert.ok(result.warning.includes("Retry with flowtask update"));
+    assert.ok(result.warning.includes("contact an administrator"));
     assert.equal(result.exitCode, 1);
     assert.equal(result.stderr, "falló");
   });
@@ -476,7 +476,7 @@ describe("installHooks", () => {
       runFn: () => ({ status: 1 }),
     });
     assert.equal(result.success, false);
-    assert.ok(result.warning.includes("hooks fallaron"));
+    assert.ok(result.warning.includes("hooks failed"));
   });
 
   it("returns failure when hook runner throws", () => {
@@ -597,8 +597,8 @@ describe("coordinateGraphify", () => {
       createInterface: () => ({
         question: (prompt, cb) => {
           // Determine which question based on prompt content
-          if (prompt.includes("Instalarlo")) cb(answers.install ?? "y");
-          else if (prompt.includes("Habilitar")) cb(answers.enable ?? "y");
+          if (prompt.includes("Install it now")) cb(answers.install ?? "y");
+          else if (prompt.includes("Enable Graphify")) cb(answers.enable ?? "y");
           else if (prompt.includes("hooks")) cb(answers.hooks ?? "y");
           else cb("y");
         },
@@ -724,7 +724,7 @@ describe("coordinateGraphify", () => {
       createInterface: () => ({
         question: (prompt, cb) => {
           if (prompt.includes("hooks")) hooksPrompts++;
-          if (prompt.includes("Habilitar")) cb("y");
+          if (prompt.includes("Enable Graphify")) cb("y");
           else cb("n");
         },
         close: () => {},
@@ -748,7 +748,7 @@ describe("coordinateGraphify", () => {
     assert.equal(projectState.extract_status, "success");
     assert.equal(projectState.query_status, "success");
     assert.equal(hooksPrompts, 0);
-    assert.ok(warnings.some((warning) => warning.includes("sin repositorio git")));
+    assert.ok(warnings.some((warning) => warning.includes("no git repository")));
   });
 
   it("git repo present: hooks prompt shown", async () => {
@@ -757,7 +757,7 @@ describe("coordinateGraphify", () => {
       createInterface: () => ({
         question: (prompt, cb) => {
           if (prompt.includes("hooks")) hooksPrompts++;
-          if (prompt.includes("Habilitar")) cb("y");
+          if (prompt.includes("Enable Graphify")) cb("y");
           else if (prompt.includes("hooks")) cb("n");
           else cb("y");
         },
@@ -834,7 +834,7 @@ describe("coordinateGraphify", () => {
 
     assert.equal(projectState.enabled, false);
     assert.equal(projectState.lastInitializationResult, "failed");
-    assert.ok(warnings.some((w) => w.includes("Reintenta con flowtask update")));
+    assert.ok(warnings.some((w) => w.includes("Retry with flowtask update")));
     const globalState = loadGlobalState();
     assert.equal(globalState.lastInstallMethod, "override");
     assert.equal(globalState.lastInstallCommand, "custom install graphifyy");
@@ -864,7 +864,7 @@ describe("coordinateGraphify", () => {
 
     assert.equal(projectState.enabled, true);
     assert.equal(projectState.hooksInstalled, false);
-    assert.ok(warnings.some((w) => w.includes("hooks fallaron")));
+    assert.ok(warnings.some((w) => w.includes("hooks failed")));
   });
 
   it("never throws on any failure path", async () => {
@@ -1119,7 +1119,7 @@ describe("resolveGraphifyPackageDir", () => {
     const resolution = resolveGraphifyPackageDir({ detectFn: () => false });
     assert.equal(resolution.packageDir, null);
     assert.equal(resolution.source, null);
-    assert.ok(resolution.error.includes("intérprete"));
+    assert.ok(resolution.error.includes("interpreter"));
   });
 
   it("falla cuando el intérprete no puede importar graphify", () => {
@@ -1129,7 +1129,7 @@ describe("resolveGraphifyPackageDir", () => {
       runFn: () => ({ status: 1, stdout: "", stderr: "ModuleNotFoundError" }),
     });
     assert.equal(resolution.packageDir, null);
-    assert.ok(resolution.error.includes("no se pudo resolver el paquete graphify"));
+    assert.ok(resolution.error.includes("could not resolve the graphify package"));
   });
 });
 
@@ -1200,7 +1200,7 @@ describe("registerOpencodeSkill", () => {
     const result = registerOpencodeSkill({ projectDir });
     assert.equal(result.status, "failed");
     assert.ok(result.warning.startsWith("Graphify skill-registration:"));
-    assert.ok(result.warning.includes("Reintenta con flowtask update"));
+    assert.ok(result.warning.includes("Retry with flowtask update"));
     assert.ok(result.warning.includes("SKILL.md"));
     // El resto del bundle se copió; el fallo no bloquea ni deja residuos.
     assert.ok(fs.existsSync(path.join(skillRoot(), "references", "extraction-spec.md")));
@@ -1237,7 +1237,7 @@ describe("registerOpencodeSkill", () => {
     const result = registerOpencodeSkill({ projectDir, detectFn: () => false });
     assert.equal(result.status, "failed");
     assert.ok(result.warning.startsWith("Graphify skill-registration:"));
-    assert.ok(result.warning.includes("Reintenta con flowtask update"));
+    assert.ok(result.warning.includes("Retry with flowtask update"));
     assert.equal(fs.existsSync(skillRoot()), false);
   });
 });
@@ -1257,8 +1257,8 @@ describe("coordinateGraphify — fase de registro de skill opencode", () => {
     return {
       createInterface: () => ({
         question: (prompt, cb) => {
-          if (prompt.includes("Instalarlo")) cb(answers.install ?? "y");
-          else if (prompt.includes("Habilitar")) cb(answers.enable ?? "y");
+          if (prompt.includes("Install it now")) cb(answers.install ?? "y");
+          else if (prompt.includes("Enable Graphify")) cb(answers.enable ?? "y");
           else if (prompt.includes("hooks")) cb(answers.hooks ?? "n");
           else cb("y");
         },
@@ -1370,7 +1370,7 @@ describe("coordinateGraphify — fase de registro de skill opencode", () => {
     assert.equal(projectState.initialized, true); // el flujo principal concluye
     assert.equal(projectState.opencodeSkillRegistered, "failed");
     assert.ok(warnings.some((warning) =>
-      warning.startsWith("Graphify skill-registration:") && warning.includes("Reintenta con flowtask update")
+      warning.startsWith("Graphify skill-registration:") && warning.includes("Retry with flowtask update")
     ));
     assert.equal(fs.existsSync(path.join(projectDir, ".opencode", "skills", "graphify")), false);
 

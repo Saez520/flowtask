@@ -1,172 +1,171 @@
-# Pruebas por huecos de verificación: presupuesto y herencia
+# Gap-driven tests: budget and inheritance
 
-Las pruebas automáticas se generan solo cuando falta verificación real.
-Este documento describe su arquitectura; el contrato canónico vive en
-`.flowtask/agents/tester.md`, `.flowtask/agents/runner.md` y
+Automated tests are generated only when real verification is missing.
+This document describes their architecture; the canonical contract lives in
+`.flowtask/agents/tester.md`, `.flowtask/agents/runner.md`, and
 `.flowtask/agents/validator.md`.
 
-## Propósito
+## Purpose
 
-Generar pruebas por riesgo producía volumen sin beneficio: el flujo casi siempre
-concluía que hacían falta, escribía decenas de casos por entrega y duplicaba lo
-que el plan ya declaraba como comprobación. El costo crecía y la detección de
-defectos no.
+Generating tests by risk produced volume without benefit: the flow almost always
+concluded they were needed, wrote dozens of cases per delivery, and duplicated what
+the plan already declared as a check. Cost grew while defect detection did not.
 
-La política por huecos cambia el disparador:
+The gap-driven policy changes the trigger:
 
-1. el plan declara cómo se verifica cada criterio de aceptación;
-2. solo los criterios sin vía suficiente se convierten en huecos;
-3. el Tester escribe como máximo una prueba por hueco y tres por entrega;
-4. la validación hereda el reporte sin repetir lo comprobado.
+1. the plan declares how each acceptance criterion is verified;
+2. only criteria without a sufficient path become gaps;
+3. the Tester writes at most one test per gap and three per delivery;
+4. validation inherits the report without repeating what was checked.
 
-## Hueco de verificación
+## Verification gap
 
-Un **hueco de verificación** es un criterio de aceptación cuyo incumplimiento no
-puede observarse con una prueba existente, un comando determinista ni la
-comprobación manual que el plan ya declara.
+A **verification gap** is an acceptance criterion whose non-compliance cannot
+be observed with an existing test, a deterministic command, or the
+manual check that the plan already declares.
 
-El disparador de la generación es uno de estos:
+The generation trigger is one of these:
 
-| Situación | Resultado |
+| Situation | Result |
 |-----------|-----------|
-| El plan declara al menos un hueco con defecto y motivo. | El Tester genera para esos huecos dentro del presupuesto. |
-| El pedido nombra un criterio del plan y un defecto no cubierto. | Se registra como hueco `explicit_request` dentro del presupuesto. |
-| El pedido es genérico y el plan no declara huecos. | `needs_decision`: no se genera nada. |
-| El pedido nombra un criterio ausente del plan. | `needs_decision`: el Tester no inventa criterios ni alcance. |
-| Un gap no declara defecto ni motivo. | `needs_decision`: se pide la corrección del plan. |
-| Un criterio no declara vía. | Se reporta `not_covered` con `missing_verification_path`; no se inventa una prueba. |
-| Un gap ya tiene cobertura. | `no_gaps` con la referencia existente; no se duplica cobertura. |
+| The plan declares at least one gap with a defect and reason. | The Tester generates for those gaps within the budget. |
+| The request names a plan criterion and an uncovered defect. | It is recorded as an `explicit_request` gap within the budget. |
+| The request is generic and the plan declares no gaps. | `needs_decision`: nothing is generated. |
+| The request names a criterion absent from the plan. | `needs_decision`: the Tester does not invent criteria or scope. |
+| A gap declares no defect or reason. | `needs_decision`: correction of the plan is requested. |
+| A criterion declares no path. | `not_covered` is reported with `missing_verification_path`; no test is invented. |
+| A gap already has coverage. | `no_gaps` with the existing reference; coverage is not duplicated. |
 
-Sin huecos declarados ni pedido válido, el flujo continúa a validación sin
-generar pruebas y sin pedir confirmación.
+Without declared gaps or a valid request, the flow continues to validation without
+generating tests and without asking for confirmation.
 
-## Verificación por criterio en el plan
+## Per-criterion verification in the plan
 
-Todo plan con criterios de comportamiento incluye la sección
-`## Verificación por criterio` con una fila por criterio material:
+Every plan with behavior criteria includes the section
+`## Verification by criterion` with one row per material criterion:
 
-| Criterio | Vía | Referencia | Defecto | Por qué la vía no lo detecta |
+| Criterion | Path | Reference | Defect | Why the path does not detect it |
 |----------|-----|------------|---------|------------------------------|
-| Criterio material. | `existing_test`, `command`, `manual` o `gap`. | Archivo y caso, comando, o pasos manuales. | Incumplimiento que quedaría sin detectar. | Motivo por el que la vía no lo observa. |
+| Material criterion. | `existing_test`, `command`, `manual`, or `gap`. | File and case, command, or manual steps. | Non-compliance that would go undetected. | Reason the path does not observe it. |
 
-Reglas del plan:
+Plan rules:
 
-- Cada criterio material tiene su fila.
-- `existing_test` cita archivo y caso; `command` cita comando y resultado
-  esperado; `manual` cita pasos y observación esperada.
-- `gap` exige defecto y `why_not_detected`.
-- Un criterio sin vía se marca `gap` con defecto y motivo; no se rellena con una
-  comprobación ficticia.
-- El plan no escribe código de prueba: las tareas ejecutan pruebas existentes,
-  comandos o comprobaciones manuales, pero no crean ni editan archivos de test.
-- No se usan plantillas genéricas, no se afirma sobre prosa literal salvo que sea
-  un formato consumido por otro componente y no se duplica cobertura.
+- Each material criterion has its row.
+- `existing_test` cites file and case; `command` cites command and expected
+  result; `manual` cites steps and expected observation.
+- `gap` requires a defect and `why_not_detected`.
+- A criterion without a path is marked `gap` with defect and reason; it is not filled with a
+  fictitious check.
+- The plan does not write test code: tasks run existing tests,
+  commands, or manual checks, but do not create or edit test files.
+- Generic templates are not used, claims are not made about literal prose unless it is
+  a format consumed by another component, and coverage is not duplicated.
 
-La auditoría rechaza un plan sin la sección, un gap sin defecto o motivo, un gap
-con cobertura existente, una tarea que crea o edita tests y una comprobación de
-relleno o duplicada. Un plan sin tareas de prueba no es un blocker.
+The audit rejects a plan without the section, a gap without a defect or reason, a gap
+with existing coverage, a task that creates or edits tests, and a filler or duplicated
+check. A plan without test tasks is not a blocker.
 
-## Presupuesto
+## Budget
 
-El presupuesto es fijo y no varía por entorno:
+The budget is fixed and does not vary by environment:
 
-| Regla | Valor |
+| Rule | Value |
 |-------|-------|
-| Pruebas por hueco | 1 prueba por hueco. |
-| Techo por entrega | 3 pruebas. |
-| Valor por defecto | 0 pruebas si no hay huecos ni pedido válido. |
+| Tests per gap | 1 test per gap. |
+| Ceiling per delivery | 3 tests. |
+| Default | 0 tests if there are no gaps or no valid request. |
 
-El techo no es cuota: no se completa con relleno. La selección respeta el orden
-del plan. Lo que excede el techo se reporta como hueco no cubierto con motivo
-`budget_limit` y no se escribe.
+The ceiling is not a quota: it is not filled with padding. Selection respects the plan's
+order. What exceeds the ceiling is reported as an uncovered gap with reason
+`budget_limit` and is not written.
 
-## Generación y reporte
+## Generation and report
 
-Solo el Tester escribe código de prueba, y solo para huecos declarados. Cada
-prueba declara en su encabezado:
+Only the Tester writes test code, and only for declared gaps. Each
+test declares in its header:
 
-| Campo | Contenido |
+| Field | Content |
 |-------|-----------|
-| `gap_ref` | Hueco que cubre. |
-| Criterio | Criterio de aceptación asociado. |
-| Defecto | Incumplimiento que detecta. |
-| `why_not_detected` | Por qué la vía del plan no lo detectaba. |
-| Comportamiento observable | Resultado esperado ante una condición. |
+| `gap_ref` | Gap it covers. |
+| Criterion | Associated acceptance criterion. |
+| Defect | Non-compliance it detects. |
+| `why_not_detected` | Why the plan's path did not detect it. |
+| Observable behavior | Expected result under a condition. |
 
-Sin defecto nombrado no se escribe la prueba. Se comprueba comportamiento, no
-estructura interna. No se usan plantillas genéricas, no se duplica cobertura, no
-se afirma sobre prosa literal no consumida y no se agregan dependencias ni red.
+Without a named defect, the test is not written. Behavior is checked, not
+internal structure. Generic templates are not used, coverage is not duplicated, claims
+are not made about unconsumed literal prose, and no dependencies or network are added.
 
-El reporte se registra en `ca/CA-{ID}/artifact/tests-report` con `plan_ref`,
+The report is recorded in `ca/CA-{ID}/artifact/tests-report` with `plan_ref`,
 `execution_id`, `status`, `environment`, `report_detail`, `gaps_declared`,
-`gaps_covered`, `gaps_not_covered`, `generated`, `coverage`, `commands`, `limits`
-y `persistence`. No referencia un artifact de decisión porque no existe.
+`gaps_covered`, `gaps_not_covered`, `generated`, `coverage`, `commands`, `limits`,
+and `persistence`. It does not reference a decision artifact because none exists.
 
-El estado del flujo se registra en `flow-state/CA-{ID}/tests` con tratamiento
-ligero. Si la persistencia falla, el Tester informa el fallo operativo y no
-anuncia la entrega como lista para validar.
+Flow state is recorded in `flow-state/CA-{ID}/tests` with light treatment. If
+persistence fails, the Tester reports the operational failure and does not
+announce the delivery as ready for validation.
 
-| Elemento | Estados |
+| Element | States |
 |----------|---------|
-| Prueba | `passed`, `failed` o `unverified`. |
-| Criterio | `covered`, `not_covered`, `failed` o `unverified`. |
+| Test | `passed`, `failed`, or `unverified`. |
+| Criterion | `covered`, `not_covered`, `failed`, or `unverified`. |
 
-`failed` es un incumplimiento funcional: el comportamiento esperado no se
-cumple. `unverified` es una limitación de herramienta o de entorno: no se pudo
-comprobar.
+`failed` is a functional non-compliance: the expected behavior is not
+met. `unverified` is a tool or environment limitation: it could not be
+checked.
 
-El detalle del mensaje al operador sigue el `policy.profile` vigente: `detailed`
-en desarrollo y `concise` en producción.
+The detail of the operator message follows the current `policy.profile`: `detailed`
+in development and `concise` in production.
 
-## Herencia en la validación
+## Inheritance in validation
 
-La validación recibe `plan_ref`, `tests_report_ref` y `tests_gaps`, y hereda el
-reporte con su fuente y su momento de observación sin re-ejecutar lo comprobado.
+Validation receives `plan_ref`, `tests_report_ref`, and `tests_gaps`, and inherits the
+report with its source and observation time without re-running what was checked.
 
-| Situación | Resultado |
+| Situation | Result |
 |-----------|-----------|
-| Sin gaps y reporte `NONE` | No se espera reporte; la validación sigue su curso normal. |
-| Con gaps y reporte ausente, ilegible o incompleto | Fallo operativo con causa `tests_report_missing`; el alcance queda `unverified` y no se aprueba. |
-| Test `failed` | Rechazo funcional, con el caso, el comando, el esperado y el obtenido. |
-| Test `passed` | Evidencia verificada, heredada sin re-ejecutar. |
-| Criterio no cubierto o no verificable | Verificación manual o declaración como no verificado con su causa. |
+| No gaps and report `NONE` | No report is expected; validation follows its normal course. |
+| With gaps and report missing, unreadable, or incomplete | Operational failure with cause `tests_report_missing`; the scope remains `unverified` and is not approved. |
+| Test `failed` | Functional rejection, with the case, command, expected, and actual. |
+| Test `passed` | Verified evidence, inherited without re-running. |
+| Criterion not covered or not verifiable | Manual verification or declaration as unverified with its cause. |
 
-Un reporte incompleto es el que no declara todos los gaps del plan. Una
-herramienta ausente no se presenta como incumplimiento del trabajo: se conserva
-lo alcanzado y se informa la causa y el alcance no verificado.
+An incomplete report is one that does not declare all the plan's gaps. A missing
+tool is not presented as non-compliance of the work: what was reached is preserved
+and the cause and unverified scope are reported.
 
-## Sin interruptores
+## No switches
 
-No existe un interruptor para activar o desactivar la generación por entrega: el
-disparador es el hueco declarado y el presupuesto es fijo.
+There is no switch to enable or disable generation per delivery: the
+trigger is the declared gap and the budget is fixed.
 
-| No hay | Por qué |
+| There is no | Why |
 |--------|---------|
-| Interruptor por entrega | El disparador es el hueco, no una configuración por flujo. |
-| Puntaje o umbral de riesgo | La decisión es binaria: hay hueco o no lo hay. |
-| Pregunta al desarrollador | Generar o no generar no se consulta: el hueco y el pedido válido lo determinan. |
-| Agente o skill nuevos | El contrato vive en los agentes existentes. |
-| Artifact de decisión | El plan declara los huecos; el Tester solo genera y reporta. |
+| Per-delivery switch | The trigger is the gap, not a per-flow configuration. |
+| Risk score or threshold | The decision is binary: there is a gap or there is not. |
+| Question to the developer | Whether to generate is not consulted: the gap and the valid request determine it. |
+| New agent or skill | The contract lives in the existing agents. |
+| Decision artifact | The plan declares the gaps; the Tester only generates and reports. |
 
-## Verificación
+## Verification
 
-Desde la raíz del repositorio:
+From the repository root:
 
 ```
 node --test '.flowtask/bin/test/tester-conditional-gate.test.js'
 ```
 
-La prueba afirma el contrato del Tester, del Runner y del Validator, las claves
-de memoria y la higiene de coordinación, y falla ante una copia que reintroduce
-una decisión previa, pierde el presupuesto 1/3/0, omite el defecto o el motivo
-del hueco, acepta relleno o cobertura duplicada, pierde el reporte o confunde el
-fallo funcional con el de herramienta.
+The test asserts the Tester, Runner, and Validator contract, the memory keys,
+and coordination hygiene, and fails on a copy that reintroduces
+a previous decision, loses the 1/3/0 budget, omits the gap's defect or reason,
+accepts padding or duplicated coverage, loses the report, or confuses functional
+failure with tool failure.
 
-## Referencias relacionadas
+## Related references
 
-- [INDEX.md](./INDEX.md) — índice de la arquitectura vigente.
-- [validacion.md](./validacion.md) — validación en caliente, evidencia ejecutada y veredicto único.
-- [../core-flowtask.md](../core-flowtask.md) — flujo principal de una ejecución.
-- `.flowtask/agents/tester.md` — contrato del agente que genera pruebas por huecos.
-- `.flowtask/agents/runner.md` — despacho de la generación por huecos.
-- `.flowtask/agents/validator.md` — herencia del reporte de pruebas.
+- [INDEX.md](./INDEX.md) — index of the current architecture.
+- [validacion.md](./validacion.md) — live validation, executed evidence, and single verdict.
+- [../core-flowtask.md](../core-flowtask.md) — main flow of an execution.
+- `.flowtask/agents/tester.md` — contract of the agent that generates gap-driven tests.
+- `.flowtask/agents/runner.md` — dispatch of gap-driven generation.
+- `.flowtask/agents/validator.md` — inheritance of the test report.

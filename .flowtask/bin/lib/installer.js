@@ -476,7 +476,7 @@ function checkEngram() {
 async function promptFerrisSearch(flowtaskDir, readline) {
   const SUPPORTED_PLATFORMS = ["darwin", "win32"];
   if (!SUPPORTED_PLATFORMS.includes(process.platform)) {
-    logInfo(`ferris-search MCP no está disponible en ${process.platform}. Omitiendo.`);
+    logInfo(`ferris-search MCP is not available on ${process.platform}. Skipping.`);
     return;
   }
   const binaryName = process.platform === "win32"
@@ -489,7 +489,7 @@ async function promptFerrisSearch(flowtaskDir, readline) {
   }
   const answer = await new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(`${COLORS.cyan}?${COLORS.reset} ¿Instalar ferris-search MCP para web search? ${COLORS.dim}(Y/n):${COLORS.reset} `, (ans) => { rl.close(); resolve(ans.trim().toLowerCase()); });
+    rl.question(`${COLORS.cyan}?${COLORS.reset} Install ferris-search MCP for web search? ${COLORS.dim}(Y/n):${COLORS.reset} `, (ans) => { rl.close(); resolve(ans.trim().toLowerCase()); });
   });
   if (answer === "n" || answer === "no") {
     logInfo("ferris-search installation skipped.");
@@ -528,7 +528,7 @@ async function promptFerrisSearch(flowtaskDir, readline) {
 
 // ─── Persona Selection ────────────────────────────────────────────────────────
 
-const CUSTOM_PERSONA_TEXT = `El desarrollador eligió la opción de personalidad personalizada. Antes de continuar, preguntale si quiere hacer el quiz de onboarding (\`/onboard\`) para que puedas adaptar tu estilo de comunicación a su nivel de experiencia y mejorar la experiencia de desarrollo.`;
+const CUSTOM_PERSONA_TEXT = `The developer chose the custom personality option. Before continuing, ask whether they want to take the onboarding quiz (\`/onboard\`) so you can adapt your communication style to their experience level and improve the development experience.`;
 
 const levelToChoice = { training: 1, junior: 1, mid: 2, senior: 3, custom: 4 };
 const mapping = {
@@ -540,17 +540,17 @@ const mapping = {
 
 async function promptPersonaSeleccion(readline, currentLevel = null) {
   if (!process.stdin.isTTY) {
-    throw new Error("No hay TTY para seleccionar personalidad. Pasá --persona <training|mid|senior|custom> o creá/corregí TARGET_DIR/config/profile.json.");
+    throw new Error("No TTY available to select a personality. Pass --persona <training|mid|senior|custom> or create/fix TARGET_DIR/config/profile.json.");
   }
 
-  logStep("P", "Personalidad del Agente");
-  logInfo("Define cómo el asistente se comunicará contigo según tu nivel de experiencia.");
+  logStep("P", "Agent Personality");
+  logInfo("Define how the assistant will communicate with you according to your experience level.");
 
   const options = [
-    { label: "1. Estoy aprendiendo / Entry-level",    desc: "Si estás dando tus primeros pasos en el desarrollo de software" },
-    { label: "2. Mid-level",                          desc: "Si te manejás con soltura en tu stack y tomás decisiones técnicas" },
-    { label: "3. Senior",                             desc: "Si diseñás arquitecturas, mentoreás a otros y pensás en el largo plazo" },
-    { label: "4. Personalizado ✦ (recomendado)",       desc: "Dejá que el asistente aprenda tu estilo con una breve auditoría guiada" },
+    { label: "1. I am learning / Entry-level",    desc: "If you are taking your first steps in software development" },
+    { label: "2. Mid-level",                          desc: "If you are comfortable in your stack and make technical decisions" },
+    { label: "3. Senior",                             desc: "If you design architectures, mentor others, and think long-term" },
+    { label: "4. Custom ✦ (recommended)",       desc: "Let the assistant learn your style through a short guided audit" },
   ];
 
   const initialChoice = currentLevel && levelToChoice[currentLevel] ? levelToChoice[currentLevel] : 1;
@@ -571,7 +571,7 @@ async function promptPersonaSeleccion(readline, currentLevel = null) {
         const cursorStr = i === cursor ? COLORS.cyan + "> " + COLORS.reset : "  ";
         return `${cursorStr}${opt.label}    ${COLORS.dim}${opt.desc}${COLORS.reset}`;
       }),
-      `\n${COLORS.dim}↑/↓: navegar, Enter: confirmar, Ctrl+C: cancelar${COLORS.reset}`,
+      `\n${COLORS.dim}↑/↓: navigate, Enter: confirm, Ctrl+C: cancel${COLORS.reset}`,
     ];
     const output = lines.join("\n");
     process.stdout.write(output + "\n");
@@ -593,7 +593,7 @@ async function promptPersonaSeleccion(readline, currentLevel = null) {
     const onKeypress = (str, key) => {
       if (key.ctrl && key.name === "c") {
         cleanup();
-        log("\nInstalación cancelada.", COLORS.yellow);
+        log("\nInstallation cancelled.", COLORS.yellow);
         process.exit(0);
       }
       if (key.name === "up")    { cursor = (cursor - 1 + options.length) % options.length; render(); }
@@ -618,7 +618,7 @@ function resolvePersonaContent(flowtaskDir, personaChoice) {
 
   const personaPath = path.join(flowtaskDir, "personas", personaChoice.file);
   if (!fileExists(personaPath)) {
-    logError(`Archivo de personalidad no encontrado: ${personaPath}. La instalación continuará sin personalidad.`);
+    logError(`Personality file not found: ${personaPath}. Installation will continue without a personality.`);
     return null;
   }
   return fs.readFileSync(personaPath, "utf8");
@@ -630,10 +630,10 @@ const AUTONOMY_START_MARKER = "<!-- FLOWTASK:AUTONOMY_START -->";
 const AUTONOMY_END_MARKER = "<!-- FLOWTASK:AUTONOMY_END -->";
 
 /**
- * Inyecta el bloque de persona de un runner.
+ * Injects a runner's persona block.
  *
- * `undefined` deja el bloque intacto; `null` (o un contenido vacío) lo limpia.
- * Los marcadores ausentes solo advierten: la persona es opcional.
+ * `undefined` leaves the block intact; `null` (or empty content) clears it.
+ * Missing markers only warn: persona is optional.
  */
 export function injectPersonaIntoRunnerContent(content, personaContent) {
   if (personaContent === undefined) return content;
@@ -642,7 +642,7 @@ export function injectPersonaIntoRunnerContent(content, personaContent) {
   const endIdx = content.indexOf(PERSONA_END_MARKER);
 
   if (startIdx === -1 || endIdx === -1 || endIdx < startIdx + PERSONA_START_MARKER.length) {
-    logWarn("Marcadores PERSONA no encontrados en runner.md. No se inyectó personalidad.");
+    logWarn("PERSONA markers not found in runner.md. No personality was injected.");
     return content;
   }
 
@@ -659,21 +659,21 @@ function injectPersonaIntoRunner(targetDir, personaContent) {
 
   const runnerPath = path.join(targetDir, "agents", "runner.md");
   if (!fileExists(runnerPath)) {
-    logWarn(`runner.md no encontrado en ${targetDir}. No se inyectó personalidad.`);
+    logWarn(`runner.md not found in ${targetDir}. No personality was injected.`);
     return;
   }
 
   const content = fs.readFileSync(runnerPath, "utf8");
   fs.writeFileSync(runnerPath, injectPersonaIntoRunnerContent(content, personaContent), "utf8");
   logSuccess(personaContent
-    ? `Personalidad inyectada en runner.md de ${targetDir}.`
-    : `Bloque de personalidad limpiado en runner.md de ${targetDir}.`);
+    ? `Personality injected into runner.md of ${targetDir}.`
+    : `Personality block cleared in runner.md of ${targetDir}.`);
 }
 
 /**
- * Inyecta el valor de autonomía resuelto entre los marcadores de autonomía.
- * A diferencia de la persona, la autonomía es obligatoria: sin marcadores o
- * con un descriptor inválido, la operación falla.
+ * Injects the resolved autonomy value between the autonomy markers.
+ * Unlike persona, autonomy is mandatory: without markers or with an
+ * invalid descriptor, the operation fails.
  */
 export function injectAutonomyIntoRunnerContent(content, descriptor) {
   const profile = descriptor && descriptor.profile;
@@ -681,7 +681,7 @@ export function injectAutonomyIntoRunnerContent(content, descriptor) {
 
   if (!AUTONOMY_PROFILES.includes(profile) || !LAYER_SOURCES.includes(source)) {
     const error = new Error(
-      "[FlowTask Layers] No se pudo inyectar la autonomía en runner.md: descriptor de autonomía inválido.",
+      "[FlowTask Layers] Could not inject autonomy into runner.md: invalid autonomy descriptor.",
     );
     error.code = "autonomy_descriptor_invalid";
     throw error;
@@ -692,13 +692,13 @@ export function injectAutonomyIntoRunnerContent(content, descriptor) {
 
   if (startIdx === -1 || endIdx === -1 || endIdx < startIdx + AUTONOMY_START_MARKER.length) {
     const error = new Error(
-      `[FlowTask Layers] No se pudo inyectar la autonomía en runner.md: marcadores ${AUTONOMY_START_MARKER} y ${AUTONOMY_END_MARKER} ausentes.`,
+      `[FlowTask Layers] Could not inject autonomy into runner.md: markers ${AUTONOMY_START_MARKER} and ${AUTONOMY_END_MARKER} are missing.`,
     );
     error.code = "autonomy_markers_missing";
     throw error;
   }
 
-  const block = `\nAutonomía vigente: ${profile} (origen: ${source}).\n`;
+  const block = `\nCurrent autonomy: ${profile} (source: ${source}).\n`;
   return (
     content.slice(0, startIdx + AUTONOMY_START_MARKER.length) +
     block +
@@ -710,7 +710,7 @@ export function injectAutonomyIntoRunner(targetDir, descriptor) {
   const runnerPath = path.join(targetDir, "agents", "runner.md");
   if (!fileExists(runnerPath)) {
     const error = new Error(
-      `[FlowTask Layers] No se pudo inyectar la autonomía en runner.md: runner.md no encontrado en ${targetDir}.`,
+      `[FlowTask Layers] Could not inject autonomy into runner.md: runner.md not found in ${targetDir}.`,
     );
     error.code = "autonomy_runner_missing";
     throw error;
@@ -718,10 +718,10 @@ export function injectAutonomyIntoRunner(targetDir, descriptor) {
 
   const content = fs.readFileSync(runnerPath, "utf8");
   fs.writeFileSync(runnerPath, injectAutonomyIntoRunnerContent(content, descriptor), "utf8");
-  logSuccess(`Autonomía inyectada en runner.md de ${targetDir}.`);
+  logSuccess(`Autonomy injected into runner.md of ${targetDir}.`);
 }
 
-/** Descriptor de autonomía resuelto por la sincronización de capas. */
+/** Autonomy descriptor resolved by layer synchronization. */
 function autonomyDescriptorFrom(targetConfig) {
   const layer = targetConfig && targetConfig.autonomy;
   if (!layer || layer.status !== "valid" || !layer.value) return null;
@@ -766,7 +766,7 @@ function writeProfile(targetDir, level, persona, onboarded) {
   fs.mkdirSync(configDir, { recursive: true });
   const profilePath = path.join(configDir, "profile.json");
   fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), "utf8");
-  logSuccess(`Perfil guardado en ${profilePath}`);
+  logSuccess(`Profile saved to ${profilePath}`);
 }
 
 function readProfile(targetDir) {
@@ -783,14 +783,14 @@ function readProfileLevel(targetDir) {
 const OPERATIONAL_LAYERS = Object.freeze(["autonomy", "permissions"]);
 
 function layerLabel(name) {
-  return name === "autonomy" ? "autonomía" : "permisos";
+  return name === "autonomy" ? "autonomy" : "permissions";
 }
 
 function layerOperationalError(name, layer) {
   const reason = layer.reason
     ?? (layer.status === "missing"
-      ? "capa ausente: no se encontró el archivo de la capa"
-      : "capa inválida");
+      ? "layer missing: the layer file was not found"
+      : "invalid layer");
   const error = new Error(describeOperationalFailure({
     layer: name,
     path: layer.path,
@@ -807,16 +807,16 @@ function writeLayerDefault(configDir, name) {
   const filePath = path.join(configDir, LAYER_FILES[name]);
   fs.mkdirSync(configDir, { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(MIGRATION_DEFAULTS[name], null, 2), "utf8");
-  logSuccess(`Capa de ${layerLabel(name)} migrada en ${filePath} con el valor por defecto de instalación.`);
+  logSuccess(`${layerLabel(name)} layer migrated at ${filePath} with the installation default value.`);
 }
 
 /**
- * Garantiza que el target tenga las capas de autonomía y de permisos.
+ * Ensures the target has the autonomy and permissions layers.
  *
- * La resolución es por capa con reemplazo completo: una capa válida se
- * preserva y una capa inválida falla el target sin sobrescribir el archivo.
- * Solo se escribe el default de migración cuando la capa no existe en ninguna
- * fuente: el default es una migración, no un fallback de runtime.
+ * Resolution is per layer with full replacement: a valid layer is
+ * preserved, and an invalid layer fails the target without overwriting the file.
+ * The migration default is written only when the layer does not exist in any
+ * source: the default is a migration, not a runtime fallback.
  */
 export function ensureTargetLayers(targetDir, { teamConfigDir = null } = {}) {
   const configDir = targetConfigDir(targetDir);
@@ -826,8 +826,8 @@ export function ensureTargetLayers(targetDir, { teamConfigDir = null } = {}) {
   const resolution = resolveLayers({ team, project });
   const created = [];
 
-  // Una capa inválida falla el target antes de escribir nada: el archivo se
-  // conserva y no se repara con un default.
+  // An invalid layer fails the target before writing anything: the file is
+  // preserved and is not repaired with a default.
   for (const name of OPERATIONAL_LAYERS) {
     const layer = resolution.layers[name];
     if (layer.status === "invalid") throw layerOperationalError(name, layer);
@@ -856,17 +856,17 @@ export function materializeReviewConfig(flowtaskDir, targetDir) {
   };
   const destination = path.join(configDir, "review.json");
   fs.mkdirSync(configDir, { recursive: true });
-  if (!writeJsonVerified(destination, materialized)) throw new Error(`no se pudo verificar ${destination}`);
+  if (!writeJsonVerified(destination, materialized)) throw new Error(`could not verify ${destination}`);
   return destination;
 }
 
 /**
- * Sincroniza la configuración del target: el review gestionado, la capa de
- * persona y las capas de autonomía y permisos.
+ * Synchronizes the target configuration: managed review, the persona layer,
+ * and the autonomy and permissions layers.
  *
- * La persona se escribe solo con una elección explícita; un perfil válido se
- * conserva y uno inválido sin elección explícita no se sobrescribe. Las capas
- * operativas se resuelven por separado y nunca se reparan con un default.
+ * Persona is written only with an explicit choice; a valid profile is
+ * preserved, and an invalid one without an explicit choice is not overwritten. The
+ * operational layers are resolved separately and are never repaired with a default.
  */
 export function syncTargetConfig(flowtaskDir, targetDir, personaChoice, { preserveProfile = false, explicitPersona = false } = {}) {
   materializeReviewConfig(flowtaskDir, targetDir);
@@ -882,13 +882,13 @@ export function syncTargetConfig(flowtaskDir, targetDir, personaChoice, { preser
     personaStatus = "valid";
   } else if (existing) {
     personaStatus = "invalid";
-    logWarn(`Perfil de persona inválido en ${targetConfigDir(targetDir)}: no se sobrescribe y se continúa sin persona.`);
+    logWarn(`Invalid persona profile in ${targetConfigDir(targetDir)}: it is not overwritten and the flow continues without persona.`);
   } else if (!preserveProfile && personaChoice) {
     writeProfile(targetDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
     personaStatus = "valid";
   } else {
     personaStatus = "missing";
-    logWarn(`No se encontró perfil de persona en ${targetConfigDir(targetDir)}: se continúa sin persona.`);
+    logWarn(`No persona profile was found in ${targetConfigDir(targetDir)}: continuing without persona.`);
   }
 
   const { resolution } = ensureTargetLayers(targetDir);
@@ -1048,7 +1048,7 @@ function writeBytesIfChanged(filePath, content) {
     return fs.readFileSync(filePath).equals(next);
   } catch (err) {
     try { fs.rmSync(`${filePath}.${process.pid}.tmp`, { force: true }); } catch { /* preserve original */ }
-    logError(`No se pudo escribir ${filePath}: ${err.message}`);
+    logError(`Could not write ${filePath}: ${err.message}`);
     return false;
   }
 }
@@ -1061,7 +1061,7 @@ export function regenerateCanonicalTui(projectDir, flowtaskDir, manifest) {
     if (CLASSIFIER_PLUGIN_NAMES.includes(entry.name) && !isClassifierEnabled(manifest)) continue;
     const sourceEntrypoint = path.join(flowtaskDir, "plugins", entry.path, entry.entrypoint);
     if (!fileExists(sourceEntrypoint)) {
-      logWarn(`Plugin TUI omitido de la declaración canónica: ${entry.name}`);
+      logWarn(`TUI plugin omitted from the canonical declaration: ${entry.name}`);
       continue;
     }
     let relative = path.relative(path.dirname(path.join(flowtaskDir, "tui.json")), sourceEntrypoint).split(path.sep).join("/");
@@ -1072,7 +1072,7 @@ export function regenerateCanonicalTui(projectDir, flowtaskDir, manifest) {
   const canonical = { "$schema": "https://opencode.ai/tui.json", plugin: plugins };
   const unexpectedKeys = Object.keys(canonical).filter((key) => !CANONICAL_TUI_KEYS.has(key));
   if (unexpectedKeys.length > 0) {
-    logWarn(`La declaración TUI canónica contiene claves inesperadas: ${unexpectedKeys.join(", ")}`);
+    logWarn(`The canonical TUI declaration contains unexpected keys: ${unexpectedKeys.join(", ")}`);
   }
 
   const legacyPath = path.join(projectDir, "tui.json");
@@ -1090,19 +1090,19 @@ export function regenerateCanonicalTui(projectDir, flowtaskDir, manifest) {
         );
       }
     } catch (err) {
-      logWarn(`No se pudieron preservar campos de ${preservationSource}: ${err.message}`);
+      logWarn(`Could not preserve fields from ${preservationSource}: ${err.message}`);
     }
   }
 
   const content = `${JSON.stringify({ ...preservedFields, ...canonical }, null, 2)}\n`;
   if (!writeBytesIfChanged(destination, content)) {
-    throw new Error(`no se pudo verificar la declaración TUI canónica ${destination}`);
+    throw new Error(`could not verify the canonical TUI declaration ${destination}`);
   }
   try {
     const parsed = JSON.parse(fs.readFileSync(destination, "utf8"));
-    if (JSON.stringify(parsed) !== JSON.stringify(JSON.parse(content))) throw new Error("contenido TUI inválido");
+    if (JSON.stringify(parsed) !== JSON.stringify(JSON.parse(content))) throw new Error("invalid TUI content");
   } catch (err) {
-    throw new Error(`la verificación de ${destination} falló: ${err.message}`);
+    throw new Error(`verification of ${destination} failed: ${err.message}`);
   }
   return destination;
 }
@@ -1173,11 +1173,11 @@ export function removeLegacyConsumerFiles(projectDir, fileNames = ["tui.json", "
     if (!fs.existsSync(filePath)) continue;
     try {
       fs.rmSync(filePath, { force: true });
-      if (fs.existsSync(filePath)) throw new Error("el archivo sigue presente");
-      logInfo(`Residuo legacy eliminado: ${fileName}`);
+      if (fs.existsSync(filePath)) throw new Error("the file is still present");
+      logInfo(`Legacy residue removed: ${fileName}`);
     } catch (err) {
       success = false;
-      logError(`No se pudo eliminar ${filePath}: ${err.message}. Reintenta con flowtask update.`);
+      logError(`Could not remove ${filePath}: ${err.message}. Retry with flowtask update.`);
     }
   }
   return success;
@@ -1215,7 +1215,7 @@ function cleanupDisabledClassifier(projectDir, manifest, preparedDecisions = nul
   const removedServerEntry = removeClassifierEntries(serverConfigPath);
 
   if (hasInstallation || removedDirectory || removedServerEntry) {
-    logWarn("el plugin de clasificación fue deprecado");
+    logWarn("the classifier plugin was deprecated");
   }
 }
 
@@ -1247,7 +1247,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
         legacyTui = { config: parsed, plugins: [...parsed.plugin] };
       }
     } catch (err) {
-      logWarn(`No se pudo leer el tui.json legacy ${projectTuiPath}: ${err.message}. Se conserva sin migrar.`);
+      logWarn(`Could not read the legacy tui.json ${projectTuiPath}: ${err.message}. It is preserved without migration.`);
     }
   }
   const migratedLegacyIndexes = new Set();
@@ -1296,21 +1296,21 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
       const cliPath = path.join(projectDir, ".opencode", "cli.json");
       const pluginRuntimePath = calculatePluginRelativePath(cliPath, projectDir, entry.name, entry.entrypoint);
       if (!registerPluginArrayEntry(cliPath, pluginRuntimePath, "https://opencode.ai/cli.json")) {
-        throw new Error(`No se pudo actualizar ${cliPath}`);
+        throw new Error(`Could not update ${cliPath}`);
       }
       removePluginFromConfigArrays(nativeTuiPath, entry.name);
       removePluginFromConfigArrays(projectTuiPath, entry.name);
     } else if (entry.kind === "tui") {
       const installationRuntimePath = calculatePluginRelativePath(nativeTuiPath, projectDir, entry.name, entry.entrypoint);
       if (!registerPluginArrayEntry(nativeTuiPath, installationRuntimePath, "https://opencode.ai/tui.json")) {
-        throw new Error(`No se pudo escribir el registro TUI nativo ${nativeTuiPath}`);
+        throw new Error(`Could not write the native TUI registration ${nativeTuiPath}`);
       }
       const installationTui = JSON.parse(fs.readFileSync(nativeTuiPath, "utf8"));
       const registered = Array.isArray(installationTui.plugin) && installationTui.plugin.some((plugin) => {
         const pluginPath = typeof plugin === "string" ? plugin : plugin?.path;
         return pluginPath === installationRuntimePath;
       });
-      if (!registered) throw new Error(`No se pudo verificar la ruta TUI ${installationRuntimePath}`);
+      if (!registered) throw new Error(`Could not verify the TUI path ${installationRuntimePath}`);
       removePluginFromConfigArrays(path.join(projectDir, ".opencode", "cli.json"), entry.name);
       if (legacyTui) {
         legacyTui.plugins.forEach((plugin, index) => {
@@ -1325,7 +1325,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
       const opencodeConfigPath = path.join(projectDir, ".opencode", "opencode.json");
       const pluginRuntimePath = calculatePluginRelativePath(opencodeConfigPath, projectDir, entry.name, entry.entrypoint);
       if (!registerPluginArrayEntry(opencodeConfigPath, pluginRuntimePath, "https://opencode.ai/config.json")) {
-        throw new Error(`No se pudo actualizar ${opencodeConfigPath}`);
+        throw new Error(`Could not update ${opencodeConfigPath}`);
       }
     } else {
       logWarn(`Unknown plugin kind "${entry.kind}" for ${entry.name}, skipping registration.`);
@@ -1338,10 +1338,10 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
       const remaining = legacyTui.plugins.filter((_, index) => !migratedLegacyIndexes.has(index));
       if (remaining.length !== legacyTui.plugins.length) {
         const cleaned = { ...legacyTui.config, plugin: remaining };
-        if (!writeJsonVerified(projectTuiPath, cleaned)) throw new Error("la verificación del destino falló");
+        if (!writeJsonVerified(projectTuiPath, cleaned)) throw new Error("destination verification failed");
       }
     } catch (err) {
-      logWarn(`No se pudo limpiar el tui.json legacy ${projectTuiPath}: ${err.message}. Se conserva la configuración; reintenta con flowtask update.`);
+      logWarn(`Could not clean the legacy tui.json ${projectTuiPath}: ${err.message}. Configuration is preserved; retry with flowtask update.`);
     }
   }
 
@@ -1373,9 +1373,9 @@ function cleanupLegacyModelSelector(projectDir, flowtaskDir, manifest) {
     try {
       fs.rmSync(pluginDir, { recursive: true, force: true });
       removed = true;
-      logInfo(`Plugin legacy eliminado: ${LEGACY_MODEL_SELECTOR_NAME}`);
+      logInfo(`Legacy plugin removed: ${LEGACY_MODEL_SELECTOR_NAME}`);
     } catch (err) {
-      logWarn(`No se pudo eliminar el plugin legacy ${LEGACY_MODEL_SELECTOR_NAME}: ${err.message}`);
+      logWarn(`Could not remove the legacy plugin ${LEGACY_MODEL_SELECTOR_NAME}: ${err.message}`);
     }
   }
 
@@ -1424,18 +1424,18 @@ export function migrateProfileLocation(projectDir, flowtaskDir, targetDirs = [fl
       if (path.resolve(source) === path.resolve(destination)) continue;
       if (fs.existsSync(destination)) continue;
       fs.mkdirSync(path.dirname(destination), { recursive: true });
-      if (!writeJsonVerified(destination, profile)) throw new Error(`la verificación de ${destination} falló`);
+      if (!writeJsonVerified(destination, profile)) throw new Error(`verification of ${destination} failed`);
     }
     for (const destination of destinations) {
       if (path.resolve(source) === path.resolve(destination)) continue;
       const verified = JSON.parse(fs.readFileSync(destination, "utf8"));
-      if (JSON.stringify(verified) !== JSON.stringify(profile)) throw new Error(`la verificación de ${destination} falló`);
+      if (JSON.stringify(verified) !== JSON.stringify(profile)) throw new Error(`verification of ${destination} failed`);
     }
     fs.rmSync(source);
-    logSuccess(`Perfil migrado de ${source} a ${destinations.join(", ")}`);
+    logSuccess(`Profile migrated from ${source} to ${destinations.join(", ")}`);
     return true;
   } catch (err) {
-    logError(`No se pudo migrar profile.json de ${source}: ${err.message}. Verifica permisos/espacio y reintenta con flowtask update.`);
+    logError(`Could not migrate profile.json from ${source}: ${err.message}. Check permissions/space and retry with flowtask update.`);
     return false;
   }
 }
@@ -1449,9 +1449,9 @@ function cleanupOrphanedClaudeAssets(projectDir) {
     if (!fs.existsSync(dir)) continue;
     try {
       fs.rmSync(dir, { recursive: true, force: true });
-      logSuccess(`Carpeta obsoleta eliminada: ${path.relative(projectDir, dir)}`);
+      logSuccess(`Obsolete folder removed: ${path.relative(projectDir, dir)}`);
     } catch (err) {
-      logError(`No se pudo eliminar carpeta obsoleta ${path.relative(projectDir, dir)}: ${err.message}`);
+      logError(`Could not remove obsolete folder ${path.relative(projectDir, dir)}: ${err.message}`);
     }
   }
 }
@@ -1482,7 +1482,7 @@ ${COLORS.blue}╔═════════════════════
     if (selectedOptions.includes("claude"))   targets.push({ id: "claude",   ideDir: ".claude",   targetSubDir: path.join(".claude",   "flowtask") });
   }
 
-  // ── Step P: Personalidad del Agente ─────────────────────────────────
+  // ── Step P: Agent Personality ─────────────────────────────────
   const personaChoice = await promptPersonaSeleccion(readline);
   const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
 
@@ -1491,7 +1491,7 @@ ${COLORS.blue}╔═════════════════════
     ? await prepareInstallation(flowtaskDir, projectDir, "install", { targets, worktreeManager }) : null;
   const targetDirs = targets.map(({ targetSubDir }) => path.join(projectDir, targetSubDir));
   if (!migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
-    throw new Error("No se pudo migrar profile.json; se conserva el origen. Verifica permisos/espacio y reintenta con flowtask update.");
+    throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
   }
   const results = [];
 
@@ -1541,9 +1541,9 @@ ${COLORS.blue}╔═════════════════════
         if (!verifyDirectoryMirror(srcDir, destDir, { ignorePaths: pruned.preserved })) throw new Error(`Mirror verification failed for ${src}`);
       }
 
-      // ── Config del target: persona y capas de autonomía y permisos ──
-      // Las capas se resuelven y escriben antes de instalar el plugin y antes
-      // de inyectar persona y autonomía.
+      // ── Target config: persona and autonomy/permissions layers ──
+      // Layers are resolved and written before installing the plugin and before
+      // injecting persona and autonomy.
       configureRunnerScripts(TARGET_DIR, targetSubDir);
       const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, { explicitPersona: true });
       const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
@@ -1608,7 +1608,7 @@ ${COLORS.blue}╔═════════════════════
     try {
       await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, targetSubDir), flowtaskDir, selectedClis: [id], readline });
     } catch (err) {
-      logWarn(`Graphify (${id}): coordinación falló (${err.message}). Reintenta con flowtask update o contacta a un administrador.`);
+      logWarn(`Graphify (${id}): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
     }
   }
 
@@ -1666,14 +1666,14 @@ ${COLORS.blue}╔═════════════════════
   const preflight = targets.some(({ id }) => id === "opencode")
     ? await prepareInstallation(flowtaskDir, projectDir, "update", { targets, worktreeManager }) : null;
   const legacyCleanupOk = removeLegacyConsumerFiles(projectDir, ["CLAUDE.md"]);
-  if (!legacyCleanupOk) logWarn("La limpieza de CLAUDE.md no fue completa; el resultado debe revisarse.");
+  if (!legacyCleanupOk) logWarn("CLAUDE.md cleanup was not complete; the result must be reviewed.");
 
   const targetDirs = targets.map(({ subDir }) => path.join(projectDir, subDir));
   if (!migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
-    throw new Error("No se pudo migrar profile.json; se conserva el origen. Verifica permisos/espacio y reintenta con flowtask update.");
+    throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
   }
 
-  // ── Step 1.5: Personalidad del Agente ──────────────────────────────
+  // ── Step 1.5: Agent Personality ──────────────────────────────
   let currentLevel = null;
   for (const targetDir of targetDirs) {
     currentLevel = readProfileLevel(targetDir);
@@ -1685,11 +1685,11 @@ ${COLORS.blue}╔═════════════════════
     personaChoice = mapping[levelToChoice[options.persona]];
   } else if (currentLevel && levelToChoice[currentLevel]) {
     personaChoice = mapping[levelToChoice[currentLevel]];
-    logInfo(`Conservando personalidad existente: ${personaChoice.persona}`);
+    logInfo(`Preserving existing personality: ${personaChoice.persona}`);
   } else {
-    // Sin personalidad válida y sin elección explícita no se abre el prompt:
-    // se continúa sin persona y sin alterar autonomía ni permisos.
-    logWarn("No se encontró una personalidad válida y no se indicó --persona. Se continúa sin inyectar personalidad.");
+    // Without a valid personality and without an explicit choice, the prompt is not opened:
+    // the flow continues without persona and without altering autonomy or permissions.
+    logWarn("No valid personality was found and --persona was not provided. Continuing without injecting a personality.");
   }
   const personaContent = personaChoice ? resolvePersonaContent(flowtaskDir, personaChoice) : null;
 
@@ -1735,9 +1735,9 @@ ${COLORS.blue}╔═════════════════════
 
       logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
 
-      // ── Config del target: persona y capas de autonomía y permisos ──
-      // Las capas se resuelven y escriben antes de instalar el plugin y antes
-      // de inyectar persona y autonomía.
+      // ── Target config: persona and autonomy/permissions layers ──
+      // Layers are resolved and written before installing the plugin and before
+      // injecting persona and autonomy.
       configureRunnerScripts(TARGET_DIR, subDir);
       const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
         preserveProfile: !options.persona,
@@ -1795,22 +1795,22 @@ ${COLORS.blue}╔═════════════════════
 
   try {
     regenerateCanonicalCli(projectDir, flowtaskDir, manifest);
-    logSuccess("Declaración CLI canónica regenerada");
+    logSuccess("Canonical CLI declaration regenerated");
     regenerateCanonicalTui(projectDir, flowtaskDir, manifest);
-    logSuccess("Declaración TUI canónica regenerada");
+    logSuccess("Canonical TUI declaration regenerated");
     // The canonical destination is verified before deleting the legacy source.
     if (!removeLegacyConsumerFiles(projectDir)) {
-      logWarn("flowtask update terminó con residuos legacy que no pudieron eliminarse.");
+      logWarn("flowtask update finished with legacy residue that could not be removed.");
     }
   } catch (err) {
-    logError(`No se pudo regenerar la declaración TUI canónica: ${err.message}`);
+    logError(`Could not regenerate the canonical TUI declaration: ${err.message}`);
   }
 
   for (const { id, subDir } of targets) {
     try {
       await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, subDir), flowtaskDir, selectedClis: [id], readline });
     } catch (err) {
-      logWarn(`Graphify (${id}): coordinación falló (${err.message}). Reintenta con flowtask update o contacta a un administrador.`);
+      logWarn(`Graphify (${id}): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
     }
   }
 

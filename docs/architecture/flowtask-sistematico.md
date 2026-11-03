@@ -1,31 +1,31 @@
-> **Histórico:** este diseño conserva sub-orquestadores y rutas conceptuales retiradas. No describe el flujo vigente. Consultá [../README.md](../README.md).
+> **Historical:** this design preserves sub-orchestrators and retired conceptual paths. It does not describe the current flow. See [../README.md](../README.md).
 
-# Visión sistemática de FlowTask
+# Systematic view of FlowTask
 
 ```mermaid
 flowchart TD
-    subgraph L1["NIVEL 1: CAPA DE NEGOCIO Y METODOLOGÍA (Flowtask Core)"]
-        RUNNER["flowtask-runner<br/>(Director de Flujo / Agnóstico)"]
-        CAW["flowtask-ca-writer<br/>(Divide tareas SDD/BDD)"]
-        PLN["flowtask-planner<br/>(Genera plan técnico)"]
-        CHK["[ CHECKPOINT HUMANO ]<br/>(Aprueba el plan)"]
+    subgraph L1["LEVEL 1: BUSINESS AND METHODOLOGY LAYER (Flowtask Core)"]
+        RUNNER["flowtask-runner<br/>(Flow Director / Agnostic)"]
+        CAW["flowtask-ca-writer<br/>(Splits SDD/BDD tasks)"]
+        PLN["flowtask-planner<br/>(Generates technical plan)"]
+        CHK["[ HUMAN CHECKPOINT ]<br/>(Approves the plan)"]
         RUNNER --> CAW
         RUNNER --> PLN
         RUNNER --> CHK
     end
-    subgraph L2["NIVEL 2: CAPA DE SUB-ORQUESTACIÓN (Director Técnico)"]
-        TL["TECH-LEAD-ORCHESTRATOR<br/>(Líder Java/Spring)"]
-        A1["Recibe el plan y audita dependencias"]
-        A2["Aplica Checklist de Gating"]
+    subgraph L2["LEVEL 2: SUB-ORCHESTRATION LAYER (Technical Director)"]
+        TL["TECH-LEAD-ORCHESTRATOR<br/>(Java/Spring Lead)"]
+        A1["Receives the plan and audits dependencies"]
+        A2["Applies the Gating Checklist"]
         TL --> A1
         TL --> A2
     end
-    subgraph L3["NIVEL 3: CAPA DE EXPERTOS (Línea de Ensamblaje Estricta)"]
+    subgraph L3["LEVEL 3: EXPERT LAYER (Strict Assembly Line)"]
         DE["@AGENT-DATA-EXPERT<br/>(DAO, SQL)"]
         LE["@AGENT-LOGIC-EXPERT<br/>(Managers)"]
-        AE["@AGENT-API-EXPERT<br/>(REST, Seguridad)"]
+        AE["@AGENT-API-EXPERT<br/>(REST, Security)"]
     end
-    RUNNER -->|"Usa tool 'task' para delegar el código"| TL
+    RUNNER -->|"Uses the 'task' tool to delegate code"| TL
     TL -->|"(task)"| DE
     TL -->|"(task)"| LE
     TL -->|"(task)"| AE
@@ -33,10 +33,10 @@ flowchart TD
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ LEYENDA 4: Flujo Completo (Las 3 Capas de la Arquitectura)                 │
+│ LEGEND 4: Complete Flow (The 3 Architecture Layers)                        │
 ├────────────────────────────────────────────────────────────────────────────┤
-│ Visión macro de la separación de responsabilidades: El 'runner'            │
-│ como Director de Metodología, el 'TECH-LEAD-ORCHESTRATOR' como Tech Lead   │
-│ y los subagentes hiper-especializados como Línea de Ensamblaje.            │
+│ Macro view of the separation of responsibilities: the 'runner'             │
+│ as Methodology Director, 'TECH-LEAD-ORCHESTRATOR' as Tech Lead,            │
+│ and hyper-specialized subagents as the Assembly Line.                      │
 └────────────────────────────────────────────────────────────────────────────┘
 ```

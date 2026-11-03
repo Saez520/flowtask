@@ -115,7 +115,7 @@ describe("lectura de archivos de capa", () => {
     const dir = createConfigDir({ "autonomy.json": "{not json" });
     const record = readLayerFile(path.join(dir, "autonomy.json"));
     assert.equal(record.status, "invalid");
-    assert.match(record.reason, /JSON inválido/);
+    assert.match(record.reason, /invalid JSON/);
   });
 
   it("reads the three layers of a configuration directory", () => {
@@ -167,8 +167,8 @@ describe("resolucion por capa", () => {
       (error) => {
         assert.equal(error.code, "autonomy_invalid");
         assert.equal(error.layer, "autonomy");
-        assert.match(error.message, /\[FlowTask Layers\] Capa de autonomía ausente o inválida\./);
-        assert.match(error.message, /perfil de autonomía desconocido: "root"/);
+        assert.match(error.message, /\[FlowTask Layers\] autonomy layer missing or invalid\./);
+        assert.match(error.message, /unknown autonomy profile: "root"/);
         return true;
       },
     );
@@ -222,7 +222,7 @@ describe("fallo operativo por capa", () => {
       code: "autonomy_missing",
       layer: "autonomy",
       project: { permissions: { version: 1, envelope: "standard" } },
-      message: /Capa de autonomía ausente o inválida\./,
+      message: /autonomy layer missing or invalid\./,
     },
     {
       code: "autonomy_invalid",
@@ -231,13 +231,13 @@ describe("fallo operativo por capa", () => {
         autonomy: { version: 1, profile: "root" },
         permissions: { version: 1, envelope: "standard" },
       },
-      message: /Capa de autonomía ausente o inválida\./,
+      message: /autonomy layer missing or invalid\./,
     },
     {
       code: "permissions_missing",
       layer: "permissions",
       project: { autonomy: { version: 1, profile: "assistant" } },
-      message: /Capa de permisos ausente o inválida\./,
+      message: /permissions layer missing or invalid\./,
     },
     {
       code: "permissions_invalid",
@@ -246,7 +246,7 @@ describe("fallo operativo por capa", () => {
         autonomy: { version: 1, profile: "assistant" },
         permissions: { version: 1, envelope: "god-mode" },
       },
-      message: /Capa de permisos ausente o inválida\./,
+      message: /permissions layer missing or invalid\./,
     },
   ];
 
@@ -278,10 +278,10 @@ describe("fallo operativo por capa", () => {
     assert.equal(
       message,
       [
-        "[FlowTask Layers] Capa de autonomía ausente o inválida.",
-        "Archivo: no identificado",
-        "Causa: perfil de autonomía desconocido: \"root\"",
-        'Acción: definí "profile" como assistant, autonomous-dev o hermes y reintentá; no se inicia ninguna ejecución.',
+        "[FlowTask Layers] autonomy layer missing or invalid.",
+        "File: unidentified",
+        "Cause: unknown autonomy profile: \"root\"",
+        'Action: define "profile" as assistant, autonomous-dev, or hermes and retry; no execution starts.',
       ].join("\n"),
     );
   });
@@ -298,10 +298,10 @@ describe("fallo operativo por capa", () => {
     assert.equal(
       message,
       [
-        "[FlowTask Layers] Capa de permisos ausente o inválida.",
-        "Archivo: no identificado",
-        "Causa: envelope desconocido: \"god-mode\"",
-        'Acción: definí "envelope": "standard" y reintentá; no se ejecuta ninguna acción con límites ampliados.',
+        "[FlowTask Layers] permissions layer missing or invalid.",
+        "File: unidentified",
+        "Cause: unknown envelope: \"god-mode\"",
+        'Action: define "envelope": "standard" and retry; no action with expanded limits is executed.',
       ].join("\n"),
     );
   });
@@ -313,7 +313,7 @@ describe("fallo operativo por capa", () => {
     const error = resolution.operational.errors.find((item) => item.code === "autonomy_missing");
     assert.ok(error, "the missing autonomy layer must produce an operational error");
     assert.equal(error.path, path.join(dir, "autonomy.json"));
-    assert.match(describeOperationalFailure(error), /Capa de autonomía ausente o inválida\./);
+    assert.match(describeOperationalFailure(error), /autonomy layer missing or invalid\./);
   });
 
   it("never invents a runtime default for an absent layer", () => {
@@ -329,7 +329,7 @@ describe("bordes de validacion y resolucion", () => {
     for (const validator of [validatePersonaLayer, validateAutonomyLayer, validatePermissionsLayer]) {
       const result = validator([]);
       assert.equal(result.status, "invalid");
-      assert.match(result.reason, /no es un objeto JSON/);
+      assert.match(result.reason, /is not a JSON object/);
     }
   });
 
@@ -339,7 +339,7 @@ describe("bordes de validacion y resolucion", () => {
     const record = readLayerFile(path.join(dir, "permissions.json"));
 
     assert.equal(record.status, "invalid");
-    assert.match(record.reason, /no contiene un objeto JSON/);
+    assert.match(record.reason, /does not contain a JSON object/);
   });
 
   it("reports a malformed layer file as invalid instead of missing", () => {
@@ -353,9 +353,9 @@ describe("bordes de validacion y resolucion", () => {
 
     assert.equal(resolution.layers.autonomy.status, "invalid");
     assert.equal(resolution.layers.autonomy.path, path.join(dir, "autonomy.json"));
-    assert.match(resolution.layers.autonomy.reason, /JSON inválido/);
+    assert.match(resolution.layers.autonomy.reason, /invalid JSON/);
     assert.equal(error.code, "autonomy_invalid");
-    assert.match(describeOperationalFailure(error), new RegExp(`Archivo: ${path.join(dir, "autonomy.json")}`));
+    assert.match(describeOperationalFailure(error), new RegExp(`File: ${path.join(dir, "autonomy.json")}`));
   });
 
   it("lets a valid project layer win over an invalid team layer", () => {
@@ -388,7 +388,7 @@ describe("bordes de validacion y resolucion", () => {
     assert.equal(resolution.layers.persona.status, "missing");
     assert.equal(resolution.layers.persona.value, null);
     assert.equal(resolution.warnings.length, 1);
-    assert.match(resolution.warnings[0], /Capa de persona ausente/);
+    assert.match(resolution.warnings[0], /Persona layer missing/);
     assert.equal(resolution.operational.ok, true);
     assert.doesNotThrow(() => assertOperationalLayers(resolution));
   });

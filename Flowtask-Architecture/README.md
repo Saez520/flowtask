@@ -1,223 +1,223 @@
-> **Histórico:** este whitepaper fue generado alrededor de CA-008 y conserva diseños, roadmap y referencias retiradas. No describe la instalación ni la ejecución vigente. Consultá [docs/README.md](../docs/README.md).
+> **Historical:** this whitepaper was generated around CA-008 and preserves retired designs, roadmap items, and references. It does not describe the current installation or execution. See [docs/README.md](../docs/README.md).
 
-# FlowTask Architecture — Whitepaper Técnico
+# FlowTask Architecture — Technical Whitepaper
 
-> **TL;DR**: FlowTask es un sistema de agentes autónomos que ejecutan tareas de desarrollo en entornos aislados, con memoria persistente entre sesiones, y optimización radical del contexto para escalar a proyectos grandes. Este documento explica los tres pilares que lo hacen posible y el roadmap hacia su versión open source.
+> **TL;DR**: FlowTask is a system of autonomous agents that execute development tasks in isolated environments, with persistent memory across sessions and radical context optimization to scale to large projects. This document explains the three pillars that make it possible and the roadmap toward its open-source version.
 
-**Tiempo de lectura**: ~5 minutos  
-**Última actualización**: CA-008 (Mayo 2026)  
-**Roadmap completo**: el roadmap de CA-008 se conserva únicamente como contexto histórico en este documento; no es una guía ejecutable.
+**Reading time**: ~5 minutes  
+**Last update**: CA-008 (May 2026)  
+**Full roadmap**: the CA-008 roadmap is preserved only as historical context in this document; it is not an executable guide.
 
 ---
 
-## 1. ¿Qué es FlowTask?
+## 1. What is FlowTask?
 
-FlowTask es un **orquestador de agentes de IA para desarrollo de software**. A diferencia de un chatbot que escribe código, FlowTask estructura el trabajo en **Change Artifacts (CAs)** — unidades formales de cambio con requisitos, plan, auditoría, construcción y validación. Cada fase es ejecutada por un sub-agente especializado (planner, constructor, validator, etc.) que trabaja con memoria persistente y contexto optimizado.
+FlowTask is an **orchestrator of AI agents for software development**. Unlike a chatbot that writes code, FlowTask structures work into **Change Artifacts (CAs)** — formal units of change with requirements, plan, audit, construction, and validation. Each phase is executed by a specialized subagent (planner, constructor, validator, etc.) that works with persistent memory and optimized context.
 
-### El flujo de un CA
+### The flow of a CA
 
 ```
-USUARIO: "Flujo del CA-018"
+USER: "Flow for CA-018"
           │
           ▼
 ┌─────────────────────────────────────────────────┐
-│  RUNNER (Orquestador)                            │
-│  Handshake → Asigna identidad (Kael-Planner...)  │
-│  Delega tareas secuencialmente                   │
+│  RUNNER (Orchestrator)                          │
+│  Handshake → Assign identity (Kael-Planner...)  │
+│  Delegate tasks sequentially                    │
 └─────────────────────────────────────────────────┘
           │
-          ├─ 1. CA-WRITER     → Formaliza requisitos en ca.md
-          ├─ 2. PLANNER       → Genera plan de implementación en Engram (ca/CA-{ID}/artifact/plan)
-          ├─ 3. PLAN-AUDITOR  → Revisa coherencia y referencias → audit.md en Engram (ca/CA-{ID}/artifact/audit)
-          ├─ 4. CONSTRUCTOR   → Implementa el plan (lee plan.md desde Engram, escribe código)
-          └─ 5. VALIDATOR     → Verifica criterios de aceptación
+          ├─ 1. CA-WRITER     → Formalize requirements in ca.md
+          ├─ 2. PLANNER       → Generate implementation plan in Engram (ca/CA-{ID}/artifact/plan)
+          ├─ 3. PLAN-AUDITOR  → Review coherence and references → audit.md in Engram (ca/CA-{ID}/artifact/audit)
+          ├─ 4. CONSTRUCTOR   → Implement the plan (read plan.md from Engram, write code)
+          └─ 5. VALIDATOR     → Verify acceptance criteria
 ```
 
-Cada CA produce artefactos versionados en Engram (ca/CA-{ID}/artifact/{filename}). Los CAs legacy (~19) mantienen sus artefactos en `.workspace/CA-{ID}/` como fuente de fallback (Dual-Source). El estado de flujo se guarda en **Engram** (memoria persistente). Si un agente falla o la sesión se interrumpe, el Handshake Protocol permite **reanudar exactamente donde quedó**.
+Each CA produces versioned artifacts in Engram (ca/CA-{ID}/artifact/{filename}). Legacy CAs (~19) keep their artifacts in `.workspace/CA-{ID}/` as a fallback source (Dual-Source). Flow state is stored in **Engram** (persistent memory). If an agent fails or the session is interrupted, the Handshake Protocol allows the work to **resume exactly where it left off**.
 
 ---
 
-## 2. Los Tres Pilares Técnicos
+## 2. The Three Technical Pillars
 
-FlowTask se sostiene sobre tres pilares que lo diferencian de herramientas de asistencia convencionales:
+FlowTask rests on three pillars that differentiate it from conventional assistance tools:
 
-### Pilar 1 — Aislamiento y Seguridad (Git Worktrees)
+### Pillar 1 — Isolation and Safety (Git Worktrees)
 
-**Qué es**: Cada tarea delegada a sub-agentes se ejecuta en un **Git Worktree aislado** (sandbox). El código se modifica en ese entorno temporal. Solo cuando el trabajo está completo y verificado, el **Archivist** integra los cambios a la rama principal. Si algo falla, el entorno aislado se descarta sin afectar el proyecto.
+**What it is**: Each task delegated to subagents runs in an **isolated Git Worktree** (sandbox). Code is modified in that temporary environment. Only when the work is complete and verified does the **Archivist** integrate the changes into the main branch. If something fails, the isolated environment is discarded without affecting the project.
 
-**Por qué importa**: Es la garantía de que un agente autónomo **no puede corromper el código del desarrollador**. Sin este pilar, FlowTask sería una herramienta de asistencia; con él, es un sistema delegable con seguridad de integridad.
+**Why it matters**: It is the guarantee that an autonomous agent **cannot corrupt the developer's code**. Without this pillar, FlowTask would be an assistance tool; with it, it is a delegable system with integrity safety.
 
-**Diagrama ASCII**: Ver [`docs/architecture/worktree.md`](../docs/architecture/worktree.md) — diseño conceptual del ciclo de vida con Git Worktrees.  
-**Artefacto relacionado**: [`docs/architecture/sub-agent-archivista.md`](../docs/architecture/sub-agent-archivista.md) — flujo del sub-agente Archivist.
+**ASCII diagram**: See [`docs/architecture/worktree.md`](../docs/architecture/worktree.md) — conceptual design of the lifecycle with Git Worktrees.  
+**Related artifact**: [`docs/architecture/sub-agent-archivista.md`](../docs/architecture/sub-agent-archivista.md) — Archivist subagent flow.
 
-### Pilar 2 — Persistencia y Self-Healing (Engram + Handshake)
+### Pillar 2 — Persistence and Self-Healing (Engram + Handshake)
 
-**Qué es**: **Engram** es la memoria persistente del proyecto. Cada artefacto (CA, plan, validación) y cada estado de flujo (flow-state) se almacena con `topic_key` estructurado. El **Handshake Protocol** asigna identidad estable a cada agente (`BaseName-Agente`) y permite que, ante un fallo o interrupción, el agente recupere su estado y continúe desde donde quedó.
+**What it is**: **Engram** is the project's persistent memory. Each artifact (CA, plan, validation) and each flow state (flow-state) is stored with a structured `topic_key`. The **Handshake Protocol** assigns a stable identity to each agent (`BaseName-Agent`) and allows an agent, after a failure or interruption, to recover its state and continue where it left off.
 
-**Por qué importa**: Sin memoria persistente, cada sesión empieza ciega. Sin handshake, los agentes no saben quiénes son. Este pilar convierte a FlowTask de "chatbot que escribe código" a **sistema de agentes con continuidad operativa**.
+**Why it matters**: Without persistent memory, every session starts blind. Without handshake, agents do not know who they are. This pillar turns FlowTask from a "chatbot that writes code" into a **system of agents with operational continuity**.
 
-**Estructura de memoria de Engram** (ver [`docs/architecture/engram-cloud.md`](../docs/architecture/engram-cloud.md)):
-- `project/*` — contexto global del proyecto (stack, convenciones, capas)
-- `ca/{ID}`, `plan/{ID}`, `validation/{ID}` — snapshots de artefactos
-- `ca/CA-{ID}/artifact/{filename}` — contenido completo de artefactos (ca-artifact)
-- `flow-state/{ID}/*` — control paso a paso por CA
-- `impl/{ID}/*` — descubrimientos de implementación (decisiones, patrones)
+**Engram memory structure** (see [`docs/architecture/engram-cloud.md`](../docs/architecture/engram-cloud.md)):
+- `project/*` — global project context (stack, conventions, layers)
+- `ca/{ID}`, `plan/{ID}`, `validation/{ID}` — artifact snapshots
+- `ca/CA-{ID}/artifact/{filename}` — full artifact content (ca-artifact)
+- `flow-state/{ID}/*` — step-by-step control per CA
+- `impl/{ID}/*` — implementation discoveries (decisions, patterns)
 
-**Handshake Protocol** (ver [`docs/architecture/handshake.md`](../docs/architecture/handshake.md)):
-1. El Runner consulta Engram: ¿existe handshake para este CA?
-2. Si es nuevo: asigna BaseName de un pool predefinido (Aitana, Kael, Lyra...)
-3. Si es continuación: recupera `task_id`, lee el último checkpoint, relanza al agente con el contexto completo
+**Handshake Protocol** (see [`docs/architecture/handshake.md`](../docs/architecture/handshake.md)):
+1. The Runner queries Engram: does a handshake exist for this CA?
+2. If it is new: assign a BaseName from a predefined pool (Aitana, Kael, Lyra...)
+3. If it is a continuation: recover `task_id`, read the last checkpoint, relaunch the agent with the full context
 
-### Pilar 3 — Optimización Radical de Contexto (LSP + AST-Grep)
+### Pillar 3 — Radical Context Optimization (LSP + AST-Grep)
 
-**Qué es**: El Planner actualmente usa **Glob + Grep** para descubrir archivos y leer código — esto envía **~1,400 líneas (~2,200 tokens)** al LLM, la mayoría ruido. La combinación **LSP** (descubrimiento semántico de símbolos) + **AST-Grep** (extracción por patrón estructural) reduce esto a **19 líneas exactas (~180 tokens)**. Una reducción del **91% del ruido contextual**.
+**What it is**: The Planner currently uses **Glob + Grep** to discover files and read code — this sends **~1,400 lines (~2,200 tokens)** to the LLM, most of it noise. The combination of **LSP** (semantic symbol discovery) + **AST-Grep** (structural pattern extraction) reduces this to **19 exact lines (~180 tokens)**. A reduction of **91% of contextual noise**.
 
-**Por qué importa**: El contexto es el recurso más caro en sistemas basados en LLM. Cada token ahorrado es velocidad, precisión y menor costo. Este pilar permite que FlowTask escale a proyectos grandes sin degradación.
+**Why it matters**: Context is the most expensive resource in LLM-based systems. Every token saved is speed, precision, and lower cost. This pillar allows FlowTask to scale to large projects without degradation.
 
-**Diagrama comparativo**: Ver [`docs/architecture/lsp-ast-grep.md`](../docs/architecture/lsp-ast-grep.md) — flujo actual (Glob+Grep, 2,200 tokens) vs flujo optimizado (LSP+AST-Grep, 180 tokens).
+**Comparison diagram**: See [`docs/architecture/lsp-ast-grep.md`](../docs/architecture/lsp-ast-grep.md) — current flow (Glob+Grep, 2,200 tokens) vs. optimized flow (LSP+AST-Grep, 180 tokens).
 
 ---
 
 ## 3. Roadmap (CA-008)
 
-12 iniciativas clasificadas por nivel de impacto. **Este roadmap es direccional — no contiene fechas ni estrategias de implementación.** Cada ítem tendrá su propio CA cuando llegue su momento de ejecución.
+12 initiatives classified by impact level. **This roadmap is directional — it contains no dates or implementation strategies.** Each item will have its own CA when its execution time comes.
 
-### Pilar 1 — Git Worktrees
+### Pillar 1 — Git Worktrees
 
-| # | Ítem | Impacto | Referencia | Notas |
-|---|------|---------|------------|-------|
-| P1.1 | Implementar infraestructura de Git Worktrees para sandbox de agentes | **ALTO** | CA futuro | Cada agente recibe un worktree efímero. Creación, checkout, y cleanup automático. |
-| P1.2 | Protocolo del Archivist: diff, revisión e integración segura de cambios | **ALTO** | CA futuro | Diff entre worktree y rama principal. Revisión pre-merge. Integración atómica. |
+| # | Item | Impact | Reference | Notes |
+|---|------|--------|-----------|-------|
+| P1.1 | Implement Git Worktree infrastructure for agent sandboxing | **HIGH** | Future CA | Each agent receives an ephemeral worktree. Creation, checkout, and automatic cleanup. |
+| P1.2 | Archivist protocol: diff, review, and safe integration of changes | **HIGH** | Future CA | Diff between worktree and main branch. Pre-merge review. Atomic integration. |
 
-### Pilar 2 — Engram + Handshake
+### Pillar 2 — Engram + Handshake
 
-| # | Ítem | Impacto | Referencia | Notas |
-|---|------|---------|------------|-------|
-| P2.1 | Migración `.workspace/` → Engram: análisis e implementación del mecanismo | **ALTO** | ✅ CA-ARTIFACTOS-ENGRAM | Mecanismo Dual-Source implementado. Los 8 agentes ahora persisten artifacts en Engram. CAs legacy (~19) con fallback a disco. |
-| P2.2 | #1081: Regresión en consultas a Engram post-update | **ALTO** | Engram #1081 | Agentes dejaron de consultar Engram proactivamente. |
-| P2.3 | #1082: Inyección Progresiva de Reglas (Context Degradation) | **ALTO** | Engram #1082 | Runner pierde coherencia a ~100k tokens. |
-| P2.4 | #1084: Protocolo Zero-Assumptions | **ALTO** | Engram #1084 | Agentes deben validar contra Engram antes de actuar. |
-| P2.5 | #1080: Inestabilidad de Identidad del Runner | **MEDIO** | Engram #1080 | Runner a veces asume rol incorrecto al iniciar sesión. |
+| # | Item | Impact | Reference | Notes |
+|---|------|--------|-----------|-------|
+| P2.1 | `.workspace/` → Engram migration: mechanism analysis and implementation | **HIGH** | ✅ CA-ARTIFACTOS-ENGRAM | Dual-Source mechanism implemented. All 8 agents now persist artifacts in Engram. Legacy CAs (~19) with disk fallback. |
+| P2.2 | #1081: Regression in Engram queries after update | **HIGH** | Engram #1081 | Agents stopped querying Engram proactively. |
+| P2.3 | #1082: Progressive Rule Injection (Context Degradation) | **HIGH** | Engram #1082 | Runner loses coherence at ~100k tokens. |
+| P2.4 | #1084: Zero-Assumptions Protocol | **HIGH** | Engram #1084 | Agents must validate against Engram before acting. |
+| P2.5 | #1080: Runner Identity Instability | **MEDIUM** | Engram #1080 | Runner sometimes assumes the wrong role when starting a session. |
 
-### Pilar 3 — LSP + AST-Grep
+### Pillar 3 — LSP + AST-Grep
 
-| # | Ítem | Impacto | Referencia | Notas |
-|---|------|---------|------------|-------|
-| P3.1 | #1058: Integrar LSP + AST-Grep en el Planner | **ALTO** | Engram #1058 | Sustituir Glob+Grep por descubrimiento semántico y extracción estructural. Validación del 91% durante ejecución. |
-| P3.2 | #1083: Orquestación Paralela en Runner | **MEDIO** | Engram #1083 | Ejecutar sub-agentes en paralelo cuando no hay dependencias secuenciales. |
+| # | Item | Impact | Reference | Notes |
+|---|------|--------|-----------|-------|
+| P3.1 | #1058: Integrate LSP + AST-Grep into the Planner | **HIGH** | Engram #1058 | Replace Glob+Grep with semantic discovery and structural extraction. 91% validation during execution. |
+| P3.2 | #1083: Parallel Orchestration in Runner | **MEDIUM** | Engram #1083 | Run subagents in parallel when there are no sequential dependencies. |
 
-### Transversal — Gobernanza y Estructura
+### Cross-cutting — Governance and Structure
 
-| # | Ítem | Impacto | Referencia | Notas |
-|---|------|---------|------------|-------|
-| T.1 | Carpeta `Flowtask-Architecture/`: whitepaper técnico con los 3 pilares, roadmap, diagramas y flujo de trabajo | **ALTO** | Este documento | ✅ Entregable de CA-008. Documento fundacional para desarrolladores externos. |
-| T.2 | #1087: Validator — fallo en detección de errores de Runtime | **ALTO** | Engram #1087 | Validator no detecta errores de runtime. Debe integrarse con Tester. |
-| T.3 | Unificación de carpetas de arquitectura: `Architecture/` + `New Architecture/` → `docs/architecture/` | **MEDIO** | ✅ Completado en CA-008 | 24 archivos consolidados con referencias actualizadas. |
-| T.4 | #1086: Refuerzo del Validator (Mentalidad Adversaria) | **MEDIO** | Engram #1086 | Validator es laxo. Necesita mentalidad QA rigurosa. |
+| # | Item | Impact | Reference | Notes |
+|---|------|--------|-----------|-------|
+| T.1 | `Flowtask-Architecture/` folder: technical whitepaper with the 3 pillars, roadmap, diagrams, and workflow | **HIGH** | This document | ✅ CA-008 deliverable. Foundational document for external developers. |
+| T.2 | #1087: Validator — failure to detect runtime errors | **HIGH** | Engram #1087 | Validator does not detect runtime errors. It must be integrated with Tester. |
+| T.3 | Unification of architecture folders: `Architecture/` + `New Architecture/` → `docs/architecture/` | **MEDIUM** | ✅ Completed in CA-008 | 24 files consolidated with updated references. |
+| T.4 | #1086: Validator Reinforcement (Adversarial Mindset) | **MEDIUM** | Engram #1086 | Validator is lax. It needs a rigorous QA mindset. |
 
-### Resumen por Impacto
+### Summary by Impact
 
-| Impacto | Cantidad | Ítems |
-|---------|----------|-------|
-| **ALTO** | 9 | P1.1, P1.2, P2.1, P2.2, P2.3, P2.4, P3.1, T.1, T.2 |
-| **MEDIO** | 4 | P2.5, P3.2, T.3, T.4 |
-
----
-
-## 4. Referencias de Engram (Pendientes)
-
-| Ref | ID | Tipo | Título |
-|-----|----|------|--------|
-| #1057 | 1057 | architecture | Estrategia de descubrimiento de código en el Planner (antecedente de #1058) |
-| #1058 | 1058 | decision | Pendiente: Integrar LSP + AST-Grep en el Planner |
-| #1080 | 1080 | bugfix | Pendiente: Inestabilidad de Identidad del Runner |
-| #1081 | 1081 | bugfix | Pendiente: Regresión en consultas a Engram post-update |
-| #1082 | 1082 | architecture | Pendiente: Inyección Progresiva de Reglas (Context Degradation) |
-| #1083 | 1083 | architecture | Pendiente: Orquestación y Pensamiento Paralelo en Runner |
-| #1084 | 1084 | pattern | Pendiente: Protocolo Zero-Assumptions (Validación Proactiva) |
-| #1086 | 1086 | pattern | Pendiente: Refuerzo del Sub-agente Validator (QA Riguroso) |
-| #1087 | 1087 | bugfix | Pendiente: Validator — Fallo en detección de errores de Runtime |
-
-Los 9 pendientes (con ID Engram) están distribuidos en el roadmap por pilar e impacto.
+| Impact | Count | Items |
+|--------|-------|-------|
+| **HIGH** | 9 | P1.1, P1.2, P2.1, P2.2, P2.3, P2.4, P3.1, T.1, T.2 |
+| **MEDIUM** | 4 | P2.5, P3.2, T.3, T.4 |
 
 ---
 
-## 5. Estructura del Proyecto
+## 4. Engram References (Pending)
+
+| Ref | ID | Type | Title |
+|-----|----|------|-------|
+| #1057 | 1057 | architecture | Code discovery strategy in the Planner (predecessor of #1058) |
+| #1058 | 1058 | decision | Pending: Integrate LSP + AST-Grep into the Planner |
+| #1080 | 1080 | bugfix | Pending: Runner Identity Instability |
+| #1081 | 1081 | bugfix | Pending: Regression in Engram queries after update |
+| #1082 | 1082 | architecture | Pending: Progressive Rule Injection (Context Degradation) |
+| #1083 | 1083 | architecture | Pending: Parallel Orchestration and Thinking in Runner |
+| #1084 | 1084 | pattern | Pending: Zero-Assumptions Protocol (Proactive Validation) |
+| #1086 | 1086 | pattern | Pending: Validator Subagent Reinforcement (Rigorous QA) |
+| #1087 | 1087 | bugfix | Pending: Validator — Failure to detect runtime errors |
+
+The 9 pending items (with Engram IDs) are distributed across the roadmap by pillar and impact.
+
+---
+
+## 5. Project Structure
 
 ```
 FlowTask/
-├── Flowtask-Architecture/    ← Este whitepaper (CA-008)
+├── Flowtask-Architecture/    ← This whitepaper (CA-008)
 │   └── README.md
-├── .flowtask/                ← Agentes, skills, plugins (estático)
+├── .flowtask/                ← Agents, skills, plugins (static)
 │   ├── agents/
 │   ├── skills/
 │   └── plugins/
-├── .workspace/               ← Artefactos legacy de CAs (pre-ARTIFACTOS-ENGRAM)
+├── .workspace/               ← Legacy CA artifacts (pre-ARTIFACTOS-ENGRAM)
 │   └── CA-{ID}/
-│       ├── ca.md             ← Legacy: nuevos CAs usan Engram
-│       ├── plan.md           ← Legacy: nuevos CAs usan Engram
-│       └── audit.md          ← Legacy: nuevos CAs usan Engram
-├── docs/architecture/        ← Documentación de arquitectura unificada
-│   ├── INDEX.md              ← Índice de todos los documentos
-│   ├── 01-agentes.md .. 09-workspace.md  ← Módulos del repomix-output.xml
-│   ├── worktree.md, lsp-ast-grep.md  ← Diagramas ASCII de pilares
-│   └── handshake.md, flowtask-core.md  ← Diseños de New Architecture
-├── .engram/                  ← Configuración de Engram (memoria persistente)
-└── src/                      ← Código fuente del proyecto
+│       ├── ca.md             ← Legacy: new CAs use Engram
+│       ├── plan.md           ← Legacy: new CAs use Engram
+│       └── audit.md          ← Legacy: new CAs use Engram
+├── docs/architecture/        ← Unified architecture documentation
+│   ├── INDEX.md              ← Index of all documents
+│   ├── 01-agentes.md .. 09-workspace.md  ← Modules from repomix-output.xml
+│   ├── worktree.md, lsp-ast-grep.md  ← ASCII diagrams of the pillars
+│   └── handshake.md, flowtask-core.md  ← Designs from New Architecture
+├── .engram/                  ← Engram configuration (persistent memory)
+└── src/                      ← Project source code
 ```
 
-### Documentación de arquitectura
+### Architecture documentation
 
-Toda la documentación técnica está en [`docs/architecture/`](../docs/architecture/). El índice completo está en [`INDEX.md`](../docs/architecture/INDEX.md).
+All technical documentation is in [`docs/architecture/`](../docs/architecture/). The full index is in [`INDEX.md`](../docs/architecture/INDEX.md).
 
-**Documentos generados de repomix-output.xml** (módulos 01-09):
-- Agentes, skills, implementación, plugins, comandos, configuración, README, Engram, workspace
+**Documents generated from repomix-output.xml** (modules 01-09):
+- Agents, skills, implementation, plugins, commands, configuration, README, Engram, workspace
 
-**Documentos de diseño conceptual** (originalmente en `New Architecture/`):
-- [`flowtask-core.md`](../docs/architecture/flowtask-core.md) — Ecosistema core
-- [`handshake.md`](../docs/architecture/handshake.md) — Protocolo Handshake
-- [`anatomia-workspace.md`](../docs/architecture/anatomia-workspace.md) — Anatomía del workspace
+**Conceptual design documents** (originally in `New Architecture/`):
+- [`flowtask-core.md`](../docs/architecture/flowtask-core.md) — Core ecosystem
+- [`handshake.md`](../docs/architecture/handshake.md) — Handshake Protocol
+- [`anatomia-workspace.md`](../docs/architecture/anatomia-workspace.md) — Workspace anatomy
 
-**Diagramas ASCII de los pilares**:
-- [`worktree.md`](../docs/architecture/worktree.md) — Pilar 1: Git Worktrees
-- [`sub-agent-archivista.md`](../docs/architecture/sub-agent-archivista.md) — Flujo del Archivist
-- [`engram-cloud.md`](../docs/architecture/engram-cloud.md) — Pilar 2: Estructura Engram
-- [`lsp-ast-grep.md`](../docs/architecture/lsp-ast-grep.md) — Pilar 3: Optimización LSP+AST-Grep
+**ASCII diagrams of the pillars**:
+- [`worktree.md`](../docs/architecture/worktree.md) — Pillar 1: Git Worktrees
+- [`sub-agent-archivista.md`](../docs/architecture/sub-agent-archivista.md) — Archivist flow
+- [`engram-cloud.md`](../docs/architecture/engram-cloud.md) — Pillar 2: Engram structure
+- [`lsp-ast-grep.md`](../docs/architecture/lsp-ast-grep.md) — Pillar 3: LSP+AST-Grep optimization
 
 ---
 
-## 6. Para Desarrolladores Externos
+## 6. For External Developers
 
-### ¿Cómo contribuir?
+### How to contribute
 
-1. **Lee este whitepaper** (5 minutos) para entender los pilares y el roadmap.
-2. **Explora `docs/architecture/`** para la documentación técnica detallada.
-3. **Revisa los CAs activos** en `.workspace/` para ver el flujo de trabajo en acción.
-4. **Toma un ítem del roadmap** — crea un nuevo CA siguiendo el flujo: CA → Plan → Auditoría → Construcción → Validación.
+1. **Read this whitepaper** (5 minutes) to understand the pillars and the roadmap.
+2. **Explore `docs/architecture/`** for detailed technical documentation.
+3. **Review active CAs** in `.workspace/` to see the workflow in action.
+4. **Pick a roadmap item** — create a new CA following the flow: CA → Plan → Audit → Construction → Validation.
 
-### ¿Cómo crear un nuevo CA?
+### How to create a new CA
 
 ```
-Solicitud de un nuevo CA: "Descripción del cambio"
+Request for a new CA: "Description of the change"
 ```
 
-Esto inicia el flujo FlowTask: el CA-Writer formaliza los requisitos, el Planner genera el plan, el Plan-Auditor revisa coherencia, el Constructor implementa, y el Validator verifica.
+This starts the FlowTask flow: the CA-Writer formalizes the requirements, the Planner generates the plan, the Plan-Auditor reviews coherence, the Constructor implements, and the Validator verifies.
 
-### Prioridad sugerida
+### Suggested priority
 
-Los ítems **ALTO** deben abordarse antes que los **MEDIO**, pero dentro del mismo nivel no hay orden predefinido. La urgencia la define el contexto del proyecto.
+**HIGH** items should be addressed before **MEDIUM** ones, but within the same level there is no predefined order. Urgency is defined by the project context.
 
 ---
 
-## 7. Tradeoffs y Decisiones de Diseño
+## 7. Tradeoffs and Design Decisions
 
-| ID | Tradeoff | Decisión |
+| ID | Tradeoff | Decision |
 |----|----------|----------|
-| T1 | Roadmap sin fechas, solo impacto | Flexibilidad total ante cambios de prioridad. |
-| T2 | Flowtask-Architecture dentro del repo | Un solo lugar de verdad versionado; el whitepaper convive con el código. |
-| T3 | Unificación de arquitectura en `docs/architecture/` | Documentación coherente para consumo público. |
-| T4 | Los 10 pendientes son CAs independientes | CA-008 no se diluye; el roadmap es direccional, no ejecutivo. |
+| T1 | Roadmap without dates, only impact | Full flexibility for priority changes. |
+| T2 | Flowtask-Architecture inside the repo | A single versioned place of truth; the whitepaper lives alongside the code. |
+| T3 | Architecture unification in `docs/architecture/` | Coherent documentation for public consumption. |
+| T4 | The 10 pending items are independent CAs | CA-008 is not diluted; the roadmap is directional, not executive. |
 
 ---
 
-*Whitepaper generado como entregable de CA-008 — Roadmap de Transformación Open Source de FlowTask.*
+*Whitepaper generated as a CA-008 deliverable — FlowTask Open Source Transformation Roadmap.*

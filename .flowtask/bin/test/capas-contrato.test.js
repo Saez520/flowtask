@@ -40,16 +40,16 @@ describe("capas de persona, autonomia y permisos — contrato", () => {
   it("publishes the page with its nine sections", () => {
     assert.ok(exists("docs/architecture/capas-persona-autonomia-permisos.md"), "missing the layers page");
     for (const section of [
-      "## Propósito",
-      "## Capas",
-      "## Valores y esquema",
-      "## Resolución por capa",
-      "## Precedencia",
-      "## Fallo por capa",
-      "## Puntos de enforcement",
-      "## Migración",
-      "## Frontera con la policy de dominio",
-      "## Verificación",
+      "## Purpose",
+      "## Layers",
+      "## Values and schema",
+      "## Per-layer resolution",
+      "## Precedence",
+      "## Per-layer failure",
+      "## Enforcement points",
+      "## Migration",
+      "## Boundary with the domain policy",
+      "## Verification",
     ]) {
       assert.ok(page.includes(section), `missing section ${section}`);
     }
@@ -69,26 +69,26 @@ describe("capas de persona, autonomia y permisos — contrato", () => {
 
   it("declares the structural precedence between layers", () => {
     assert.ok(
-      flatPage.includes("`permisos > autonomía > persona`"),
+      flatPage.includes("`permissions > autonomy > persona`"),
       "missing the structural precedence",
     );
     assert.ok(
-      flatPage.includes("nunca amplía el sobre de permisos"),
+      flatPage.includes("never expands the permissions envelope"),
       "the autonomy layer must not widen the permission envelope",
     );
     assert.ok(
-      flatPage.includes("no autoriza ni restringe"),
+      flatPage.includes("does not authorize or restrict"),
       "the persona layer must not authorize nor restrict",
     );
   });
 
   it("publishes the per-layer failure table", () => {
-    assert.ok(flatPage.includes("| Capa ausente o inválida | Comportamiento | Resultado |"), "missing the failure table header");
-    assert.ok(flatPage.includes("| Permisos | Fallo operativo con mensaje |"), "missing the permissions failure row");
-    assert.ok(flatPage.includes("| Autonomía | Fallo operativo con mensaje |"), "missing the autonomy failure row");
-    assert.ok(flatPage.includes("| Persona | Aviso visible y continuación |"), "missing the persona failure row");
+    assert.ok(flatPage.includes("| Missing or invalid layer | Behavior | Result |"), "missing the failure table header");
+    assert.ok(flatPage.includes("| Permissions | Operational failure with message |"), "missing the permissions failure row");
+    assert.ok(flatPage.includes("| Autonomy | Operational failure with message |"), "missing the autonomy failure row");
+    assert.ok(flatPage.includes("| Persona | Visible warning and continuation |"), "missing the persona failure row");
     assert.ok(
-      flatPage.includes("no tiene valor por defecto"),
+      flatPage.includes("has no default value"),
       "the operational failure must not fall back to a default value",
     );
   });
@@ -97,22 +97,22 @@ describe("capas de persona, autonomia y permisos — contrato", () => {
     assert.ok(flatPage.includes('"profile": "autonomous-dev"'), "missing the autonomy migration default");
     assert.ok(flatPage.includes('"envelope": "standard"'), "missing the permissions migration default");
     assert.ok(
-      flatPage.includes("no** un fallback de runtime") || flatPage.includes("no** un fallback de runtime:") || flatPage.includes("Son una migración, **no** un fallback de runtime"),
+      flatPage.includes("They are a migration, **not** a runtime fallback"),
       "the migration default must be declared as not a runtime fallback",
     );
     assert.ok(
-      flatPage.includes("Una capa inválida nunca se repara con un default"),
+      flatPage.includes("An invalid layer is never repaired with a default"),
       "an invalid layer must never be repaired with a default",
     );
   });
 
   it("declares the boundary with the domain policy", () => {
     assert.ok(
-      flatPage.includes("los permisos de dominio de Hermes pertenecen a la fase de permisos de dominio"),
+      flatPage.includes("Hermes domain permissions belong to the domain permissions phase"),
       "missing the domain policy boundary",
     );
     assert.ok(
-      flatPage.includes("sin la policy de capacidades y sin los permisos de dominio no amplía el sobre técnico"),
+      flatPage.includes("without the capability policy and without domain permissions it does not expand the technical envelope"),
       "the hermes profile must not widen the envelope without the domain policy",
     );
   });
@@ -123,7 +123,7 @@ describe("capas de persona, autonomia y permisos — contrato", () => {
 
   it("rejects a regressed copy of the page", () => {
     const regressed = page.replace(
-      "La precedencia entre capas es",
+      "Precedence between layers is",
       RETIRED_PHRASE,
     );
     assert.notEqual(regressed, page, "the regression copy must differ from the contract");
@@ -136,11 +136,11 @@ describe("reconciliacion del contrato de autonomia", () => {
     const page = read("docs/architecture/autonomia-operativa.md");
     assertNoRetiredPhrase(page, "autonomia-operativa.md");
     assert.ok(
-      flat(page).includes("La capa de autonomía declara la iniciativa"),
+      flat(page).includes("The autonomy layer declares initiative"),
       "the autonomy page must declare the initiative layer",
     );
     assert.ok(
-      flat(page).includes("La política de ejecución sigue siendo `gate-then-auto`"),
+      flat(page).includes("The execution policy remains `gate-then-auto`"),
       "the autonomy page must preserve the execution policy",
     );
     assert.ok(
@@ -171,11 +171,11 @@ describe("reconciliacion del contrato de autonomia", () => {
     const core = read("docs/core-flowtask.md");
     assert.ok(core.includes("capas-persona-autonomia-permisos.md"), "the core flow must link the layers page");
     assert.ok(
-      flat(core).includes("La personalidad solo define tono y profundidad; no autoriza ni restringe acciones"),
+      flat(core).includes("Personality only defines tone and depth; it does not authorize or restrict actions"),
       "the core flow must declare that the persona does not authorize",
     );
     assert.ok(
-      flat(core).includes("La autorización técnica vive en la capa de permisos y la iniciativa en la capa de autonomía"),
+      flat(core).includes("Technical authorization lives in the permissions layer and initiative in the autonomy layer"),
       "the core flow must locate authorization and initiative in their own layers",
     );
   });
@@ -196,14 +196,20 @@ describe("configuracion local y documentacion de migracion", () => {
   });
 
   it("documents the migration defaults and the non-fallback boundary", () => {
-    for (const relative of ["docs/installation.md", ".flowtask/config/README.md"]) {
-      const content = flat(read(relative));
-      assert.ok(content.includes("autonomy.json"), `${relative} must document autonomy.json`);
-      assert.ok(content.includes("permissions.json"), `${relative} must document permissions.json`);
-      assert.ok(content.includes("autonomous-dev"), `${relative} must document the autonomy migration default`);
-      assert.ok(content.includes("standard"), `${relative} must document the permissions migration default`);
-      assert.match(content, /no un fallback de runtime/, `${relative} must state that the default is not a runtime fallback`);
-      assert.match(content, /Una capa inválida nunca se repara con un default/, `${relative} must forbid repairing an invalid layer`);
-    }
+    const installation = flat(read("docs/installation.md"));
+    assert.ok(installation.includes("autonomy.json"), "docs/installation.md must document autonomy.json");
+    assert.ok(installation.includes("permissions.json"), "docs/installation.md must document permissions.json");
+    assert.ok(installation.includes("autonomous-dev"), "docs/installation.md must document the autonomy migration default");
+    assert.ok(installation.includes("standard"), "docs/installation.md must document the permissions migration default");
+    assert.match(installation, /not a runtime fallback/, "docs/installation.md must state that the default is not a runtime fallback");
+    assert.match(installation, /An invalid layer is never repaired with a default/, "docs/installation.md must forbid repairing an invalid layer");
+
+    const configReadme = flat(read(".flowtask/config/README.md"));
+    assert.ok(configReadme.includes("autonomy.json"), ".flowtask/config/README.md must document autonomy.json");
+    assert.ok(configReadme.includes("permissions.json"), ".flowtask/config/README.md must document permissions.json");
+    assert.ok(configReadme.includes("autonomous-dev"), ".flowtask/config/README.md must document the autonomy migration default");
+    assert.ok(configReadme.includes("standard"), ".flowtask/config/README.md must document the permissions migration default");
+    assert.match(configReadme, /no un fallback de runtime/, ".flowtask/config/README.md must state that the default is not a runtime fallback");
+    assert.match(configReadme, /Una capa inválida nunca se repara con un default/, ".flowtask/config/README.md must forbid repairing an invalid layer");
   });
 });

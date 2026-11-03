@@ -124,7 +124,7 @@ describe("generateDocsMedia", () => {
     assert.equal(missing.attemptStatus, "inconclusive");
     createAllArtifacts(tempDir, true);
     const empty = await generateDocsMedia(tempDir, { detectFn: () => true, spawnFn: () => fakeChild({ status: 0 }) });
-    assert.match(empty.diagnostic, /vacío/);
+    assert.match(empty.diagnostic, /empty/);
   });
 
   it("does not declare timeout before close and confirms real POSIX group termination", { skip: process.platform === "win32" }, async () => {
@@ -142,7 +142,7 @@ describe("generateDocsMedia", () => {
     const result = await resultPromise;
     assert.equal(result.attemptStatus, "failed");
     assert.equal(result.terminationConfirmed, true);
-    assert.match(result.diagnostic, /terminación fue confirmada/);
+    assert.match(result.diagnostic, /termination was confirmed/);
     await waitForPidsToExit([pids.parent, pids.child]);
   });
 

@@ -104,7 +104,7 @@ export function mergeGraphifyOpencodeMcp(configPath, graphPath, opts = {}) {
   } catch (err) {
     return {
       success: false,
-      warning: `Graphify MCP (opencode): no se pudo escribir ${configPath} (${err.message}).`,
+      warning: `Graphify MCP (opencode): could not write ${configPath} (${err.message}).`,
     };
   }
 }
@@ -137,7 +137,7 @@ export function mergeGraphifyClaudeMcp(mcpJsonPath, graphPath, opts = {}) {
   } catch (err) {
     return {
       success: false,
-      warning: `Graphify MCP (claude): no se pudo escribir ${mcpJsonPath} (${err.message}).`,
+      warning: `Graphify MCP (claude): could not write ${mcpJsonPath} (${err.message}).`,
     };
   }
 }
@@ -161,7 +161,7 @@ export function configureMcpForTargets({ projectDir, selectedClis, graphPath, de
 
   for (const cli of selectedClis) {
     if (!SUPPORTED_MCP_TARGETS.has(cli)) {
-      const w = `Graphify MCP: target "${cli}" no soportado para MCP; se omite configuración.`;
+      const w = `Graphify MCP: target "${cli}" is not supported for MCP; configuration is skipped.`;
       warnings.push(w);
       details.push({ target: cli, status: "unsupported", warning: w });
       continue;

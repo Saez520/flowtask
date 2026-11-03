@@ -658,7 +658,7 @@ test("mismatch removes both components and emits the exact deprecation alert onc
 
   assert.equal(fs.existsSync(path.join(pluginRoot, "flowtask-classifier-hook")), false);
   assert.equal(fs.existsSync(path.join(pluginRoot, "flowtask-classifier-tui")), false);
-  assert.equal(output.join("\n").split("el plugin de clasificación fue deprecado").length - 1, 1);
+  assert.equal(output.join("\n").split("the classifier plugin was deprecated").length - 1, 1);
   assert.deepEqual(nativeTuiEntries(root), [
     "./plugins/agent-model-selector-opencode/dist/tui.js",
   ]);
@@ -749,7 +749,7 @@ test("target selector rejects non-TTY stdin without touching raw mode", async ()
   const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
   Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: false });
   try {
-    await assert.rejects(() => showInteractiveSelector({}), /No hay TTY/);
+    await assert.rejects(() => showInteractiveSelector({}), /No TTY/);
   } finally {
     if (descriptor) Object.defineProperty(process.stdin, "isTTY", descriptor);
     else delete process.stdin.isTTY;
@@ -981,7 +981,7 @@ test("preserves legacy profile when installation destination cannot be written",
   }
 
   assert.equal(fs.existsSync(legacy), true);
-  assert.ok(output.join("\n").includes("reintenta con flowtask update"));
+  assert.ok(output.join("\n").includes("retry with flowtask update"));
 });
 
 test("materializes managed config and profile independently for three targets", () => {

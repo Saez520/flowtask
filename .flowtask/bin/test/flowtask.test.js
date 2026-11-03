@@ -44,7 +44,7 @@ describe("deprecated graphify query shim", () => {
 
       assert.equal(error.status, 1);
       assert.equal(error.stdout, "");
-      assert.match(error.stderr, /no ejecuta consultas locales/);
+      assert.match(error.stderr, /no longer runs local queries/);
     } finally {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

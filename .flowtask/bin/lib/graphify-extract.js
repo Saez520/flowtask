@@ -3,16 +3,16 @@ import path from "path";
 import { spawnSync } from "child_process";
 
 /**
- * Adaptador de extracción code-only para Graphify.
+ * Code-only extraction adapter for Graphify.
  *
- * Ejecuta `graphify update <projectDir> --no-cluster` con cwd = projectDir (raíz principal).
- * Rechaza rutas bajo `.worktrees/`.
- * Devuelve resultado estructurado no lanzable.
+ * Runs `graphify update <projectDir> --no-cluster` with cwd = projectDir (main root).
+ * Rejects paths under `.worktrees/`.
+ * Returns a structured, non-throwing result.
  *
- * @param {string} projectDir - Raíz del repositorio principal
+ * @param {string} projectDir - Main repository root
  * @param {object} [opts]
- * @param {Function} [opts.runFn] - override runner (testing): (cmd, opts) => { status, stdout, stderr }
- * @param {Function} [opts.existsSyncFn] - override fs.existsSync (testing)
+ * @param {Function} [opts.runFn] - runner override (testing): (cmd, opts) => { status, stdout, stderr }
+ * @param {Function} [opts.existsSyncFn] - fs.existsSync override (testing)
  * @returns {{ ok: boolean, graphPath: string|null, status: string, stdout: string, stderr: string, warning: string|null }}
  */
 export function extractCodeOnly(projectDir, opts = {}) {
@@ -28,7 +28,7 @@ export function extractCodeOnly(projectDir, opts = {}) {
       status: "skipped",
       stdout: "",
       stderr: "",
-      warning: "Graphify extract: rechazado — projectDir está bajo .worktrees/.",
+      warning: "Graphify extract: rejected — projectDir is under .worktrees/.",
     };
   }
 
@@ -54,7 +54,7 @@ export function extractCodeOnly(projectDir, opts = {}) {
         status: "failed",
         stdout,
         stderr,
-        warning: "Graphify extract: binario no encontrado. Instala Graphify o reintenta con flowtask update.",
+        warning: "Graphify extract: binary not found. Install Graphify or retry with flowtask update.",
       };
     }
 
@@ -66,7 +66,7 @@ export function extractCodeOnly(projectDir, opts = {}) {
         status: "failed",
         stdout,
         stderr,
-        warning: `Graphify extract: falló con exit code ${exitCode}. Reintenta con flowtask update o contacta a un administrador.`,
+        warning: `Graphify extract: failed with exit code ${exitCode}. Retry with flowtask update or contact an administrator.`,
       };
     }
 
@@ -81,7 +81,7 @@ export function extractCodeOnly(projectDir, opts = {}) {
         status: "failed",
         stdout,
         stderr,
-        warning: "Graphify extract: proceso completado pero graphify-out/graph.json no existe.",
+        warning: "Graphify extract: process completed but graphify-out/graph.json does not exist.",
       };
     }
 
@@ -100,7 +100,7 @@ export function extractCodeOnly(projectDir, opts = {}) {
       status: "failed",
       stdout: "",
       stderr: err.message,
-      warning: `Graphify extract: excepción (${err.message}). Reintenta con flowtask update o contacta a un administrador.`,
+      warning: `Graphify extract: exception (${err.message}). Retry with flowtask update or contact an administrator.`,
     };
   }
 }

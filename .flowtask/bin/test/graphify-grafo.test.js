@@ -68,7 +68,7 @@ describe("extractCodeOnly", () => {
     assert.equal(result.ok, false);
     assert.equal(result.status, "failed");
     assert.equal(result.graphPath, null);
-    assert.ok(result.warning.includes("graphify-out/graph.json no existe"));
+    assert.ok(result.warning.includes("graphify-out/graph.json does not exist"));
   });
 
   it("returns failure on non-zero exit code", () => {
@@ -88,7 +88,7 @@ describe("extractCodeOnly", () => {
 
     assert.equal(result.ok, false);
     assert.equal(result.status, "failed");
-    assert.ok(result.warning.includes("binario no encontrado"));
+    assert.ok(result.warning.includes("binary not found"));
   });
 
   it("rejects worktree paths", () => {

@@ -1,25 +1,25 @@
-> **Histórico:** el modelo `.workspace` de este documento fue retirado del recorrido operativo. Consultá [../project-history.md](../project-history.md) y [../README.md](../README.md).
+> **Historical:** the `.workspace` model in this document was retired from the operational path. See [../project-history.md](../project-history.md) and [../README.md](../README.md).
 
-## 3. Anatomía del Workspace y persistencia
+## 3. Workspace anatomy and persistence
 
-FlowTask separa los activos estáticos (.flowtask) de los datos dinámicos de ejecución (.workspace y Engram).
+FlowTask separates static assets (.flowtask) from dynamic execution data (.workspace and Engram).
 
 ```text
-PROYECTO/
-├── .flowtask/              <-- [ESTÁTICO / INSTALACIÓN]
-│   ├── agents/             # Prompts base de los agentes
-│   ├── skills/             # MDs con protocolos (memory, etc.)
-│   ├── plugins/            # Lógica de extensión (JS/TS)
-│   └── bin/                # CLI y lógica de instalación
+PROJECT/
+├── .flowtask/              <-- [STATIC / INSTALLATION]
+│   ├── agents/             # Base agent prompts
+│   ├── skills/             # MDs with protocols (memory, etc.)
+│   ├── plugins/            # Extension logic (JS/TS)
+│   └── bin/                # CLI and installation logic
 │
-├── .workspace/             <-- [DINÁMICO / LOCAL]
-│   ├── CA-001/             # Carpeta por Change Request
-│   │   ├── ca.md           # Requisitos formalizados
-│   │   └── plan.md         # Pasos de implementación
+├── .workspace/             <-- [DYNAMIC / LOCAL]
+│   ├── CA-001/             # Folder per Change Request
+│   │   ├── ca.md           # Formalized requirements
+│   │   └── plan.md         # Implementation steps
 │   └── ...
 │
-└── ENGRAM (Global/DB)      <-- [DINÁMICO / PERSISTENTE]
-    ├── flow-state/         # Checkpoints de sub-agentes
-    ├── instances/          # Task IDs y Nombres (Handshake)
-    └── architecture/       # Decisiones de diseño a largo plazo
+└── ENGRAM (Global/DB)      <-- [DYNAMIC / PERSISTENT]
+    ├── flow-state/         # Subagent checkpoints
+    ├── instances/          # Task IDs and Names (Handshake)
+    └── architecture/       # Long-term design decisions
 ```

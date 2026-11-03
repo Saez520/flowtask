@@ -188,7 +188,7 @@ describe("documentación", () => {
   it("alinea el bloque del flujo principal con las rondas y la evidencia", () => {
     assert.match(coreFlow, /closure/);
     assert.match(coreFlow, /intermediate/);
-    assert.match(coreFlow, /evidencia/i);
+    assert.match(coreFlow, /evidence/i);
     assert.match(coreFlow, /APPROVED/);
     assert.match(coreFlow, /REJECTED/);
     assert.match(coreFlow, /OPERATIONAL_FAILURE/);
@@ -196,7 +196,7 @@ describe("documentación", () => {
   });
 
   it("documenta la precedencia, la excepción de literales y los códigos de salida", () => {
-    assert.match(validationDoc, /precedencia/i);
+    assert.match(validationDoc, /precedence/i);
     assert.match(validationDoc, /allowed_literals/);
     assert.match(validationDoc, /\| 0 \|/);
     assert.match(validationDoc, /\| 1 \|/);

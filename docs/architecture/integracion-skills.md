@@ -1,13 +1,12 @@
-# Integración vigente de skills
+# Current skills integration
 
-Las skills son módulos de instrucciones cargables bajo demanda. La fuente
-canónica vive en `.flowtask/skills/`; no existe un skill registry editorial que
-reemplace ese directorio.
+Skills are instruction modules that can be loaded on demand. The canonical
+source lives in `.flowtask/skills/`; there is no editorial skill registry that
+replaces that directory.
 
-## Carga
+## Loading
 
-El runner o el subagente carga una skill por su nombre mediante la herramienta
-`skill`:
+The runner or subagent loads a skill by name through the `skill` tool:
 
 ```text
 skill({ name: "investigacion" })
@@ -15,21 +14,21 @@ skill({ name: "memory-protocol" })
 skill({ name: "handshake-protocol" })
 ```
 
-El nombre corresponde al directorio que contiene `SKILL.md`. La instalación
-copía estas fuentes al target seleccionado; el contrato ejecutable permanece en
-la instalación del target y la fuente de este repositorio sigue siendo
+The name corresponds to the directory containing `SKILL.md`. Installation
+copies these sources to the selected target; the executable contract remains in
+the target installation, and the source in this repository remains
 `.flowtask/skills/`.
 
-## Responsabilidades
+## Responsibilities
 
-- `investigacion` define investigación con evidencia sin escribir archivos.
-- `memory-protocol` y `memory-contract` definen el uso de Engram y sus datos.
-- `handshake-protocol` gestiona identidad y continuidad cuando aplica.
-- `checkpoint-mixin` conserva checkpoints de subagentes.
-- `graphify-protocol` define consulta, degradación y evidencia de Graphify.
-- Las skills `review-*` aportan las lentes del review de riesgo, legibilidad,
-  confiabilidad y resiliencia.
+- `investigacion` defines evidence-based research without writing files.
+- `memory-protocol` and `memory-contract` define the use of Engram and its data.
+- `handshake-protocol` manages identity and continuity when applicable.
+- `checkpoint-mixin` preserves subagent checkpoints.
+- `graphify-protocol` defines Graphify query, degradation, and evidence.
+- The `review-*` skills provide the lenses for risk, readability,
+  reliability, and resilience review.
 
-Una skill aporta instrucciones; no registra agentes ni sustituye el manifiesto
-de plugins. Si una instrucción de esta página contradice el `SKILL.md` instalado,
-prevalece el contrato instalado y el conflicto debe documentarse.
+A skill provides instructions; it does not register agents or replace the plugin
+manifest. If an instruction on this page contradicts the installed `SKILL.md`,
+the installed contract prevails and the conflict must be documented.

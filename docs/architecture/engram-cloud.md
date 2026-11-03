@@ -1,47 +1,47 @@
-> **Histórico:** este diseño de sincronización cloud no forma parte de la guía operativa vigente. Consultá [../README.md](../README.md).
+> **Historical:** this cloud synchronization design is not part of the current operational guide. See [../README.md](../README.md).
 
-# Estructura de memoria de Engram y sincronización cloud
+# Engram memory structure and cloud synchronization
 
 ```mermaid
 flowchart TD
-    AGENTE["Agente de IA / Entorno Local"]
-    SQLITE["SQLite Local (Fuente de verdad)"]
-    SCOPE{"Validación de Alcance (Scope)"}
-    ALL{"¿Usa '--all'?"}
-    PROJECT{"¿Usa '--project'?"}
-    BLOQUEADO["BLOQUEADO<br/>(Bloqueo intencional)"]
-    CLOUD["ENGRAM CLOUD<br/>(Réplica aislada y segura)"]
+    AGENTE["AI Agent / Local Environment"]
+    SQLITE["Local SQLite (Source of truth)"]
+    SCOPE{"Scope Validation"}
+    ALL{"Does it use '--all'?"}
+    PROJECT{"Does it use '--project'?"}
+    BLOQUEADO["BLOCKED<br/>(Intentional block)"]
+    CLOUD["ENGRAM CLOUD<br/>(Isolated and safe replica)"]
 
     AGENTE --> SQLITE
-    SQLITE -->|"Intento de sincronización (Opt-in)"| SCOPE
+    SQLITE -->|"Synchronization attempt (Opt-in)"| SCOPE
     SCOPE --> ALL
     SCOPE --> PROJECT
-    ALL -->|"SÍ"| BLOQUEADO
-    PROJECT -->|"SÍ"| CLOUD
+    ALL -->|"YES"| BLOQUEADO
+    PROJECT -->|"YES"| CLOUD
 ```
 
 ```text
-[ MEMORIA DE ENGRAM ]
+[ ENGRAM MEMORY ]
        │
-       ├──→ [ CONTEXTO GLOBAL DEL PROYECTO ] (Inicializado por flowtask-initializer)
-       │      ├─ project/stack         → Tecnologías utilizadas
-       │      ├─ project/conventions   → Reglas y convenciones
-       │      └─ project/{layer}       → Patrones por capa (ej. api, data, business)
+       ├──→ [ GLOBAL PROJECT CONTEXT ] (Initialized by flowtask-initializer)
+       │      ├─ project/stack         → Technologies used
+       │      ├─ project/conventions   → Rules and conventions
+       │      └─ project/{layer}       → Patterns per layer (e.g., api, data, business)
        │
-       ├──→ [ SNAPSHOTS DE ARTEFACTOS ] (Resultados clave de cada tarea)
-       │      ├─ ca/{ID}               → Captura de Criterios de Aceptación (CA-Writer)
-       │      ├─ plan/{ID}             → Captura del Plan de implementación (Planner)
-       │      ├─ plan-audit/{ID}       → Resultados de la auditoría (Plan-Auditor)
-       │      └─ validation/{ID}       → Reporte de validación (Validator)
+       ├──→ [ ARTIFACT SNAPSHOTS ] (Key results of each task)
+       │      ├─ ca/{ID}               → Acceptance Criteria snapshot (CA-Writer)
+       │      ├─ plan/{ID}             → Implementation Plan snapshot (Planner)
+       │      ├─ plan-audit/{ID}       → Audit results (Plan-Auditor)
+       │      └─ validation/{ID}       → Validation report (Validator)
        │
-       ├──→ [ ESTADOS DE FLUJO / FLOW STATES ] (Control paso a paso por ID)
-       │      ├─ flow-state/{ID}/create    → Estado actual de creación del CA
-       │      ├─ flow-state/{ID}/plan      → Estado actual de generación del plan
-       │      ├─ flow-state/{ID}/audit     → Estado de la revisión del plan
-       │      ├─ flow-state/{ID}/construct → Estado de la fase de código/implementación
-       │      └─ flow-state/{ID}/validate  → Estado de la fase de pruebas/validación
+       ├──→ [ FLOW STATES ] (Step-by-step control per ID)
+       │      ├─ flow-state/{ID}/create    → Current CA creation state
+       │      ├─ flow-state/{ID}/plan      → Current plan generation state
+       │      ├─ flow-state/{ID}/audit     → Plan review state
+       │      ├─ flow-state/{ID}/construct → Code/implementation phase state
+       │      └─ flow-state/{ID}/validate  → Test/validation phase state
        │
-       └──→ [ DESCUBRIMIENTOS DE IMPLEMENTACIÓN ]
-              ├─ impl/{ID}/decisions   → Decisiones de diseño tomadas
-              └─ impl/{ID}/patterns    → Nuevos patrones técnicos descubiertos
+       └──→ [ IMPLEMENTATION DISCOVERIES ]
+              ├─ impl/{ID}/decisions   → Design decisions made
+              └─ impl/{ID}/patterns    → New technical patterns discovered
 ```

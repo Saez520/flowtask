@@ -1,47 +1,47 @@
 # FlowTask
 
-FlowTask es un sistema de workflow de desarrollo asistido por IA. Un runner recibe la conversación del desarrollador, investiga el repositorio, coordina el flujo adecuado y conserva el contexto operativo en Engram.
+FlowTask is an AI-assisted development workflow system. A runner receives the developer's conversation, investigates the repository, coordinates the appropriate flow, and preserves operational context in Engram.
 
-No es un chatbot aislado: combina memoria persistente, ejecución aislada mediante Git worktrees, validación y una integración instalable para OpenCode, Claude Code y VS Code.
+It is not an isolated chatbot: it combines persistent memory, isolated execution through Git worktrees, validation, and an installable integration for OpenCode, Claude Code, and VS Code.
 
-Versión actual: consultar `flowtask --version` (fuente: `.flowtask/package.json`).
+Current version: run `flowtask --version` (source: `.flowtask/package.json`).
 
-## Qué resuelve
+## What it solves
 
-- Mantiene decisiones, artefactos y estado entre sesiones mediante Engram.
-- Aísla cada CA o hotfix en un worktree y branch propios.
-- Permite trabajar conversacionalmente sin depender de comandos de coordinación antiguos.
-- Instala y actualiza recursos, plugins y configuración derivada de forma delta.
-- Incluye revisión, permisos, personalidad del runner y soporte Graphify.
+- Keeps decisions, artifacts, and state across sessions through Engram.
+- Isolates each CA or hotfix in its own worktree and branch.
+- Enables conversational work without depending on legacy coordination commands.
+- Installs and updates resources, plugins, and derived configuration as a delta.
+- Includes review, permissions, runner personality, and Graphify support.
 
-## Cómo se usa
+## How it is used
 
-Después de instalarlo, hablá con el runner desde el IDE configurado. El runner identifica preguntas, cambios, revisiones y ejecuciones acordadas.
+After installation, talk to the runner from the configured IDE. The runner identifies questions, changes, reviews, and agreed executions.
 
-Comandos del entorno instalado: `/init-types`, `/init-data`, `/init-business`, `/init-config`, `/init-api`, `/onboard` y `/update`. Las revisiones se solicitan describiendo el alcance o usando `/review` cuando el runtime lo soporte. Un hotfix acordado se ejecuta cuando el runner ya persistió el diagnóstico y el desarrollador acepta explícitamente la corrección acordada.
+Commands in the installed environment: `/init-types`, `/init-data`, `/init-business`, `/init-config`, `/init-api`, `/onboard`, and `/update`. Reviews are requested by describing the scope or by using `/review` when the runtime supports it. An agreed hotfix runs when the runner has already persisted the diagnosis and the developer explicitly accepts the agreed correction.
 
-## Primeros pasos
+## Getting started
 
-1. Consultá [docs/installation.md](docs/installation.md) para instalar o actualizar.
-2. Leé [docs/README.md](docs/README.md) para elegir documentación.
-3. Consultá [docs/core-flowtask.md](docs/core-flowtask.md) para el modelo técnico.
-4. Consultá [docs/permission-gate.md](docs/permission-gate.md) para permisos y review-stamps.
-5. Consultá [docs/project-history.md](docs/project-history.md) para elementos retirados o legacy.
+1. See [docs/installation.md](docs/installation.md) to install or update.
+2. Read [docs/README.md](docs/README.md) to choose documentation.
+3. See [docs/core-flowtask.md](docs/core-flowtask.md) for the technical model.
+4. See [docs/permission-gate.md](docs/permission-gate.md) for permissions and review-stamps.
+5. See [docs/project-history.md](docs/project-history.md) for retired or legacy elements.
 
-## Estructura mínima
+## Minimal structure
 
-`.flowtask/` — fuente canónica del CLI, contratos y plugins.
+`.flowtask/` — canonical source for the CLI, contracts, and plugins.
 
-`.opencode/` — instalación/configuración OpenCode, si aplica.
+`.opencode/` — OpenCode installation/configuration, if applicable.
 
-`.claude/` — instalación/configuración Claude Code, si aplica.
+`.claude/` — Claude Code installation/configuration, if applicable.
 
-`.vscode/` — instalación/configuración VS Code, si aplica.
+`.vscode/` — VS Code installation/configuration, if applicable.
 
-`docs/` — documentación pública.
+`docs/` — public documentation.
 
-`graphify-out/` — salidas Graphify cuando fueron generadas.
+`graphify-out/` — Graphify outputs when generated.
 
-## Licencia
+## License
 
 MIT

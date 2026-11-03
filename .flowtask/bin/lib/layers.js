@@ -2,21 +2,21 @@ import fs from "fs";
 import path from "path";
 
 /**
- * Contrato lógico de las tres capas almacenadas: persona (tono), autonomía
- * (iniciativa) y permisos (sobre técnico). Cada capa se valida y se resuelve
- * por separado; la precedencia entre ellas es `permisos > autonomía > persona`.
+ * Logical contract for the three stored layers: persona (tone), autonomy
+ * (initiative), and permissions (technical envelope). Each layer is validated
+ * and resolved separately; precedence between them is `permissions > autonomy > persona`.
  */
 
 export const PERSONA_LEVELS = Object.freeze(["training", "mid", "senior", "custom"]);
 
-/** Alias heredado de lectura. Se normaliza a `training`; nunca se emite al escribir. */
+/** Legacy read alias. It is normalized to `training`; it is never emitted on write. */
 export const LEGACY_PERSONA_LEVELS = Object.freeze(["junior"]);
 
 export const AUTONOMY_PROFILES = Object.freeze(["assistant", "autonomous-dev", "hermes"]);
 
 export const PERMISSION_ENVELOPES = Object.freeze(["standard"]);
 
-/** Orden estructural de precedencia entre capas. */
+/** Structural precedence order between layers. */
 export const LAYER_ORDER = Object.freeze(["permissions", "autonomy", "persona"]);
 
 export const LAYER_FILES = Object.freeze({
@@ -26,16 +26,16 @@ export const LAYER_FILES = Object.freeze({
 });
 
 /**
- * Defaults de migración. Solo se escriben cuando la capa no existe: son una
- * migración, no un fallback de runtime. Una capa inválida nunca se repara con
- * un default.
+ * Migration defaults. They are written only when the layer does not exist: they are a
+ * migration, not a runtime fallback. An invalid layer is never repaired with
+ * a default.
  */
 export const MIGRATION_DEFAULTS = Object.freeze({
   autonomy: Object.freeze({ version: 1, profile: "autonomous-dev" }),
   permissions: Object.freeze({ version: 1, envelope: "standard" }),
 });
 
-/** Fuentes lógicas de resolución. */
+/** Logical resolution sources. */
 export const LAYER_SOURCES = Object.freeze(["team", "project"]);
 
 const VALIDATORS = Object.freeze({
@@ -57,8 +57,8 @@ function describeValue(value) {
 }
 
 /**
- * Normaliza el nivel de persona. `junior` es un alias heredado de lectura y se
- * resuelve a `training`; cualquier otro valor desconocido no se normaliza.
+ * Normalizes the persona level. `junior` is a legacy read alias and is
+ * resolved to `training`; any other unknown value is not normalized.
  */
 export function normalizePersonaLevel(level) {
   if (typeof level !== "string") return null;
@@ -71,14 +71,14 @@ export function normalizePersonaLevel(level) {
 export function validatePersonaLayer(raw) {
   if (raw === null || raw === undefined) return { status: "missing", value: null, reason: null };
   if (!isPlainObject(raw)) {
-    return { status: "invalid", value: null, reason: "la capa de persona no es un objeto JSON" };
+    return { status: "invalid", value: null, reason: "the persona layer is not a JSON object" };
   }
   const level = normalizePersonaLevel(raw.level);
   if (!level) {
-    return { status: "invalid", value: null, reason: `nivel de persona desconocido: ${describeValue(raw.level)}` };
+    return { status: "invalid", value: null, reason: `unknown persona level: ${describeValue(raw.level)}` };
   }
   if (typeof raw.persona !== "string" || !raw.persona.trim()) {
-    return { status: "invalid", value: null, reason: "la capa de persona no declara un valor \"persona\"" };
+    return { status: "invalid", value: null, reason: "the persona layer does not declare a \"persona\" value" };
   }
   return {
     status: "valid",
@@ -90,13 +90,13 @@ export function validatePersonaLayer(raw) {
 export function validateAutonomyLayer(raw) {
   if (raw === null || raw === undefined) return { status: "missing", value: null, reason: null };
   if (!isPlainObject(raw)) {
-    return { status: "invalid", value: null, reason: "la capa de autonomía no es un objeto JSON" };
+    return { status: "invalid", value: null, reason: "the autonomy layer is not a JSON object" };
   }
   if (raw.version !== 1) {
-    return { status: "invalid", value: null, reason: `versión de autonomía inválida: ${describeValue(raw.version)}` };
+    return { status: "invalid", value: null, reason: `invalid autonomy version: ${describeValue(raw.version)}` };
   }
   if (!AUTONOMY_PROFILES.includes(raw.profile)) {
-    return { status: "invalid", value: null, reason: `perfil de autonomía desconocido: ${describeValue(raw.profile)}` };
+    return { status: "invalid", value: null, reason: `unknown autonomy profile: ${describeValue(raw.profile)}` };
   }
   return { status: "valid", value: { version: 1, profile: raw.profile }, reason: null };
 }
@@ -104,27 +104,27 @@ export function validateAutonomyLayer(raw) {
 export function validatePermissionsLayer(raw) {
   if (raw === null || raw === undefined) return { status: "missing", value: null, reason: null };
   if (!isPlainObject(raw)) {
-    return { status: "invalid", value: null, reason: "la capa de permisos no es un objeto JSON" };
+    return { status: "invalid", value: null, reason: "the permissions layer is not a JSON object" };
   }
   if (raw.version !== 1) {
-    return { status: "invalid", value: null, reason: `versión de permisos inválida: ${describeValue(raw.version)}` };
+    return { status: "invalid", value: null, reason: `invalid permissions version: ${describeValue(raw.version)}` };
   }
   if (!PERMISSION_ENVELOPES.includes(raw.envelope)) {
-    return { status: "invalid", value: null, reason: `envelope desconocido: ${describeValue(raw.envelope)}` };
+    return { status: "invalid", value: null, reason: `unknown envelope: ${describeValue(raw.envelope)}` };
   }
   return { status: "valid", value: { version: 1, envelope: raw.envelope }, reason: null };
 }
 
 function validateLayer(name, raw) {
   const validator = VALIDATORS[name];
-  if (!validator) throw new Error(`capa desconocida: ${name}`);
+  if (!validator) throw new Error(`unknown layer: ${name}`);
   return validator(raw);
 }
 
 /**
- * Lee un archivo de capa. El estado es a nivel de archivo: `present` cuando el
- * JSON parsea, `missing` cuando el archivo no existe e `invalid` cuando el
- * archivo existe pero no se puede leer o parsear.
+ * Reads a layer file. State is file-level: `present` when the
+ * JSON parses, `missing` when the file does not exist, and `invalid` when the
+ * file exists but cannot be read or parsed.
  */
 export function readLayerFile(filePath) {
   let raw;
@@ -137,7 +137,7 @@ export function readLayerFile(filePath) {
     return {
       status: "invalid",
       value: null,
-      reason: `no se pudo leer el archivo: ${error && error.message ? error.message : "error de lectura"}`,
+      reason: `could not read the file: ${error && error.message ? error.message : "read error"}`,
       path: filePath,
     };
   }
@@ -149,20 +149,20 @@ export function readLayerFile(filePath) {
     return {
       status: "invalid",
       value: null,
-      reason: `JSON inválido: ${error && error.message ? error.message : "contenido no parseable"}`,
+      reason: `invalid JSON: ${error && error.message ? error.message : "unparseable content"}`,
       path: filePath,
     };
   }
 
   if (!isPlainObject(parsed)) {
-    return { status: "invalid", value: null, reason: "el archivo no contiene un objeto JSON", path: filePath };
+    return { status: "invalid", value: null, reason: "the file does not contain a JSON object", path: filePath };
   }
   return { status: "present", value: parsed, reason: null, path: filePath };
 }
 
 /**
- * Lee las tres capas desde un directorio de configuración. La lectura vive acá:
- * el resolver nunca abre archivos.
+ * Reads the three layers from a configuration directory. Reading lives here:
+ * the resolver never opens files.
  */
 export function readLayerSources(configDir) {
   return {
@@ -173,9 +173,9 @@ export function readLayerSources(configDir) {
 }
 
 /**
- * Una entrada de fuente es un valor crudo de capa o un registro de archivo
- * `{ status, value, reason, path }`. Ningún esquema de capa declara un campo
- * `status`, así que la forma del registro es inequívoca.
+ * A source entry is a raw layer value or a file record
+ * `{ status, value, reason, path }`. No layer schema declares a `status`
+ * field, so the record shape is unambiguous.
  */
 function isLayerRecord(entry) {
   return isPlainObject(entry) && Object.hasOwn(entry, "status");
@@ -191,7 +191,7 @@ function evaluateLayer(name, entry) {
       return { status: "missing", value: null, reason: entry.reason ?? null, path: entry.path ?? null };
     }
     if (entry.status === "invalid") {
-      return { status: "invalid", value: null, reason: entry.reason ?? "capa inválida", path: entry.path ?? null };
+      return { status: "invalid", value: null, reason: entry.reason ?? "invalid layer", path: entry.path ?? null };
     }
     const validated = validateLayer(name, entry.value);
     return {
@@ -207,9 +207,9 @@ function evaluateLayer(name, entry) {
 }
 
 /**
- * Resuelve una capa: el proyecto manda completo cuando la define (válida o
- * inválida); si no la define, rige la base de equipo; si ninguna la define, la
- * capa está ausente. Nunca se mezclan campos entre fuentes.
+ * Resolves a layer: the project governs entirely when it defines it (valid or
+ * invalid); if it does not define it, the team base applies; if neither defines it,
+ * the layer is absent. Fields are never mixed between sources.
  */
 function resolveLayer(name, projectEntry, teamEntry) {
   const project = evaluateLayer(name, projectEntry);
@@ -240,8 +240,8 @@ function resolveLayer(name, projectEntry, teamEntry) {
 function buildOperationalError(code, layer, state) {
   const reason = state.reason
     ?? (state.status === "missing"
-      ? "capa ausente: no se encontró el archivo de la capa"
-      : "capa inválida");
+      ? "layer missing: the layer file was not found"
+      : "invalid layer");
   const error = { code, layer, path: state.path ?? null, reason };
   error.message = describeOperationalFailure(error);
   return error;
@@ -265,16 +265,16 @@ function buildWarnings(layers) {
   const warnings = [];
   const persona = layers.persona;
   if (persona.status === "missing") {
-    warnings.push("Capa de persona ausente: se continúa sin inyección de persona.");
+    warnings.push("Persona layer missing: continuing without persona injection.");
   } else if (persona.status === "invalid") {
-    warnings.push(`Capa de persona inválida: ${persona.reason}. Se continúa sin inyección de persona.`);
+    warnings.push(`Invalid persona layer: ${persona.reason}. Continuing without persona injection.`);
   }
   return warnings;
 }
 
 /**
- * Resuelve las tres capas desde dos fuentes lógicas ya leídas.
- * Devuelve `{ layers, precedence, operational, warnings }`.
+ * Resolves the three layers from two already-read logical sources.
+ * Returns `{ layers, precedence, operational, warnings }`.
  */
 export function resolveLayers({ team = null, project = null } = {}) {
   const layers = {};
@@ -289,24 +289,24 @@ export function resolveLayers({ team = null, project = null } = {}) {
   };
 }
 
-/** Mensaje operativo de una capa ausente o inválida. */
+/** Operational message for a missing or invalid layer. */
 export function describeOperationalFailure(error) {
   const isPermissions = error && error.layer === "permissions";
-  const layerLabel = isPermissions ? "permisos" : "autonomía";
+  const layerLabel = isPermissions ? "permissions" : "autonomy";
   const action = isPermissions
-    ? 'Acción: definí "envelope": "standard" y reintentá; no se ejecuta ninguna acción con límites ampliados.'
-    : 'Acción: definí "profile" como assistant, autonomous-dev o hermes y reintentá; no se inicia ninguna ejecución.';
+    ? 'Action: define "envelope": "standard" and retry; no action with expanded limits is executed.'
+    : 'Action: define "profile" as assistant, autonomous-dev, or hermes and retry; no execution starts.';
   return [
-    `[FlowTask Layers] Capa de ${layerLabel} ausente o inválida.`,
-    `Archivo: ${error && error.path ? error.path : "no identificado"}`,
-    `Causa: ${error && error.reason ? error.reason : "capa inválida"}`,
+    `[FlowTask Layers] ${layerLabel} layer missing or invalid.`,
+    `File: ${error && error.path ? error.path : "unidentified"}`,
+    `Cause: ${error && error.reason ? error.reason : "invalid layer"}`,
     action,
   ].join("\n");
 }
 
 /**
- * Falla si la resolución no es operable. La persona nunca falla: solo deja un
- * aviso en `warnings`.
+ * Fails if the resolution is not operable. Persona never fails: it only leaves a
+ * warning in `warnings`.
  */
 export function assertOperationalLayers(resolution) {
   const errors = (resolution && resolution.operational && resolution.operational.errors) || [];

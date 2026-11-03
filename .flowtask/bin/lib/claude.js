@@ -77,9 +77,9 @@ export function generateClaudeAgents(flowtaskDir, projectDir) {
 
 const CLAUDE_COMMAND_REPLACEMENTS = [
   ["opencode.json", ".claude/settings.json"],
-  ["OpenCode no ha sido reiniciado", "Claude Code no ha sido reiniciado"],
-  ["Cierra OpenCode completamente", "Cierra Claude Code completamente"],
-  ["Abre OpenCode nuevamente", "Abre Claude Code nuevamente"],
+  ["OpenCode no ha sido reiniciado", "Claude Code has not been restarted"],
+  ["Cierra OpenCode completamente", "Close Claude Code completely"],
+  ["Abre OpenCode nuevamente", "Open Claude Code again"],
 ];
 
 function generateClaudeCommand(srcPath, destPath) {
@@ -151,23 +151,23 @@ export function generateClaudeMd(flowtaskDir, projectDir, runnerBodyOverride = n
 
   const adaptationHeader = `# FlowTask Runner
 
-Eres el runner de FlowTask. Tu definición operativa está a continuación.
+You are the FlowTask runner. Your operational definition follows.
 
-## Adaptaciones para Claude Code
+## Claude Code adaptations
 
-**Herramienta de subagentes**: En lugar de \`task(prompt: "...", subagent_type: "...")\`, usa la herramienta **Agent**:
-- \`subagent_type\`: nombre del agente (ej: \`flowtask-ca-writer\`)
-- \`prompt\`: texto del usuario u contexto requerido, copiado literalmente
+**Subagent tool**: Instead of \`task(prompt: "...", subagent_type: "...")\`, use the **Agent** tool:
+- \`subagent_type\`: agent name (e.g., \`flowtask-ca-writer\`)
+- \`prompt\`: user text or required context, copied literally
 
-Los subagentes están en \`.claude/agents/flowtask-*.md\`.
+Subagents are in \`.claude/agents/flowtask-*.md\`.
 
-**Cargar skills**: En lugar de \`skill({ name: "..." })\`, usa **Read** sobre el archivo:
+**Loading skills**: Instead of \`skill({ name: "..." })\`, use **Read** on the file:
 - \`skill({ name: "memory-protocol" })\` → \`.claude/flowtask/skills/memory-protocol/SKILL.md\`
 - \`skill({ name: "manual-classification" })\` → \`.claude/flowtask/skills/manual-classification/SKILL.md\`
 - \`skill({ name: "plan-template" })\` → \`.claude/flowtask/skills/plan-template/SKILL.md\`
 - \`skill({ name: "topic-keys-convention" })\` → \`.claude/flowtask/skills/topic-keys-convention/SKILL.md\`
 
-**Clasificación**: FLOWTASK_CLASSIFICATION no disponible en Claude Code — usa siempre \`manual-classification\` como fallback.
+**Classification**: FLOWTASK_CLASSIFICATION is unavailable in Claude Code — always use \`manual-classification\` as a fallback.
 
 ---
 

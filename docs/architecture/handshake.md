@@ -1,78 +1,78 @@
-# Handshake vigente: identidad y continuidad
+# Current Handshake: identity and continuity
 
-El Handshake Protocol coordina la identidad de las instancias y la continuidad
-de los agentes que pueden reanudar una sesión. Su contrato canónico está en
-`.flowtask/skills/handshake-protocol/SKILL.md`; el runner lo carga antes de
-delegar cuando corresponde.
+The Handshake Protocol coordinates instance identity and the continuity
+of agents that can resume a session. Its canonical contract is in
+`.flowtask/skills/handshake-protocol/SKILL.md`; the runner loads it before
+delegating when applicable.
 
-## Alcance
+## Scope
 
-El protocolo aplica al tratamiento completo (`ca-writer` y `planner`). Los
-agentes de tratamiento ligero (`inspector`, `constructor`, `validator`,
-`tester`, `review-orchestrator`, `logger` e `initializer`) se invocan como hilo
-fresco; su `instance_name` puede conservarse como traza, pero no reanudan un
-`task_id` mediante este protocolo. El `constructor` tiene una excepción acotada:
-puede reanudar un fallo operativo o una interrupción recuperable si su
-identidad, su `task_id` y su checkpoint siguen disponibles y son restaurables.
+The protocol applies to full treatment (`ca-writer` and `planner`). Light-treatment
+agents (`inspector`, `constructor`, `validator`,
+`tester`, `review-orchestrator`, `logger`, and `initializer`) are invoked as fresh
+threads; their `instance_name` may be kept as a trace, but they do not resume a
+`task_id` through this protocol. The `constructor` has a bounded exception:
+it can resume an operational failure or a recoverable interruption if its
+identity, `task_id`, and checkpoint remain available and restorable.
 
-La skill es agnóstica del mecanismo de invocación: devuelve un contrato al
-orquestador y no prescribe qué herramienta debe usar para iniciar el agente.
+The skill is agnostic about the invocation mechanism: it returns a contract to
+the orchestrator and does not prescribe which tool to use to start the agent.
 
-## Capas de identidad
+## Identity layers
 
-La identidad vive en tres capas separadas, cada una con su nombre propio:
+Identity lives in three separate layers, each with its own name:
 
-| Capa | Etiqueta visible | Nombre de instancia |
+| Layer | Visible label | Instance name |
 |------|------------------|---------------------|
-| `hermes` | `núcleo Hermes` | `Hermes` (reserva nominal dev-only) |
+| `hermes` | `núcleo Hermes` | `Hermes` (dev-only nominal reservation) |
 | `orchestrator` | `orquestador` | `{BaseName}` |
 | `subagent` | `subagente` | `{BaseName}-{agent_type}` |
 
-Ninguna capa puede presentarse como otra: una identidad de subagente con
-nombre de orquestador, o viceversa, se rechaza y se informa. El nombre
-`Hermes` está reservado y no puede usarse como nombre base ni como nombre de
-subagente. La identidad se muestra con el formato `[capa: {layer_label}]
-{instance_name}`, y la capa `hermes` agrega ` (dev-only)`.
+No layer may present itself as another: a subagent identity with
+an orchestrator name, or vice versa, is rejected and reported. The name
+`Hermes` is reserved and cannot be used as a base name or as a subagent
+name. Identity is shown in the format `[capa: {layer_label}]
+{instance_name}`, and the `hermes` layer adds ` (dev-only)`.
 
-Si la capa no puede mostrarse, el sistema avisa y no presenta el trabajo como
-identificado.
+If the layer cannot be shown, the system warns and does not present the work as
+identified.
 
-## Flujo
+## Flow
 
 ```mermaid
 flowchart TD
-    INPUT["CA o ejecución actual"] --> RUNNER["Runner"]
-    RUNNER --> LOAD["Carga handshake-protocol"]
+    INPUT["Current CA or execution"] --> RUNNER["Runner"]
+    RUNNER --> LOAD["Loads handshake-protocol"]
     LOAD --> SEARCH["mem_search flow-state/{ca_id}/instances"]
-    SEARCH --> ENGRAM{"¿Engram disponible?"}
-    ENGRAM -->|"No"| STOP["STOP: informa esperado y encontrado, conserva el registro previo"]
-    ENGRAM -->|"Sí"| KIND{"¿work_kind?"}
-    KIND -->|"existing sin mapa"| STOP
-    KIND -->|"new"| NAME["Asigna nombre libre de la lista"]
-    KIND -->|"existing"| NAME["Usa el base_name persistido"]
-    NAME --> INSTANCE["Construye la identidad de la capa"]
-    INSTANCE --> VALID{"¿La identidad coincide?"}
+    SEARCH --> ENGRAM{"Is Engram available?"}
+    ENGRAM -->|"No"| STOP["STOP: reports expected and found, preserves the previous record"]
+    ENGRAM -->|"Yes"| KIND{"work_kind?"}
+    KIND -->|"existing without a map"| STOP
+    KIND -->|"new"| NAME["Assigns a free name from the list"]
+    KIND -->|"existing"| NAME["Uses the persisted base_name"]
+    NAME --> INSTANCE["Builds the layer identity"]
+    INSTANCE --> VALID{"Does the identity match?"}
     VALID -->|"No"| STOP
-    VALID -->|"Sí"| CONTEXT["Inyecta mem_context y mem_search"]
-    CONTEXT --> TOPIC["Valida topic_signature"]
-    TOPIC --> SCENARIO{"¿Hay task_id activo y mismo tema?"}
-    SCENARIO -->|"No"| A["Escenario A: hilo nuevo"]
-    SCENARIO -->|"Sí"| B["Escenario B: reanudación"]
+    VALID -->|"Yes"| CONTEXT["Injects mem_context and mem_search"]
+    CONTEXT --> TOPIC["Validates topic_signature"]
+    TOPIC --> SCENARIO{"Is there an active task_id and the same topic?"}
+    SCENARIO -->|"No"| A["Scenario A: new thread"]
+    SCENARIO -->|"Yes"| B["Scenario B: resumption"]
     A --> OUT["{task_id, instance_name, scenario, layer, layer_label, identity_display}"]
     B --> OUT
 ```
 
-La identidad faltante o distinta no sale por Escenario A: la rama STOP informa
-qué se esperaba y qué se encontró, conserva lo previamente registrado y
-detiene el flujo.
+A missing or different identity does not go through Scenario A: the STOP branch reports
+what was expected and what was found, preserves what was previously recorded, and
+stops the flow.
 
-## Mapa de instancias
+## Instance map
 
-El mapa se guarda en Engram con `topic_key`
-`flow-state/{ca_id}/instances`. El `BaseName` lo provee el orquestador; no está
-hardcodeado en la skill. La rama base se detecta al crear el worktree en el
-orden `development → main → trunk`; si ninguna existe, se usa `main` como
-fallback, y se persiste junto con su contexto.
+The map is stored in Engram with `topic_key`
+`flow-state/{ca_id}/instances`. The `BaseName` is provided by the orchestrator; it is not
+hardcoded in the skill. The base branch is detected when creating the worktree in
+the order `development → main → trunk`; if none exists, `main` is used as a
+fallback, and it is persisted together with its context.
 
 ```json
 {
@@ -92,7 +92,7 @@ fallback, y se persiste junto con su contexto.
       "instance_name": "Aitana-planner",
       "topic_signature": {
         "ids": ["CA-010"],
-        "keywords": ["plan", "tareas"]
+        "keywords": ["plan", "tasks"]
       },
       "worktree": {
         "path": ".worktrees/CA-010/",
@@ -104,59 +104,59 @@ fallback, y se persiste junto con su contexto.
 }
 ```
 
-El `task_id` se captura después de una respuesta exitosa. Los mapas antiguos
-que solo contienen `task_id`, `instance_name` y `last_resume` siguen siendo
-compatibles, y los mapas sin `layer` se leen como capa `subagent`.
+The `task_id` is captured after a successful response. Old maps that contain only
+`task_id`, `instance_name`, and `last_resume` remain compatible, and maps without
+`layer` are read as the `subagent` layer.
 
-## Contrato de salida
+## Output contract
 
-La skill entrega exactamente:
+The skill returns exactly:
 
-- `task_id`: el identificador existente para reanudar o `null` para un hilo nuevo.
-- `instance_name`: identidad de la instancia, por ejemplo `Lyra-planner`.
-- `scenario`: `"A"` para hilo nuevo o `"B"` para reanudación.
-- `layer`: capa de identidad de la invocación.
-- `layer_label`: etiqueta visible de la capa.
-- `identity_display`: identidad en formato visible, `[capa: {layer_label}] {instance_name}`.
+- `task_id`: the existing identifier to resume, or `null` for a new thread.
+- `instance_name`: instance identity, for example `Lyra-planner`.
+- `scenario`: `"A"` for a new thread or `"B"` for resumption.
+- `layer`: identity layer of the invocation.
+- `layer_label`: visible label of the layer.
+- `identity_display`: identity in visible format, `[capa: {layer_label}] {instance_name}`.
 
-## Reglas
+## Rules
 
-- **Engram no disponible detiene**: sin registro verificable no hay identidad.
-  El protocolo informa qué esperaba y qué encontró, conserva lo previo y se
-  detiene.
-- **Un nombre por trabajo activo**: un trabajo nuevo toma el primer nombre
-  libre de la lista y nunca reutiliza el nombre de un trabajo activo. Un
-  nombre pedido y ocupado, un nombre duplicado entre trabajos activos o una
-  lista agotada detienen el protocolo.
-- **El tema verificado o la detención**: la validación de tema compara primero
-  IDs y después el solapamiento de keywords con el umbral definido por la
-  skill. Si el checkpoint no trae `topic_signature`, la identidad no puede
-  validarse y el protocolo se detiene con `topic_unverifiable`. Si el tema
-  cambió, el protocolo se detiene con `topic_mismatch`.
-- **No hay Escenario A sustituto**: una identidad faltante o distinta, o un
-  tema no verificable, no se compensan con un hilo nuevo: el protocolo no
-  asigna un nombre sustituto, no inventa un `task_id` y no presenta un hilo
-  nuevo como reanudación lograda. La continuidad se retoma solo por vía
-  explícita, con restauración desde lo registrado y declarando que no hubo
-  reanudación literal.
-- **La purga de hilos huérfanos es manual**: los `task_id` que quedan se
-  conservan como registro histórico.
+- **Engram unavailable stops**: without a verifiable record there is no identity.
+  The protocol reports what it expected and what it found, preserves the previous state, and
+  stops.
+- **One name per active job**: a new job takes the first free name
+  from the list and never reuses the name of an active job. A
+  requested and occupied name, a duplicate name among active jobs, or an
+  exhausted list stops the protocol.
+- **Verified topic or stop**: topic validation compares IDs first and then
+  keyword overlap against the threshold defined by the skill. If the checkpoint
+  does not include `topic_signature`, identity cannot be validated and the protocol
+  stops with `topic_unverifiable`. If the topic changed, the protocol stops with
+  `topic_mismatch`.
+- **No substitute Scenario A**: a missing or different identity, or an
+  unverifiable topic, is not compensated with a new thread: the protocol does not
+  assign a substitute name, does not invent a `task_id`, and does not present a new
+  thread as a successful resumption. Continuity is resumed only through an
+  explicit path, with restoration from what was recorded and declaring that there was no
+  literal resumption.
+- **Orphan thread purging is manual**: remaining `task_id` values are
+  preserved as historical records.
 
-Para los detalles de checkpoint, relevo por capacidad y limpieza de sesiones,
-consultá `checkpoint-mixin` y el contrato del runner.
+For checkpoint, capacity handoff, and session cleanup details,
+see `checkpoint-mixin` and the runner contract.
 
-## Verificación ejecutable
+## Executable verification
 
-El operador verifica la distinción de capas ejecutando el contrato, no solo
-leyendo documentos. Desde la raíz del repositorio:
+The operator verifies layer distinction by running the contract, not just
+reading documents. From the repository root:
 
 ```
 node .flowtask/skills/handshake-protocol/scripts/agent-identity.js check --names Aitana,Kael
 ```
 
-El comando imprime una línea por capa y una por subagente, valida la unicidad
-de nombres entre trabajos en paralelo y comprueba las detenciones fail-closed.
-Sale 1 ante cualquier violación. Para ver solo las identidades:
+The command prints one line per layer and one per subagent, validates name
+uniqueness across parallel jobs, and checks fail-closed stops.
+It exits 1 on any violation. To see only the identities:
 
 ```
 node .flowtask/skills/handshake-protocol/scripts/agent-identity.js roles --names Aitana,Kael
