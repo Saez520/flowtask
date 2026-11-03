@@ -399,3 +399,25 @@ test("commit_title is rejected outside complete", async () => {
     (error) => error instanceof TypeError,
   );
 });
+
+test("complete operation carries merge_strategy in preflight and execute", async () => {
+  const { adapter, calls } = fixture();
+  const result = await adapter.execute(input({ operation: "complete", confirm: true, authorization: "I_AUTHORIZE_THIS_CALL", merge_strategy: "preserve-history" }));
+  assert.equal(result.status, "success");
+  const cliCalls = calls.filter(([kind]) => kind === "cli").map(([, request]) => request);
+  assert.equal(cliCalls.length, 2);
+  assert.equal(cliCalls[0].merge_strategy, "preserve-history");
+  assert.equal(cliCalls[1].merge_strategy, "preserve-history");
+});
+
+test("merge_strategy is rejected outside complete and for invalid values", async () => {
+  const { adapter } = fixture();
+  await assert.rejects(
+    adapter.execute(input({ merge_strategy: "preserve-history" })),
+    (error) => error instanceof TypeError,
+  );
+  await assert.rejects(
+    adapter.execute(input({ operation: "complete", confirm: true, authorization: "I_AUTHORIZE_THIS_CALL", merge_strategy: "rebase" })),
+    (error) => error instanceof TypeError,
+  );
+});

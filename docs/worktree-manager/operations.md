@@ -68,6 +68,35 @@ A second execute is blocked: with the original digest it is rejected as
 `intervention_required`. No mutation is replayed and no second effect is
 produced.
 
+## Closure strategy
+
+Closure is dual. `squash` is the default: one delivery commit carrying the
+composed subject and body, with no intermediate history. `preserve-history`
+is opt-in and integrates with `git merge --no-ff` under a descriptive merge
+commit, keeping the original SHAs, their order and their messages.
+
+The Constructor proposes the strategy and reports it with its rationale, the
+commit count and the per-task SHAs; the Runner executes the proposal without
+re-evaluating it (a missing proposal resolves to `squash`, an invalid one
+pauses with `authority_block`). The Validator checks that the applied
+strategy matches the proposal: squash must advance the base by exactly one
+commit, and preserve-history must contain every proposed SHA with a
+three-parent merge `[merge, before, origin]`.
+
+`preserve-history` requires hygiene before merging: the branch must hold
+commits, no commit may be empty, no intermediate merges are allowed, and no
+subject may start with WIP, fixup!, squash! or amend!. A hygiene failure is
+reported as `intervention_required` (exit code `5`): the base does not
+advance and the worktree and branch are retained. A conflicting merge is
+aborted and reported as `operation_failed` (exit code `5`) with pending-manual
+evidence; resources are retained.
+
+Recovery is dual as well: journals record `merge_strategy` and `integrated`,
+and a durable merge validates two parents for squash or three parents for
+preserve-history; legacy journals without a strategy read as squash. A
+`complete --preserve-dirty` transaction still captures and restores the
+destination state around either integration mechanism.
+
 ## Locks, journals, and transactions
 
 Lifecycle operations use locks and journaled transaction state. Lock

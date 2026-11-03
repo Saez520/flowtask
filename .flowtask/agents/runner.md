@@ -743,8 +743,8 @@ humano explícito. `list`,
 `prune` y la reconciliación cruzan los worktrees hotfix con
 `flow-state/hotfix/{id}/instances` y reportan huérfanos.
 
-El flujo hotfix mantiene aislamiento, checkpoints, reintentos y cierre por
-squash-merge, sin alterar los namespaces históricos de CA.
+El flujo hotfix mantiene aislamiento, checkpoints, reintentos y cierre con la
+estrategia vigente (squash por defecto), sin alterar los namespaces históricos de CA.
 
 ***
 
@@ -1033,15 +1033,27 @@ Cuando el validator apruebe y el CA tenga worktree asociado, el Runner solicita
 al adapter la operación `complete` con la misma identidad, base y transporte
 registrados. El gestor standalone ejecuta el lifecycle; antes de completarlo:
 
-1. Hacé el commit antes de `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID> --base {base_branch_detectada} [--title TEXTO] [--body TEXTO]`.
+1. No crees un commit de cierre: los commits atómicos los aporta el Constructor; verificá que el worktree esté limpio antes de `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID> --base {base_branch_detectada} [--title TEXTO] [--body TEXTO]`.
 2. El adapter invoca `complete` en el transporte seleccionado (sin fallback), con la base previamente registrada.
-3. Si completa bien, el gestor hace squash-merge a la rama base detectada y limpia el worktree/branch.
+3. Si completa bien, el gestor integra con el mecanismo solicitado (`complete` con squash o preserve-history) a la rama base detectada y limpia el worktree/branch.
 4. Si `complete` falla por conflicto, **no limpies** el worktree.
 5. Si `complete` rechaza porque **el destino tiene cambios sin commitear**, no intentes limpiar el destino ni crear stashes: el rechazo es seguro y dejó todo intacto. Escala al desarrollador mostrando el motivo genérico del script; solo si el desarrollador consiente explícitamente, reinvoca `complete` con `--preserve-dirty`.
 6. `--preserve-dirty` es una transacción opt-in: captura los cambios elegibles del destino en refs privadas (`refs/flowtask/backups/<tx-id>`, jamás en la lista pública de stashes), registra cada fase en `.flowtask/backups/<tx-id>/journal` y restaura el estado fino al final. Ofrecélo **SOLO ante instrucción humana explícita** — jamás por defecto ni en flujos automáticos. La config persistida (`.flowtask/config/worktree.json` con `"preserveDirty": true`) cuenta como consentimiento humano explícito y el script nunca la escribe.
 7. Si un cierre con preservación se interrumpe, reanudalo con `worktree.sh recover [<tx-id>]` (sin argumento toma la pendiente más reciente); repetirlo es seguro e idempotente. Si la restauración quedó pendiente-manual, mostrale al desarrollador las instrucciones seguras impresas por el script: la resolución manual nunca se automatiza.
 8. El Runner sólo solicita al adapter las opciones expresamente habilitadas por el gate y consentimiento aplicable. No deriva ni ejecuta comandos Git/lifecycle por fuera del gestor; `--auto` no sustituye consentimiento para preservar o descartar. El cierre con destino sucio se escala al desarrollador sin limpiar el destino, y solo procede con `--preserve-dirty` ante consentimiento humano explícito.
 9. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
+
+***
+
+### Estrategia de cierre dual
+
+El Constructor propone la estrategia y el Runner la ejecuta sin re-evaluarla.
+
+- Leé `commit_strategy`, `commit_strategy_rationale`, `commit_count` y `commits` del reporte del Constructor.
+- Propuesta faltante → squash; propuesta inválida → pausa con `authority_block`; nunca re-evalúes la estrategia.
+- Pasá `merge_strategy` al adapter en la operación `complete` con la misma identidad, base y transporte registrados.
+- Registrá `merge_strategy`, `merge_commit`, `commit_count` y el fundamento en el cierre de `flow-state/{execution_id}/run` y en el reporte final.
+- La transacción del gestor es la fuente autoritativa de lo aplicado.
 
 ***
 
@@ -1058,7 +1070,7 @@ aporta el fallback en español si no hay fuente. Usá `worktree.sh complete
   <diagnóstico>. Verificación: <APPROVED>.`
 
 El gestor agrega ` [work_id]` si el título no contiene el ID. El Runner no
-incluye rutas, branches, `squash merge` ni mecanismo interno. Si no hay fuente
+incluye rutas, branches ni detalles internos; al nombrar la integración usa el `mecanismo de integración`. Si no hay fuente
 diciente, omití las flags y el consumidor inyecta el fallback:
 `Cierre generico de <work_id>` / `No habia una descripcion de la entrega
 disponible al momento del cierre.`. No se agrega ninguna aprobación nueva.
@@ -1292,7 +1304,7 @@ declara con la causa exacta en cada caso.
 ### Integración serializada
 
 1. Ejecutar el cierre `complete` de a uno por vez sobre la misma base.
-2. No paralelizar el squash-merge: dos integraciones sobre la misma base no se ejecutan a
+2. No paralelizar el `complete` (squash o preserve-history): dos integraciones sobre la misma base no se ejecutan a
    la vez, aunque los trabajos sean independientes.
 3. Un conflicto conserva el worktree y la rama y se escala: no se fuerza la integración.
 4. No se limpia el destino ni se crea un stash.
@@ -1454,6 +1466,8 @@ de sesión anterior. El prompt delegado debe contener únicamente:
 Para las variantes `files` y `pr-mr`, incluir además únicamente la lista de rutas o el identificador PR/MR que permite al review-orchestrator recuperar el scope. Nunca adjuntar ni serializar el diff, ni prescribir lentes, skills o marcos de revisión. Conservar el contrato de findings con estado `APPROVED | BLOCKED | CHANGES_REQUIRED`, severidad, archivo/línea, evidencia, justificación y recomendación.
 
 ### Flujo commit
+
+En flujos de CA con worktree, los commits atómicos los crea el Constructor y el Runner no crea un commit de cierre.
 
 Si ejecutas un `git commit` y el gate lo bloquea, seguí las instrucciones del mensaje de error. Tras la aprobación, el RUNNER reintenta el commit directamente con `git commit -m "..."` usando el mensaje del trabajo realizado (CA/HF en curso). NO re-invoces al constructor solo para commitear.
 

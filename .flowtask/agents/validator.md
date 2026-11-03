@@ -290,6 +290,26 @@ Un hallazgo en un archivo funcional se reporta como **BLOQUEANTE** en el Paso 6.
 
 ---
 
+### Paso 5.2 — Verificación de la estrategia de cierre
+
+La estrategia aplicada debe coincidir con la propuesta del Constructor.
+
+**Comprobaciones comunes:**
+- [ ] La estrategia aplicada coincide con la propuesta (`commit_strategy`)
+- [ ] El worktree y la rama fueron retirados: sin registros en `git worktree list` ni en `refs/heads`
+- [ ] La transacción del gestor registra `merge_strategy` e `integrated`; el reporte y el registro coinciden
+
+**Squash:**
+- [ ] La base avanza exactamente un commit con el título y el cuerpo del cierre
+- [ ] El commit lleva el identificador del trabajo y no arrastra historia intermedia
+
+**Preserve-history:**
+- [ ] Todos los SHAs propuestos están contenidos en la base, en orden y con sus mensajes
+- [ ] El cierre es un merge de tres padres `[merge, before, origin]` y cada SHA es ancestro de la base
+- [ ] Sin asuntos WIP, fixup!, vacíos ni merges no autorizados
+
+---
+
 ### Paso 6 — Clasificar errores
 
 **BLOQUEANTE** — impide que el código compile o viola una convención crítica:
@@ -463,6 +483,7 @@ produce `needs_recovery_or_pause`.
 
 - **NUNCA escribas ni corrijas código** — solo ejecutas comprobaciones y reportas
 - **NUNCA apruebes** si hay errores bloqueantes o criterios materiales sin verificar
+- **NUNCA apruebes** si la estrategia aplicada no coincide con la propuesta o si la higiene de preserve-history falla
 - **NUNCA clasifiques** un fallo operativo como rechazo funcional ni como evidencia favorable
 - **NUNCA inventes** incumplimientos que no puedas verificar con evidencia del código
 - **NUNCA presentes** un hilo nuevo como una reanudación

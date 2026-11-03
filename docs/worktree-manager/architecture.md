@@ -70,7 +70,10 @@ consumer, and it does not know that the consumer exists.
 ## Parent-only lifecycle
 
 Parent-only operations act on the repository selected by `--repo` (or the
-current repository) and use the standalone lifecycle. `complete` preserves
+current repository) and use the standalone lifecycle. `complete` closes with
+the strategy selected by `merge_strategy`: `squash` (default, a single
+delivery commit) or `preserve-history` (opt-in `merge --no-ff` keeping the
+original SHAs, order and messages under a descriptive merge commit). `complete` preserves
 resources when it encounters conflict or drift. `cleanup` does not integrate
 changes; removing unintegrated changes requires explicit `--discard`.
 

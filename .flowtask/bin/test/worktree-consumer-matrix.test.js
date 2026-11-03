@@ -610,3 +610,29 @@ test("complete transports commit_title and commit_body and injects the spanish f
   assert.equal(fallbackPreflight.context.document.commit_body, "No habia una descripcion de la entrega disponible al momento del cierre.");
   retireWorktree(repo, fallbackWorkId);
 });
+
+test("complete transports preserve-history over real transports", async () => {
+  const cases = [{ transport: "cli", repo: repositories.A }, { transport: "mcp", repo: repositories.B }];
+  for (const { transport, repo } of cases) {
+    const workId = `matrix-preserve-${transport}`;
+    retireWorktree(repo, workId);
+    const created = await createWorktreeCliClient({ managerDirectory: MANAGER }).invoke({ operation: "worktree_create", repo, work_id: workId, base: "main" });
+    assert.equal(created.envelope.result, "success");
+    const wt = path.join(repo, ".worktrees", workId);
+    fs.writeFileSync(path.join(wt, `${workId}-one.txt`), "one\n");
+    git(wt, "add", `${workId}-one.txt`);
+    git(wt, "commit", "-qm", "first matrix change");
+    fs.writeFileSync(path.join(wt, `${workId}-two.txt`), "two\n");
+    git(wt, "add", `${workId}-two.txt`);
+    git(wt, "commit", "-qm", "second matrix change");
+    const consumer = createConsumer();
+    const result = await consumer.adapter.execute({
+      operation: "complete", repo_root: repo, work_id: workId, base: "main",
+      confirm: true, authorization: AUTHORIZATION, transport,
+      merge_strategy: "preserve-history",
+    });
+    assert.equal(result.status, "success");
+    assert.equal(result.data.merge_strategy, "preserve-history");
+    retireWorktree(repo, workId);
+  }
+});

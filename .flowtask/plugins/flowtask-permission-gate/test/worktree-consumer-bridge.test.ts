@@ -137,3 +137,11 @@ test("publishes the report of a rejected phase with its cause and its next actio
   assert.ok(result.next_action);
   assert.equal(result.transaction_id, undefined);
 });
+
+test("forwards merge_strategy for complete", async () => {
+  const { bridge, calls } = fixture();
+  const result = await bridge.execute({ operation: "complete", repo_root: "/repo", work_id: "alpha", confirm: true, authorization: "I_AUTHORIZE_THIS_CALL", merge_strategy: "preserve-history" });
+  assert.equal(result.status, "success");
+  const request = (calls.find((call) => Array.isArray(call) && call[0] === "cli") as [string, Record<string, unknown>])[1];
+  assert.equal((request as Record<string, unknown>).merge_strategy, "preserve-history");
+});

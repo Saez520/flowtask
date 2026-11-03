@@ -40,7 +40,7 @@ const REQUEST_FIELDS = [
   "operation", "transport", "repo_root", "work_id", "base", "worktrees_dir", "branch_prefix",
   "confirm", "authorization", "transaction_id", "plan_hash", "dry_run", "target_direct",
   "parent_repo", "submodule_path", "discard_consent", "discard", "init_submodules",
-  "prepare", "verify", "preserve_dirty", "commit_title", "commit_body",
+  "prepare", "verify", "preserve_dirty", "commit_title", "commit_body", "merge_strategy",
 ] as const;
 
 function resultText(result: any): string {

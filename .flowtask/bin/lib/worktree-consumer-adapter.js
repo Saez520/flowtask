@@ -169,6 +169,7 @@ export function createWorktreeConsumerAdapter(deps) {
         effective_transport: selection.primary ?? undefined,
         transport_source: selection.source,
       };
+      if (request.merge_strategy !== undefined) identity.merge_strategy = request.merge_strategy;
       if (selection.detection) identity.detection = selection.detection;
 
       if (request.operation === "create") {

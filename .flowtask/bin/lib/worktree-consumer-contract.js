@@ -37,7 +37,7 @@ export const MUTATING_OPERATIONS = Object.freeze(["create", "complete", "cleanup
  */
 export const TOOL_FIELDS = Object.freeze({
   worktree_create: Object.freeze(["repo", "work_id", "base", "dry_run", "parent_repo", "submodule_path", "confirm", "plan_hash", "init_submodules", "prepare", "verify"]),
-  worktree_complete: Object.freeze(["repo", "work_id", "base", "dry_run", "authorization", "confirm", "plan_hash", "transaction_id", "preserve_dirty", "target_direct", "parent_repo", "commit_title", "commit_body"]),
+  worktree_complete: Object.freeze(["repo", "work_id", "base", "dry_run", "authorization", "confirm", "plan_hash", "transaction_id", "preserve_dirty", "target_direct", "parent_repo", "commit_title", "commit_body", "merge_strategy"]),
   worktree_cleanup: Object.freeze(["repo", "work_id", "base", "dry_run", "authorization", "confirm", "plan_hash", "discard", "discard_consent"]),
   worktree_recover: Object.freeze(["repo", "transaction_id", "dry_run", "authorization", "confirm", "target_direct", "parent_repo"]),
   worktree_list: Object.freeze(["repo"]),
@@ -49,7 +49,7 @@ const REQUEST_FIELDS = new Set([
   "operation", "transport", "repo_root", "work_id", "base", "worktrees_dir", "branch_prefix",
   "confirm", "authorization", "transaction_id", "plan_hash", "dry_run", "target_direct",
   "parent_repo", "submodule_path", "discard_consent", "discard", "init_submodules",
-  "prepare", "verify", "preserve_dirty", "commit_title", "commit_body",
+  "prepare", "verify", "preserve_dirty", "commit_title", "commit_body", "merge_strategy",
 ]);
 
 /** Error codes that need the caller to act before the request can be retried. */
@@ -154,9 +154,12 @@ export function validateWorktreeRequest(request, deps) {
   if (commitTitle !== undefined && (typeof commitTitle !== "string" || commitTitle.includes("\u0000"))) throw new TypeError("commit_title must be a string");
   const commitBody = request.commit_body;
   if (commitBody !== undefined && (typeof commitBody !== "string" || commitBody.includes("\u0000"))) throw new TypeError("commit_body must be a string");
+  const mergeStrategy = request.merge_strategy;
+  if (mergeStrategy !== undefined && (typeof mergeStrategy !== "string" || (mergeStrategy !== "squash" && mergeStrategy !== "preserve-history"))) throw new TypeError("merge_strategy must be squash or preserve-history");
 
   if (request.commit_title !== undefined && operation !== "complete") throw new TypeError("commit_title is only valid for complete");
   if (request.commit_body !== undefined && operation !== "complete") throw new TypeError("commit_body is only valid for complete");
+  if (request.merge_strategy !== undefined && operation !== "complete") throw new TypeError("merge_strategy is only valid for complete");
 
   for (const key of ["init_submodules", "prepare", "verify"]) {
     if (request[key] === true && operation !== "create") throw new TypeError(`${key} is only valid for create`);
@@ -206,6 +209,7 @@ export function validateWorktreeRequest(request, deps) {
     preserve_dirty: preserveDirty,
     commit_title: commitTitle,
     commit_body: commitBody,
+    merge_strategy: mergeStrategy,
   });
 }
 
@@ -237,6 +241,7 @@ export function buildToolRequest(request, overrides = {}) {
       assign("commit_title", request.commit_title);
       if (request.commit_body !== undefined) assign("commit_body", request.commit_body);
     }
+    if (request.merge_strategy !== undefined) assign("merge_strategy", request.merge_strategy);
   }
   assign("discard", request.discard);
   assign("discard_consent", request.discard_consent);

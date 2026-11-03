@@ -54,7 +54,7 @@ opt into JSON implicitly.
 
 Configuration is an optional `key=value` file selected by `--config`, or
 `.worktree-manager.conf` in the repository root. A file passed with `--config`
-must be an existing absolute file. The eleven supported keys and their
+must be an existing absolute file. The twelve supported keys and their
 defaults are:
 
 | Key | Default | Constraint |
@@ -70,6 +70,7 @@ defaults are:
 | `prepare_enabled` | `false` | `true` or `false` |
 | `verify_enabled` | `false` | `true` or `false` |
 | `preserve_dirty` | `false` | `true` or `false` |
+| `merge_strategy` | `squash` | `squash` or `preserve-history` |
 
 Each key may occur once. Unknown keys, malformed lines, invalid booleans and
 unsafe paths are rejected as `invalid_configuration` with exit code `3`. A
@@ -141,7 +142,7 @@ publishes exactly seven tools:
 | Tool | Fields | Required |
 |---|---|---|
 | `worktree_create` | `repo`, `work_id`, `base`, `dry_run`, `parent_repo`, `submodule_path`, `confirm`, `plan_hash`, `init_submodules`, `prepare`, `verify` | `repo`, `work_id` |
-| `worktree_complete` | `repo`, `work_id`, `base`, `dry_run`, `authorization`, `confirm`, `plan_hash`, `transaction_id`, `preserve_dirty`, `target_direct`, `parent_repo` | `repo`, `work_id` |
+| `worktree_complete` | `repo`, `work_id`, `base`, `dry_run`, `authorization`, `confirm`, `plan_hash`, `transaction_id`, `preserve_dirty`, `target_direct`, `parent_repo`, `merge_strategy` | `repo`, `work_id` |
 | `worktree_cleanup` | `repo`, `work_id`, `base`, `dry_run`, `authorization`, `confirm`, `plan_hash`, `discard`, `discard_consent` | `repo`, `work_id` |
 | `worktree_recover` | `repo`, `transaction_id`, `dry_run`, `authorization`, `confirm`, `target_direct`, `parent_repo` | `repo` |
 | `worktree_list` | `repo` | `repo` |
@@ -175,3 +176,11 @@ recovery have no safe simulation: they are rejected as `unsupported_dry_run`
 with exit code `3` when a dry run is requested.
 
 Closure commits use `commit_title`/`commit_body` (or `--title`/`--body`); the consumer injects the Spanish generic fallback when they are absent.
+
+Closure strategy is selected with `merge_strategy`: `squash` (default, one
+delivery commit) or `preserve-history` (opt-in `merge --no-ff` keeping SHAs,
+order and messages). Usage:
+
+```sh
+worktree.sh --repo <repo> complete <id> --base <branch> --merge-strategy preserve-history --title "..." --body "..."
+```

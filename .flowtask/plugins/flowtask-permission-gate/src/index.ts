@@ -465,6 +465,7 @@ detectTransport: async ({ repoRoot }) => {
           base_branch: tool.schema.string().optional(), work_id: tool.schema.string().optional(), init_submodules: tool.schema.boolean().optional(),
           preserve_dirty: tool.schema.boolean().optional(), discard: tool.schema.boolean().optional(), discard_consent: tool.schema.boolean().optional(),
           commit_title: tool.schema.string().optional(), commit_body: tool.schema.string().optional(),
+          merge_strategy: tool.schema.enum(["squash", "preserve-history"]).optional(),
           prepare: tool.schema.boolean().optional(), verify: tool.schema.boolean().optional(),
           confirm: tool.schema.boolean().optional(), transaction_id: tool.schema.string().optional(), plan_hash: tool.schema.string().optional(),
           dry_run: tool.schema.boolean().optional(), target_direct: tool.schema.boolean().optional(),

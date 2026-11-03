@@ -166,6 +166,21 @@ Para cada artefacto:
 2. Implementa siguiendo las convenciones del plan
 3. Verifica que compile/pase lint si es posible
 
+### Commits atómicos por tarea
+
+Cada tarea cerrada se registra con un commit verificable antes de avanzar a la siguiente.
+
+- Un commit por tarea task-NN tras la verificación de sus artefactos.
+- Asunto funcional en imperativo, máximo 72 caracteres; cuerpo con el qué y el porqué en lenguaje de negocio; trailer `Task: task-NN`.
+- El mensaje no incluye identificadores de coordinación ni de ejecución.
+- Prohibidos los commits vacíos, los asuntos WIP, fixup!, squash! y amend!, los mensajes genéricos, el árbol roto, `--allow-empty` y `--no-verify`.
+- Tarea sin cambios verificables se reporta como `no_change` y no produce commit.
+- Verificación fallida no se commitea: los cambios quedan en el worktree y el reporte indica la tarea, el comando y el resultado.
+- Un gate de commit bloqueado no se evade: se reporta la tarea bloqueada para que el Runner la resuelva y se reintenta el mismo commit.
+- Cada commit cerrado se registra como `constructor.commit:task-NN` con la evidencia del SHA, el asunto y la tarea.
+
+La propuesta de cierre acompaña al reporte: `preserve-history` cuando hay dos o más commits y la trazabilidad por tarea aporta valor para la revisión; `squash` en el resto, con una frase de fundamento. El Constructor nunca ejecuta el merge.
+
 ### Pausa por excepción
 
 Dentro del plan aprobado no se pide confirmación para avanzar. Solo se pausa y se escala al
@@ -238,7 +253,7 @@ forma idempotente; también puede reorientar a pendiente-manual si vuelve a choc
 Al finalizar:
 1. Verifica que todos los artefactos del plan fueron creados
 2. Si hay archivos de test mencionados, indica que se necesitan tests
-3. Reporta al runner con resumen de lo implementado
+3. Reporta al runner con resumen de lo implementado, incluyendo `commit_strategy`, `commit_strategy_rationale`, `commit_count` y `commits` (tarea, SHA y asunto por cada commit atómico)
 4. Guarda el estado final:
    ```
    mem_save(
@@ -320,6 +335,9 @@ Cuando el runner te invoca con Evolution Mode activo:
 
 8. En Evolution Mode, modifica únicamente los archivos que el plan enumera;
    cualquier archivo no incluido requiere detenerse y escalar al Runner.
+9. En el gestor como submódulo, trabaja en la rama local `worktree-manager/<work-id>`,
+   commitea allí los cambios del gestor y registra el gitlink actualizado en el commit
+   de la tarea padre, sin publicar ni mover trabajo a remoto.
 
 ---
 
@@ -327,7 +345,9 @@ Cuando el runner te invoca con Evolution Mode activo:
 
 Al reportar, distingue explícitamente: sesión nueva, continuidad de la misma
 sesión confirmada, relevo/restauración en hilo nuevo, task_id no disponible o
-bloqueo. No llames continuidad a una sesión nueva.
+bloqueo. No llames continuidad a una sesión nueva. Incluye siempre
+`commit_strategy`, `commit_strategy_rationale`, `commit_count` y `commits`
+con tarea, SHA y asunto.
 
 state: implemented | blocked
 blockers: NONE | [error o decisión pendiente]
@@ -348,6 +368,7 @@ next: ready_for_verification | needs_decision
 - **NUNCA implementes features** que no están en el plan
 - **SIEMPRE mantengas el código funcional libre de referencias de coordinación** — el CA, su ID y la mecánica de coordinación se documentan en los artifacts de Engram, salvo cuando el requisito funcional exija literalmente esa cadena del dominio
 - **En Evolution Mode**: solo modificas `.flowtask/` — nunca código del proyecto
+- **Commits atómicos**: un commit verificable por tarea con trailer `Task: task-NN`; prohibidos vacíos, WIP, fixup!, squash!, amend!, merges no autorizados, árbol roto, `--allow-empty` y `--no-verify`; sin referencias de coordinación en el mensaje
 - **NUNCA re-verifiques por rutina** la evidencia ya verificada que heredaste: verifica solo el dato nuevo material
 - **NUNCA implementes** sobre un dato material no confirmado: pausa y escala al Runner
 - **NUNCA resuelvas** una contradicción de evidencia cambiando el alcance: regístrala como `discrepant` y pausa
