@@ -102,9 +102,13 @@ consumidor, directorio de sesión. Un checkout válido exige
 ubicación es válida, la operación falla con un mensaje que nombra la ruta global
 esperada y la acción `flowtask install`.
 
-El puente autorizado `flowtask_worktree_consume` sigue siendo la única superficie
-expuesta al asistente; no se agrega una entrada MCP pública del gestor al
-`opencode.json` global y no se publica el gestor en ningún registro.
+El gestor standalone se publica en npm como `worktree-for-agents`; se instala
+con npm o pnpm y no expone bin ni `npx`. Su MCP publica las siete operaciones
+y la guía en `initialize.instructions`. La integración de FlowTask conserva en
+transición el submódulo y la copia global, y el puente
+`flowtask_worktree_consume` sigue siendo su superficie. El paquete npm es
+independiente y coexiste con la copia global; `node <paquete>/setup.mjs`
+diagnostica qué instalación está activa.
 
 Si la máquina no tiene Python compatible (piso 3.9), la instalación completa se
 bloquea con diagnóstico y salida no exitosa, sin dejar estado a medias.

@@ -44,8 +44,13 @@ inspect its legacy paths or refs.
 The installer publishes a managed global copy of the manager under the user's
 global FlowTask directory and excludes it from the generic asset copy. The
 consumer resolves the manager in this order: global installation, repository
-checkout, session directory. There is no npm publication and no global MCP entry
-for the manager; the authorized bridge remains the only exposed surface.
+checkout, session directory. The standalone manager is also distributed on npm
+as `worktree-for-agents` (installed with npm or pnpm, no bin and no `npx`);
+its MCP publishes the seven operations and the guide in
+`initialize.instructions`, and `node <paquete>/setup.mjs` diagnoses which
+installation is active. The FlowTask integration is unchanged: it keeps the
+submodule and the managed global copy in transition, and the authorized bridge
+remains the exposed surface of FlowTask.
 
 ## Consumer bridge
 
