@@ -117,6 +117,7 @@ Reglas:
   continúa con la siguiente fuente disponible; la ausencia no se trata como
   confirmación.
 - Los umbrales no se muestran en el pack: el pack describe conducta, no cifras.
+- Los flujos del runner que deben estar cargados en cada momento se declaran en el canon del runner; este contrato no los duplica.
 
 ## Recuperación verificable
 

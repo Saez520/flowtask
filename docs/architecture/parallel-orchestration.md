@@ -128,9 +128,9 @@ explicit human consent.
 
 - `.flowtask/skills/parallel-orchestration/SKILL.md` — normative contract for
   safe parallel orchestration.
-- `.flowtask/agents/runner.md` — section `## Orquestación paralela segura`: when it is
-  evaluated, batch decision, dispatch and join, queue and capacity, containment, serialized
-  integration, and surface inheritance.
+- `.flowtask/skills/runner-flow-paralelo/SKILL.md` — when it is evaluated, batch decision,
+  dispatch and join, queue and capacity, containment, serialized integration, and surface
+  inheritance.
 - `.flowtask/config/README.md` — optional declaration of per-project capacity.
 - `docs/architecture/worktree.md` — worktree manager boundary and absence of a parallel
   engine.

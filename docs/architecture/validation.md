@@ -244,4 +244,4 @@ standard input, and with `--json` it emits the complete result.
 - [../core-flowtask.md](../core-flowtask.md) — main flow of an execution.
 - `.flowtask/agents/validator.md` — behavior of the agent that runs
   validation.
-- `.flowtask/agents/runner.md` — dispatch per round and execution close.
+- `.flowtask/skills/runner-flow-ejecucion-ca/SKILL.md` — dispatch per round and execution close.

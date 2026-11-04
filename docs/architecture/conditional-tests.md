@@ -167,5 +167,5 @@ failure with tool failure.
 - [validation.md](./validation.md) — live validation, executed evidence, and single verdict.
 - [../core-flowtask.md](../core-flowtask.md) — main flow of an execution.
 - `.flowtask/agents/tester.md` — contract of the agent that generates gap-driven tests.
-- `.flowtask/agents/runner.md` — dispatch of gap-driven generation.
+- `.flowtask/skills/runner-flow-ejecucion-ca/SKILL.md` — dispatch of gap-driven generation.
 - `.flowtask/agents/validator.md` — inheritance of the test report.
