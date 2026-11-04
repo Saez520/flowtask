@@ -81,15 +81,15 @@ export function buildStartupBlock({ skillsDir, runnerPath }) {
 /**
  * Build the full skill index from runner.md, resolved against the installed skills.
  */
-export function buildSkillIndex(runnerBody, { skillsDir }) {
+export function buildSkillIndex(runnerBody, { skillsDir, verificationDir = skillsDir }) {
   const references = extractSkillReferences(runnerBody);
   const missing = references.filter(
-    (name) => !fileExists(path.join(skillsDir, name, "SKILL.md")),
+    (name) => !fileExists(path.join(verificationDir, name, "SKILL.md")),
   );
 
   if (missing.length > 0) {
     throw new Error(
-      `Skill index references skills that are not installed in ${skillsDir}: ${missing.join(", ")}. ` +
+      `Skill index references skills that are not installed in ${verificationDir}: ${missing.join(", ")}. ` +
         `Install the canonical skills or fix "${SKILLS_SECTION_HEADING}" in runner.md.`,
     );
   }
@@ -126,18 +126,26 @@ export function assertSessionStartUnderLimit(content) {
 /**
  * Write the startup document consumed by the global hook and return its content.
  */
-export function generateClaudeSessionStart({ skillsDir, runnerPath, sessionStartPath }) {
-  if (!fileExists(runnerPath)) {
+export function generateClaudeSessionStart({
+  skillsDir,
+  runnerPath,
+  sessionStartPath,
+  runnerContent = null,
+  verificationSkillsDir = null,
+}) {
+  if (runnerContent === null && !fileExists(runnerPath)) {
     throw new Error(`runner.md not found at ${runnerPath} — cannot generate the startup document.`);
   }
 
-  const runnerBody = parseFrontmatter(fs.readFileSync(runnerPath, "utf8")).body;
+  const runnerBody = parseFrontmatter(
+    runnerContent ?? fs.readFileSync(runnerPath, "utf8"),
+  ).body;
   const content = [
     "# FlowTask session start",
     "",
     buildStartupBlock({ skillsDir, runnerPath }),
     "",
-    buildSkillIndex(runnerBody, { skillsDir }),
+    buildSkillIndex(runnerBody, { skillsDir, verificationDir: verificationSkillsDir ?? skillsDir }),
     "",
   ].join("\n");
 
