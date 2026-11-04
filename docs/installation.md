@@ -387,7 +387,7 @@ authorized through the shell. See
 
 ## Plugins and Graphify
 
-The manifest declares permission-gate, model-selector, and context-checkpoint; classifier-hook and classifier-tui are deprecated and disabled, so they are not installed by default. The context-checkpoint source gitlink may be empty if the submodule was not materialized, while a copy installed in `.opencode/plugins` belongs to the consumer project and does not prove the state of the source checkout.
+The manifest declares permission-gate, model-selector, and context-checkpoint; classifier-hook and classifier-tui are deprecated and disabled, so they are not installed by default. The permission gate and the context checkpoint are managed V2 packages: installation copies the package, writes its owner marker, verifies the mirror, and registers a single `{"package":"./plugins/<name>"}` entry in `.opencode/opencode.json` — for example, `{"package":"./plugins/flowtask-permission-gate"}` and `{"package":"./plugins/flowtask-context-checkpoint"}`; any older file-path entry under `plugins/<name>/` is replaced. The context-checkpoint source gitlink may be empty if the submodule was not materialized, while a copy installed in `.opencode/plugins` belongs to the consumer project and does not prove the state of the source checkout.
 
 Graphify is queried through `graphify_query_graph` via MCP. `flowtask graphify query --query <query>` only tests the deprecated shim and exits without querying locally.
 

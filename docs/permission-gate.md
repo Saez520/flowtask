@@ -5,8 +5,12 @@ The migration from the historical gate was consolidated into a single plugin:
 `[FlowTask Permission Gate]`.
 
 `flowtask-permission-gate` is the only runtime control for FlowTask-specific
-permissions. It is loaded from `.opencode/plugins/` after `flowtask install`
-or `flowtask update` and requires restarting OpenCode. There is no native fallback.
+permissions. It is installed as a managed V2 package in
+`.opencode/plugins/flowtask-permission-gate` after `flowtask install` or
+`flowtask update`, and the configuration registers it once as
+`{"package":"./plugins/flowtask-permission-gate"}`; the package entrypoint is
+`dist/index.js`. The change takes effect when OpenCode restarts. There is no
+native fallback.
 
 ## Policies
 
@@ -95,8 +99,8 @@ allowlist and the list of authorized subagents are not expanded.
 **Smoke.** In an installed target, delete `permissions.json`, restart OpenCode,
 and verify that a runner tool is denied with the operational message;
 restore the file, restart OpenCode, and verify that the allowed operation
-works again. The actual denial depends on OpenCode reloading
-`dist/index.js`: fixture tests verify the parser, the message, and parity,
+works again. The actual denial depends on OpenCode reloading the installed
+package: fixture tests verify the parser, the message, and parity,
 not the load cycle.
 
 ## Context budget
@@ -239,12 +243,13 @@ contains an unauthorized segment or if its syntax is ambiguous.
 
 ### Agent identity
 
-The OpenCode runtime does not expose identity in
-`tool.execute.before`. The plugin records it per session through `chat.message`
-(`agent?: string`) and consults that map when evaluating each tool. A message
-without `agent` keeps the session's previous value. Identity is not inferred from
-the command text; if there is no registered identity, the Runner-specific rule
-degrades without applying and the universal commit gate remains.
+The V2 runtime exposes the acting agent in each tool event. The plugin
+evaluates that identity in `execute.before` and `execute.after`, and records
+the runner per session so phases without an identity can reuse it. An identity
+that is not the runner keeps the session fallback and does not contaminate the
+recorded runner. Identity is not inferred from the command text; if there is no
+registered runner identity, the Runner-specific rule degrades without applying
+and the universal commit gate remains.
 
 ## Worktree Manager
 
@@ -286,8 +291,10 @@ to the manager and is not admitted through bash.
 
 After updating, verify that
 `.opencode/plugins/flowtask-permission-gate/dist/index.js` exists, that the
-configuration registers that entrypoint, and that it does not register the
-previous name or `agent.flowtask-runner.permission`. Restart OpenCode and test an
+configuration registers the package once as
+`{"package":"./plugins/flowtask-permission-gate"}`, and that it does not keep an
+entry pointing to `plugins/flowtask-permission-gate/dist/index.js`, the previous
+name, or `agent.flowtask-runner.permission`. Restart OpenCode and test an
 allowed Runner operation, a denied one, and the commit gate with and without a stamp.
 
 ## Post-install/update and restart runtime smoke
@@ -302,10 +309,12 @@ fixture tests only verify the script and do not replace this test.
    Do not edit `.opencode/opencode.json` manually.
 2. Verify that
    `.opencode/plugins/flowtask-permission-gate/dist/index.js` exists and that the
-   `plugin` array registers that entrypoint once. Confirm that the historical
-   gate entrypoint and `agent.flowtask-runner.permission` do not exist.
+   `plugins` array registers the gate once as
+   `{"package":"./plugins/flowtask-permission-gate"}`. Confirm that no entry
+   points to `plugins/flowtask-permission-gate/dist/index.js`, and that the
+   historical gate entrypoint and `agent.flowtask-runner.permission` do not exist.
 3. Close and restart OpenCode using the developer's usual procedure.
-   Expected result: the new plugin loads from `.opencode/plugins/` and
+   Expected result: the new package loads from `.opencode/plugins/` and
    the old plugin does not load.
 4. In a Runner session, run `${FLOWTASK_SCRIPTS}/worktree.sh list`,
    `git status --short`, and an uncatalogued inspection such as `pwd` or
@@ -331,8 +340,8 @@ fixture tests only verify the script and do not replace this test.
    another branch is rejected with a branch mismatch; an expired stamp reports
    the elapsed minutes; the current bypasses `--no-verify` and `--no-review`
    still operate.
-7. Record in the report the observed identity (`hookInput.agent`,
-   `input.agent`, or none), the verified paths, the allowed and denied commands,
+7. Record in the report the observed identity (`event.agent` or the session
+   fallback), the verified paths, the allowed and denied commands,
    the literal feedback, and any runtime GAP.
 8. Test the permissions layer: delete
    `.opencode/flowtask/config/permissions.json`, restart OpenCode, and invoke
