@@ -427,6 +427,7 @@ function createSelectorSource(flowtaskDir, { withExtras = false } = {}) {
   const source = path.join(flowtaskDir, "plugins", "agent-model-selector", "packages", "opencode");
   fs.mkdirSync(path.join(source, "dist"), { recursive: true });
   fs.writeFileSync(path.join(source, "dist", "tui.js"), "export default {};\n");
+  fs.writeFileSync(path.join(source, "tui.ts"), 'export { default } from "./dist/tui.js";\n');
   fs.writeFileSync(path.join(source, "package.json"), JSON.stringify({ name: "agent-model-selector-opencode" }), "utf8");
   fs.writeFileSync(path.join(source, "README.md"), "# agent-model-selector-opencode\n", "utf8");
   if (withExtras) {
@@ -447,7 +448,7 @@ function selectorManifest(overrides = {}) {
     kind: "cli",
     destinations: ["opencode"],
     entrypoint: "dist/tui.js",
-    files: ["dist", "package.json", "README.md"],
+    files: ["dist", "package.json", "README.md", "tui.ts"],
     ...overrides,
   };
 }
@@ -459,8 +460,12 @@ test("manifest files allowlist copies only the declared entries", () => {
   installManifestPlugins(root, [selectorManifest()], flowtaskDir);
 
   const dest = path.join(root, ".opencode", "plugins", "agent-model-selector-opencode");
-  assert.deepEqual(fs.readdirSync(dest).sort(), ["README.md", "dist", "package.json"]);
+  assert.deepEqual(fs.readdirSync(dest).sort(), ["README.md", "dist", "package.json", "tui.ts"]);
   assert.ok(fs.existsSync(path.join(dest, "dist", "tui.js")));
+  assert.equal(
+    fs.readFileSync(path.join(dest, "tui.ts"), "utf8").trim(),
+    'export { default } from "./dist/tui.js";'
+  );
   assert.equal(fs.existsSync(path.join(dest, "src")), false);
   assert.equal(fs.existsSync(path.join(dest, "node_modules")), false);
   assert.equal(fs.existsSync(path.join(dest, "tests")), false);
@@ -547,7 +552,7 @@ test("the repository manifest declares the submodule selector and not the legacy
   assert.equal(entry.kind, "cli");
   assert.deepEqual(entry.destinations, ["opencode"]);
   assert.equal(entry.entrypoint, "dist/tui.js");
-  assert.deepEqual(entry.files, ["dist", "package.json", "README.md"]);
+  assert.deepEqual(entry.files, ["dist", "package.json", "README.md", "tui.ts"]);
   assert.equal(manifest.some((item) => item.name === "flowtask-model-selector"), false);
 });
 
@@ -576,7 +581,7 @@ test("the files allowlist prunes stale destination entries from a previous insta
 
   installManifestPlugins(root, [selectorManifest()], flowtaskDir);
 
-  assert.deepEqual(fs.readdirSync(dest).sort(), ["README.md", "dist", "package.json"]);
+  assert.deepEqual(fs.readdirSync(dest).sort(), ["README.md", "dist", "package.json", "tui.ts"]);
   assert.deepEqual(readJson(path.join(dest, "package.json")), { name: "agent-model-selector-opencode" });
   assert.equal(fs.existsSync(path.join(dest, "src")), false);
   assert.equal(fs.existsSync(path.join(dest, "node_modules")), false);

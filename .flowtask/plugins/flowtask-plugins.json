@@ -23,7 +23,7 @@
     "kind": "cli",
     "destinations": ["opencode"],
     "entrypoint": "dist/tui.js",
-    "files": ["dist", "package.json", "README.md"]
+    "files": ["dist", "package.json", "README.md", "tui.ts"]
   },
   {
     "name": "flowtask-permission-gate",
