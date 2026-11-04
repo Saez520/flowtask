@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { classifyOwnership, OWNERSHIP, OWNER_MARKER, registerPluginPackageEntry, replaceManagedPackage } from "./ownership.js";
+import {
+  classifyOwnership,
+  CONTEXT_CHECKPOINT_SHA,
+  OWNERSHIP,
+  OWNER_MARKER,
+  registerPluginPackageEntry,
+  replaceManagedPackage,
+} from "./ownership.js";
 
 test("ownership classifies absent, external, symlink, and exact V2 marker deterministically", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-owner-"));
@@ -77,4 +86,20 @@ test("package registration removes legacy references and is idempotent without c
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("the managed plugin constant matches the gitlink recorded in the repository index", (t) => {
+  const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
+  const result = spawnSync("git", ["ls-files", "-s", "--", ".flowtask/plugins/flowtask-context-checkpoint"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const record = result.status === 0 ? result.stdout.trim() : "";
+  if (!record) {
+    t.skip("the test requires a checkout where the plugin gitlink is tracked");
+    return;
+  }
+  const [mode, sha] = record.split(/\s+/);
+  assert.equal(mode, "160000", "the plugin must remain a gitlink");
+  assert.equal(sha, CONTEXT_CHECKPOINT_SHA, "the constant must follow the tracked plugin revision");
 });
