@@ -1297,6 +1297,16 @@ function describeLocalFerrisSearch(result) {
   return result.removedFerrisSearch ? "copia local retirada" : "copia local ausente";
 }
 
+function failedFerrisSearchResult(err) {
+  return {
+    status: "failed",
+    globalConfigPath: null,
+    binaryInstalled: false,
+    cause: err.message,
+    action: "retry with flowtask update",
+  };
+}
+
 function reportFerrisSearch(globalResult, localResult) {
   if (!globalResult) return;
   const local = describeLocalFerrisSearch(localResult);
@@ -1367,9 +1377,14 @@ ${COLORS.blue}╔═════════════════════
   if (targetDirs.length > 0 && !migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
     throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
   }
-  const ferrisSearchResult = targets.some(({ id }) => id === "opencode")
-    ? await ensureGlobalFerrisSearch({ flowtaskDir, readline, isTTY: Boolean(process.stdin.isTTY) })
-    : null;
+  let ferrisSearchResult = null;
+  if (targets.some(({ id }) => id === "opencode")) {
+    try {
+      ferrisSearchResult = await ensureGlobalFerrisSearch({ flowtaskDir, readline, isTTY: Boolean(process.stdin.isTTY) });
+    } catch (err) {
+      ferrisSearchResult = failedFerrisSearchResult(err);
+    }
+  }
   const results = [];
   let localFerrisSearch = null;
 
@@ -1583,9 +1598,14 @@ ${COLORS.blue}╔═════════════════════
     throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
   }
 
-  const ferrisSearchResult = nonClaudeTargets.some(({ id }) => id === "opencode")
-    ? await ensureGlobalFerrisSearch({ flowtaskDir, readline, isTTY: Boolean(process.stdin.isTTY) })
-    : null;
+  let ferrisSearchResult = null;
+  if (nonClaudeTargets.some(({ id }) => id === "opencode")) {
+    try {
+      ferrisSearchResult = await ensureGlobalFerrisSearch({ flowtaskDir, readline, isTTY: Boolean(process.stdin.isTTY) });
+    } catch (err) {
+      ferrisSearchResult = failedFerrisSearchResult(err);
+    }
+  }
 
   // ── Step 1.5: Agent Personality ──────────────────────────────
   let currentLevel = null;
