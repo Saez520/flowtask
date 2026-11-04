@@ -1,8 +1,8 @@
 /**
  * Context budget for the runner's read tools.
  *
- * Transparent tool gate via `tool.execute.after` (OpenCode 1.18.15,
- * mutable output). Measures `output.output.length` (proxy chars/4 tokens) and
+ * Transparent tool gate on the V2 tool result (mutable `output`/`content` and
+ * `metadata`). Measures the delivered text length (proxy chars/4 tokens) and
  * degrades the delivery by levels before omitting it:
  *
  * 1. `notice` — the first broad request of the turn is announced with the way
@@ -31,7 +31,7 @@ export const DEFAULT_READ_THRESHOLD = 16000;
 export const DEFAULT_GREP_THRESHOLD = 8000;
 /** Per-call threshold — glob (chars of `output.output`). */
 export const DEFAULT_GLOB_THRESHOLD = 8000;
-/** Maximum chars delivered per runner turn (reset by chat.message). */
+/** Maximum chars delivered per runner turn (reset by the prompt hook). */
 export const DEFAULT_TURN_ACCUMULATED = 32000;
 /** `stat.size` (bytes) that without `limit`/`offset` triggers the read pre-gate. */
 export const PREVENTIVE_READ_STAT_LIMIT = 50 * 1024;
@@ -332,17 +332,61 @@ export function shouldPreventiveBlockGrep(args: Record<string, unknown>): boolea
   );
 }
 
-type ToolOutput = { output?: unknown; metadata?: Record<string, unknown> };
+type ToolOutput = { output?: unknown; content?: unknown; metadata?: Record<string, unknown> };
+
+/**
+ * Text delivered by a V2 tool result: `output` first, then `content` when it is
+ * a string. Returns undefined when the delivery cannot be measured.
+ */
+export function readDeliveredText(result: ToolOutput | undefined): string | undefined {
+  if (!result) return undefined;
+  if (typeof result.output === "string") return result.output;
+  if (typeof result.content === "string") return result.content;
+  return undefined;
+}
+
+/**
+ * Applies a reduced delivery to a mutable V2 tool result: replaces the string
+ * delivery fields and merges the observable degradation metadata. Never throws.
+ */
+export function applyReducedDelivery(
+  result: ToolOutput | undefined,
+  reduced: string,
+  level: DegradationLevel,
+  options: { budget?: BudgetScope; omittedChars?: number } = {},
+): ToolOutput | undefined {
+  if (!result) return result;
+  if (typeof result.output === "string") result.output = reduced;
+  if (typeof result.content === "string") result.content = reduced;
+  result.metadata = {
+    ...(result.metadata ?? {}),
+    truncated: true,
+    ...buildDegradationMetadata(level, options),
+  };
+  return result;
+}
 
 /**
  * Detects image/PDF attachment delivery: the tool returns a short text
  * (`Image read successfully`) plus a base64 attachment that is not reflected in
- * `string.length` but does saturate multimodal context/memory.
+ * `string.length` but does saturate multimodal context/memory. V2 may also
+ * deliver the payload as file parts in `content` or mark it in `metadata`.
  */
 export function isImageOrPdfOutput(output: ToolOutput | undefined): boolean {
   if (!output) return false;
   if (typeof output.output === "string" && output.output === "Image read successfully") return true;
   const attachment = output.metadata?.attachment;
-  if (attachment === undefined || attachment === null || attachment === false) return false;
-  return true;
+  if (attachment !== undefined && attachment !== null && attachment !== false) return true;
+  if (Array.isArray(output.content)) {
+    return output.content.some((part) => {
+      if (!part || typeof part !== "object") return false;
+      const record = part as Record<string, unknown>;
+      return (
+        record.type === "file" &&
+        typeof record.mime === "string" &&
+        (record.mime.startsWith("image/") || record.mime === "application/pdf")
+      );
+    });
+  }
+  return false;
 }
