@@ -102,6 +102,11 @@ function parseOptions(commandArgs) {
       options.yes = true;
       continue;
     }
+
+    if (argument === "--verbose") {
+      options.verbose = true;
+      continue;
+    }
   }
 
   return options;
@@ -603,6 +608,8 @@ Usage:
                       Select the agent personality explicitly
   flowtask update     Update FlowTask files (delta-only sync)
   flowtask update --persona <training|mid|senior|custom>
+  flowtask update --verbose
+                      Show the per-step diagnostic output
   flowtask uninstall  Remove the user-level runtime and registered projects
   flowtask uninstall --project
                       Remove only the current project registration

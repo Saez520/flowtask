@@ -12,27 +12,53 @@ const COLORS = {
   reset: "\x1b[0m",
 };
 
+let logSink = null;
+
+export function setLogSink(sink) {
+  logSink = sink ?? null;
+}
+
 function log(message, color = COLORS.reset) {
   console.log(`${color}${message}${COLORS.reset}`);
 }
 
 function logStep(step, message) {
+  if (logSink) {
+    logSink({ kind: "step", message, step });
+    return;
+  }
   console.log(`\n${COLORS.blue}[${step}]${COLORS.reset} ${message}`);
 }
 
 function logSuccess(message) {
+  if (logSink) {
+    logSink({ kind: "success", message });
+    return;
+  }
   log(`✓ ${message}`, COLORS.green);
 }
 
 function logError(message) {
+  if (logSink) {
+    logSink({ kind: "error", message });
+    return;
+  }
   log(`✗ ${message}`, COLORS.red);
 }
 
 function logWarn(message) {
+  if (logSink) {
+    logSink({ kind: "warn", message });
+    return;
+  }
   log(`⚠ ${message}`, COLORS.yellow);
 }
 
 function logInfo(message) {
+  if (logSink) {
+    logSink({ kind: "info", message });
+    return;
+  }
   log(`  ${message}`, COLORS.cyan);
 }
 
