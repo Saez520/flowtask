@@ -78,8 +78,20 @@ function extractPluginName(pluginPath) {
   return match ? match[1] : null;
 }
 
+/**
+ * Resolves the path a plugin entry points to: strings, package entries, and
+ * path entries. Returns null for unknown shapes.
+ */
+export function pluginEntryPath(entry) {
+  if (typeof entry === "string") return entry;
+  if (!entry || typeof entry !== "object") return null;
+  if (typeof entry.package === "string" && entry.package) return entry.package;
+  if (typeof entry.path === "string" && entry.path) return entry.path;
+  return null;
+}
+
 function isFlowTaskPluginEntry(entry) {
-  const entryPath = typeof entry === "string" ? entry : entry?.path;
+  const entryPath = pluginEntryPath(entry);
   if (typeof entryPath !== "string") return false;
   const normalized = entryPath.replace(/\\/g, "/");
   const name = extractPluginName(entryPath);
@@ -106,13 +118,13 @@ function normalizePluginEntries(existing, incoming) {
   const indexes = new Map();
   const incomingByName = new Map();
   for (const entry of incoming) {
-    const entryPath = typeof entry === "string" ? entry : entry?.path;
+    const entryPath = pluginEntryPath(entry);
     const name = extractPluginName(entryPath);
     if (name && !incomingByName.has(name)) incomingByName.set(name, entry);
   }
 
   for (const entry of existing) {
-    const entryPath = typeof entry === "string" ? entry : entry?.path;
+    const entryPath = pluginEntryPath(entry);
     const name = extractPluginName(entryPath);
     if (isFlowTaskPluginEntry(entry)) {
       if (name && indexes.has(name)) continue;
@@ -122,7 +134,7 @@ function normalizePluginEntries(existing, incoming) {
   }
 
   for (const entry of incoming) {
-    const entryPath = typeof entry === "string" ? entry : entry?.path;
+    const entryPath = pluginEntryPath(entry);
     const name = extractPluginName(entryPath);
     if (name && indexes.has(name)) {
       result[indexes.get(name)] = entry;
