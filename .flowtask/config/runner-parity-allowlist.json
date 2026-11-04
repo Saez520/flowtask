@@ -1,0 +1,250 @@
+[
+  {
+    "line": "La composición se rige por `## Control del Agent Loop`.",
+    "reason": "CA-runner-progressive-loading (#10738): delta intencional aprobado por el Validator al cortar el canon en núcleo permanente + flujos bajo demanda."
+  },
+  {
+    "line": "<!-- FLOWTASK:ROUTING_START -->",
+    "reason": "CA-runner-progressive-loading (#10738): delta intencional aprobado por el Validator al cortar el canon en núcleo permanente + flujos bajo demanda."
+  },
+  {
+    "line": "> **Nota — Relevo por capacidad**: Si el runner detecta `[FLOWTASK_CHECKPOINT_CAPACITY: X%]` en la respuesta del subagente, maneja el relevo usando Escenario A normal. Ver sección \"Detección de checkpoint por capacidad\" abajo.",
+    "reason": "CA-runner-progressive-loading (#10738): delta intencional aprobado por el Validator al cortar el canon en núcleo permanente + flujos bajo demanda."
+  },
+  {
+    "line": "    a. El sub-agente ya debe haber ejecutado `mem_save` siguiendo el schema definido por `.flowtask/skills/checkpoint-mixin/SKILL.md`.",
+    "reason": "CA-runner-progressive-loading (#10738): delta intencional aprobado por el Validator al cortar el canon en núcleo permanente + flujos bajo demanda."
+  },
+  {
+    "line": "### Política de worktrees — adapter consumidor obligatorio por CA",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "El gestor standalone es la autoridad única del lifecycle. El Runner selecciona",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "la configuración y coordina persistencia/dispatch mediante",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "`.flowtask/bin/lib/worktree-consumer-adapter.js`; no ejecuta Git ni mantiene",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   usuario indique una base explícita, y resuelve `worktrees_dir` y",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   `branch_prefix` desde la configuración vigente (defaults `.worktrees` y",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   `worktree/`). Valida el `work_id` genérico según el contrato del adapter;",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   no lo conviertas en un CA ID. La elección de transporte `cli` o `mcp` es",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   obligatoria y explícita; registra cuál se eligió y no hagas fallback entre",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   transportes.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "2. El adapter valida repo/base/paths/work-id y opciones antes de invocar al",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   gestor. Para toda operación de lifecycle permitida (`create`, `complete`,",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   `cleanup`, `recover`, `list`, `prune`), delega exclusivamente en el",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   transporte seleccionado. No repitas una operación si su resultado es",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   `uncertain`: primero reconcilia con el gestor y Engram. `blocked`,",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   `intervention_required`, `failure` y `no_pending_work` no son éxito de",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   creación ni autorizan dispatch.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "3. En `create`, Engram debe confirmar la asociación efectiva del worktree en",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   `flow-state/{work-id}/instances` antes de despachar Constructor. Conserva",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   `{ repo_root, work_id, path, branch, base_branch, transport,",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   init_submodules, init_submodules_result }`; la asociación debe coincidir",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   con la respuesta del gestor y con cualquier asociación previa. Si Engram",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   falla antes de la mutación, no invoques el gestor; si falla después de un",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   efecto confirmado o el resultado es incierto, conserva recursos y bloquea",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   dispatch/cierre hasta reconciliar. No uses memoria local ni limpiezas para",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   simular atomicidad.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "4. Sólo después de la confirmación durable, persiste la asociación efectiva",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   en el mapa de instancias y pasa a Constructor y Validator esa misma",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   identidad y registro. Conserva los límites de contexto existentes de ambos",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   agentes. Reanudación sólo reutiliza un worktree si la identidad del gestor",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   coincide exactamente con Engram; discrepancias bloquean y conservan los",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   recursos.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "5. `init_submodules`, `prepare` y `verify` se habilitan únicamente por",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   intención explícita. `preserve_dirty` y `discard` requieren el",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   consentimiento humano aplicable; `--auto` no agrega permisos ni sustituye",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   consentimientos y nunca concede esos permisos.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "6. La integración `complete` se serializa siempre: dos worktrees no se completan a",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "   la vez sobre la misma base, aunque los trabajos sean independientes.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "al adapter la operación `complete` con la misma identidad, base y transporte",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "registrados. El gestor standalone ejecuta el lifecycle; antes de completarlo:",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "1. No crees un commit de cierre: los commits atómicos los aporta el Constructor; verificá que el worktree esté limpio antes de `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID> --base {base_branch_detectada} [--title TEXTO] [--body TEXTO]`.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "2. El adapter invoca `complete` en el transporte seleccionado (sin fallback), con la base previamente registrada.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "3. Si completa bien, el gestor integra con el mecanismo solicitado (`complete` con squash o preserve-history) a la rama base detectada y limpia el worktree/branch.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "5. Si `complete` rechaza porque **el destino tiene cambios sin commitear**, no intentes limpiar el destino ni crear stashes: el rechazo es seguro y dejó todo intacto. Escala al desarrollador mostrando el motivo genérico del script; solo si el desarrollador consiente explícitamente, reinvoca `complete` con `--preserve-dirty`.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "6. `--preserve-dirty` es una transacción opt-in: captura los cambios elegibles del destino en refs privadas (`refs/flowtask/backups/<tx-id>`, jamás en la lista pública de stashes), registra cada fase en `.flowtask/backups/<tx-id>/journal` y restaura el estado fino al final. Ofrecélo **SOLO ante instrucción humana explícita** — jamás por defecto ni en flujos automáticos. La config persistida (`.flowtask/config/worktree.json` con `\"preserveDirty\": true`) cuenta como consentimiento humano explícito y el script nunca la escribe.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "7. Si un cierre con preservación se interrumpe, reanudalo con `worktree.sh recover [<tx-id>]` (sin argumento toma la pendiente más reciente); repetirlo es seguro e idempotente. Si la restauración quedó pendiente-manual, mostrale al desarrollador las instrucciones seguras impresas por el script: la resolución manual nunca se automatiza.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "8. El Runner sólo solicita al adapter las opciones expresamente habilitadas por el gate y consentimiento aplicable. No deriva ni ejecuta comandos Git/lifecycle por fuera del gestor; `--auto` no sustituye consentimiento para preservar o descartar. El cierre con destino sucio se escala al desarrollador sin limpiar el destino, y solo procede con `--preserve-dirty` ante consentimiento humano explícito.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "- Pasá `merge_strategy` al adapter en la operación `complete` con la misma identidad, base y transporte registrados.",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "El Runner compone el título y el cuerpo desde el CA o el hotfix; el consumidor",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "aporta el fallback en español si no hay fuente. Usá `worktree.sh complete",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "<id> --base <rama> --title \"...\" --body \"...\"` o",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "`flowtask_worktree_consume` con `commit_title`/`commit_body`. Plantillas:",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "diciente, omití las flags y el consumidor inyecta el fallback:",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "La composición de los contratos del Agent Loop, la compuerta de gasto y el registro de la ejecución se rigen por `## Control del Agent Loop`. Este loop conserva sus reglas de diagnóstico, de rondas y de Inspector.",
+    "reason": "CA-runner-progressive-loading (#10738): delta intencional aprobado por el Validator al cortar el canon en núcleo permanente + flujos bajo demanda."
+  },
+  {
+    "line": "compactación o relevo`, si el Runner pierde contexto o se reinicia, solicita `list`",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "al gestor mediante el adapter y cruza su salida con `flow-state/*/instances`. Si",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "Durante mantenimiento explícito, solicita `prune` mediante el adapter y usa la",
+    "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
+  },
+  {
+    "line": "<!-- FLOWTASK:ROUTING_END -->",
+    "reason": "CA-runner-progressive-loading (#10738): delta intencional aprobado por el Validator al cortar el canon en núcleo permanente + flujos bajo demanda."
+  }
+]
