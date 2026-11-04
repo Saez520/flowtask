@@ -374,42 +374,120 @@ export function mergeHooks(existingHooks = {}, templateHooks = {}) {
 }
 
 /**
- * Merge the Claude settings template into .claude/settings.json.
- * Hooks merge additively; malformed user JSON fails closed without writing.
+ * Merge FlowTask hooks into a settings file. Only `hooks` is touched: every
+ * other key, including `mcpServers`, is preserved verbatim. Malformed user JSON
+ * fails closed without writing.
  */
-export function mergeClaudeSettings(settingsPath, flowtaskDir) {
-  const templatePath = path.join(flowtaskDir, "claude", "settings.json");
-  if (!fileExists(templatePath)) return { ok: true, skipped: true };
-
-  logInfo(`Merging Engram MCP into ${settingsPath}...`);
+export function mergeClaudeSettings(settingsPath, { hooks } = {}) {
+  if (!hooks || typeof hooks !== "object") return { ok: true, skipped: true };
 
   try {
-    const template = JSON.parse(fs.readFileSync(templatePath, "utf8"));
     const existingRead = readJsonFile(settingsPath, settingsPath);
-
     if (!existingRead.ok) {
       const message = `Refusing to overwrite ${settingsPath}: ${existingRead.error}. Fix or move the file and retry.`;
       logError(message);
-      return { ok: false, error: message };
+      return { ok: false, error: message, changed: false };
     }
 
-    const { hooks: existingHooks, ...existingRest } = existingRead.value;
-    const { hooks: templateHooks, ...templateRest } = template;
-    const merged = deepMergeObjects(existingRest, templateRest);
-
-    if (existingHooks !== undefined || templateHooks !== undefined) {
-      merged.hooks = mergeHooks(existingHooks ?? {}, templateHooks ?? {});
+    const existing = existingRead.value;
+    const existingHooks = existing.hooks ?? {};
+    const mergedHooks = mergeHooks(existingHooks, hooks);
+    if (JSON.stringify(existingHooks) === JSON.stringify(mergedHooks)) {
+      return { ok: true, changed: false };
     }
 
-    const dir = path.dirname(settingsPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(settingsPath, JSON.stringify(merged, null, 2), "utf8");
-    logSuccess("Claude Code settings.json updated with Engram MCP.");
-    return { ok: true };
+    const next = { ...existing, hooks: mergedHooks };
+    writeFileAtomic(settingsPath, JSON.stringify(next, null, 2));
+    logSuccess(`FlowTask hook added to ${settingsPath}.`);
+    return { ok: true, changed: true };
   } catch (err) {
     logError(`Failed to merge Claude settings: ${err.message}`);
-    return { ok: false, error: err.message };
+    return { ok: false, error: err.message, changed: false };
   }
+}
+
+/** Return a hook tree without the entries matched by `predicate`. */
+export function removeHookByCommand(hooks = {}, predicate) {
+  const next = {};
+
+  for (const [event, groups] of Object.entries(hooks ?? {})) {
+    if (!Array.isArray(groups)) {
+      next[event] = groups;
+      continue;
+    }
+
+    const remainingGroups = [];
+    for (const group of groups) {
+      if (!Array.isArray(group?.hooks)) {
+        remainingGroups.push(group);
+        continue;
+      }
+      const remaining = group.hooks.filter((hook) => !predicate(hook, group));
+      if (remaining.length === 0) continue;
+      remainingGroups.push({ ...group, hooks: remaining });
+    }
+
+    if (remainingGroups.length > 0) next[event] = remainingGroups;
+  }
+
+  return next;
+}
+
+/**
+ * Remove only the FlowTask hook from a settings file. Either an exact command
+ * or a command fragment may be supplied. Other hooks and keys are preserved.
+ */
+export function removeClaudeHook(settingsPath, { command = null, commandIncludes = null } = {}) {
+  if (!command && !commandIncludes) {
+    return { ok: false, error: "removeClaudeHook requires a command or commandIncludes value.", changed: false };
+  }
+
+  try {
+    const existingRead = readJsonFile(settingsPath, settingsPath);
+    if (!existingRead.ok) {
+      const message = `Refusing to modify ${settingsPath}: ${existingRead.error}. Fix or move the file and retry.`;
+      logError(message);
+      return { ok: false, error: message, changed: false };
+    }
+
+    const existing = existingRead.value;
+    const existingHooks = existing.hooks ?? {};
+    const nextHooks = removeHookByCommand(existingHooks, (hook) => {
+      const value = typeof hook?.command === "string" ? hook.command : "";
+      return (command !== null && value === command) ||
+        (commandIncludes !== null && value.includes(commandIncludes));
+    });
+
+    if (JSON.stringify(existingHooks) === JSON.stringify(nextHooks)) {
+      return { ok: true, changed: false };
+    }
+
+    const next = { ...existing, hooks: nextHooks };
+    writeFileAtomic(settingsPath, JSON.stringify(next, null, 2));
+    logSuccess(`FlowTask hook removed from ${settingsPath}.`);
+    return { ok: true, changed: true };
+  } catch (err) {
+    logError(`Failed to remove the Claude hook: ${err.message}`);
+    return { ok: false, error: err.message, changed: false };
+  }
+}
+
+/** Hook tree for the user-level SessionStart handler. */
+export function buildSessionStartHook(runtimeRoot, nodePath = process.execPath) {
+  return {
+    SessionStart: [
+      {
+        matcher: "^(startup|resume|clear|compact|fork)$",
+        hooks: [
+          {
+            type: "command",
+            command: buildSessionStartHookCommand(runtimeRoot, nodePath),
+            timeout: 10,
+          },
+        ],
+      },
+    ],
+  };
 }
 
 // ─── MCP Config merger ───────────────────────────────────────────────────────
