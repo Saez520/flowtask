@@ -253,7 +253,9 @@ export function ensureClaudeRuntime(flowtaskDir, options = {}) {
 
   const runtimeRootExists = fileExists(runtimeRoot);
   if (runtimeRootExists) {
-    const entries = fs.readdirSync(runtimeRoot);
+    // A migrated configuration may be created before the first payload. Any
+    // other entry without a manifest remains an unmanaged runtime root.
+    const entries = fs.readdirSync(runtimeRoot).filter((entry) => entry !== "config");
     if (entries.length > 0 && !fileExists(manifestPath)) {
       const error = new Error(
         `Refusing to use ${runtimeRoot}: it contains files but no runtime manifest. ` +
