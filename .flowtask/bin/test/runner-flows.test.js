@@ -6,8 +6,8 @@
  * de flujo ausente y guarda de tamaño del núcleo. Se agrupan en tres casos para
  * no superar el techo de pruebas por entrega.
  *
- * El hotfix HF-parity-allowlist-default agrega la invocación CLI de paridad con
- * la allowlist por defecto y con un override explícito.
+ * Agrega la invocación CLI de paridad con la allowlist por defecto y con un
+ * override explícito.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -198,7 +198,7 @@ describe("runner flow delivery coverages", () => {
 
 describe("runner parity CLI invocation", () => {
   /**
-   * gap_ref: C4 (T4, HF-parity-allowlist-default)
+   * gap_ref: C4 (T4)
    * criterio: `flows verify --baseline 2c23176` sin flags de allowlist sale 0,
    *   con verdict pass, missing_outside_allowlist 0 y missing_headings [].
    * defecto: el comando de aceptación vuelve a fallar en un checkout limpio
@@ -228,7 +228,7 @@ describe("runner parity CLI invocation", () => {
   });
 
   /**
-   * gap_ref: C4 (T4, HF-parity-allowlist-default)
+   * gap_ref: C4 (T4)
    * criterio: `--allow-deltas` explícito reemplaza al default; con un array
    *   vacío el comando sale 1 y reporta runner_parity_missing_lines.
    * defecto: el override deja de reemplazar al default y la paridad vuelve a
