@@ -196,13 +196,15 @@ describe("resolucion de las capas operativas del gate", () => {
     assert.match(buildLayerBlockMessage(result), /Missing or invalid permissions layer\./);
   });
 
-  it("does not apply the check when the target declares no layer configuration", () => {
+  it("denies when the target declares no layer configuration", () => {
     const root = createTarget({});
 
     const result = readOperationalLayers([root]);
-    const denied = !result.ok && Boolean(result.configDir);
+    const denied = !result.ok;
 
-    assert.equal(denied, false, "a target without layer configuration does not enter the layer check");
+    assert.equal(denied, true, "a target without layer configuration must be denied");
+    assert.equal(result.configDir, null);
+    assert.match(buildLayerBlockMessage(result), /the target declares no layer configuration/);
   });
 
   it("does not fall through when the first candidate declares an incomplete configuration", () => {
@@ -324,12 +326,17 @@ describe("paridad del plugin", () => {
     assert.ok(block.includes("readOperationalLayers"), "the check must live inside the runner block");
   });
 
-  it("denies only when the target declared a layer configuration", () => {
+  it("denies every failed layer resolution, including an absent configuration", () => {
     for (const relative of ["src/index.ts", "dist/index.js"]) {
       const content = fs.readFileSync(path.join(PLUGIN, relative), "utf8");
       assert.ok(
-        content.includes("if (!operationalLayers.ok && operationalLayers.configDir)"),
-        `${relative} must skip the layer check when no configuration was declared`,
+        content.includes("if (!operationalLayers.ok)"),
+        `${relative} must deny every failed layer resolution`,
+      );
+      assert.equal(
+        content.includes("operationalLayers.configDir"),
+        false,
+        `${relative} must not skip the layer check when no configuration was declared`,
       );
       assert.ok(
         content.includes("throw new Error(buildLayerBlockMessage(operationalLayers))"),
