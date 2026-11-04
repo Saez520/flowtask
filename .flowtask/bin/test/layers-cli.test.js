@@ -35,12 +35,29 @@ function createProject(configs = {}) {
   return root;
 }
 
-function runLayers(root, args) {
+function runLayers(root, args, env = {}) {
   return spawnSync(process.execPath, [CLI, "layers", "resolve", ...args], {
     cwd: root,
     encoding: "utf8",
     timeout: 60000,
+    env: { ...process.env, ...env },
   });
+}
+
+function writeClaudeRegistry(root) {
+  const projectDir = path.join(root, ".claude", "flowtask");
+  fs.mkdirSync(projectDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(projectDir, "project.json"),
+    JSON.stringify({
+      schema: 1,
+      projectPath: fs.realpathSync(root),
+      registeredAt: "2026-11-04T00:00:00.000Z",
+      runtimeVersion: "1.27.1",
+      materialized: { agents: "1.27.1", commands: "1.27.1" },
+    }, null, 2),
+    "utf8",
+  );
 }
 
 const VALID_LAYERS = {
@@ -110,15 +127,19 @@ describe("flowtask layers resolve", () => {
     assert.deepEqual(payload.precedence, ["permissions", "autonomy", "persona"]);
   });
 
-  it("detects the target when none is declared", () => {
+  it("detects a registered Claude project from the user-level configuration", () => {
     const root = createProject({
-      ".claude/flowtask/config": VALID_LAYERS,
+      "claude/flowtask/config": VALID_LAYERS,
     });
+    writeClaudeRegistry(root);
 
-    const result = runLayers(root, []);
+    const result = runLayers(root, [], { CLAUDE_CONFIG_DIR: path.join(root, "claude") });
 
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.match(result.stdout, /Target: claude/);
+    assert.match(result.stdout, /Persona: tutor-senior \[project\]/);
+    assert.match(result.stdout, /Autonomy: autonomous-dev \[project\]/);
+    assert.match(result.stdout, /Permissions: standard \[project\]/);
   });
 
   it("fails when the project has no layers configuration", () => {
@@ -206,12 +227,13 @@ describe("flowtask layers resolve", () => {
         ...VALID_LAYERS,
         "autonomy.json": { version: 1, profile: "assistant" },
       },
-      ".claude/flowtask/config": VALID_LAYERS,
+      "claude/flowtask/config": VALID_LAYERS,
       ".vscode/flowtask/config": VALID_LAYERS,
       ".flowtask/config": VALID_LAYERS,
     });
+    writeClaudeRegistry(root);
 
-    const result = runLayers(root, []);
+    const result = runLayers(root, [], { CLAUDE_CONFIG_DIR: path.join(root, "claude") });
 
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
     assert.match(result.stdout, /Target: opencode/);

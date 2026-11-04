@@ -150,12 +150,29 @@ export function loadProjectState(projectDir, targetDir) {
   return createProjectState();
 }
 
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
 /**
- * Persist project state atomically.
+ * Persist project state atomically. When only the observation timestamp would
+ * change, the existing file is kept byte-identical: a repeated update must not
+ * dirty the consumer repository.
  * @returns {boolean}
  */
 export function saveProjectState(projectDir, state, targetDir) {
-  return writeJsonAtomic(projectStatePath(projectDir, targetDir), state);
+  const destination = projectStatePath(projectDir, targetDir);
+  const existing = readJsonSafe(destination);
+  if (existing && existing.schema === 1) {
+    const { updatedAt: _nextUpdatedAt, ...next } = state ?? {};
+    const { updatedAt: _existingUpdatedAt, ...previous } = existing;
+    if (canonicalJson(next) === canonicalJson(previous)) return true;
+  }
+  return writeJsonAtomic(destination, state);
 }
 
 export function migrateProjectState(projectDir, targetDirs) {

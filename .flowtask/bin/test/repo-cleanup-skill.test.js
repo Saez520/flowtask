@@ -269,11 +269,15 @@ describe("repo-cleanup skill: agnosticismo", () => {
 describe("repo-cleanup skill: descubrimiento por directorio", () => {
   const installer = read(".flowtask/bin/lib/installer.js");
 
-  it("el instalador copia el directorio de skills completo a varios destinos", () => {
+  it("el instalador copia el directorio de skills completo a varios destinos de proyecto", () => {
     const matches = installer.match(/src:\s*"skills"/g) || [];
     assert.ok(
-      matches.length >= 3,
-      `ASSETS debe copiar el directorio de skills a al menos tres destinos; encontrados ${matches.length}`,
+      matches.length >= 2,
+      `ASSETS debe copiar el directorio de skills a los destinos de proyecto; encontrados ${matches.length}`,
+    );
+    assert.ok(
+      installer.includes("claude: [],"),
+      "el runtime de usuario no copia las skills dentro del proyecto",
     );
   });
 
