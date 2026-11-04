@@ -356,6 +356,7 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
   }
   const pluginEntry = manifest.find((entry) => entry.name === CONTEXT_CHECKPOINT_NAME);
   if (!pluginEntry) throw new Error(`required plugin manifest entry missing: ${CONTEXT_CHECKPOINT_NAME}`);
+  const managedEntries = manifest.filter((entry) => entry.managedPackage === true || entry.name === CONTEXT_CHECKPOINT_NAME);
   for (const entry of manifest) {
     const resolved = path.resolve(flowtaskDir, "plugins", entry.path);
     const pluginRoot = path.resolve(flowtaskDir, "plugins");
@@ -367,14 +368,24 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
       throw new Error(`plugin manifest entrypoint escapes source: ${entry.name}`);
     }
   }
-  if (!pluginEntry.destinations.includes("opencode") || pluginEntry.kind !== "server") {
-    throw new Error(`required plugin manifest entry has incompatible destination/kind: ${CONTEXT_CHECKPOINT_NAME}`);
+  for (const entry of managedEntries) {
+    if (!entry.destinations.includes("opencode") || entry.kind !== "server") {
+      throw new Error(`managed plugin manifest entry has incompatible destination/kind: ${entry.name}`);
+    }
   }
-  const pluginDir = path.join(projectDir, ".opencode", "plugins", CONTEXT_CHECKPOINT_NAME);
-  const ownership = classifyOwnership(pluginDir, { config });
-  if (!["ABSENT", "MANAGED_V1", "MANAGED_V2"].includes(ownership.state)) {
-    throw new Error(`ownership-${ownership.state.toLowerCase()}: ${pluginDir}`);
+  const managedOwnership = [];
+  for (const entry of managedEntries) {
+    const managedDir = path.join(projectDir, ".opencode", "plugins", entry.name);
+    const decision = classifyOwnership(managedDir, { config, pluginName: entry.name });
+    if (!["ABSENT", "MANAGED_V1", "MANAGED_V2"].includes(decision.state)) {
+      throw new Error(`ownership-${decision.state.toLowerCase()}: ${managedDir}`);
+    }
+    managedOwnership.push(decision);
   }
+  const ownership = managedOwnership.find((decision) =>
+    decision.path === path.join(projectDir, ".opencode", "plugins", CONTEXT_CHECKPOINT_NAME),
+  );
+  if (!ownership) throw new Error(`required plugin manifest entry missing: ${CONTEXT_CHECKPOINT_NAME}`);
   const classifierOwnership = [];
   for (const name of CLASSIFIER_PLUGIN_NAMES) {
     const classifierDir = path.join(projectDir, ".opencode", "plugins", name);
@@ -412,7 +423,7 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
   const descriptor = {
     txID: `install-${process.pid}-${Date.now()}`, mode, strictManifest: true,
     targets, sourceDigest, sourceDir: source.sourceDir, manifest, configPath,
-    ownership, classifierOwnership, writers: INSTALLER_WRITERS, allowedWrites: [], preDigest: null,
+    ownership, managedOwnership, classifierOwnership, writers: INSTALLER_WRITERS, allowedWrites: [], preDigest: null,
     worktreeManager: options.worktreeManager ?? null,
   };
   return Object.freeze(descriptor);
@@ -1159,11 +1170,18 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
     }
     const destDir = path.join(opencodePluginsDir, entry.name);
 
-    if (entry.name === CONTEXT_CHECKPOINT_NAME) {
+    if (entry.managedPackage === true || entry.name === CONTEXT_CHECKPOINT_NAME) {
       const sourceDir = path.join(flowtaskDir, "plugins", entry.path);
+      const isCheckpoint = entry.name === CONTEXT_CHECKPOINT_NAME;
+      const preparedOwnership = (preflight?.managedOwnership ?? []).find((decision) => decision.path === destDir)
+        ?? (preflight?.ownership?.path === destDir ? preflight.ownership : undefined);
       replaceManagedPackage({ sourceDir, destinationDir: destDir,
-        configPath: path.join(projectDir, ".opencode", "opencode.json"), sourceCommit: CONTEXT_CHECKPOINT_SHA,
-        ownershipDecision: preflight?.ownership?.path === destDir ? preflight.ownership : undefined });
+        configPath: path.join(projectDir, ".opencode", "opencode.json"),
+        pluginName: entry.name,
+        entrypoint: entry.entrypoint,
+        source: isCheckpoint ? "submodule" : "local",
+        sourceCommit: isCheckpoint ? CONTEXT_CHECKPOINT_SHA : null,
+        ownershipDecision: preparedOwnership });
       continue;
     }
 
