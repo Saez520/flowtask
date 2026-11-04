@@ -20,19 +20,18 @@ the orchestrator and does not prescribe which tool to use to start the agent.
 
 ## Identity layers
 
-Identity lives in three separate layers, each with its own name:
+Identity lives in two separate layers, each with its own name:
 
 | Layer | Visible label | Instance name |
 |------|------------------|---------------------|
-| `hermes` | `núcleo Hermes` | `Hermes` (dev-only nominal reservation) |
 | `orchestrator` | `orquestador` | `{BaseName}` |
 | `subagent` | `subagente` | `{BaseName}-{agent_type}` |
 
 No layer may present itself as another: a subagent identity with
-an orchestrator name, or vice versa, is rejected and reported. The name
-`Hermes` is reserved and cannot be used as a base name or as a subagent
-name. Identity is shown in the format `[capa: {layer_label}]
-{instance_name}`, and the `hermes` layer adds ` (dev-only)`.
+an orchestrator name, or vice versa, is rejected and reported. A layer
+outside `orchestrator` or `subagent` is rejected as unknown with the
+generic message, without alias or redirection. Identity is shown in the
+format `[capa: {layer_label}] {instance_name}`.
 
 If the layer cannot be shown, the system warns and does not present the work as
 identified.
@@ -154,7 +153,7 @@ reading documents. From the repository root:
 node .flowtask/skills/handshake-protocol/scripts/agent-identity.js check --names Aitana,Kael
 ```
 
-The command prints one line per layer and one per subagent, validates name
+The command prints one orchestrator line and one per subagent, validates name
 uniqueness across parallel jobs, and checks fail-closed stops.
 It exits 1 on any violation. To see only the identities:
 

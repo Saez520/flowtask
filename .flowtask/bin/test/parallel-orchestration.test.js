@@ -127,7 +127,6 @@ const COORDINATION_IDENTIFIERS = [
   "CA-parallel-orchestration",
   "F2.9",
   "#9562",
-  "Hermes",
   "1.26.0",
 ];
 

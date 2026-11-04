@@ -10,15 +10,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** Las tres capas de identidad y su etiqueta visible. */
+/** Las dos capas de identidad y su etiqueta visible. */
 export const LAYERS = Object.freeze({
-  hermes: Object.freeze({ label: "núcleo Hermes", devOnly: true }),
-  orchestrator: Object.freeze({ label: "orquestador", devOnly: false }),
-  subagent: Object.freeze({ label: "subagente", devOnly: false }),
+  orchestrator: Object.freeze({ label: "orquestador" }),
+  subagent: Object.freeze({ label: "subagente" }),
 });
-
-/** Nombre reservado de la capa Hermes: no puede ser nombre base ni nombre de subagente. */
-export const HERMES_RESERVED_NAME = "Hermes";
 
 /** Nombre del agente de la capa orquestador. */
 export const ORCHESTRATOR_AGENT_NAME = "runner";
@@ -33,9 +29,7 @@ const normalizeKey = (value) => normalizeName(value).toLowerCase();
 const isClosedStatus = (status) => normalizeKey(status) === "closed";
 
 function makeIdentity(layer, baseName, agentType, instanceName, definition) {
-  const display = definition.devOnly
-    ? `[capa: ${definition.label}] ${instanceName} (dev-only)`
-    : `[capa: ${definition.label}] ${instanceName}`;
+  const display = `[capa: ${definition.label}] ${instanceName}`;
   return Object.freeze({
     layer,
     layer_label: definition.label,
@@ -43,7 +37,6 @@ function makeIdentity(layer, baseName, agentType, instanceName, definition) {
     agent_type: agentType,
     instance_name: instanceName,
     display,
-    dev_only: definition.devOnly,
   });
 }
 
@@ -59,21 +52,6 @@ export function buildIdentity({ layer, baseName = null, agentType = null } = {})
   }
   const definition = LAYERS[layer];
 
-  if (layer === "hermes") {
-    if (normalizeName(baseName)) {
-      return {
-        ok: false,
-        reason: "base_name_not_allowed",
-        expected: "sin nombre base para la capa Hermes",
-        found: baseName,
-      };
-    }
-    return {
-      ok: true,
-      identity: makeIdentity("hermes", null, null, HERMES_RESERVED_NAME, definition),
-    };
-  }
-
   const base = normalizeName(baseName);
   if (!base) {
     return {
@@ -81,14 +59,6 @@ export function buildIdentity({ layer, baseName = null, agentType = null } = {})
       reason: "base_name_missing",
       expected: "nombre base no vacío",
       found: baseName ?? null,
-    };
-  }
-  if (normalizeKey(base) === normalizeKey(HERMES_RESERVED_NAME)) {
-    return {
-      ok: false,
-      reason: "base_name_reserved",
-      expected: `nombre base distinto del nombre reservado "${HERMES_RESERVED_NAME}"`,
-      found: base,
     };
   }
 
@@ -219,8 +189,7 @@ export function displayIdentity(identity) {
   const known = Object.hasOwn(LAYERS, layer) ? LAYERS[layer] : null;
   const label = identity.layer_label ?? known?.label ?? layer ?? "desconocida";
   const name = identity.instance_name ?? "";
-  const devOnly = identity.dev_only ?? known?.devOnly ?? false;
-  return `[capa: ${label}] ${name}${devOnly ? " (dev-only)" : ""}`;
+  return `[capa: ${label}] ${name}`;
 }
 
 function sameIdentity(registered, presented) {
@@ -254,6 +223,17 @@ export function verifyInvocationIdentity({ registered, presented } = {}) {
       action: "stop",
       expected: displayIdentity(registered),
       found: "sin identidad presentada",
+      preserved: registered,
+    };
+  }
+  if (!Object.hasOwn(LAYERS, registered.layer) || !Object.hasOwn(LAYERS, presented.layer)) {
+    const unknownLayer = !Object.hasOwn(LAYERS, registered.layer) ? registered.layer : presented.layer;
+    return {
+      ok: false,
+      reason: "layer_unknown",
+      action: "stop",
+      expected: Object.keys(LAYERS).join(", "),
+      found: unknownLayer ?? null,
       preserved: registered,
     };
   }
@@ -379,7 +359,7 @@ export function resolveAgentsDir({ explicitDir = null, cwd = process.cwd() } = {
 
 /**
  * Ejecuta el check completo: clasifica las definiciones de agentes, construye
- * las identidades de las tres capas y comprueba la unicidad en paralelo y las
+ * las identidades de las dos capas y comprueba la unicidad en paralelo y las
  * detenciones fail-closed.
  */
 export function runIdentityCheck({ agentsDir = null, baseNames = EXAMPLE_BASE_NAMES, cwd = process.cwd() } = {}) {
@@ -453,10 +433,6 @@ export function runIdentityCheck({ agentsDir = null, baseNames = EXAMPLE_BASE_NA
     agentNames.add(key);
   }
 
-  const hermes = buildIdentity({ layer: "hermes" });
-  if (!hermes.ok) {
-    return { ok: false, reason: hermes.reason, lines, expected: hermes.expected, found: hermes.found };
-  }
   const orchestrator = buildIdentity({ layer: "orchestrator", baseName: names[0] });
   if (!orchestrator.ok) {
     return {
@@ -482,7 +458,6 @@ export function runIdentityCheck({ agentsDir = null, baseNames = EXAMPLE_BASE_NA
     subagentIdentities.push(identity.identity);
   }
 
-  lines.push(hermes.identity.display);
   lines.push(orchestrator.identity.display);
   for (const identity of subagentIdentities) lines.push(identity.display);
 
@@ -530,13 +505,12 @@ export function runIdentityCheck({ agentsDir = null, baseNames = EXAMPLE_BASE_NA
 
   const summary = [
     `✔ Orquestador: ${orchestrator.identity.display}`,
-    `✔ Núcleo Hermes: ${hermes.identity.display}`,
     `✔ Subagentes: ${subagentIdentities.length} identidades únicas`,
     `✔ nombres paralelos únicos: ${parallel.join(", ")}`,
     "✔ fail-closed: identidad faltante o distinta detiene y conserva el registro previo",
   ];
 
-  return { ok: true, lines, summary, identities: { hermes: hermes.identity, orchestrator: orchestrator.identity, subagents: subagentIdentities } };
+  return { ok: true, lines, summary, identities: { orchestrator: orchestrator.identity, subagents: subagentIdentities } };
 }
 
 /** Línea humana de detención ante identidad faltante o distinta. */
@@ -597,8 +571,8 @@ Uso:
   node agent-identity.js --help
 
 Subcomandos:
-  roles   Imprime las identidades de las tres capas: núcleo Hermes, orquestador
-          y una por subagente.
+  roles   Imprime las identidades de las dos capas: orquestador y una por
+          subagente.
   check   Imprime las identidades y ejecuta el resumen de comprobaciones:
           unicidad de nombres entre trabajos en paralelo y detención
           fail-closed ante identidad faltante o distinta.

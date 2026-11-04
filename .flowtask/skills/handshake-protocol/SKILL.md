@@ -27,19 +27,18 @@ La skill es **agnóstica de orquestador**: no dicta cómo invocar al subagente n
 
 ## Modelo de identidad por capas
 
-La identidad de una invocación vive en tres capas separadas. Cada capa tiene su nombre propio y ninguna capa puede presentarse como otra.
+La identidad de una invocación vive en dos capas separadas. Cada capa tiene su nombre propio y ninguna capa puede presentarse como otra.
 
 | Capa | Etiqueta visible | Nombre de instancia | Alcance |
 |------|------------------|---------------------|---------|
-| `hermes` | `núcleo Hermes` | `Hermes` | Reserva nominal dev-only. No es un nombre base ni el nombre de un subagente. |
 | `orchestrator` | `orquestador` | `{BaseName}` | El orquestador del trabajo: su nombre es el `BaseName` del trabajo en curso. |
 | `subagent` | `subagente` | `{BaseName}-{agent_type}` | Cada subagente invocado dentro del trabajo. |
 
 Reglas vigentes:
 
 - **Una capa no se presenta como otra**: toda identidad se valida contra la combinación capa/nombre. Una identidad de subagente con nombre de orquestador, o viceversa, se rechaza y se informa.
-- **Nombre reservado**: `Hermes` es una reserva nominal dev-only: no puede usarse como nombre base ni como nombre de subagente.
-- **Formato de visualización**: `[capa: {layer_label}] {instance_name}`. La capa `hermes` agrega ` (dev-only)`.
+- **Capa desconocida**: una capa fuera de `orchestrator` o `subagent` se rechaza con `layer_unknown` y el mensaje genérico de función no reconocida, sin alias ni redirección.
+- **Formato de visualización**: `[capa: {layer_label}] {instance_name}`.
 - **Aviso y detención**: si la capa no puede mostrarse, el sistema avisa y no presenta el trabajo como identificado.
 - **Detención fail-closed**: si la identidad falta o no coincide, el sistema informa qué esperaba y qué encontró, conserva lo previamente registrado y se detiene. No continúa como si la identidad fuera válida.
 
@@ -103,11 +102,12 @@ La identidad se construye con `buildIdentity` del contrato ejecutable. Cada capa
 
 | Capa | Regla de nombre |
 |------|-----------------|
-| `hermes` | `instance_name = "Hermes"` (reserva dev-only, sin nombre base) |
 | `orchestrator` | `instance_name = "{BaseName}"` |
 | `subagent` | `instance_name = "{BaseName}-{agent_type}"` |
 
-Ejemplos: `Aitana` (orquestador), `Aitana-planner` (subagente), `Hermes` (núcleo Hermes, dev-only).
+Ejemplos: `Aitana` (orquestador), `Aitana-planner` (subagente).
+
+Una capa fuera de `orchestrator` o `subagent` se rechaza con `layer_unknown` y el mensaje genérico, sin alias.
 
 La identidad construida se valida contra la capa invocada: una capa no puede presentarse como otra. Si la capa y el nombre no coinciden, la identidad se rechaza, se informa qué se esperaba y qué se encontró y se detiene.
 

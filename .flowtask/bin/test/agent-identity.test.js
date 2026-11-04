@@ -5,7 +5,6 @@ import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
-  HERMES_RESERVED_NAME,
   LAYERS,
   allocateBaseName,
   buildIdentity,
@@ -36,27 +35,15 @@ function runCli(args) {
 
 const orchestratorIdentity = buildIdentity({ layer: "orchestrator", baseName: "Aitana" }).identity;
 const subagentIdentity = buildIdentity({ layer: "subagent", baseName: "Aitana", agentType: "planner" }).identity;
-const hermesIdentity = buildIdentity({ layer: "hermes" }).identity;
 
 describe("capas de identidad", () => {
-  it("expone las tres capas con su etiqueta visible", () => {
-    assert.equal(LAYERS.hermes.label, "núcleo Hermes");
-    assert.equal(LAYERS.hermes.devOnly, true);
+  it("expone las dos capas con su etiqueta visible", () => {
+    assert.deepEqual(Object.keys(LAYERS), ["orchestrator", "subagent"]);
     assert.equal(LAYERS.orchestrator.label, "orquestador");
     assert.equal(LAYERS.subagent.label, "subagente");
-    assert.equal(LAYERS.orchestrator.devOnly, false);
-    assert.equal(LAYERS.subagent.devOnly, false);
   });
 
   it("construye la identidad de cada capa contra su regla de nombre", () => {
-    const hermes = buildIdentity({ layer: "hermes" });
-    assert.equal(hermes.ok, true);
-    assert.equal(hermes.identity.instance_name, HERMES_RESERVED_NAME);
-    assert.equal(hermes.identity.base_name, null);
-    assert.equal(hermes.identity.agent_type, null);
-    assert.equal(hermes.identity.display, "[capa: núcleo Hermes] Hermes (dev-only)");
-    assert.equal(hermes.identity.dev_only, true);
-
     const orchestrator = buildIdentity({ layer: "orchestrator", baseName: "Aitana" });
     assert.equal(orchestrator.ok, true);
     assert.equal(orchestrator.identity.instance_name, "Aitana");
@@ -75,6 +62,9 @@ describe("capas de identidad", () => {
     const unknown = buildIdentity({ layer: "core", baseName: "Aitana" });
     assert.equal(unknown.ok, false);
     assert.equal(unknown.reason, "layer_unknown");
+    assert.equal(unknown.expected, "orchestrator, subagent");
+    assert.equal(unknown.found, "core");
+    assert.equal(unknown.identity, undefined);
 
     const empty = buildIdentity({ layer: "orchestrator", baseName: "  " });
     assert.equal(empty.ok, false);
@@ -83,17 +73,6 @@ describe("capas de identidad", () => {
     const missingType = buildIdentity({ layer: "subagent", baseName: "Aitana" });
     assert.equal(missingType.ok, false);
     assert.equal(missingType.reason, "agent_type_missing");
-  });
-
-  it("reserva el nombre Hermes para la capa del núcleo", () => {
-    const reserved = buildIdentity({ layer: "orchestrator", baseName: "Hermes" });
-    assert.equal(reserved.ok, false);
-    assert.equal(reserved.reason, "base_name_reserved");
-    assert.match(reserved.expected, /reservado/);
-
-    const reservedSubagent = buildIdentity({ layer: "subagent", baseName: "hermes", agentType: "planner" });
-    assert.equal(reservedSubagent.ok, false);
-    assert.equal(reservedSubagent.reason, "base_name_reserved");
   });
 });
 
@@ -223,6 +202,24 @@ describe("verificación de identidad invocada", () => {
     assert.equal(result.preserved, subagentIdentity);
   });
 
+  it("detiene un registro con capa desconocida", () => {
+    const registered = {
+      layer: "core",
+      layer_label: "core",
+      base_name: "Aitana",
+      agent_type: null,
+      instance_name: "Aitana",
+      display: "[capa: core] Aitana",
+    };
+    const result = verifyInvocationIdentity({ registered, presented: registered });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "layer_unknown");
+    assert.equal(result.action, "stop");
+    assert.equal(result.expected, "orchestrator, subagent");
+    assert.equal(result.found, "core");
+    assert.equal(result.preserved, registered);
+  });
+
   it("no muta la identidad registrada", () => {
     const registered = { ...subagentIdentity };
     const snapshot = JSON.stringify(registered);
@@ -304,21 +301,13 @@ describe("check de identidad", () => {
   it("imprime una línea por capa y una por subagente", () => {
     const result = runIdentityCheck({ agentsDir: path.join(ROOT, ".flowtask", "agents"), baseNames: ["Aitana", "Kael"] });
     assert.equal(result.ok, true);
-    assert.ok(result.lines.includes("[capa: núcleo Hermes] Hermes (dev-only)"));
     assert.ok(result.lines.includes("[capa: orquestador] Aitana"));
     assert.ok(result.lines.includes("[capa: subagente] Aitana-planner"));
     assert.equal(result.lines.filter((line) => line.startsWith("[capa: subagente] ")).length, 12);
     assert.equal(result.lines.filter((line) => line.startsWith("[capa: orquestador] ")).length, 1);
-    assert.equal(result.lines.filter((line) => line.startsWith("[capa: núcleo Hermes] ")).length, 1);
+    assert.equal(result.lines.filter((line) => line.startsWith("[capa: ")).length, 13);
     assert.ok(result.summary.join(" ").includes("nombres paralelos únicos"));
     assert.ok(result.summary.join(" ").includes("fail-closed"));
-  });
-
-  it("detiene ante un nombre base reservado", () => {
-    const result = runIdentityCheck({ agentsDir: path.join(ROOT, ".flowtask", "agents"), baseNames: ["Hermes", "Kael"] });
-    assert.equal(result.ok, false);
-    assert.equal(result.reason, "base_name_reserved");
-    assert.match(formatIdentityFailure(result), /Hermes/);
   });
 
   it("detiene ante nombres base duplicados", () => {
@@ -330,24 +319,16 @@ describe("check de identidad", () => {
 });
 
 describe("cli de identidad", () => {
-  it("check sale 0 e imprime las tres capas y el resumen", () => {
+  it("check sale 0 e imprime las dos capas y el resumen", () => {
     const result = runCli(["check", "--names", "Aitana,Kael"]);
     assert.equal(result.status, 0);
     assert.match(result.stdout, /\[capa: orquestador\] Aitana/);
     assert.match(result.stdout, /\[capa: subagente\] Aitana-ca-writer/);
     assert.match(result.stdout, /\[capa: subagente\] Aitana-planner/);
-    assert.match(result.stdout, /\[capa: núcleo Hermes\] Hermes \(dev-only\)/);
     assert.match(result.stdout, /nombres paralelos únicos/);
     assert.match(result.stdout, /fail-closed/);
     assert.equal(result.stdout.split("\n").filter((line) => line.startsWith("[capa: subagente] ")).length, 12);
-  });
-
-  it("check sale 1 ante un nombre reservado", () => {
-    const result = runCli(["check", "--names", "Hermes,Kael"]);
-    assert.equal(result.status, 1);
-    assert.match(result.stdout, /reservado/);
-    assert.match(result.stdout, /Hermes/);
-    assert.doesNotMatch(result.stdout, /\[capa: orquestador\]/);
+    assert.equal(result.stdout.split("\n").filter((line) => line.startsWith("[capa: ")).length, 13);
   });
 
   it("check sale 1 ante nombres base duplicados", () => {

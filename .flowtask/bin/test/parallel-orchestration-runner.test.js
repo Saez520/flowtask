@@ -80,9 +80,6 @@ const COORDINATION_IDENTIFIERS = [
   "1.26.0",
 ];
 
-/** The reserved dev-only core layer name, pre-existing in the identity block. */
-const RESERVED_LAYER_NAME = "Hermes";
-
 const flat = (text) => text.replace(/\s+/g, " ");
 
 function readRunner() {
@@ -170,11 +167,6 @@ function assertNoCoordinationIdentifiers(content) {
       `runner.md must not publish ${identifier}`,
     );
   }
-  assert.equal(
-    flat(extractParallelSection(content)).includes(RESERVED_LAYER_NAME),
-    false,
-    `the orchestration section must not publish ${RESERVED_LAYER_NAME}`,
-  );
 }
 
 /** The complete wiring of the orchestration policy, applied to any copy. */

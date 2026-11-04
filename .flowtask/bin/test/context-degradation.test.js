@@ -122,7 +122,6 @@ describe("context-degradation skill contract", () => {
       "CA-context-degradation",
       "F2.8",
       "#9561",
-      "Hermes",
       "orquestación paralela",
       "bump",
       "archivos locales",

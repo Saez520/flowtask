@@ -17,10 +17,6 @@ This folder separates current operation from retired designs. The source of trut
 - [Worktree Manager documentation](./worktree-manager/README.md) — English inventory, interfaces, operations, compatibility, and release procedure.
 - [Skills](./architecture/skills-integration.md)
 
-## Roadmap
-
-- [Implementation plan — Agent Loop and Hermes](./roadmap/agent-loop-hermes.md) — phases, dependencies, Hermes gates, and commit convention.
-
 ## Historical
 
 - [History](./project-history.md)
