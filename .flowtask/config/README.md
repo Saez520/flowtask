@@ -28,6 +28,25 @@ Each installed target has its own layer configuration in
 The normative source of the three-layer contract is
 `docs/architecture/persona-autonomy-permissions-layers.md`.
 
+## Runner parity allowlist (runner-parity-allowlist.json)
+
+`runner-parity-allowlist.json` records the intentional line deltas between the
+canonical runner and the baseline used by `flowtask flows verify --baseline`.
+Unlike the layer files above, this file is versioned so a clean checkout applies
+the same allowlist.
+
+- Format: a JSON array of `{ "line": string, "reason": string }` entries. Both
+  fields must be non-empty; `reason` records why the delta is intentional.
+- `--baseline <ref>` applies the file automatically from
+  `.flowtask/config/runner-parity-allowlist.json`.
+- `--allow-deltas <json>` replaces the default file; both allowlists are never
+  merged.
+- A missing file means an empty allowlist. A present but unreadable or invalid
+  file fails closed with `runner_allowlist_invalid`, and no parity comparison is
+  run.
+- The allowlist covers the recorded baseline only; it is not a general parity
+  mechanism for arbitrary baselines.
+
 ## Context budget (context-budget)
 
 The runner's context budget gate is a **transparent tool gate via mutable
