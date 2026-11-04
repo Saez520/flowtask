@@ -328,6 +328,34 @@ export function verifyRunnerCanon({
   if (sectionPresent && indexValid) {
     failures.push(...collectFlowFailures({ runnerContent, skillsDir, references }));
     failures.push(...collectLoadInstructionFailures(runnerContent));
+
+    // Every declared flow must have exactly one call in the closed index and
+    // no flow call may live outside it.
+    const flowCalls = [...runnerContent.matchAll(/skill\(\{\s*name:\s*["'](runner-flow-[^"']+)["']\s*\}\)/g)].map(
+      (match) => match[1],
+    );
+    const callCounts = new Map();
+    for (const name of flowCalls) callCounts.set(name, (callCounts.get(name) ?? 0) + 1);
+    for (const reference of references) {
+      if ((callCounts.get(reference.flow) ?? 0) === 1) continue;
+      failures.push(
+        codedError(
+          "runner_flows_index_invalid",
+          `The flow ${reference.flow} must have exactly one call in the index; found ${callCounts.get(reference.flow) ?? 0}.`,
+          { flow: reference.flow, calls: callCounts.get(reference.flow) ?? 0 },
+        ),
+      );
+    }
+    const extraCalls = flowCalls.filter((name) => !references.some((reference) => reference.flow === name));
+    if (extraCalls.length > 0 || flowCalls.length !== references.length) {
+      failures.push(
+        codedError(
+          "runner_flows_index_invalid",
+          `The runner core contains flow calls outside the closed index: ${extraCalls.join(", ") || "(duplicated)"}.`,
+          { calls: flowCalls.length, declared: references.length },
+        ),
+      );
+    }
   }
 
   let moments = { intake: [], define: [], plan: [], build: [], validate: [], close: [] };

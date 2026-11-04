@@ -354,6 +354,12 @@ function runFlowsVerify(commandArgs) {
       limit: SESSION_START_LIMIT_BYTES,
       flow_lines: countFlowIndexLines(content),
     };
+    if (sessionStart.bytes >= SESSION_START_LIMIT_BYTES) {
+      failures.push({
+        code: "session_start_too_large",
+        message: `The startup document is ${sessionStart.bytes} bytes and must stay under ${SESSION_START_LIMIT_BYTES}.`,
+      });
+    }
     if (sessionStart.flow_lines !== verification.flows.length) {
       failures.push({
         code: "runner_flows_missing",
