@@ -296,6 +296,33 @@ function parseFlowsVerifyOptions(commandArgs) {
   return options;
 }
 
+function parseAllowlist(content) {
+  let entries;
+  try {
+    entries = JSON.parse(content);
+  } catch (error) {
+    throw new Error(`invalid JSON (${error.message})`);
+  }
+  if (!Array.isArray(entries)) {
+    throw new Error('expected a JSON array of { line, reason } entries');
+  }
+  for (const [index, entry] of entries.entries()) {
+    if (typeof entry?.line !== "string" || entry.line.length === 0) {
+      throw new Error(`entry ${index} needs a non-empty "line" string`);
+    }
+    if (typeof entry?.reason !== "string" || entry.reason.length === 0) {
+      throw new Error(`entry ${index} needs a non-empty "reason" string`);
+    }
+  }
+  return entries;
+}
+
+function resolveAllowlistPath({ projectDir, explicitPath }) {
+  if (explicitPath) return path.resolve(projectDir, explicitPath);
+  const defaultPath = path.join(projectDir, ".flowtask", "config", "runner-parity-allowlist.json");
+  return fs.existsSync(defaultPath) ? defaultPath : null;
+}
+
 function readBaselineRunner({ projectDir, runnerPath, ref }) {
   const root = execFileSync("git", ["-C", projectDir, "rev-parse", "--show-toplevel"], {
     encoding: "utf8",
@@ -403,47 +430,57 @@ function runFlowsVerify(commandArgs) {
 
   let parity = null;
   if (options.baseline) {
-    try {
-      const baselineContent = readBaselineRunner({ projectDir, runnerPath, ref: options.baseline });
-      let allowedDeltas = [];
-      if (options.allowDeltas) {
-        allowedDeltas = JSON.parse(fs.readFileSync(path.resolve(projectDir, options.allowDeltas), "utf8"));
-        if (
-          !Array.isArray(allowedDeltas) ||
-          allowedDeltas.some((entry) => typeof entry?.line !== "string")
-        ) {
-          throw new Error("--allow-deltas must be a JSON array of { line, reason } entries.");
-        }
-      }
-      const composed = composeRunnerDocument({ runnerBody: runnerContent, skillsDir });
-      const comparison = compareBaselineLines({
-        baselineContent,
-        composedContent: composed,
-        allowedDeltas,
-      });
-      parity = {
-        baseline_ref: options.baseline,
-        baseline_lines: comparison.baseline_lines,
-        matched: comparison.matched,
-        allowed_deltas: comparison.allowed_deltas,
-        missing_outside_allowlist: comparison.missing_outside_allowlist,
-        missing_headings: comparison.missing_headings,
-      };
-      if (comparison.missing_outside_allowlist > 0 || comparison.missing_headings.length > 0) {
+    const allowlistPath = resolveAllowlistPath({
+      projectDir,
+      explicitPath: options.allowDeltas,
+    });
+    let allowedDeltas = [];
+    let allowlistReady = true;
+    if (allowlistPath) {
+      try {
+        allowedDeltas = parseAllowlist(fs.readFileSync(allowlistPath, "utf8"));
+      } catch (error) {
+        allowlistReady = false;
         failures.push({
-          code: "runner_parity_missing_lines",
-          message:
-            `Parity against ${options.baseline} has ${comparison.missing_outside_allowlist} ` +
-            `missing line(s) outside the allowlist and ${comparison.missing_headings.length} missing heading(s).`,
-          lines: comparison.missing.slice(0, 20),
-          headings: comparison.missing_headings,
+          code: "runner_allowlist_invalid",
+          message: `Could not read the allowlist ${allowlistPath}: ${error.message}`,
         });
       }
-    } catch (error) {
-      failures.push({
-        code: error.code ?? "runner_baseline_unavailable",
-        message: `Could not read the baseline ${options.baseline}: ${error.message}`,
-      });
+    }
+
+    if (allowlistReady) {
+      try {
+        const baselineContent = readBaselineRunner({ projectDir, runnerPath, ref: options.baseline });
+        const composed = composeRunnerDocument({ runnerBody: runnerContent, skillsDir });
+        const comparison = compareBaselineLines({
+          baselineContent,
+          composedContent: composed,
+          allowedDeltas,
+        });
+        parity = {
+          baseline_ref: options.baseline,
+          baseline_lines: comparison.baseline_lines,
+          matched: comparison.matched,
+          allowed_deltas: comparison.allowed_deltas,
+          missing_outside_allowlist: comparison.missing_outside_allowlist,
+          missing_headings: comparison.missing_headings,
+        };
+        if (comparison.missing_outside_allowlist > 0 || comparison.missing_headings.length > 0) {
+          failures.push({
+            code: "runner_parity_missing_lines",
+            message:
+              `Parity against ${options.baseline} has ${comparison.missing_outside_allowlist} ` +
+              `missing line(s) outside the allowlist and ${comparison.missing_headings.length} missing heading(s).`,
+            lines: comparison.missing.slice(0, 20),
+            headings: comparison.missing_headings,
+          });
+        }
+      } catch (error) {
+        failures.push({
+          code: error.code ?? "runner_baseline_unavailable",
+          message: `Could not read the baseline ${options.baseline}: ${error.message}`,
+        });
+      }
     }
   }
 
@@ -621,8 +658,10 @@ Usage:
                       Show the resolved layers as JSON
   flowtask flows verify [--flowtask-dir <path>] [--baseline <ref>]
                       Verify the permanent core, its flows and the target deliveries
+  flowtask flows verify --baseline <ref>
+                      Apply the versioned .flowtask/config/runner-parity-allowlist.json by default
   flowtask flows verify --allow-deltas <json> --report <path>
-                      Compare against a baseline and write the report outside the versioned tree
+                      Override the default allowlist and write the report outside the versioned tree
   flowtask flows verify --json
                       Print the report as JSON without writing files
   flowtask graphify query --query <q>  Deprecated shim; no local query is executed

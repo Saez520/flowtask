@@ -1,13 +1,17 @@
 /**
- * Cobertura de los huecos declarados por T5 del plan del corte del runner.
+ * Cobertura de los huecos de paridad y entrega del canon del runner.
  *
- * El plan exige cuatro coberturas nuevas: índice de Claude por flujo bajo el
- * límite del hook, cuerpo adaptado sin llamadas de skill, guarda de flujo
- * ausente y guarda de tamaño del núcleo. Se agrupan en tres casos para no
- * superar el techo de pruebas por entrega.
+ * El corte del runner exige cuatro coberturas nuevas: índice de Claude por
+ * flujo bajo el límite del hook, cuerpo adaptado sin llamadas de skill, guarda
+ * de flujo ausente y guarda de tamaño del núcleo. Se agrupan en tres casos para
+ * no superar el techo de pruebas por entrega.
+ *
+ * Agrega la invocación CLI de paridad con la allowlist por defecto y con un
+ * override explícito.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -26,8 +30,39 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const FLOWTASK_DIR = path.join(ROOT, ".flowtask");
 const SKILLS_DIR = path.join(FLOWTASK_DIR, "skills");
 const RUNNER_PATH = path.join(FLOWTASK_DIR, "agents", "runner.md");
+const CLI = path.join(FLOWTASK_DIR, "bin", "flowtask.js");
+const PARITY_BASELINE = "2c23176";
 
 const FLOW_INDEX_LINE = /^- `skill\(\{ name: "(runner-flow-[a-z0-9-]+)" \}\)`/;
+
+const baselineProbe = spawnSync(
+  "git",
+  ["-C", ROOT, "cat-file", "-e", `${PARITY_BASELINE}^{commit}`],
+  { encoding: "utf8" },
+);
+const baselineSkip =
+  baselineProbe.status === 0
+    ? false
+    : `la baseline ${PARITY_BASELINE} no existe en este clon; la paridad no es verificable sin historia`;
+
+function runFlowsVerify(args) {
+  return spawnSync(process.execPath, [CLI, "flows", "verify", ...args], {
+    cwd: ROOT,
+    encoding: "utf8",
+    timeout: 60000,
+  });
+}
+
+function parseFlowsReport(result) {
+  try {
+    return JSON.parse(result.stdout);
+  } catch (error) {
+    assert.fail(
+      `la salida JSON no se pudo parsear (${error.message})\n` +
+        `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    );
+  }
+}
 
 function readRunnerContent() {
   return fs.readFileSync(RUNNER_PATH, "utf8");
@@ -158,5 +193,81 @@ describe("runner flow delivery coverages", () => {
       RUNNER_CORE_BASELINE_BYTES - 1,
       "un byte menos que el baseline debe pasar",
     );
+  });
+});
+
+describe("runner parity CLI invocation", () => {
+  /**
+   * gap_ref: C4 (T4)
+   * criterio: `flows verify --baseline 2c23176` sin flags de allowlist sale 0,
+   *   con verdict pass, missing_outside_allowlist 0 y missing_headings [].
+   * defecto: el comando de aceptación vuelve a fallar en un checkout limpio
+   *   porque la allowlist por defecto no se aplica, y ninguna prueba lo nota.
+   * why_not_detected: `runner-flows.test.js` cubre runner-content y
+   *   assertRunnerCanon; no ejercita el camino CLI de paridad.
+   * comportamiento observable: la invocación por defecto desde la raíz del
+   *   worktree devuelve exit 0 y un reporte de paridad sin faltantes.
+   */
+  it("passes parity with the default allowlist and no flags", { skip: baselineSkip }, () => {
+    const result = runFlowsVerify(["--baseline", PARITY_BASELINE, "--json"]);
+    const report = parseFlowsReport(result);
+
+    assert.equal(result.status, 0, `la invocación por defecto debe salir 0\nstderr: ${result.stderr}`);
+    assert.equal(report.verdict, "pass");
+    assert.equal(report.parity.baseline_ref, PARITY_BASELINE);
+    assert.equal(
+      report.parity.missing_outside_allowlist,
+      0,
+      "la allowlist por defecto debe cubrir todos los deltas",
+    );
+    assert.deepEqual(
+      report.parity.missing_headings,
+      [],
+      "no debe quedar un heading fuera de la allowlist",
+    );
+  });
+
+  /**
+   * gap_ref: C4 (T4)
+   * criterio: `--allow-deltas` explícito reemplaza al default; con un array
+   *   vacío el comando sale 1 y reporta runner_parity_missing_lines.
+   * defecto: el override deja de reemplazar al default y la paridad vuelve a
+   *   pasar por la allowlist persistida aunque el archivo explícito esté vacío.
+   * why_not_detected: no había prueba de la semántica del flag por CLI.
+   * comportamiento observable: con un allowlist temporal vacío el reporte
+   *   declara allowed_deltas 0, missing_outside_allowlist > 0 y el failure
+   *   runner_parity_missing_lines; exit 1.
+   */
+  it("lets an explicit empty allowlist replace the default", { skip: baselineSkip }, () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "runner-parity-explicit-"));
+    try {
+      const allowlistPath = path.join(dir, "allowlist.json");
+      fs.writeFileSync(allowlistPath, "[]\n", "utf8");
+
+      const result = runFlowsVerify([
+        "--baseline",
+        PARITY_BASELINE,
+        "--allow-deltas",
+        allowlistPath,
+        "--json",
+      ]);
+      const report = parseFlowsReport(result);
+      const codes = report.failures.map((failure) => failure.code);
+
+      assert.equal(result.status, 1, "un allowlist explícito vacío debe fallar");
+      assert.equal(report.verdict, "fail");
+      assert.equal(
+        report.parity.allowed_deltas,
+        0,
+        "el explícito reemplaza al default; no se fusionan",
+      );
+      assert.ok(report.parity.missing_outside_allowlist > 0);
+      assert.ok(
+        codes.includes("runner_parity_missing_lines"),
+        `failures reportados: ${codes.join(", ")}`,
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
