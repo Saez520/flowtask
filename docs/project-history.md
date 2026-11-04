@@ -52,7 +52,11 @@ This section preserves concepts that existed but no longer describe current inst
 
 ### Old anatomy
 
-`workspace-anatomy.md` presented `.flowtask` as a static installation, `.workspace` as the main dynamic data, and Engram as separate storage. The current model uses `.opencode/flowtask`, `.claude/flowtask`, `.vscode/flowtask`, or standalone `.flowtask` targets; new artifacts are stored in Engram and `.workspace` remains only as compatibility for old CAs.
+`workspace-anatomy.md` presented `.flowtask` as a static installation, `.workspace` as the main dynamic data, and Engram as separate storage. The current model uses `.opencode/flowtask`, `.vscode/flowtask`, or standalone `.flowtask` targets for OpenCode, VS Code, and standalone. Claude Code uses a single user-level runtime at `~/.claude/flowtask` and keeps only a registration and materialized agents and commands in the project; new artifacts are stored in Engram and `.workspace` remains only as compatibility for old CAs.
+
+### Per-project Claude Code copies
+
+Earlier Claude Code installations copied the complete runtime into `.claude/flowtask`, generated `.claude/session-start.md` and a `CLAUDE.md` section, and registered a project hook. That model is retired. The current model installs one runtime per operating-system account, gates the startup hook by the project registration, and migrates demonstrably FlowTask-owned copies while preserving user content, Graphify, and unmarked commands.
 
 ### Archivist and sub-orchestrators
 

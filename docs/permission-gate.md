@@ -42,7 +42,8 @@ autonomy and permissions layers exist and are valid in the target. Autonomy does
 not authorize: it only checks that the layer is healthy.
 
 **Schema.** Both files live in the target's configuration directory
-(`<target>/config/`):
+(`<target>/config/` for OpenCode, VS Code, and standalone). For Claude Code they
+live once per user in `~/.claude/flowtask/config/`:
 
 ```json
 { "version": 1, "profile": "autonomous-dev" }
@@ -59,7 +60,14 @@ current technical gate and adds no capability.
 **Resolution.** The first candidate directory that contains `autonomy.json` or
 `permissions.json` is the source, and in that source both files must exist and
 be valid. Candidates are tried in order: `.opencode/flowtask/config`,
-`.claude/flowtask/config`, `.vscode/flowtask/config`, and `.flowtask/config`.
+`.claude/flowtask/config` (legacy per-project location),
+`.vscode/flowtask/config`, and `.flowtask/config`.
+
+This plugin is the OpenCode runtime control. It does not govern Claude Code
+sessions: Claude Code reads its three layers from the user-level
+`~/.claude/flowtask/config/`. A `.claude/flowtask/config/` directory in a
+consumer project is a legacy candidate and is migrated to the user-level
+configuration; new installations do not create it.
 
 **Failure.**
 

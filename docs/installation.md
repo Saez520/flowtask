@@ -17,27 +17,213 @@ npm link
 flowtask --version
 ```
 
-## Install in a project
+## Install FlowTask for Claude Code
 
-From the consumer root:
+Claude Code uses a single runtime per operating-system account, not a copy per
+project. From the consumer project:
 
 ```bash
-flowtask install
+flowtask install --target claude --persona senior
 ```
 
-The installer interactively selects OpenCode, VS Code, and Claude Code targets. One or more can be checked; confirming without checking any installs standalone in `.flowtask/`. It then selects a personality: `training`, `mid`, `senior`, or `custom`. `--persona` skips personality selection, not target selection; without a TTY the installation fails explicitly.
+`--target` selects the target explicitly and accepts a repeated flag or a
+comma-separated list. Without a TTY, `install` fails unless `--target` is
+provided. `--persona` accepts `training`, `mid`, `senior`, or `custom`.
 
-During `install` it copies resources, skills, and scripts; for Claude it generates agents, commands, settings, MCP, `session-start.md`, and `CLAUDE.md`; for OpenCode it installs plugins from the manifest in `.opencode/plugins` and generates `.opencode/opencode.json` and `.opencode/tui.json`; it writes `config/profile.json`, `config/review.json`, `config/autonomy.json`, `config/permissions.json`, and `.installation-method` in the target; and it coordinates Graphify/ferris-search according to the installer's questions.
+The first installation in the account creates the user-level runtime and
+registers the current project. Running the same command in another project
+reuses the existing runtime and only adds the new registration.
+
+### User-level runtime
+
+The runtime lives under the Claude Code user directory (`~/.claude/flowtask` on
+macOS and Linux, and the equivalent user directory on Windows).
+`CLAUDE_CONFIG_DIR` takes precedence when it is set.
+
+The layout is:
+
+```text
+~/.claude/flowtask/
+├── runtime.json              # manifest, active payload, hashes and hook command
+├── projects.json             # registered project index
+├── bin/session-start.mjs     # stable SessionStart launcher
+├── config/
+│   ├── profile.json          # one persona per user
+│   ├── autonomy.json
+│   └── permissions.json
+└── versions/
+    └── <version>-<hash12>/   # runner, skills, scripts, bin/lib, session-start.md
+```
+
+Payloads are staged under `versions/.staging-*` and published with a rename.
+`runtime.json` is replaced atomically, so an open session keeps the payload it
+already loaded and the next session reads the new payload as a whole. The
+previous payload is retained until the next update; no project pins a version.
+
+The runtime is self-sufficient: skills, scripts, and helper modules resolve from
+the payload with absolute paths. The canonical `runner.md` is never modified.
+The startup document and the adapted runner are generated inside the payload.
+
+### Project registration
+
+A project is registered by a small file inside an ignored folder:
+
+```text
+<project>/.claude/flowtask/
+├── .gitignore      # contains "*"
+└── project.json    # schema, real project path, registration date and runtime version
+```
+
+`project.json` is the only condition that activates FlowTask in a project. A
+registration copied from another project does not activate because the stored
+real path does not match.
+
+Registration materializes only what Claude Code discovers per project:
+
+- agent definitions in `.claude/agents/flowtask-*.md`;
+- commands in `.claude/commands/`.
+
+Generated agents and commands carry the exact marker
+`<!-- FLOWTASK:MANAGED v1 -->`. A pre-existing command without that marker is
+preserved and reported; agents named `flowtask-*` belong to FlowTask. The
+runtime is never copied into the project, and the installer does not write
+`CLAUDE.md`, project hooks, or project MCP servers.
+
+The registration folder is ignored by its own `.gitignore`. Materialized agents
+and commands are added to `.git/info/exclude` when they are not already ignored.
+The repository root `.gitignore` is never modified. If the exclude file cannot
+be updated, registration continues and reports the condition.
+
+### Startup hook and gate
+
+`install` adds one `SessionStart` handler to the user-level
+`~/.claude/settings.json`, with the matcher
+`^(startup|resume|clear|compact|fork)$`. The handler runs the stable launcher
+with the Node.js executable used at installation time; it does not depend on
+the PATH of a graphical application.
+
+The launcher:
+
+1. ignores subagent sessions;
+2. resolves `$CLAUDE_PROJECT_DIR`, or the nearest registered ancestor;
+3. validates the registration and its real path;
+4. stays silent when the project is not registered;
+5. emits the startup block, the skill index, and the pointer to read the
+   runner from the runtime when the project is registered.
+
+The hook payload is capped at 10,000 bytes by Claude Code. FlowTask fails the
+installation if the generated startup document reaches that limit. The runner
+is not emitted by the hook: the block instructs the session to read the
+adapted runner from the payload. A missing runtime or an unsupported
+registration schema produces one actionable line and the session continues.
+
+The hook merge is additive and idempotent: it adds only the FlowTask command,
+preserves every other hook and top-level setting, and never replaces hook
+arrays through an object merge. `update` and `uninstall` remove only the
+FlowTask command.
+
+### Engram MCP
+
+Engram is registered once in the user scope through the official Claude Code
+CLI:
+
+```bash
+claude mcp add --scope user engram -- engram mcp
+```
+
+FlowTask verifies the scope before and after adding. If the CLI is unavailable
+or the write fails, it does not edit `~/.claude.json` on its own: it reports the
+exact command. A pre-existing user-scope registration is preserved and is not
+removed by `uninstall`.
+
+Project-owned servers such as Graphify remain in the project `.mcp.json`.
+FlowTask does not merge `~/.claude.json` and does not write `mcpServers` into
+`settings.json`.
+
+### Update
+
+```bash
+flowtask update
+flowtask update --persona senior
+```
+
+`update` refreshes the user-level runtime once and refreshes the current project
+when it is registered or carries a legacy installation. In an unregistered
+project it updates the runtime and reports that the project was not registered;
+it never registers a project on its own. Repeated updates do not duplicate the
+hook, the MCP entry, the agents, or the registration. The registration keeps its
+original `registeredAt` value.
+
+### Uninstall
+
+```bash
+flowtask uninstall --yes
+flowtask uninstall --project --yes
+```
+
+The global form removes the runtime, the FlowTask hook, the Engram registration
+that FlowTask added, and the registrations and materialized files of the
+projects listed in the index. User hooks and user skills are preserved. If the
+MCP removal fails, the runtime and its manifest are preserved so the operation
+can be retried with `flowtask update` or the reported command.
+
+`--project` removes only the current project registration and its materialized
+files; the runtime and other projects keep working. Without `--yes`, an
+interactive confirmation is required; without a TTY and without `--yes`, the
+command fails with the required action.
+
+### Migration from per-project installations
+
+Installations that copied the runtime into a project are migrated
+conservatively. The migration:
+
+- creates or reuses the user-level runtime;
+- copies `profile.json`, `autonomy.json`, and `permissions.json` to the global
+  configuration only when the destination is missing, validating them first;
+- registers the project;
+- removes legacy `skills/`, `scripts/`, `agents/`, `commands/`, the installation
+  marker, and the generated `.claude/session-start.md`;
+- removes only `profile.json`, `autonomy.json`, `permissions.json`, and
+  `review.json` from the legacy configuration folder, preserving
+  `graphify.json` and unknown files;
+- removes the exact legacy hook
+  `cat "$CLAUDE_PROJECT_DIR/.claude/session-start.md"` from project settings,
+  preserving every other hook;
+- removes the `<!-- FLOWTASK:START -->` block from `CLAUDE.md`, preserving text
+  outside the markers;
+- removes `mcpServers.engram` from `.mcp.json` only when it matches the FlowTask
+  template exactly, preserving Graphify and other servers.
+
+Malformed settings or MCP files are not overwritten; the migration reports
+them for manual review. Repeating the migration produces no new changes.
+
+## Other targets
+
+OpenCode, VS Code, and standalone keep their historical per-target layout. They
+can be selected explicitly with `--target opencode`, `--target vscode`, or
+`--target standalone`.
+
+| Target | Installation | Derived files |
+| --- | --- | --- |
+| OpenCode | `.opencode/flowtask/` and `.opencode/skills/` | `.opencode/opencode.json`, `.opencode/tui.json`, `.opencode/plugins/` |
+| Claude Code | user-level `~/.claude/flowtask/` plus `<project>/.claude/flowtask/project.json` | `.claude/agents/flowtask-*.md`, `.claude/commands/` |
+| VS Code | `.vscode/flowtask/` | mirror of the VS Code target |
+| Standalone | `.flowtask/` | agents, commands, skills, plugins, and scripts |
 
 ## Target configuration layers
 
-Each installed target receives three configuration layers in `<target>/config/`:
+Each target resolves three configuration layers: persona (tone), autonomy
+(initiative), and permissions (technical envelope).
 
 | File | Layer | Values |
 |---------|------|---------|
 | `profile.json` | Persona (tone) | `level`: `training`, `mid`, `senior`, or `custom`; `persona`: tone identity; `onboarded`: onboarding status. |
 | `autonomy.json` | Autonomy (initiative) | `version`: `1`; `profile`: `assistant`, `autonomous-dev`, or `hermes`. |
 | `permissions.json` | Permissions (technical authority) | `version`: `1`; `envelope`: `standard`. |
+
+For Claude Code the layers live once per user in
+`~/.claude/flowtask/config/`. There is no per-project override in this version.
+For the other targets they live in `<target>/config/`.
 
 `install` and `update` create `autonomy.json` and `permissions.json` only when the
 layer does not exist, with `autonomous-dev` and `standard` as installation values,
@@ -52,40 +238,31 @@ Layer precedence is `permissions > autonomy > persona`. To inspect the resolved
 layers of a target:
 
 ```bash
+flowtask layers resolve --target claude
 flowtask layers resolve --target opencode
 flowtask layers resolve --json
 ```
 
+For `--target claude`, the command reads the user-level configuration. Automatic
+detection keeps the OpenCode, VS Code, and standalone candidates and considers
+Claude only when the project is registered.
+
 The full contract is in
 [architecture/persona-autonomy-permissions-layers.md](architecture/persona-autonomy-permissions-layers.md).
 
-## Targets
-
-| Target | Installation | Derived files |
-| --- | --- | --- |
-| OpenCode | `.opencode/flowtask/` and `.opencode/skills/` | `.opencode/opencode.json`, `.opencode/tui.json`, `.opencode/plugins/` |
-| Claude Code | `.claude/flowtask/` | `.claude/agents/`, `.claude/commands/`, `.claude/settings.json`, `.claude/session-start.md`, `.mcp.json`, `CLAUDE.md` |
-| VS Code | `.vscode/flowtask/` | mirror of the VS Code target |
-| Standalone | `.flowtask/` | agents, commands, skills, plugins, and scripts |
-
-## Claude Code startup and skills
-
-For a Claude Code target, `install` and `update` generate `.claude/session-start.md` and write the same startup block at the top of `CLAUDE.md`. The block asks a new session, without waiting for the user to request it, to load the Engram tools with ToolSearch, run `mem_context`, load project and personal heuristics, read the `investigacion`, `memory-protocol`, and `zero-assumptions` skills, and show the orchestrator identity line with the `{base_name}` placeholder resolved by the handshake.
-
-The skill index is generated from the `## Skills disponibles` section of `runner.md`: every skill declared there is mapped to its installed `Read` path. The index does not list the whole skills directory. If a declared skill is missing from `.claude/flowtask/skills/`, generation fails with an error that names the missing skills.
-
-`.claude/settings.json` receives a `SessionStart` hook that prints `.claude/session-start.md` through `cat "$CLAUDE_PROJECT_DIR/.claude/session-start.md"`, so the block also enters the session through the hook regardless of the working directory. The hook matcher covers `startup`, `resume`, `clear`, `compact`, and `fork`, so the startup context survives a lost or compacted context. The hook merge is additive and idempotent: it adds an entry only when the same matcher and command are absent, preserves hooks added by the user, and never replaces hook arrays through an object deep merge. If the existing `settings.json` or `.mcp.json` is not valid JSON, the installer reports the problem and leaves the file byte-identical instead of overwriting it.
-
-`update` rewrites only the section delimited by `<!-- FLOWTASK:START -->` and `<!-- FLOWTASK:END -->` in `CLAUDE.md`; content outside those markers is preserved. The generated agents inherit no `model` field, so a model pinned in a generated agent comes from an external edit.
-
-## Update
+## Update for other targets
 
 ```bash
 flowtask update
 flowtask update --persona senior
 ```
 
-`update` detects `.installation-method` markers, synchronizes the delta, preserves preservable paths, reinstalls plugins, regenerates configuration, and coordinates Graphify. Without a marker, run `install` first. On a Claude target it regenerates `CLAUDE.md`, `session-start.md`, and the skill index while preserving content outside the FlowTask markers; on OpenCode it regenerates the TUI declaration and cleans the legacy `tui.json` when it verifies the destination.
+For OpenCode and VS Code, `update` detects `.installation-method` markers,
+synchronizes the delta, preserves preservable paths, reinstalls plugins,
+regenerates configuration, and coordinates Graphify. For a Claude registration,
+the runtime and materialized artifacts are refreshed as described above. If no
+installation is found and there is no user-level Claude runtime, run `install`
+first.
 
 ## Worktree Manager
 
@@ -168,8 +345,9 @@ Graphify is queried through `graphify_query_graph` via MCP. `flowtask graphify q
 flowtask --version
 flowtask --help
 git status --short
-find .opencode/flowtask -maxdepth 2 -type f
-find .opencode/plugins -maxdepth 2 -type f
+find ~/.claude/flowtask -maxdepth 3 -type f
+find .claude/flowtask -maxdepth 2 -type f
+claude mcp get engram
 ```
 
 Do not edit `opencode.json` manually to replace `update`. If there is no installation, run `install`; if there is a permissions/space error, fix it and retry `update`.
