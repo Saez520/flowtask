@@ -8,13 +8,15 @@ import { COLORS, log } from "./logger.js";
  */
 export async function showInteractiveSelector(readline) {
   if (!process.stdin.isTTY) {
-    throw new Error("No TTY available to select targets. Provide an explicit selection in an interactive terminal.");
+    throw new Error(
+      "No TTY available to select targets. Pass --target <opencode|claude|vscode|standalone> or run in an interactive terminal.",
+    );
   }
 
   const options = [
     { name: "OpenCode (.opencode/flowtask/)", value: "opencode", selected: false },
     { name: "VS Code (.vscode/flowtask/)",    value: "vscode",   selected: false },
-    { name: "Claude Code (.claude/flowtask/)", value: "claude",  selected: false },
+    { name: "Claude Code (user-level runtime + project registration)", value: "claude",  selected: false },
   ];
   let cursor = 0;
   let lastRenderLines = 0;

@@ -203,6 +203,8 @@ export function buildRuntimeRunnerBody({ runnerContent, runtimeRoot, personaCont
 
 // ─── Persona and autonomy injection ──────────────────────────────────────────
 
+export const CUSTOM_PERSONA_TEXT = `The developer chose the custom personality option. Before continuing, ask whether they want to take the onboarding quiz (\`/onboard\`) so you can adapt your communication style to their experience level and improve the development experience.`;
+
 export const PERSONA_START_MARKER = "<!-- FLOWTASK:PERSONA_START -->";
 export const PERSONA_END_MARKER = "<!-- FLOWTASK:PERSONA_END -->";
 export const AUTONOMY_START_MARKER = "<!-- FLOWTASK:AUTONOMY_START -->";

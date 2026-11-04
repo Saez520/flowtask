@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { runCliAction } from "./lib/cli-errors.js";
 import { install, update } from "./lib/installer.js";
+import { resolveClaudePaths } from "./lib/claude.js";
 import {
   PERSONA_LEVELS,
   describeOperationalFailure,
@@ -24,21 +25,74 @@ const command = args[0] || "install";
 /** Layer configuration directory for each target, in detection order. */
 const LAYER_TARGETS = [
   { id: "opencode", dir: ".opencode/flowtask/config" },
-  { id: "claude", dir: ".claude/flowtask/config" },
+  { id: "claude", dir: ".claude/flowtask/config", global: true },
   { id: "vscode", dir: ".vscode/flowtask/config" },
   { id: "standalone", dir: ".flowtask/config" },
 ];
 
+const TARGET_IDS = ["opencode", "claude", "vscode", "standalone"];
+
+function parseTargetValues(raw) {
+  return raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 function parseOptions(commandArgs) {
   const options = {};
-  const personaIndex = commandArgs.indexOf("--persona");
-  if (personaIndex === -1) return options;
 
-  const value = commandArgs[personaIndex + 1];
-  if (!PERSONA_LEVELS.includes(value)) {
-    throw new Error(`--persona must be one of: ${PERSONA_LEVELS.join(", ")}`);
+  for (let index = 0; index < commandArgs.length; index += 1) {
+    const argument = commandArgs[index];
+
+    if (argument === "--persona") {
+      const value = commandArgs[index + 1];
+      if (!PERSONA_LEVELS.includes(value)) {
+        throw new Error(`--persona must be one of: ${PERSONA_LEVELS.join(", ")}`);
+      }
+      options.persona = value;
+      index += 1;
+      continue;
+    }
+
+    if (argument === "--target") {
+      const value = commandArgs[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error(`--target requires a value: ${TARGET_IDS.join(", ")}`);
+      }
+      for (const target of parseTargetValues(value)) {
+        if (!TARGET_IDS.includes(target)) {
+          throw new Error(`--target must be one of: ${TARGET_IDS.join(", ")}`);
+        }
+        options.target ??= [];
+        if (!options.target.includes(target)) options.target.push(target);
+      }
+      index += 1;
+      continue;
+    }
+
+    if (argument.startsWith("--target=")) {
+      for (const target of parseTargetValues(argument.slice("--target=".length))) {
+        if (!TARGET_IDS.includes(target)) {
+          throw new Error(`--target must be one of: ${TARGET_IDS.join(", ")}`);
+        }
+        options.target ??= [];
+        if (!options.target.includes(target)) options.target.push(target);
+      }
+      continue;
+    }
+
+    if (argument === "--project") {
+      options.project = true;
+      continue;
+    }
+
+    if (argument === "--yes") {
+      options.yes = true;
+      continue;
+    }
   }
-  options.persona = value;
+
   return options;
 }
 
@@ -98,25 +152,35 @@ function runLayersResolve(commandArgs) {
   }
 
   const projectDir = process.cwd();
+  const claudePaths = resolveClaudePaths(projectDir);
   let target = null;
   let configDir = null;
 
   if (options.target) {
     const known = LAYER_TARGETS.find((entry) => entry.id === options.target);
     target = known.id;
-    configDir = path.join(projectDir, known.dir);
+    configDir = known.global ? claudePaths.runtimeConfigDir : path.join(projectDir, known.dir);
     if (!fs.existsSync(configDir)) {
-      process.stderr.write("[FlowTask Layers] No layer configuration was found in the current project.\n");
+      process.stderr.write(
+        known.global
+          ? "[FlowTask Layers] No user-level Claude Code layer configuration was found. Run flowtask install.\n"
+          : "[FlowTask Layers] No layer configuration was found in the current project.\n",
+      );
       process.exit(1);
       return;
     }
   } else {
     for (const entry of LAYER_TARGETS) {
+      if (entry.id === "claude") continue;
       const candidate = path.join(projectDir, entry.dir);
       if (!fs.existsSync(candidate)) continue;
       target = entry.id;
       configDir = candidate;
       break;
+    }
+    if (!configDir && fs.existsSync(claudePaths.registryPath) && fs.existsSync(claudePaths.runtimeConfigDir)) {
+      target = "claude";
+      configDir = claudePaths.runtimeConfigDir;
     }
     if (!configDir) {
       process.stderr.write("[FlowTask Layers] No layer configuration was found in the current project.\n");
