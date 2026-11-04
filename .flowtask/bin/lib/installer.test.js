@@ -765,8 +765,9 @@ test("standalone assets include scripts for the canonical root location", () => 
   });
 });
 
-test("IDE assets include scripts in their target directories", () => {
-  for (const id of ["opencode", "claude", "vscode"]) {
+test("Claude copies no runtime assets into the project while the other targets keep scripts", () => {
+  assert.deepEqual(ASSETS.claude, [], "the Claude runtime lives once per user, not in the project");
+  for (const id of ["opencode", "vscode"]) {
     assert.deepEqual(ASSETS[id].find(({ src }) => src === "scripts"), { src: "scripts", dest: "scripts" });
   }
 });
@@ -940,7 +941,7 @@ test("preserves legacy profile when installation destination cannot be written",
   assert.ok(output.join("\n").includes("retry with flowtask update"));
 });
 
-test("materializes managed config and profile independently for three targets", () => {
+test("materializes managed config and profile independently for the project-level targets", () => {
   const { root, flowtaskDir } = createFixture();
   writeJson(path.join(flowtaskDir, "config", "review.json"), {
     enabled: true,
@@ -950,7 +951,6 @@ test("materializes managed config and profile independently for three targets", 
   });
   const targets = [
     ["opencode", path.join(root, ".opencode", "flowtask"), "senior"],
-    ["claude", path.join(root, ".claude", "flowtask"), "mid"],
     ["vscode", path.join(root, ".vscode", "flowtask"), "training"],
   ];
 
@@ -1052,7 +1052,7 @@ test("fans out legacy profile and preserves it when one target fails", () => {
   writeJson(legacy, profile);
   const targets = [
     path.join(root, ".opencode", "flowtask"),
-    path.join(root, ".claude", "flowtask"),
+    path.join(root, ".vscode", "flowtask"),
     "/dev/null/flowtask",
   ];
 
@@ -1062,13 +1062,12 @@ test("fans out legacy profile and preserves it when one target fails", () => {
   assert.deepEqual(readJson(path.join(targets[1], "config", "profile.json")), profile);
 });
 
-test("update preserves divergent valid profiles independently across two targets", () => {
+test("update preserves divergent valid profiles independently across two project-level targets", () => {
   const { root, flowtaskDir } = createFixture();
   fs.mkdirSync(path.join(flowtaskDir, "scripts"), { recursive: true });
   fs.writeFileSync(path.join(flowtaskDir, "scripts", "worktree.sh"), "#!/bin/sh\n", "utf8");
   const targets = [
     ["opencode", ".opencode/flowtask", { level: "senior", persona: "tutor-senior", onboarded: true }],
-    ["claude", ".claude/flowtask", { level: "mid", persona: "tutor-mid", onboarded: true }],
     ["vscode", ".vscode/flowtask", { level: "training", persona: "tutor-training", onboarded: true }],
   ];
   for (const [id, subDir, profile] of targets) {
@@ -1080,14 +1079,13 @@ test("update preserves divergent valid profiles independently across two targets
   const result = spawnSync(process.execPath, [FLOWTASK_CLI, "update"], {
     cwd: root,
     env: { ...process.env, XDG_CONFIG_HOME: path.join(root, "xdg-config") },
-    input: "n\nn\nn\n",
+    input: "n\nn\n",
     encoding: "utf8",
     timeout: 120000,
   });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.deepEqual(readJson(path.join(root, ".opencode/flowtask/config/profile.json")), targets[0][2]);
-  assert.deepEqual(readJson(path.join(root, ".claude/flowtask/config/profile.json")), targets[1][2]);
-  assert.deepEqual(readJson(path.join(root, ".vscode/flowtask/config/profile.json")), targets[2][2]);
+  assert.deepEqual(readJson(path.join(root, ".vscode/flowtask/config/profile.json")), targets[1][2]);
   const installedScript = path.join(root, ".opencode", "flowtask", "scripts", "worktree.sh");
   assert.ok(fs.existsSync(installedScript));
   assert.equal(fs.statSync(installedScript).mode & 0o111, 0o111);

@@ -8,7 +8,19 @@ import {
 } from "./logger.js";
 import { copyWithProgress, copyDirectoryDelta, pruneDirectoryExtras, verifyDirectoryMirror } from "./copy.js";
 import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
-import { generateClaudeAgents, generateClaudeCommands, generateClaudeMd, generateClaudeSessionStart, mergeClaudeSettings, mergeClaudeMcpConfig } from "./claude.js";
+import { installClaudeTarget, updateClaudeTarget } from "./claude-install.js";
+import { resolveClaudePaths } from "./claude.js";
+import {
+  CUSTOM_PERSONA_TEXT,
+  configureRunnerScriptsContent,
+  injectAutonomyIntoRunnerContent,
+  injectPersonaIntoRunnerContent,
+} from "./runner-content.js";
+export {
+  configureRunnerScriptsContent,
+  injectAutonomyIntoRunnerContent,
+  injectPersonaIntoRunnerContent,
+} from "./runner-content.js";
 import { showInteractiveSelector } from "./ui.js";
 import { coordinateGraphify } from "./graphify.js";
 import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA, classifyOwnership, replaceManagedPackage } from "./ownership.js";
@@ -377,10 +389,7 @@ export const ASSETS = {
     { src: "agents",  dest: "agents" },
     { src: "scripts", dest: "scripts" },
   ],
-  claude: [
-    { src: "skills",  dest: "skills" },
-    { src: "scripts", dest: "scripts" },
-  ],
+  claude: [],
   standalone: [
     { src: "agents",   dest: "agents" },
     { src: "commands", dest: "commands" },
@@ -492,8 +501,6 @@ async function promptFerrisSearch(flowtaskDir, readline) {
 
 // ─── Persona Selection ────────────────────────────────────────────────────────
 
-const CUSTOM_PERSONA_TEXT = `The developer chose the custom personality option. Before continuing, ask whether they want to take the onboarding quiz (\`/onboard\`) so you can adapt your communication style to their experience level and improve the development experience.`;
-
 const levelToChoice = { training: 1, junior: 1, mid: 2, senior: 3, custom: 4 };
 const mapping = {
   1: { level: "training", persona: "tutor-training", file: "tutor-training.md", onboarded: true },
@@ -588,36 +595,6 @@ function resolvePersonaContent(flowtaskDir, personaChoice) {
   return fs.readFileSync(personaPath, "utf8");
 }
 
-const PERSONA_START_MARKER = "<!-- FLOWTASK:PERSONA_START -->";
-const PERSONA_END_MARKER = "<!-- FLOWTASK:PERSONA_END -->";
-const AUTONOMY_START_MARKER = "<!-- FLOWTASK:AUTONOMY_START -->";
-const AUTONOMY_END_MARKER = "<!-- FLOWTASK:AUTONOMY_END -->";
-
-/**
- * Injects a runner's persona block.
- *
- * `undefined` leaves the block intact; `null` (or empty content) clears it.
- * Missing markers only warn: persona is optional.
- */
-export function injectPersonaIntoRunnerContent(content, personaContent) {
-  if (personaContent === undefined) return content;
-
-  const startIdx = content.indexOf(PERSONA_START_MARKER);
-  const endIdx = content.indexOf(PERSONA_END_MARKER);
-
-  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx + PERSONA_START_MARKER.length) {
-    logWarn("PERSONA markers not found in runner.md. No personality was injected.");
-    return content;
-  }
-
-  const block = personaContent ? `\n${personaContent}\n` : "\n";
-  return (
-    content.slice(0, startIdx + PERSONA_START_MARKER.length) +
-    block +
-    content.slice(endIdx)
-  );
-}
-
 function injectPersonaIntoRunner(targetDir, personaContent) {
   if (personaContent === undefined) return;
 
@@ -632,42 +609,6 @@ function injectPersonaIntoRunner(targetDir, personaContent) {
   logSuccess(personaContent
     ? `Personality injected into runner.md of ${targetDir}.`
     : `Personality block cleared in runner.md of ${targetDir}.`);
-}
-
-/**
- * Injects the resolved autonomy value between the autonomy markers.
- * Unlike persona, autonomy is mandatory: without markers or with an
- * invalid descriptor, the operation fails.
- */
-export function injectAutonomyIntoRunnerContent(content, descriptor) {
-  const profile = descriptor && descriptor.profile;
-  const source = descriptor && descriptor.source;
-
-  if (!AUTONOMY_PROFILES.includes(profile) || !LAYER_SOURCES.includes(source)) {
-    const error = new Error(
-      "[FlowTask Layers] Could not inject autonomy into runner.md: invalid autonomy descriptor.",
-    );
-    error.code = "autonomy_descriptor_invalid";
-    throw error;
-  }
-
-  const startIdx = content.indexOf(AUTONOMY_START_MARKER);
-  const endIdx = content.indexOf(AUTONOMY_END_MARKER);
-
-  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx + AUTONOMY_START_MARKER.length) {
-    const error = new Error(
-      `[FlowTask Layers] Could not inject autonomy into runner.md: markers ${AUTONOMY_START_MARKER} and ${AUTONOMY_END_MARKER} are missing.`,
-    );
-    error.code = "autonomy_markers_missing";
-    throw error;
-  }
-
-  const block = `\nCurrent autonomy: ${profile} (source: ${source}).\n`;
-  return (
-    content.slice(0, startIdx + AUTONOMY_START_MARKER.length) +
-    block +
-    content.slice(endIdx)
-  );
 }
 
 export function injectAutonomyIntoRunner(targetDir, descriptor) {
@@ -690,11 +631,6 @@ function autonomyDescriptorFrom(targetConfig) {
   const layer = targetConfig && targetConfig.autonomy;
   if (!layer || layer.status !== "valid" || !layer.value) return null;
   return { profile: layer.value.profile, source: layer.source };
-}
-
-function configureRunnerScriptsContent(content, targetSubDir) {
-  const scriptsDir = `${targetSubDir.replace(/\\/g, "/")}/scripts`;
-  return content.replace('FLOWTASK_SCRIPTS="./.flowtask/scripts"', `FLOWTASK_SCRIPTS="./${scriptsDir}"`);
 }
 
 function configureRunnerScripts(targetDir, targetSubDir) {
@@ -1404,22 +1340,6 @@ export function migrateProfileLocation(projectDir, flowtaskDir, targetDirs = [fl
   }
 }
 
-function cleanupOrphanedClaudeAssets(projectDir) {
-  const orphanDirs = [
-    path.join(projectDir, ".claude", "flowtask", "agents"),
-    path.join(projectDir, ".claude", "flowtask", "commands"),
-  ];
-  for (const dir of orphanDirs) {
-    if (!fs.existsSync(dir)) continue;
-    try {
-      fs.rmSync(dir, { recursive: true, force: true });
-      logSuccess(`Obsolete folder removed: ${path.relative(projectDir, dir)}`);
-    } catch (err) {
-      logError(`Could not remove obsolete folder ${path.relative(projectDir, dir)}: ${err.message}`);
-    }
-  }
-}
-
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir, options = {}) {
@@ -1434,7 +1354,9 @@ ${COLORS.blue}╔═════════════════════
 
   // ── Step 0: IDE Selection ────────────────────────────────────────────────
   logStep(0, "Select Target Environment");
-  const selectedOptions = await showInteractiveSelector(readline);
+  const selectedOptions = Array.isArray(options.target) && options.target.length > 0
+    ? options.target
+    : await showInteractiveSelector(readline);
 
   const targets = [];
   if (selectedOptions.length === 0) {
@@ -1444,21 +1366,25 @@ ${COLORS.blue}╔═════════════════════
     if (selectedOptions.includes("vscode"))   targets.push({ id: "vscode",   ideDir: ".vscode",   targetSubDir: path.join(".vscode",   "flowtask") });
     if (selectedOptions.includes("claude"))   targets.push({ id: "claude",   ideDir: ".claude",   targetSubDir: path.join(".claude",   "flowtask") });
   }
+  const nonClaudeTargets = targets.filter(({ id }) => id !== "claude");
+  const claudeSelected = targets.some(({ id }) => id === "claude");
 
   // ── Step P: Agent Personality ─────────────────────────────────
-  const personaChoice = await promptPersonaSeleccion(readline);
+  const personaChoice = options.persona
+    ? mapping[levelToChoice[options.persona]]
+    : await promptPersonaSeleccion(readline);
   const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
 
   const projectDir = process.cwd();
-  const preflight = targets.some(({ id }) => id === "opencode")
-    ? await prepareInstallation(flowtaskDir, projectDir, "install", { targets, worktreeManager }) : null;
-  const targetDirs = targets.map(({ targetSubDir }) => path.join(projectDir, targetSubDir));
-  if (!migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
+  const preflight = nonClaudeTargets.some(({ id }) => id === "opencode")
+    ? await prepareInstallation(flowtaskDir, projectDir, "install", { targets: nonClaudeTargets, worktreeManager }) : null;
+  const targetDirs = nonClaudeTargets.map(({ targetSubDir }) => path.join(projectDir, targetSubDir));
+  if (targetDirs.length > 0 && !migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
     throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
   }
   const results = [];
 
-  for (const { id, ideDir, targetSubDir } of targets) {
+  for (const { id, ideDir, targetSubDir } of nonClaudeTargets) {
     const TARGET_DIR = path.join(projectDir, targetSubDir);
     logInfo(`\nProcessing target: ${id.toUpperCase()} (${targetSubDir})...`);
 
@@ -1466,7 +1392,6 @@ ${COLORS.blue}╔═════════════════════
       // ── Step 1: IDE check ────────────────────────────────────────────────
       logStep(1, `Checking ${id}...`);
       if (id === "opencode" && !checkOpenCode()) throw new Error("OpenCode is required for this target.");
-      if (id === "claude") checkClaudeCode();
 
       // ── Step 2: Engram ───────────────────────────────────────────────────
       logStep(2, "Checking Engram...");
@@ -1518,27 +1443,6 @@ ${COLORS.blue}╔═════════════════════
         mergeOpencodeConfig(path.join(projectDir, ideDir, "opencode.json"), flowtaskDir, ideDir);
       }
 
-      // Claude: generate agents/commands/CLAUDE.md/settings from source
-      if (id === "claude") {
-        logStep(5, "Generating Claude Code files...");
-        const agentResult = generateClaudeAgents(flowtaskDir, projectDir);
-        logSuccess(`${agentResult.generated} agents → .claude/agents/`);
-        const cmdResult = generateClaudeCommands(flowtaskDir, projectDir);
-        logSuccess(`${cmdResult.generated} commands → .claude/commands/`);
-        mergeClaudeSettings(path.join(projectDir, ".claude", "settings.json"), flowtaskDir);
-        mergeClaudeMcpConfig(path.join(projectDir, ".mcp.json"), flowtaskDir);
-        cleanupOrphanedClaudeAssets(projectDir);
-        const sourceRunnerPath = path.join(flowtaskDir, "agents", "runner.md");
-        const sourceRunner = fs.readFileSync(sourceRunnerPath, "utf8");
-        let runnerBody = injectPersonaIntoRunnerContent(
-          configureRunnerScriptsContent(sourceRunner, targetSubDir),
-          personaContent ?? null,
-        );
-        if (autonomyDescriptor) runnerBody = injectAutonomyIntoRunnerContent(runnerBody, autonomyDescriptor);
-        generateClaudeMd(flowtaskDir, projectDir, runnerBody);
-        generateClaudeSessionStart(flowtaskDir, projectDir, runnerBody);
-      }
-
       // ── Step 5: Install plugins from manifest (OpenCode only) ────────────
       // Copies each manifest entry (filtered by destinations) into
       // .opencode/plugins/<name>/ and registers it in tui.json (kind tui)
@@ -1550,10 +1454,8 @@ ${COLORS.blue}╔═════════════════════
       }
 
       // ── Inject persona and autonomy into runner.md ───────────────────
-      if (id !== "claude") {
-        injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
-        if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
-      }
+      injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
+      if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
 
       // ── Step 6: Write installation marker ───────────────────────────────
       fs.writeFileSync(
@@ -1568,11 +1470,49 @@ ${COLORS.blue}╔═════════════════════
     }
   }
 
-  for (const { id, targetSubDir } of targets) {
+  if (claudeSelected) {
+    logInfo("\nProcessing target: CLAUDE (user-level runtime)...");
+    try {
+      logStep(1, "Checking claude...");
+      checkClaudeCode();
+      logStep(2, "Checking Engram...");
+      checkEngram();
+      const claudeResult = installClaudeTarget({
+        flowtaskDir,
+        projectDir,
+        personaChoice,
+        personaContent,
+      });
+      results.push({
+        target: "claude",
+        status: "Success",
+        stats: { payloadId: claudeResult.runtime.payloadId },
+      });
+    } catch (err) {
+      logError(`Failed to install in claude: ${err.message}`);
+      results.push({ target: "claude", status: "Error", message: err.message });
+    }
+  }
+
+  for (const { id, targetSubDir } of nonClaudeTargets) {
     try {
       await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, targetSubDir), flowtaskDir, selectedClis: [id], readline });
     } catch (err) {
       logWarn(`Graphify (${id}): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
+    }
+  }
+
+  if (claudeSelected) {
+    try {
+      await coordinateGraphify({
+        projectDir,
+        targetDir: path.join(projectDir, ".claude", "flowtask"),
+        flowtaskDir,
+        selectedClis: ["claude"],
+        readline,
+      });
+    } catch (err) {
+      logWarn(`Graphify (claude): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
     }
   }
 
@@ -1623,18 +1563,32 @@ ${COLORS.blue}╔═════════════════════
     }
   }
 
-  if (targets.length === 0) {
+  const claudePaths = resolveClaudePaths(projectDir);
+  const claudeRegistered = fileExists(claudePaths.registryPath);
+  const claudeRuntimeInstalled = fileExists(claudePaths.runtimeManifestPath);
+  if (claudeRegistered && !targets.some(({ id }) => id === "claude")) {
+    targets.push({ id: "claude", marker: null, subDir: path.join(".claude", "flowtask"), ideDir: ".claude", registered: true });
+    logSuccess("Found claude project registration");
+  }
+
+  const nonClaudeTargets = targets.filter(({ id }) => id !== "claude");
+  const claudeTarget = targets.find(({ id }) => id === "claude") ?? null;
+  const claudeActive = Boolean(claudeTarget || claudeRegistered || claudeRuntimeInstalled);
+
+  if (targets.length === 0 && !claudeRuntimeInstalled) {
     logError("No FlowTask installation found. Run 'flowtask install' first.");
     return;
   }
 
-  const preflight = targets.some(({ id }) => id === "opencode")
-    ? await prepareInstallation(flowtaskDir, projectDir, "update", { targets, worktreeManager }) : null;
-  const legacyCleanupOk = removeLegacyConsumerFiles(projectDir, ["CLAUDE.md"]);
-  if (!legacyCleanupOk) logWarn("CLAUDE.md cleanup was not complete; the result must be reviewed.");
+  const preflight = nonClaudeTargets.some(({ id }) => id === "opencode")
+    ? await prepareInstallation(flowtaskDir, projectDir, "update", { targets: nonClaudeTargets, worktreeManager }) : null;
+  if (!claudeActive) {
+    const legacyCleanupOk = removeLegacyConsumerFiles(projectDir, ["CLAUDE.md"]);
+    if (!legacyCleanupOk) logWarn("CLAUDE.md cleanup was not complete; the result must be reviewed.");
+  }
 
-  const targetDirs = targets.map(({ subDir }) => path.join(projectDir, subDir));
-  if (!migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
+  const targetDirs = nonClaudeTargets.map(({ subDir }) => path.join(projectDir, subDir));
+  if (targetDirs.length > 0 && !migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
     throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
   }
 
@@ -1663,7 +1617,7 @@ ${COLORS.blue}╔═════════════════════
   const results = [];
   const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
 
-  for (const { id, subDir, ideDir, previousMethod } of targets) {
+  for (const { id, subDir, ideDir, previousMethod } of nonClaudeTargets) {
     const TARGET_DIR = path.join(projectDir, subDir);
     logStep(2, `Updating ${id}...`);
 
@@ -1716,29 +1670,8 @@ ${COLORS.blue}╔═════════════════════
       }
 
       // ── Inject persona and autonomy into runner.md ───────────────────
-      if (id !== "claude") {
-        injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
-        if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
-      }
-
-      // Claude: regenerate derived files
-      if (id === "claude") {
-        const agentResult = generateClaudeAgents(flowtaskDir, projectDir);
-        logSuccess(`Claude agents: ${agentResult.generated} regenerated`);
-        const cmdResult = generateClaudeCommands(flowtaskDir, projectDir);
-        logSuccess(`Claude commands: ${cmdResult.generated} regenerated`);
-        mergeClaudeSettings(path.join(projectDir, ".claude", "settings.json"), flowtaskDir);
-        mergeClaudeMcpConfig(path.join(projectDir, ".mcp.json"), flowtaskDir);
-        cleanupOrphanedClaudeAssets(projectDir);
-        const sourceRunner = fs.readFileSync(path.join(flowtaskDir, "agents", "runner.md"), "utf8");
-        let runnerBody = injectPersonaIntoRunnerContent(
-          configureRunnerScriptsContent(sourceRunner, subDir),
-          personaContent ?? null,
-        );
-        if (autonomyDescriptor) runnerBody = injectAutonomyIntoRunnerContent(runnerBody, autonomyDescriptor);
-        generateClaudeMd(flowtaskDir, projectDir, runnerBody);
-        generateClaudeSessionStart(flowtaskDir, projectDir, runnerBody);
-      }
+      injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
+      if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
 
       fs.writeFileSync(
         path.join(TARGET_DIR, ".installation-method"),
@@ -1759,20 +1692,44 @@ ${COLORS.blue}╔═════════════════════
     }
   }
 
-  try {
-    regenerateCanonicalCli(projectDir, flowtaskDir, manifest);
-    logSuccess("Canonical CLI declaration regenerated");
-    regenerateCanonicalTui(projectDir, flowtaskDir, manifest);
-    logSuccess("Canonical TUI declaration regenerated");
-    // The canonical destination is verified before deleting the legacy source.
-    if (!removeLegacyConsumerFiles(projectDir)) {
-      logWarn("flowtask update finished with legacy residue that could not be removed.");
+  if (claudeActive) {
+    logStep(2, "Updating claude...");
+    try {
+      const explicitPersona = Boolean(options.persona);
+      const claudeResult = updateClaudeTarget({
+        flowtaskDir,
+        projectDir,
+        personaChoice: explicitPersona ? personaChoice : null,
+        personaContent: explicitPersona ? personaContent : undefined,
+      });
+      results.push({
+        target: "claude",
+        status: "Success",
+        stats: { registered: claudeResult.registered },
+      });
+    } catch (err) {
+      logError(`Failed to update claude: ${err.message}`);
+      results.push({ target: "claude", status: "Error", message: err.message });
     }
-  } catch (err) {
-    logError(`Could not regenerate the canonical TUI declaration: ${err.message}`);
   }
 
-  for (const { id, subDir } of targets) {
+  if (nonClaudeTargets.length > 0) {
+    try {
+      regenerateCanonicalCli(projectDir, flowtaskDir, manifest);
+      logSuccess("Canonical CLI declaration regenerated");
+      regenerateCanonicalTui(projectDir, flowtaskDir, manifest);
+      logSuccess("Canonical TUI declaration regenerated");
+      // The canonical destination is verified before deleting the legacy source.
+      const legacyNames = claudeActive ? ["tui.json"] : ["tui.json", "CLAUDE.md"];
+      if (!removeLegacyConsumerFiles(projectDir, legacyNames)) {
+        logWarn("flowtask update finished with legacy residue that could not be removed.");
+      }
+    } catch (err) {
+      logError(`Could not regenerate the canonical TUI declaration: ${err.message}`);
+    }
+  }
+
+  for (const { id, subDir } of nonClaudeTargets) {
     try {
       await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, subDir), flowtaskDir, selectedClis: [id], readline });
     } catch (err) {
@@ -1780,9 +1737,29 @@ ${COLORS.blue}╔═════════════════════
     }
   }
 
-  printSummary("Update Summary", results, (res) =>
-    res.stats ? ` (${res.stats.copied} updated, ${res.stats.skipped} preserved)` : ""
-  );
+  if (claudeActive) {
+    try {
+      await coordinateGraphify({
+        projectDir,
+        targetDir: path.join(projectDir, ".claude", "flowtask"),
+        flowtaskDir,
+        selectedClis: ["claude"],
+        readline,
+      });
+    } catch (err) {
+      logWarn(`Graphify (claude): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
+    }
+  }
+
+  printSummary("Update Summary", results, (res) => {
+    if (res.stats?.copied !== undefined) {
+      return ` (${res.stats.copied} updated, ${res.stats.skipped} preserved)`;
+    }
+    if (res.target === "claude" && res.stats) {
+      return res.stats.registered === false ? " (not registered)" : " (registered)";
+    }
+    return "";
+  });
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
