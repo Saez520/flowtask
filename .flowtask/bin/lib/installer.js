@@ -26,6 +26,7 @@ import { coordinateGraphify } from "./graphify.js";
 import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA, classifyOwnership, replaceManagedPackage } from "./ownership.js";
 import { resolveGlobalConfigDir } from "./global-paths.js";
 import { globalWorktreeManagerDir } from "./global-paths.js";
+import { assertRunnerCanon } from "./runner-flows.js";
 import { ensureGlobalWorktreeManager, formatWorktreeManagerVersionNotice } from "./worktree-manager-runtime.js";
 import { downloadWorktreeManagerPackage } from "./worktree-manager-package.js";
 import { ensureCanonicalSubmodule } from "./submodule-publication.js";
@@ -1343,6 +1344,7 @@ export function migrateProfileLocation(projectDir, flowtaskDir, targetDirs = [fl
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir, options = {}) {
+  assertRunnerCanon({ flowtaskDir });
   const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "install" });
   console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
@@ -1529,6 +1531,7 @@ ${COLORS.blue}╔═════════════════════
 // ─── Update ───────────────────────────────────────────────────────────────────
 
 export async function update(flowtaskDir, options = {}) {
+  assertRunnerCanon({ flowtaskDir });
   const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "update" });
   if (worktreeManager) {
     const versionNotice = formatWorktreeManagerVersionNotice({ previousVersion: worktreeManager.previousVersion, version: worktreeManager.version });

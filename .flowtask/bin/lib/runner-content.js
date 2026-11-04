@@ -49,7 +49,12 @@ export function extractSkillReferences(runnerBody) {
 
   const rest = runnerBody.slice(start + SKILLS_SECTION_HEADING.length);
   const nextHeading = rest.search(/^## /m);
-  const section = nextHeading === -1 ? rest : rest.slice(0, nextHeading);
+  const rawSection = nextHeading === -1 ? rest : rest.slice(0, nextHeading);
+  // Flows and event names are declared in their own section; they are not
+  // skills and must not enter the Claude skill index.
+  const section = rawSection
+    .replace(/`runner-flow-[a-z0-9-]+`/g, "")
+    .replace(/evento\s+`[^`]+`/g, "");
 
   const names = new Set();
   for (const match of section.matchAll(/skill\(\{\s*name:\s*["']([^"']+)["']\s*\}\)/g)) {
@@ -157,13 +162,6 @@ export function extractFlowReferences(runnerBody) {
 
     const trigger = triggerMatch[1];
     const flow = flowMatch[1];
-    if (trigger !== `evento:${flow.slice("runner-flow-".length)}`) {
-      throw flowError(
-        "runner_flows_index_invalid",
-        `Flow index row ${rowIndex} maps ${trigger} to a different flow (${flow}).`,
-        { row: rowIndex, line: row.line, reason: "trigger_flow_mismatch" },
-      );
-    }
     if (triggers.has(trigger)) {
       throw flowError(
         "runner_flows_trigger_duplicate",
@@ -243,22 +241,28 @@ export function extractFlowMoments(runnerBody, { declaredFlows = null } = {}) {
 
     const names = [...flowsCell.matchAll(/runner-flow-[a-z0-9-]+/g)].map((match) => match[0]);
     if (names.length === 0) {
-      if (flowsCell.trim() !== "ninguno") {
-        throw flowError(
-          "runner_flows_moment_invalid",
-          `Moment ${moment} must declare flow names or "ninguno": ${flowsCell}`,
-          { moment, reason: "names" },
-        );
+      const normalized = flowsCell.trim();
+      if (normalized === "ninguno") {
+        if (moment !== "intake") {
+          throw flowError(
+            "runner_flows_moment_invalid",
+            `Moment ${moment} cannot be "ninguno"; only intake has no required flow.`,
+            { moment, reason: "ninguno" },
+          );
+        }
+        moments[moment] = [];
+        continue;
       }
-      if (moment !== "intake") {
-        throw flowError(
-          "runner_flows_moment_invalid",
-          `Moment ${moment} cannot be "ninguno"; only intake has no required flow.`,
-          { moment, reason: "ninguno" },
-        );
+      if (normalized.includes("el flujo del trabajo")) {
+        // The canonical table names the work flow generically for close.
+        moments[moment] = [];
+        continue;
       }
-      moments[moment] = [];
-      continue;
+      throw flowError(
+        "runner_flows_moment_invalid",
+        `Moment ${moment} must declare flow names, "el flujo del trabajo" or "ninguno": ${flowsCell}`,
+        { moment, reason: "names" },
+      );
     }
     for (const name of names) {
       if (!declaredSet.has(name)) {
@@ -325,6 +329,7 @@ function bodyMentionsSkill(body, name) {
 export function collectDeclaredSkillNames(body, { skillsDir }) {
   const names = new Set(findSkillCalls(body).map((call) => call.name));
   for (const name of listInstalledSkillNames(skillsDir)) {
+    if (name.startsWith("runner-flow-")) continue;
     if (bodyMentionsSkill(body, name)) names.add(name);
   }
   return [...names].sort((left, right) => left.localeCompare(right, "en"));
@@ -357,10 +362,18 @@ export function translateSkillCalls(body, { skillsDir }) {
   const parts = [];
   let cursor = 0;
   for (const call of calls) {
-    parts.push(body.slice(cursor, call.index));
+    // An inline backticked call must consume its delimiters; otherwise the
+    // translated read would stay wrapped in code spans and render nested.
+    const startsInline = call.index > 0 && body[call.index - 1] === "`";
+    const endsInline = body[call.index + call.length] === "`";
+    const start = startsInline ? call.index - 1 : call.index;
+    const end = call.index + call.length + (endsInline ? 1 : 0);
+    parts.push(body.slice(cursor, start));
     const skillPath = path.join(skillsDir, call.name, "SKILL.md");
     parts.push(`**Read** \`${skillPath}\` — carga de la skill \`${call.name}\` antes de continuar.`);
-    cursor = call.index + call.length;
+    // An inline call usually closes the sentence; consume its period so the
+    // translated sentence does not end with a double stop.
+    cursor = startsInline && endsInline && body[end] === "." ? end + 1 : end;
   }
   parts.push(body.slice(cursor));
   return parts.join("");
@@ -591,9 +604,9 @@ export function generateClaudeSessionStart({
  * turn every skill call into a direct read and fail if any call remains.
  */
 export function adaptFlowBodyForClaude(flowBody, { skillsDir, context = null } = {}) {
+  const declared = [...new Set(findSkillCalls(flowBody).map((call) => call.name))];
   const normalized = normalizeSkillPaths(flowBody, { skillsDir, context });
   const translated = translateSkillCalls(normalized, { skillsDir });
-  const declared = collectDeclaredSkillNames(translated, { skillsDir });
   assertNoSkillCalls(translated, context);
   assertEveryDeclaredSkillHasPath(translated, declared, { skillsDir, context });
   return translated;
@@ -639,6 +652,7 @@ export function adaptRunnerForRuntime(runnerBody, runtimeRoot) {
  * autonomy. The canonical runner.md is never written.
  */
 export function buildRuntimeRunnerBody({ runnerContent, runtimeRoot, personaContent, autonomyDescriptor }) {
+  assertRunnerCoreUnderLimit(runnerContent);
   let content = adaptRunnerForRuntime(runnerContent, runtimeRoot);
   content = injectPersonaIntoRunnerContent(content, personaContent);
   if (autonomyDescriptor) content = injectAutonomyIntoRunnerContent(content, autonomyDescriptor);
