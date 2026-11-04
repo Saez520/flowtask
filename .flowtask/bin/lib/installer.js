@@ -29,6 +29,7 @@ import { globalWorktreeManagerDir } from "./global-paths.js";
 import { assertRunnerCanon } from "./runner-flows.js";
 import { ensureGlobalWorktreeManager, formatWorktreeManagerVersionNotice } from "./worktree-manager-runtime.js";
 import { downloadWorktreeManagerPackage } from "./worktree-manager-package.js";
+import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
 import { ensureCanonicalSubmodule } from "./submodule-publication.js";
 import {
   AUTONOMY_PROFILES,
@@ -46,6 +47,7 @@ export const INSTALLER_WRITERS = Object.freeze([
   "W08 plugin copy/register", "W09 markers", "W10 runner/persona/sync config", "W11 Claude outputs",
   "W12 TUI canonical/legacy", "W13 classifier cleanup", "W14 legacy scripts/consumers",
   "W15 root cleanup", "W16 Graphify", "W17 JSON/file primitives",
+  "W18 worktree MCP registration",
 ]);
 
 // ─── Worktree Manager ────────────────────────────────────────────────────────
@@ -294,6 +296,43 @@ export function reportWorktreeManagerCapabilities(report, { quiet } = {}) {
     return;
   }
   logError(`Worktree Manager is not operational: ${[cli?.cause, mcp?.cause].filter(Boolean).join("; ")}`);
+}
+
+function reportWorktreeMcpRegistration(result, configPath) {
+  switch (result.status) {
+    case "registered":
+      logSuccess(`Worktree Manager MCP registered in ${configPath}.`);
+      return;
+    case "unchanged":
+      logInfo(`Worktree Manager MCP already registered in ${configPath}.`);
+      return;
+    case "preserved":
+      logWarn(`Worktree Manager MCP was not registered in ${configPath}: ${result.cause}. The existing configuration was preserved.`);
+      return;
+    case "unavailable":
+      logWarn(`Worktree Manager MCP is not available: ${result.cause}. Worktrees are not available in ${configPath}.`);
+      return;
+    default:
+      logWarn(`Worktree Manager MCP could not be registered in ${configPath}: ${result.cause ?? "unknown cause"}. Retry with flowtask update.`);
+  }
+}
+
+/** Register the manager server in the project's OpenCode config. */
+function registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager) {
+  if (!worktreeManager) return null;
+  const configPath = path.join(projectDir, ideDir, "opencode.json");
+  const mcp = worktreeManager.capabilities?.mcp;
+  if (mcp?.available !== true) {
+    logWarn(`Worktree Manager MCP is not registered in ${configPath}: ${mcp?.cause ?? "the MCP probe did not succeed"}. Worktrees are not available in this target.`);
+    return null;
+  }
+  const result = registerWorktreeManagerMcp({
+    configPath,
+    format: "opencode",
+    managerDir: worktreeManager.managerDir,
+  });
+  reportWorktreeMcpRegistration(result, configPath);
+  return result;
 }
 
 /** Single read-only validation barrier shared by install and update. */
@@ -1448,6 +1487,7 @@ ${COLORS.blue}╔═════════════════════
           ideDir,
           { removeFerrisSearch: isFerrisSearchSupported() },
         );
+        registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
       }
 
       // ── Step 5: Install plugins from manifest (OpenCode only) ────────────
@@ -1489,6 +1529,7 @@ ${COLORS.blue}╔═════════════════════
         projectDir,
         personaChoice,
         personaContent,
+        worktreeManager,
       });
       results.push({
         target: "claude",
@@ -1674,6 +1715,7 @@ ${COLORS.blue}╔═════════════════════
           ideDir,
           { removeFerrisSearch: isFerrisSearchSupported() },
         );
+        registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
       }
 
       logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
@@ -1725,6 +1767,7 @@ ${COLORS.blue}╔═════════════════════
         projectDir,
         personaChoice: explicitPersona ? personaChoice : null,
         personaContent: explicitPersona ? personaContent : undefined,
+        worktreeManager,
       });
       results.push({
         target: "claude",
