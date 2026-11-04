@@ -155,6 +155,7 @@ FlowTask does not merge `~/.claude.json` and does not write `mcpServers` into
 ```bash
 flowtask update
 flowtask update --persona senior
+flowtask update --verbose
 ```
 
 `update` refreshes the user-level runtime once and refreshes the current project
@@ -163,6 +164,9 @@ project it updates the runtime and reports that the project was not registered;
 it never registers a project on its own. Repeated updates do not duplicate the
 hook, the MCP entry, the agents, or the registration. The registration keeps its
 original `registeredAt` value.
+
+By default the command prints one line per phase and a closing summary.
+`--verbose` prints the per-step detail for every target instead.
 
 ### Uninstall
 
