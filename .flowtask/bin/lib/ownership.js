@@ -40,6 +40,13 @@ function exactMarker(value, expected = OWNER_MARKER) {
   return keys.length === Object.keys(value).length && keys.every((key) => value[key] === expected[key]);
 }
 
+/** Canonical marker of the management form each plugin uses. */
+function managedMarker(pluginName = CONTEXT_CHECKPOINT_NAME) {
+  return pluginName === CONTEXT_CHECKPOINT_NAME
+    ? ownerMarkerFor(pluginName, { source: "submodule", sourceCommit: CONTEXT_CHECKPOINT_SHA })
+    : ownerMarkerFor(pluginName, { source: "local", sourceCommit: null });
+}
+
 function packageHasDependency(pkg, name) {
   return [pkg?.dependencies, pkg?.devDependencies, pkg?.peerDependencies, pkg?.optionalDependencies]
     .some((group) => group && Object.prototype.hasOwnProperty.call(group, name));
@@ -89,7 +96,7 @@ export function classifyOwnership(pluginDir, { config, pluginName = CONTEXT_CHEC
   const markerPath = path.join(pluginDir, ".flowtask-plugin-owner.json");
   const markerPresent = fs.existsSync(markerPath);
   const marker = readJson(markerPath);
-  if (exactMarker(marker, ownerMarkerFor(pluginName))) return { state: OWNERSHIP.MANAGED_V2, path: pluginDir, marker };
+  if (exactMarker(marker, managedMarker(pluginName))) return { state: OWNERSHIP.MANAGED_V2, path: pluginDir, marker };
   if (hasLegacyV1Fingerprint(pluginDir, config, pluginName)) return { state: OWNERSHIP.MANAGED_V1, path: pluginDir };
   return markerPresent
     ? { state: OWNERSHIP.AMBIGUOUS, path: pluginDir, reason: "invalid-owner-marker" }
@@ -220,6 +227,7 @@ export function replaceManagedPackage({
   }
   if (!fs.existsSync(path.join(sourceDir, entrypoint))) throw new Error(`V2 entrypoint ${entrypoint} is missing`);
   const marker = ownerMarkerFor(pluginName, { source, sourceCommit });
+  if (!exactMarker(marker, managedMarker(pluginName))) throw new Error(`unexpected management source for ${pluginName}`);
   const originalConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath) : null;
   const originalDestination = snapshotPath(destinationDir);
   const ownership = preparedOwnership ?? classifyOwnership(destinationDir, {
