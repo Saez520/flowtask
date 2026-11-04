@@ -24,6 +24,7 @@ import {
 import { injectPersonaIntoRunnerContent } from "../lib/installer.js";
 import { materializeClaudeProject } from "../lib/claude-projects.js";
 import { ensureUserEngram, removeUserEngram } from "../lib/claude-mcp.js";
+import { installClaudeTarget } from "../lib/claude-install.js";
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 const FLOWTASK_SOURCE = path.resolve(TEST_DIR, "..", "..");
@@ -569,6 +570,125 @@ describe("Claude user-level runtime contract", () => {
       assert.match(failed.error, /claude mcp add --scope user engram -- engram mcp/);
       assert.equal(fs.readFileSync(stateFile, "utf8"), stateBefore);
     } finally {
+      cleanupDir(root);
+    }
+  });
+});
+
+describe("Claude web search exclusion", () => {
+  /*
+   * gap_ref: C2
+   * criterio: target Claude Code no ofrece ni configura búsqueda; ninguna
+   *   superficie de Claude contiene ferris-search.
+   * defecto: un cambio futuro podría volver a escribir ferris-search en
+   *   .mcp.json o ~/.claude.json sin que ninguna prueba lo detecte.
+   * why_not_detected: no había test que afirmara la ausencia de ferris-search
+   *   en las superficies de Claude; solo se verificaba mcpServers con engram.
+   * comportamiento observable: tras instalar el target Claude, el template
+   *   canónico, el .mcp.json del proyecto, el estado de usuario y los settings
+   *   de usuario conservan solo sus servidores previos y no aparece
+   *   ferris-search ni una configuración global de OpenCode.
+   */
+  it("keeps ferris-search out of every Claude MCP surface", () => {
+    const root = makeTempDir();
+    const projectDir = path.join(root, "project");
+    const claudeUserDir = path.join(root, "claude-user");
+    const homeDir = path.join(root, "home");
+    const binDir = path.join(root, "bin");
+    const statePath = path.join(claudeUserDir, ".fake-claude-state");
+    const userStatePath = path.join(claudeUserDir, ".claude.json");
+    const settingsPath = path.join(claudeUserDir, "settings.json");
+    const projectMcpPath = path.join(projectDir, ".mcp.json");
+
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.mkdirSync(claudeUserDir, { recursive: true });
+    fs.mkdirSync(homeDir, { recursive: true });
+    fs.mkdirSync(binDir, { recursive: true });
+
+    fs.writeFileSync(projectMcpPath, JSON.stringify({
+      mcpServers: { external: { type: "stdio", command: "external" } },
+      userOwned: true,
+    }, null, 2), "utf8");
+    const projectMcpBefore = fs.readFileSync(projectMcpPath, "utf8");
+
+    fs.writeFileSync(userStatePath, JSON.stringify({
+      installMethod: "native",
+      projects: { "/existing/project": { allowedTools: [] } },
+      mcpServers: { existing: { type: "stdio", command: "existing" } },
+    }, null, 2), "utf8");
+    const userStateBefore = fs.readFileSync(userStatePath, "utf8");
+
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      mcpServers: { existing: { type: "stdio", command: "existing" } },
+      userKey: true,
+    }, null, 2), "utf8");
+
+    fs.writeFileSync(path.join(binDir, "claude"), `#!/usr/bin/env node
+const fs = require("node:fs");
+const path = require("node:path");
+const args = process.argv.slice(2);
+const state = process.env.FAKE_CLAUDE_STATE;
+if (args[0] === "mcp" && args[1] === "get" && args[2] === "engram") {
+  if (fs.existsSync(state)) { process.stdout.write("engram:\\n  Scope: user\\n"); process.exit(0); }
+  process.stderr.write("No MCP server named engram\\n");
+  process.exit(1);
+}
+if (args[0] === "mcp" && args[1] === "add") {
+  fs.mkdirSync(path.dirname(state), { recursive: true });
+  fs.writeFileSync(state, "present");
+  process.exit(0);
+}
+process.exit(0);
+`, { mode: 0o755 });
+
+    const previous = {
+      CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      FAKE_CLAUDE_STATE: process.env.FAKE_CLAUDE_STATE,
+    };
+    process.env.CLAUDE_CONFIG_DIR = claudeUserDir;
+    process.env.PATH = `${binDir}${path.delimiter}${previous.PATH ?? ""}`;
+    process.env.HOME = homeDir;
+    process.env.FAKE_CLAUDE_STATE = statePath;
+
+    try {
+      installClaudeTarget({ flowtaskDir: FLOWTASK_SOURCE, projectDir });
+
+      const template = JSON.parse(
+        fs.readFileSync(path.join(FLOWTASK_SOURCE, "claude", "mcp.json"), "utf8"),
+      );
+      assert.deepEqual(Object.keys(template.mcpServers ?? {}), ["engram"]);
+      assert.equal(Object.hasOwn(template.mcpServers ?? {}, "ferris-search"), false);
+
+      const projectMcp = JSON.parse(fs.readFileSync(projectMcpPath, "utf8"));
+      assert.deepEqual(projectMcp.mcpServers, { external: { type: "stdio", command: "external" } });
+      assert.equal(Object.hasOwn(projectMcp.mcpServers ?? {}, "ferris-search"), false);
+      assert.equal(fs.readFileSync(projectMcpPath, "utf8"), projectMcpBefore);
+
+      const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+      assert.deepEqual(settings.mcpServers, { existing: { type: "stdio", command: "existing" } });
+      assert.equal(Object.hasOwn(settings.mcpServers ?? {}, "ferris-search"), false);
+      assert.equal(settings.userKey, true);
+
+      assert.equal(fs.readFileSync(userStatePath, "utf8"), userStateBefore);
+      const userState = JSON.parse(fs.readFileSync(userStatePath, "utf8"));
+      assert.equal(Object.hasOwn(userState.mcpServers ?? {}, "ferris-search"), false);
+
+      assert.equal(
+        fs.existsSync(path.join(homeDir, ".config", "opencode", "opencode.json")),
+        false,
+        "a Claude-only installation must not create the OpenCode global configuration",
+      );
+    } finally {
+      if (previous.CLAUDE_CONFIG_DIR === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = previous.CLAUDE_CONFIG_DIR;
+      if (previous.PATH === undefined) delete process.env.PATH;
+      else process.env.PATH = previous.PATH;
+      if (previous.HOME === undefined) delete process.env.HOME;
+      else process.env.HOME = previous.HOME;
+      if (previous.FAKE_CLAUDE_STATE === undefined) delete process.env.FAKE_CLAUDE_STATE;
+      else process.env.FAKE_CLAUDE_STATE = previous.FAKE_CLAUDE_STATE;
       cleanupDir(root);
     }
   });

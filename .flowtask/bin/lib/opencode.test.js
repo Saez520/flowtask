@@ -177,3 +177,74 @@ test("invalid existing TUI config fails without replacing it", () => {
   assert.equal(registerPluginArrayEntry(configPath, "./plugins/flowtask-model-selector/dist/tui.js"), false);
   assert.equal(fs.readFileSync(configPath, "utf8"), original);
 });
+
+/*
+ * gap_ref: C3
+ * criterio: con búsqueda global existente y copia local, install/update elimina
+ *   la copia local del target, preserva la global y muestra lo retirado.
+ * defecto: un update que conserve o reintroduzca la copia local pasaría
+ *   inadvertido.
+ * why_not_detected: no había prueba que montara global y local simultáneos;
+ *   la expectativa anterior solo afirmaba la fusión canónica.
+ * comportamiento observable: el merge devuelve removedFerrisSearch=true la
+ *   primera vez, el target queda sin mcp.ferris-search, la configuración global
+ *   conserva sus bytes y la segunda ejecución devuelve false sin reescribir.
+ */
+test("merge removes the project-local web search while preserving the existing user configuration", () => {
+  const { root, flowtaskDir } = fixture();
+  writeJson(path.join(flowtaskDir, "opencode.json"), {
+    mcp: {
+      engram: { type: "local", command: ["engram", "mcp"] },
+      "ferris-search": { type: "local", command: ["ferris-search"], enabled: true },
+    },
+  });
+
+  const homeDir = path.join(root, "home");
+  const globalConfigPath = path.join(homeDir, ".config", "opencode", "opencode.json");
+  writeJson(globalConfigPath, {
+    $schema: "https://opencode.ai/config.json",
+    theme: "system",
+    mcp: {
+      "ferris-search": {
+        type: "local",
+        command: ["ferris-search"],
+        env: { DEFAULT_SEARCH_ENGINE: "bing" },
+        enabled: true,
+      },
+    },
+  });
+  const globalBefore = fs.readFileSync(globalConfigPath);
+
+  const configPath = path.join(root, "project", ".opencode", "opencode.json");
+  writeJson(configPath, {
+    $schema: "https://custom/schema.json",
+    mcp: {
+      external: { enabled: true },
+      "ferris-search": { type: "local", command: ["ferris-search"], enabled: true },
+    },
+  });
+
+  const previousHome = process.env.HOME;
+  process.env.HOME = homeDir;
+  try {
+    const first = mergeOpencodeConfig(configPath, flowtaskDir, ".opencode");
+    assert.equal(first.ok, true);
+    assert.equal(first.removedFerrisSearch, true);
+
+    const merged = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    assert.equal(Object.hasOwn(merged.mcp, "ferris-search"), false);
+    assert.deepEqual(merged.mcp.external, { enabled: true });
+    assert.deepEqual(merged.mcp.engram, { type: "local", command: ["engram", "mcp"] });
+    assert.deepEqual(fs.readFileSync(globalConfigPath), globalBefore);
+
+    const firstBytes = fs.readFileSync(configPath);
+    const second = mergeOpencodeConfig(configPath, flowtaskDir, ".opencode");
+    assert.equal(second.ok, true);
+    assert.equal(second.removedFerrisSearch, false);
+    assert.deepEqual(fs.readFileSync(configPath), firstBytes);
+    assert.deepEqual(fs.readFileSync(globalConfigPath), globalBefore);
+  } finally {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+  }
+});
