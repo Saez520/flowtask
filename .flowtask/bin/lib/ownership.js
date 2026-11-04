@@ -5,14 +5,18 @@ import { copyDirectoryDelta, verifyDirectoryMirror } from "./copy.js";
 
 export const CONTEXT_CHECKPOINT_NAME = "flowtask-context-checkpoint";
 export const CONTEXT_CHECKPOINT_SHA = "a863ee144a088428b8078583f13bf48ce13d7631";
-export const OWNER_MARKER = {
-  schema: 1,
-  managedBy: "flowtask",
-  plugin: CONTEXT_CHECKPOINT_NAME,
-  source: "submodule",
-  sourceCommit: CONTEXT_CHECKPOINT_SHA,
-  registration: "opencode-v2-package",
-};
+export function ownerMarkerFor(pluginName, { source = "submodule", sourceCommit = CONTEXT_CHECKPOINT_SHA } = {}) {
+  return {
+    schema: 1,
+    managedBy: "flowtask",
+    plugin: pluginName,
+    source,
+    sourceCommit,
+    registration: "opencode-v2-package",
+  };
+}
+
+export const OWNER_MARKER = ownerMarkerFor(CONTEXT_CHECKPOINT_NAME);
 
 export const OWNERSHIP = Object.freeze({
   ABSENT: "ABSENT",
@@ -22,8 +26,6 @@ export const OWNERSHIP = Object.freeze({
   AMBIGUOUS: "AMBIGUOUS",
 });
 
-const markerKeys = Object.keys(OWNER_MARKER);
-
 function readJson(file) {
   try {
     return JSON.parse(fs.readFileSync(file, "utf8"));
@@ -32,9 +34,10 @@ function readJson(file) {
   }
 }
 
-function exactMarker(value) {
+function exactMarker(value, expected = OWNER_MARKER) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  return markerKeys.length === Object.keys(value).length && markerKeys.every((key) => value[key] === OWNER_MARKER[key]);
+  const keys = Object.keys(expected);
+  return keys.length === Object.keys(value).length && keys.every((key) => value[key] === expected[key]);
 }
 
 function packageHasDependency(pkg, name) {
@@ -42,9 +45,14 @@ function packageHasDependency(pkg, name) {
     .some((group) => group && Object.prototype.hasOwnProperty.call(group, name));
 }
 
-export function hasLegacyV1Fingerprint(pluginDir, config) {
+export function hasLegacyV1Fingerprint(pluginDir, config, pluginName = CONTEXT_CHECKPOINT_NAME) {
   const pkg = readJson(path.join(pluginDir, "package.json"));
-  if (pkg?.version !== "1.0.1" || !packageHasDependency(pkg, "@opencode-ai/plugin")) return false;
+  if (!pkg || !packageHasDependency(pkg, "@opencode-ai/plugin")) return false;
+  if (pluginName === CONTEXT_CHECKPOINT_NAME) {
+    if (pkg.version !== "1.0.1") return false;
+  } else if (pkg.name !== pluginName) {
+    return false;
+  }
   const files = [];
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -56,8 +64,9 @@ export function hasLegacyV1Fingerprint(pluginDir, config) {
   };
   try { walk(pluginDir); } catch { return false; }
   const text = files.map((file) => fs.readFileSync(file, "utf8")).join("\n");
-  if (!text.includes("PluginInput") || !text.includes("SQLite")) return false;
-  return configHasLegacyReference(config, CONTEXT_CHECKPOINT_NAME);
+  if (!text.includes("PluginInput")) return false;
+  if (pluginName === CONTEXT_CHECKPOINT_NAME && !text.includes("SQLite")) return false;
+  return configHasLegacyReference(config, pluginName);
 }
 
 export function configHasLegacyReference(config, pluginName = CONTEXT_CHECKPOINT_NAME) {
@@ -70,18 +79,18 @@ export function configHasLegacyReference(config, pluginName = CONTEXT_CHECKPOINT
     const value = typeof entry === "string" ? entry : entry?.path ?? entry?.package;
     if (typeof value !== "string") return false;
     const normalized = value.replaceAll("\\", "/");
-    return normalized.includes(`/plugins/${pluginName}/`) && normalized.endsWith("/index.ts");
+    return normalized.includes(`plugins/${pluginName}/`);
   });
 }
 
-export function classifyOwnership(pluginDir, { config } = {}) {
+export function classifyOwnership(pluginDir, { config, pluginName = CONTEXT_CHECKPOINT_NAME } = {}) {
   if (!fs.existsSync(pluginDir)) return { state: OWNERSHIP.ABSENT, path: pluginDir };
   if (fs.lstatSync(pluginDir).isSymbolicLink()) return { state: OWNERSHIP.AMBIGUOUS, path: pluginDir, reason: "symlink" };
   const markerPath = path.join(pluginDir, ".flowtask-plugin-owner.json");
   const markerPresent = fs.existsSync(markerPath);
   const marker = readJson(markerPath);
-  if (exactMarker(marker)) return { state: OWNERSHIP.MANAGED_V2, path: pluginDir, marker };
-  if (hasLegacyV1Fingerprint(pluginDir, config)) return { state: OWNERSHIP.MANAGED_V1, path: pluginDir };
+  if (exactMarker(marker, ownerMarkerFor(pluginName))) return { state: OWNERSHIP.MANAGED_V2, path: pluginDir, marker };
+  if (hasLegacyV1Fingerprint(pluginDir, config, pluginName)) return { state: OWNERSHIP.MANAGED_V1, path: pluginDir };
   return markerPresent
     ? { state: OWNERSHIP.AMBIGUOUS, path: pluginDir, reason: "invalid-owner-marker" }
     : { state: OWNERSHIP.EXTERNAL, path: pluginDir, reason: "no-flowtask-ownership-evidence" };
@@ -91,11 +100,11 @@ export function ownershipDecision(pluginDir, options) {
   return classifyOwnership(pluginDir, options);
 }
 
-function writeMarker(dir) {
+function writeMarker(dir, marker) {
   const markerPath = path.join(dir, ".flowtask-plugin-owner.json");
-  fs.writeFileSync(markerPath, `${JSON.stringify(OWNER_MARKER, null, 2)}\n`, { encoding: "utf8", mode: 0o644 });
+  fs.writeFileSync(markerPath, `${JSON.stringify(marker, null, 2)}\n`, { encoding: "utf8", mode: 0o644 });
   const parsed = readJson(markerPath);
-  if (!exactMarker(parsed)) throw new Error("owner marker verification failed");
+  if (!exactMarker(parsed, marker)) throw new Error("owner marker verification failed");
 }
 
 function atomicJson(configPath, value) {
@@ -125,8 +134,8 @@ function packagePathMatches(value, pluginName) {
   const packagePath = `plugins/${pluginName}`;
   return normalized === packagePath
     || normalized.endsWith(`/${packagePath}`)
-    || normalized === `${packagePath}/index.ts`
-    || normalized.endsWith(`/${packagePath}/index.ts`);
+    || normalized.startsWith(`${packagePath}/`)
+    || normalized.includes(`/${packagePath}/`);
 }
 
 export function registerPluginPackageEntry(configPath, pluginName = CONTEXT_CHECKPOINT_NAME, relativeDirectory = `./plugins/${pluginName}`) {
@@ -190,15 +199,33 @@ function restoreSnapshot(file, snapshot) {
   }
 }
 
-export function replaceManagedPackage({ sourceDir, destinationDir, configPath, pluginName = CONTEXT_CHECKPOINT_NAME, sourceCommit = CONTEXT_CHECKPOINT_SHA, ownershipDecision: preparedOwnership, faultInjector } = {}) {
+export function replaceManagedPackage({
+  sourceDir,
+  destinationDir,
+  configPath,
+  pluginName = CONTEXT_CHECKPOINT_NAME,
+  entrypoint = "index.ts",
+  source = "submodule",
+  sourceCommit = source === "submodule" ? CONTEXT_CHECKPOINT_SHA : null,
+  ownershipDecision: preparedOwnership,
+  faultInjector,
+} = {}) {
   if (!sourceDir || !destinationDir || !configPath) throw new Error("sourceDir, destinationDir and configPath are required");
+  if (source !== "submodule" && source !== "local") throw new Error(`invalid V2 package source: ${source}`);
+  if (source === "submodule" && sourceCommit !== CONTEXT_CHECKPOINT_SHA) throw new Error(`unexpected source commit: ${sourceCommit}`);
   const sourcePackage = readJson(path.join(sourceDir, "package.json"));
   if (!sourcePackage || !packageHasDependency(sourcePackage, "@opencode/plugin")) throw new Error("invalid V2 package source");
-  if (!fs.existsSync(path.join(sourceDir, "index.ts"))) throw new Error("V2 entrypoint index.ts is missing");
-  if (sourceCommit !== CONTEXT_CHECKPOINT_SHA) throw new Error(`unexpected source commit: ${sourceCommit}`);
+  if (typeof entrypoint !== "string" || !entrypoint || path.isAbsolute(entrypoint) || entrypoint.split(/[\\/]/).includes("..")) {
+    throw new Error(`invalid V2 entrypoint: ${entrypoint}`);
+  }
+  if (!fs.existsSync(path.join(sourceDir, entrypoint))) throw new Error(`V2 entrypoint ${entrypoint} is missing`);
+  const marker = ownerMarkerFor(pluginName, { source, sourceCommit });
   const originalConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath) : null;
   const originalDestination = snapshotPath(destinationDir);
-  const ownership = preparedOwnership ?? classifyOwnership(destinationDir, { config: originalConfig ? readJson(configPath) : {} });
+  const ownership = preparedOwnership ?? classifyOwnership(destinationDir, {
+    config: originalConfig ? readJson(configPath) : {},
+    pluginName,
+  });
   if (![OWNERSHIP.ABSENT, OWNERSHIP.MANAGED_V1, OWNERSHIP.MANAGED_V2].includes(ownership.state)) {
     const error = new Error(`ownership-ambiguous: refusing to replace ${destinationDir}`);
     error.code = "OWNERSHIP_AMBIGUOUS";
@@ -212,8 +239,8 @@ export function replaceManagedPackage({ sourceDir, destinationDir, configPath, p
   try {
     fs.mkdirSync(stage, { recursive: true });
     copyDirectoryDelta(sourceDir, stage);
-    writeMarker(stage);
-    const markerContents = `${JSON.stringify(OWNER_MARKER, null, 2)}\n`;
+    writeMarker(stage, marker);
+    const markerContents = `${JSON.stringify(marker, null, 2)}\n`;
     if (!verifyDirectoryMirror(sourceDir, stage, { expectedExtraFiles: { ".flowtask-plugin-owner.json": markerContents } })) throw new Error("staged source mirror verification failed");
     if (faultInjector) faultInjector("STAGE-PUBLISH");
     if (fs.existsSync(destinationDir)) fs.renameSync(destinationDir, backup);
@@ -222,7 +249,7 @@ export function replaceManagedPackage({ sourceDir, destinationDir, configPath, p
     if (!registerPluginPackageEntry(configPath, pluginName, `./plugins/${pluginName}`)) throw new Error("package registration failed");
     if (fs.existsSync(backup)) fs.rmSync(backup, { recursive: true, force: true });
     if (fs.existsSync(stage) || fs.existsSync(backup)) throw new Error("transaction cleanup failed");
-    return { ownership: ownership.state, destinationDir, configPath, marker: OWNER_MARKER };
+    return { ownership: ownership.state, destinationDir, configPath, marker };
   } catch (error) {
     try {
       fs.rmSync(stage, { recursive: true, force: true });
