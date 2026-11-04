@@ -11,13 +11,11 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readComposedRunner } from "./helpers/runner-document.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-
-const RUNNER_REL_PATH = ".flowtask/agents/runner.md";
 
 const CONTEXT_HEADING = "## Contexto: reglas por momento y recuperación";
 const RECOVERY_HEADING = "### Recuperación tras compactación o relevo";
@@ -26,7 +24,7 @@ const RECONCILIATION_HEADING = "## Reconciliación post-compaction";
 const flat = (text) => text.replace(/\s+/g, " ");
 
 function readRunner() {
-  return fs.readFileSync(path.join(ROOT, RUNNER_REL_PATH), "utf8");
+  return readComposedRunner({ root: ROOT });
 }
 
 /** The new context section, from its heading up to the reconciliation section. */

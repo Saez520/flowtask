@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readComposedRunner } from "./helpers/runner-document.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..", "..", "..");
@@ -93,13 +94,12 @@ describe("graphify-protocol mirrors", () => {
 
 describe("Graphify agent integration", () => {
   it("removes the local fallback from the canonical agents and runner", () => {
-    for (const relPath of [
-      ".flowtask/agents/ca-writer.md",
-      ".flowtask/agents/planner.md",
-      ".flowtask/agents/runner.md",
-      ".flowtask/skills/investigacion/SKILL.md",
+    for (const [relPath, content] of [
+      [".flowtask/agents/ca-writer.md", readRelative(".flowtask/agents/ca-writer.md")],
+      [".flowtask/agents/planner.md", readRelative(".flowtask/agents/planner.md")],
+      [".flowtask/agents/runner.md (composed)", readComposedRunner({ root: ROOT })],
+      [".flowtask/skills/investigacion/SKILL.md", readRelative(".flowtask/skills/investigacion/SKILL.md")],
     ]) {
-      const content = readRelative(relPath);
       assert.ok(content.includes("graphify"), `${relPath} should retain Graphify context`);
       assert.doesNotMatch(content, /node \.flowtask\/bin\/flowtask\.js graphify query/);
       assert.doesNotMatch(content, /CLI local/);
@@ -109,7 +109,7 @@ describe("Graphify agent integration", () => {
   it("keeps the agents on their documented MCP/Inspector or normal-search path", () => {
     const caWriter = readRelative(".flowtask/agents/ca-writer.md");
     const planner = readRelative(".flowtask/agents/planner.md");
-    const runner = readRelative(".flowtask/agents/runner.md");
+    const runner = readComposedRunner({ root: ROOT });
     // Los contratos viven en Markdown con saltos de línea arbitrarios: se aplana
     // el whitespace para asentar frases del contrato sin depender del wrap.
     const flat = (text) => text.replace(/\s+/g, " ");

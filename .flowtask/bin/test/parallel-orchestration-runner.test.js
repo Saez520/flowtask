@@ -14,15 +14,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readComposedRunner } from "./helpers/runner-document.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
-const RUNNER_REL = ".flowtask/agents/runner.md";
 const AGENT_REL = ".flowtask/agents/parallel-orchestration.md";
 
 const PARALLEL_HEADING = "## Orquestación paralela segura";
-const LOOP_HEADING = "## Control del Agent Loop";
-const CONTEXT_HEADING = "## Contexto: reglas por momento y recuperación";
 const CANONICAL_HEADING = "### Formato canónico de `subagent()` (fuente única de verdad)";
 
 /** The seven subsections of the orchestration section, in contract order. */
@@ -88,15 +86,15 @@ const RESERVED_LAYER_NAME = "Hermes";
 const flat = (text) => text.replace(/\s+/g, " ");
 
 function readRunner() {
-  return fs.readFileSync(path.join(ROOT, RUNNER_REL), "utf8");
+  return readComposedRunner({ root: ROOT });
 }
 
-/** The orchestration section, from its heading up to the context section. */
+/** The orchestration section, from its heading up to the next top-level one. */
 function extractParallelSection(content) {
   const start = content.indexOf(PARALLEL_HEADING);
   assert.ok(start !== -1, `runner.md must contain the section ${PARALLEL_HEADING}`);
-  const end = content.indexOf(CONTEXT_HEADING, start);
-  assert.ok(end !== -1, `runner.md must contain the section ${CONTEXT_HEADING}`);
+  const next = content.indexOf("\n## ", start + PARALLEL_HEADING.length);
+  const end = next === -1 ? content.length : next + 1;
   return content.slice(start, end);
 }
 
@@ -104,8 +102,8 @@ function extractParallelSection(content) {
 function extractCanonicalBlock(content) {
   const start = content.indexOf(CANONICAL_HEADING);
   assert.ok(start !== -1, `runner.md must contain the section ${CANONICAL_HEADING}`);
-  const end = content.indexOf("## Paso 0", start);
-  assert.ok(end !== -1, "runner.md must contain the Paso 0 section");
+  const next = content.indexOf("\n## ", start + CANONICAL_HEADING.length);
+  const end = next === -1 ? content.length : next + 1;
   return content.slice(start, end);
 }
 
@@ -128,15 +126,6 @@ function assertSubsectionsInOrder(content) {
     assert.ok(index > previous, `the subsection ${subsection} must be in contract order`);
     previous = index;
   }
-}
-
-function assertSectionPlacement(content) {
-  const loop = content.indexOf(LOOP_HEADING);
-  const parallel = content.indexOf(PARALLEL_HEADING);
-  const context = content.indexOf(CONTEXT_HEADING);
-  assert.ok(loop !== -1 && parallel !== -1 && context !== -1);
-  assert.ok(loop < parallel, "the orchestration section must follow the loop control");
-  assert.ok(parallel < context, "the orchestration section must precede the context section");
 }
 
 function assertSectionTokens(content) {
@@ -193,7 +182,6 @@ function assertRunnerContract(content) {
   assertSkillIsLoaded(content);
   assertSectionExists(content);
   assertSubsectionsInOrder(content);
-  assertSectionPlacement(content);
   assertSectionTokens(content);
   assertDocumentTokens(content);
   assertBackgroundDispatch(content);
@@ -210,10 +198,6 @@ describe("runner parallel orchestration wiring", () => {
   it("declares the orchestration section with its seven subsections in order", () => {
     assertSectionExists(content);
     assertSubsectionsInOrder(content);
-  });
-
-  it("places the orchestration section between the loop control and the context section", () => {
-    assertSectionPlacement(content);
   });
 
   it("declares the decision, the queue, the dispatch and the containment clauses", () => {
@@ -240,15 +224,5 @@ describe("runner parallel orchestration mutations", () => {
     const mutated = original.replace("background: true", "background: false");
     assert.notEqual(mutated, original, "the mutated copy must differ from the contract");
     assert.throws(() => assertRunnerContract(mutated), /background: true/);
-  });
-
-  it("rejects a copy that moves the section after the context section", () => {
-    const start = original.indexOf(PARALLEL_HEADING);
-    const end = original.indexOf(CONTEXT_HEADING, start);
-    assert.ok(start !== -1 && end !== -1);
-    const section = original.slice(start, end);
-    const mutated = original.slice(0, start) + original.slice(end) + "\n" + section;
-    assert.notEqual(mutated, original, "the mutated copy must differ from the contract");
-    assert.throws(() => assertRunnerContract(mutated), /must precede the context section/);
   });
 });

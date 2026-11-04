@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readComposedRunner } from "./helpers/runner-document.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -15,13 +16,12 @@ const flat = (text) => text.replace(/\s+/g, " ");
 const CA_WRITER = ".flowtask/agents/ca-writer.md";
 const CHECKPOINT_MIXIN = ".flowtask/skills/checkpoint-mixin/SKILL.md";
 const MEMORY_CONTRACT = ".flowtask/skills/memory-contract/SKILL.md";
-const RUNNER = ".flowtask/agents/runner.md";
 
 const caWriter = read(CA_WRITER);
 const caWriterFlat = flat(caWriter);
 const checkpointMixin = flat(read(CHECKPOINT_MIXIN));
 const memoryContract = flat(read(MEMORY_CONTRACT));
-const runner = flat(read(RUNNER));
+const runner = flat(readComposedRunner({ root: ROOT }));
 
 /**
  * Exige un único payload de continuidad firmado: la firma del tema y la

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readComposedRunner } from "./helpers/runner-document.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -98,7 +99,7 @@ describe("investigacion skill contract", () => {
 });
 
 describe("Runner hotfix integration contract", () => {
-  const runner = read(".flowtask/agents/runner.md");
+  const runner = readComposedRunner({ root: ROOT });
 
   it("loads investigacion always and preserves runner write prohibition", () => {
     assert.ok(runner.includes('skill({ name: "investigacion" })'));
