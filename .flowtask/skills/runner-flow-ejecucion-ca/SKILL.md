@@ -172,50 +172,73 @@ evidencia del Gate en `autonomy.decisions` y confírmalo por lectura. El worktre
 construcción son la ronda 1. No hay una decisión de pruebas antes del worktree: la
 generación por huecos ocurre después de la construcción, en el Paso 4.5.
 
-### Política de worktrees — adapter consumidor obligatorio por CA
+### Política de worktrees — consumo directo del gestor por CA
 
-El gestor standalone es la autoridad única del lifecycle. El Runner selecciona
-la configuración y coordina persistencia/dispatch mediante
-`.flowtask/bin/lib/worktree-consumer-adapter.js`; no ejecuta Git ni mantiene
+El gestor standalone es la autoridad única del lifecycle. El Runner consume las
+siete herramientas del servidor MCP `worktree_manager`; no ejecuta Git ni mantiene
 journals, locks, backups o lógica de recuperación propia.
 
 1. **Selección antes de mutación:** determina `repo_root` como ruta absoluta
    existente del repositorio objetivo (nunca lo sustituyas por `cwd`), detecta
    la base local en orden `development → main → trunk → main` salvo que el
-   usuario indique una base explícita, y resuelve `worktrees_dir` y
-   `branch_prefix` desde la configuración vigente (defaults `.worktrees` y
-   `worktree/`). Valida el `work_id` genérico según el contrato del adapter;
-   no lo conviertas en un CA ID. La elección de transporte `cli` o `mcp` es
-   obligatoria y explícita; registra cuál se eligió y no hagas fallback entre
-   transportes.
-2. El adapter valida repo/base/paths/work-id y opciones antes de invocar al
-   gestor. Para toda operación de lifecycle permitida (`create`, `complete`,
-   `cleanup`, `recover`, `list`, `prune`), delega exclusivamente en el
-   transporte seleccionado. No repitas una operación si su resultado es
-   `uncertain`: primero reconcilia con el gestor y Engram. `blocked`,
-   `intervention_required`, `failure` y `no_pending_work` no son éxito de
-   creación ni autorizan dispatch.
-3. En `create`, Engram debe confirmar la asociación efectiva del worktree en
-   `flow-state/{work-id}/instances` antes de despachar Constructor. Conserva
-   `{ repo_root, work_id, path, branch, base_branch, transport,
-   init_submodules, init_submodules_result }`; la asociación debe coincidir
-   con la respuesta del gestor y con cualquier asociación previa. Si Engram
-   falla antes de la mutación, no invoques el gestor; si falla después de un
-   efecto confirmado o el resultado es incierto, conserva recursos y bloquea
-   dispatch/cierre hasta reconciliar. No uses memoria local ni limpiezas para
-   simular atomicidad.
-4. Sólo después de la confirmación durable, persiste la asociación efectiva
-   en el mapa de instancias y pasa a Constructor y Validator esa misma
-   identidad y registro. Conserva los límites de contexto existentes de ambos
-   agentes. Reanudación sólo reutiliza un worktree si la identidad del gestor
-   coincide exactamente con Engram; discrepancias bloquean y conservan los
-   recursos.
-5. `init_submodules`, `prepare` y `verify` se habilitan únicamente por
-   intención explícita. `preserve_dirty` y `discard` requieren el
-   consentimiento humano aplicable; `--auto` no agrega permisos ni sustituye
-   consentimientos y nunca concede esos permisos.
-6. La integración `complete` se serializa siempre: dos worktrees no se completan a
-   la vez sobre la misma base, aunque los trabajos sean independientes.
+   usuario indique una base explícita, y resuelve un `work_id` genérico; nunca
+   lo conviertas en un CA ID. El gestor valida `repo`, `base` y `work_id`.
+2. **Vía primaria y alternativa:** el servidor MCP directo es la vía primaria.
+   Si no está registrado o no responde, el Runner informa la indisponibilidad
+   con su causa y solo entonces puede usar `${FLOWTASK_SCRIPTS}/worktree.sh`
+   como alternativa declarada. Nunca hace fallback automático después de una
+   solicitud entregada: un rechazo, un error de contrato, un lock ocupado, un
+   timeout o una respuesta perdida se reportan como resultado incierto y el
+   siguiente paso es reconciliar.
+3. **Mutaciones en dos fases:** `create`, `complete`, `cleanup`, `prune` y
+   `recover` se planean con `dry_run: true`; el Runner lee `data.plan_hash` y
+   `data.transaction_id` y ejecuta con los mismos campos más `plan_hash` y,
+   cuando corresponde, `transaction_id`. `list` y `status` usan una sola
+   llamada. `plan_mismatch` se replanifica; `uncertain` se reconcilia antes de
+   reintentar.
+4. **Campos por herramienta:**
+   - `worktree_create`: `repo`, `work_id`, `base`, `dry_run`, `parent_repo`,
+     `submodule_path`, `confirm`, `plan_hash`, `init_submodules`, `prepare`,
+     `verify`.
+   - `worktree_complete`: `repo`, `work_id`, `base`, `dry_run`,
+     `authorization`, `confirm`, `plan_hash`, `transaction_id`,
+     `preserve_dirty`, `target_direct`, `parent_repo`, `commit_title`,
+     `commit_body`, `merge_strategy`.
+   - `worktree_cleanup`: `repo`, `work_id`, `base`, `dry_run`, `authorization`,
+     `confirm`, `plan_hash`, `discard`, `discard_consent`.
+   - `worktree_recover`: `repo`, `transaction_id`, `dry_run`, `authorization`,
+     `confirm`, `target_direct`, `parent_repo`.
+   - `worktree_list`: `repo`.
+   - `worktree_prune`: `repo`, `dry_run`, `authorization`, `confirm`,
+     `plan_hash`.
+   - `worktree_status`: `repo`, `work_id`.
+5. **Consentimiento:** `complete`, `cleanup`, `prune` y `recover` requieren
+   `authorization: "I_AUTHORIZE_THIS_CALL"` y `confirm: true`; `discard`
+   requiere `discard_consent: true`. `init_submodules`, `prepare` y `verify` se
+   habilitan únicamente por intención explícita; `--auto` no agrega permisos ni sustituye
+   consentimientos.
+6. **Asociación durable en Engram:** antes de la primera llamada de `create`,
+   guardá `worktree/association/{work_id}` con `state: pending`; tras el éxito,
+   reemplazalo por `state: confirmed` con `{ repo_root, work_id, path, branch,
+   base_branch, init_submodules, init_submodules_result, transport: "mcp" }`.
+   Si Engram falla antes, no llames al gestor; si falla después de un efecto
+   confirmado, conservá los recursos y bloqueá dispatch y cierre hasta
+   reconciliar. Reanudá solo con identidad exacta; una discrepancia bloquea y
+   conserva los recursos. No uses memoria local ni limpiezas para simular
+   atomicidad.
+7. **Cierre:** `complete` se serializa siempre por base, aunque los trabajos
+   sean independientes. Antes de completar, el worktree debe estar limpio y no
+   se crea un commit de cierre: los commits atómicos los aporta el Constructor.
+   Pasá `merge_strategy` tal como lo propuso el Constructor, sin reevaluarlo.
+   Un conflicto no limpia el worktree; un destino sucio se escala al
+   desarrollador. `preserveDirty` se lee de `.flowtask/config/worktree.json` y
+   se pasa como `preserve_dirty: true`; el archivo nunca se escribe.
+8. **Recuperación:** usá `worktree_recover` con `transaction_id` cuando exista;
+   `${FLOWTASK_SCRIPTS}/worktree.sh recover [<tx-id>]` es la alternativa
+   declarada.
+9. **Retiro:** si una sesión o el operador nombra `flowtask_worktree_consume`,
+   respondé que esa vía ya no existe y nombrales las siete herramientas
+   directas; no intentes invocarla.
 
 Con el worktree confirmado, invoca constructor usando el formato canónico y aplica continuidad automática
 acotada ante fallo/interrupción recuperable. Relevo o recuperación tras rechazo
@@ -293,17 +316,17 @@ como referencia citable.
 ### Cierre exitoso con worktree
 
 Cuando el validator apruebe y el CA tenga worktree asociado, el Runner solicita
-al adapter la operación `complete` con la misma identidad, base y transporte
-registrados. El gestor standalone ejecuta el lifecycle; antes de completarlo:
+al gestor `worktree_complete` con la misma identidad y base registradas. El
+gestor standalone ejecuta el lifecycle; antes de completarlo:
 
-1. No crees un commit de cierre: los commits atómicos los aporta el Constructor; verificá que el worktree esté limpio antes de `${FLOWTASK_SCRIPTS}/worktree.sh complete <CA-ID> --base {base_branch_detectada} [--title TEXTO] [--body TEXTO]`.
-2. El adapter invoca `complete` en el transporte seleccionado (sin fallback), con la base previamente registrada.
-3. Si completa bien, el gestor integra con el mecanismo solicitado (`complete` con squash o preserve-history) a la rama base detectada y limpia el worktree/branch.
+1. No crees un commit de cierre: los commits atómicos los aporta el Constructor; verificá que el worktree esté limpio antes de planear `worktree_complete` con `dry_run: true`, leer `plan_hash` y `transaction_id`, y ejecutar con esos valores.
+2. La base es la registrada en la asociación; no la re-detectes al cerrar.
+3. Si completa bien, el gestor integra con `merge_strategy` y limpia el worktree/branch.
 4. Si `complete` falla por conflicto, **no limpies** el worktree.
-5. Si `complete` rechaza porque **el destino tiene cambios sin commitear**, no intentes limpiar el destino ni crear stashes: el rechazo es seguro y dejó todo intacto. Escala al desarrollador mostrando el motivo genérico del script; solo si el desarrollador consiente explícitamente, reinvoca `complete` con `--preserve-dirty`.
-6. `--preserve-dirty` es una transacción opt-in: captura los cambios elegibles del destino en refs privadas (`refs/flowtask/backups/<tx-id>`, jamás en la lista pública de stashes), registra cada fase en `.flowtask/backups/<tx-id>/journal` y restaura el estado fino al final. Ofrecélo **SOLO ante instrucción humana explícita** — jamás por defecto ni en flujos automáticos. La config persistida (`.flowtask/config/worktree.json` con `"preserveDirty": true`) cuenta como consentimiento humano explícito y el script nunca la escribe.
-7. Si un cierre con preservación se interrumpe, reanudalo con `worktree.sh recover [<tx-id>]` (sin argumento toma la pendiente más reciente); repetirlo es seguro e idempotente. Si la restauración quedó pendiente-manual, mostrale al desarrollador las instrucciones seguras impresas por el script: la resolución manual nunca se automatiza.
-8. El Runner sólo solicita al adapter las opciones expresamente habilitadas por el gate y consentimiento aplicable. No deriva ni ejecuta comandos Git/lifecycle por fuera del gestor; `--auto` no sustituye consentimiento para preservar o descartar. El cierre con destino sucio se escala al desarrollador sin limpiar el destino, y solo procede con `--preserve-dirty` ante consentimiento humano explícito.
+5. Si `complete` rechaza porque **el destino tiene cambios sin commitear**, no intentes limpiar el destino ni crear stashes: el rechazo es seguro y dejó todo intacto. Escala al desarrollador con el motivo; solo si el desarrollador consiente explícitamente, reintenta con `preserve_dirty: true` o con `--preserve-dirty` por la vía `.sh`.
+6. `preserve_dirty` es una transacción opt-in: captura los cambios elegibles del destino en refs privadas, registra cada fase en el journal del gestor y restaura el estado fino al final. Ofrecélo **SOLO ante instrucción humana explícita** — jamás por defecto ni en flujos automáticos. La config persistida (`.flowtask/config/worktree.json` con `"preserveDirty": true`) cuenta como consentimiento humano explícito y ningún guion la escribe.
+7. Si un cierre con preservación se interrumpe, reanudalo con `worktree_recover` usando el `transaction_id` (o `worktree.sh recover [<tx-id>]` por la vía alternativa); repetirlo es seguro e idempotente. Si la restauración quedó pendiente-manual, mostrale al desarrollador las instrucciones seguras impresas por el gestor: la resolución manual nunca se automatiza.
+8. El Runner sólo solicita las opciones expresamente habilitadas por el consentimiento aplicable. No deriva ni ejecuta comandos Git o de lifecycle por fuera del gestor; `--auto` no sustituye consentimiento para preservar o descartar. El cierre con destino sucio se escala al desarrollador sin limpiar el destino.
 9. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
 
 ***
@@ -314,7 +337,7 @@ El Constructor propone la estrategia y el Runner la ejecuta sin re-evaluarla.
 
 - Leé `commit_strategy`, `commit_strategy_rationale`, `commit_count` y `commits` del reporte del Constructor.
 - Propuesta faltante → squash; propuesta inválida → pausa con `authority_block`; nunca re-evalúes la estrategia.
-- Pasá `merge_strategy` al adapter en la operación `complete` con la misma identidad, base y transporte registrados.
+- Pasá `merge_strategy` a `worktree_complete` con la misma identidad y base registradas.
 - Registrá `merge_strategy`, `merge_commit`, `commit_count` y el fundamento en el cierre de `flow-state/{execution_id}/run` y en el reporte final.
 - La transacción del gestor es la fuente autoritativa de lo aplicado.
 
@@ -322,10 +345,10 @@ El Constructor propone la estrategia y el Runner la ejecuta sin re-evaluarla.
 
 ### Mensaje de cierre
 
-El Runner compone el título y el cuerpo desde el CA o el hotfix; el consumidor
-aporta el fallback en español si no hay fuente. Usá `worktree.sh complete
-<id> --base <rama> --title "..." --body "..."` o
-`flowtask_worktree_consume` con `commit_title`/`commit_body`. Plantillas:
+El Runner compone el título y el cuerpo desde el CA o el hotfix y los envía en
+`commit_title`/`commit_body` de `worktree_complete`; si no hay fuente aporta el
+fallback en español. Por la vía alternativa, `worktree.sh complete <id> --base
+<rama> --title "..." --body "..."`. Plantillas:
 
 - CA — Título: título del artifact del CA. Cuerpo: `Entrega: <resumen>. Motivo:
   <problema>. Verificación: <APPROVED del Validator, ronda closure>.`
@@ -334,7 +357,7 @@ aporta el fallback en español si no hay fuente. Usá `worktree.sh complete
 
 El gestor agrega ` [work_id]` si el título no contiene el ID. El Runner no
 incluye rutas, branches ni detalles internos; al nombrar la integración usa el `mecanismo de integración`. Si no hay fuente
-diciente, omití las flags y el consumidor inyecta el fallback:
+diciente, omití las flags y el Runner inyecta el fallback:
 `Cierre generico de <work_id>` / `No habia una descripcion de la entrega
 disponible al momento del cierre.`. No se agrega ninguna aprobación nueva.
 
