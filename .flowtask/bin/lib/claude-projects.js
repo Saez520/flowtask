@@ -5,6 +5,7 @@ import {
   FLOWTASK_MANAGED_MARKER,
   PROJECT_REGISTRY_SCHEMA,
   PROJECTS_INDEX_SCHEMA,
+  resolveActiveRuntimePaths,
   resolveClaudePaths,
   writeFileAtomic,
 } from "./claude.js";
@@ -128,8 +129,12 @@ function existingOwnedAgents(agentsDir, expectedFiles) {
  * definitions and commands. Stale owned files are removed; unmarked commands
  * are preserved and reported.
  */
-export function materializeClaudeProject({ projectDir, flowtaskDir, version, registry = null }) {
-  const agentResult = generateClaudeAgents(flowtaskDir, projectDir);
+export function materializeClaudeProject({ projectDir, flowtaskDir, version, registry = null, runtimeManifest }) {
+  const active = resolveActiveRuntimePaths(
+    resolveClaudePaths(projectDir).runtimeRoot,
+    runtimeManifest,
+  );
+  const agentResult = generateClaudeAgents(flowtaskDir, projectDir, { skillsDir: active.skillsDir });
   const commandResult = generateClaudeCommands(flowtaskDir, projectDir);
 
   const removed = [];
@@ -405,6 +410,7 @@ export function registerClaudeProject({ projectDir, runtimeManifest, flowtaskDir
     flowtaskDir,
     version,
     registry: existing,
+    runtimeManifest,
   });
 
   writeProjectGitignore(projectDir);

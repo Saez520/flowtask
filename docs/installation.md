@@ -89,6 +89,16 @@ preserved and reported; agents named `flowtask-*` belong to FlowTask. The
 runtime is never copied into the project, and the installer does not write
 `CLAUDE.md`, project hooks, or project MCP servers.
 
+Generated agent definitions do not invoke the platform skill tool. Each skill
+declaration in an agent body is rendered as a direct read of the file inside the
+active runtime payload (`~/.claude/flowtask/versions/<payload-id>/skills/<skill>/SKILL.md`);
+canonical `.flowtask/skills/...` references are rewritten to the same payload.
+Skills named only as catalog entries are listed at the end of the agent with
+their absolute paths, and every generated agent states that a failed read must
+be declared. When a declared skill is not installed in the payload, generation
+stops and reports the skill and the agent that declared it
+without writing a partial agent set.
+
 The registration folder is ignored by its own `.gitignore`. Materialized agents
 and commands are added to `.git/info/exclude` when they are not already ignored.
 The repository root `.gitignore` is never modified. If the exclude file cannot

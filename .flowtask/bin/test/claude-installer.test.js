@@ -22,6 +22,7 @@ import {
   generateClaudeSessionStart,
 } from "../lib/runner-content.js";
 import { injectPersonaIntoRunnerContent } from "../lib/installer.js";
+import { materializeClaudeProject } from "../lib/claude-projects.js";
 import { ensureUserEngram, removeUserEngram } from "../lib/claude-mcp.js";
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -80,6 +81,28 @@ function writeAgentFixture(flowtaskDir, name, extraFrontmatter = "") {
     ].filter(Boolean).join("\n"),
     "utf8",
   );
+}
+
+function writeAgentBodyFixture(flowtaskDir, name, body) {
+  const agentsDir = path.join(flowtaskDir, "agents");
+  fs.mkdirSync(agentsDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(agentsDir, `${name}.md`),
+    ["---", `name: ${name}`, "description: Sample agent.", "---", "", body, ""].join("\n"),
+    "utf8",
+  );
+}
+
+function readGeneratedAgents(projectDir) {
+  const agentsDir = path.join(projectDir, ".claude", "agents");
+  return fs
+    .readdirSync(agentsDir)
+    .filter((file) => file.endsWith(".md"))
+    .map((file) => ({ file, content: fs.readFileSync(path.join(agentsDir, file), "utf8") }));
+}
+
+function countOccurrences(content, value) {
+  return content.split(value).length - 1;
 }
 
 function writeCommandFixture(flowtaskDir, name, body = "Body.\n") {
@@ -251,6 +274,160 @@ describe("Claude user-level runtime contract", () => {
       assert.equal(second.generated, 1);
       assert.deepEqual(second.skipped, [unowned]);
       assert.equal(fs.readFileSync(unowned, "utf8"), "user command\n");
+    } finally {
+      cleanupDir(root);
+    }
+  });
+
+  /**
+   * gap_ref: C1
+   * criterio: ningún agente generado contiene una referencia desnuda sin contrapartida ejecutable.
+   * defecto: una llamada `skill({...})` sin traducir o una skill mencionada solo en una tabla
+   *   llega a Claude Code sin ruta y el subagente improvisa.
+   * why_not_detected: ningún test vigente inspecciona los cuerpos de agentes generados.
+   * comportamiento observable: el agente con llamada contiene un `**Read**` con la ruta absoluta
+   *   y cero `skill({`; el agente con mención solo en tabla recibe el apéndice con su ruta.
+   */
+  it("translates every skill declaration into an executable read path", () => {
+    const root = makeTempDir();
+    const flowtaskDir = path.join(root, "flowtask");
+    const projectDir = path.join(root, "project");
+    const skillsDir = path.join(root, "skills");
+    try {
+      writeSkillFixtures(root, ["alpha-skill", "beta-skill"]);
+      writeAgentBodyFixture(flowtaskDir, "caller", 'skill({ name: "alpha-skill" }) ← cargar antes de verificar');
+      writeAgentBodyFixture(
+        flowtaskDir,
+        "tabler",
+        ["| Skill | Cuándo |", "|---|---|", "| `beta-skill` | antes de continuar |"].join("\n"),
+      );
+
+      const agents = generateClaudeAgents(flowtaskDir, projectDir, { skillsDir });
+      assert.equal(agents.generated, 2);
+
+      const generated = readGeneratedAgents(projectDir);
+      for (const agent of generated) {
+        assert.equal(agent.content.includes("skill({"), false, `${agent.file} keeps a raw skill call`);
+      }
+
+      const caller = generated.find((agent) => agent.file === "flowtask-caller.md");
+      const alphaPath = path.join(skillsDir, "alpha-skill", "SKILL.md");
+      assert.ok(caller.content.includes(`**Read** \`${alphaPath}\` — carga de la skill \`alpha-skill\``));
+      assert.equal(countOccurrences(caller.content, alphaPath), 1, "each declared skill needs exactly one absolute path");
+
+      const tabler = generated.find((agent) => agent.file === "flowtask-tabler.md");
+      const betaPath = path.join(skillsDir, "beta-skill", "SKILL.md");
+      assert.match(tabler.content, /## Archivos de skills referenciadas/);
+      assert.ok(tabler.content.includes(`- \`beta-skill\` → \`${betaPath}\``));
+      assert.equal(countOccurrences(tabler.content, betaPath), 1, "each mentioned skill needs exactly one absolute path");
+    } finally {
+      cleanupDir(root);
+    }
+  });
+
+  /**
+   * gap_ref: C2
+   * criterio: cada ruta de skill apunta a un archivo existente en el payload activo.
+   * defecto: una ruta apunta fuera del payload o a un archivo inexistente, incluidas las de `scripts/`.
+   * why_not_detected: los tests actuales generan agentes fixture sin skills y nunca resuelven rutas generadas.
+   * comportamiento observable: las rutas embebidas contienen `versions/<id>/skills/`, existen en disco
+   *   y la referencia a `scripts/` también queda resuelta dentro del payload.
+   */
+  it("resolves generated skill paths inside the active runtime payload", () => {
+    const root = makeTempDir();
+    const claudeUserDir = path.join(root, "claude-user");
+    const payloadId = "1.0.0-abc123";
+    const payloadSkillsDir = path.join(claudeUserDir, "flowtask", "versions", payloadId, "skills");
+    const flowtaskDir = path.join(root, "flowtask");
+    const projectDir = path.join(root, "project");
+    const previousConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    try {
+      const skillDir = path.join(payloadSkillsDir, "alpha-skill");
+      fs.mkdirSync(path.join(skillDir, "scripts"), { recursive: true });
+      fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: alpha-skill\n---\n", "utf8");
+      fs.writeFileSync(path.join(skillDir, "scripts", "helper.mjs"), "export const helper = true;\n", "utf8");
+      fs.mkdirSync(projectDir, { recursive: true });
+      writeAgentBodyFixture(
+        flowtaskDir,
+        "caller",
+        [
+          'skill({ name: "alpha-skill" })',
+          "Ejecutá `.flowtask/skills/alpha-skill/scripts/helper.mjs` antes de continuar.",
+        ].join("\n"),
+      );
+
+      process.env.CLAUDE_CONFIG_DIR = claudeUserDir;
+      materializeClaudeProject({
+        projectDir,
+        flowtaskDir,
+        version: "1.0.0",
+        runtimeManifest: { payloadId },
+      });
+
+      const content = fs.readFileSync(path.join(projectDir, ".claude", "agents", "flowtask-caller.md"), "utf8");
+      assert.equal(content.includes(".flowtask/skills/"), false, "canonical paths must be normalized");
+
+      const payloadFragment = `${path.join("versions", payloadId, "skills")}${path.sep}`;
+      const paths = [...content.matchAll(/\x60([^\x60]*[\\/]skills[\\/][^\x60]*)\x60/g)].map((match) => match[1]);
+      assert.ok(paths.length >= 2, "the generated agent must embed the skill file and the script");
+      for (const embedded of paths) {
+        assert.ok(embedded.includes(payloadFragment), `${embedded} does not point inside the active payload`);
+        assert.ok(path.isAbsolute(embedded), `${embedded} is not an absolute path`);
+        assert.equal(fs.existsSync(embedded), true, `${embedded} does not exist`);
+      }
+      assert.ok(
+        paths.some((embedded) => embedded.includes(`${path.sep}scripts${path.sep}`)),
+        "the scripts reference must resolve inside the payload",
+      );
+    } finally {
+      if (previousConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = previousConfigDir;
+      cleanupDir(root);
+    }
+  });
+
+  /**
+   * gap_ref: C3
+   * criterio: una skill declarada inexistente detiene la generación, informa skill y agente
+   *   y no escribe agentes parciales.
+   * defecto: se generan agentes a medias o se falla en silencio.
+   * why_not_detected: no hay test de resolución de skills durante la generación; el bucle
+   *   anterior escribía cada agente antes de conocer el resto.
+   * comportamiento observable: la generación lanza `claude_agent_skill_unresolved`, el mensaje
+   *   nombra la skill y el agente, y el proyecto no recibe ningún agente.
+   */
+  it("aborts agent generation without partial writes when a declared skill is missing", () => {
+    const root = makeTempDir();
+    const flowtaskDir = path.join(root, "flowtask");
+    const projectDir = path.join(root, "project");
+    const skillsDir = path.join(flowtaskDir, "skills");
+    try {
+      writeSkillFixtures(flowtaskDir, ["ok-skill"]);
+      writeAgentBodyFixture(flowtaskDir, "sample", 'skill({ name: "missing-skill" })');
+      writeAgentBodyFixture(flowtaskDir, "valid", 'skill({ name: "ok-skill" })');
+
+      assert.throws(
+        () => generateClaudeAgents(flowtaskDir, projectDir, { skillsDir }),
+        (error) => {
+          assert.equal(error.code, "claude_agent_skill_unresolved");
+          assert.match(error.message, /skill "missing-skill" declared in agent "sample"/);
+          assert.deepEqual(error.problems, [
+            {
+              skill: "missing-skill",
+              path: path.join(skillsDir, "missing-skill", "SKILL.md"),
+              reason: "missing",
+              agent: "sample",
+            },
+          ]);
+          return true;
+        },
+      );
+
+      const agentsDir = path.join(projectDir, ".claude", "agents");
+      const written = fs.existsSync(agentsDir)
+        ? fs.readdirSync(agentsDir).filter((file) => file.endsWith(".md"))
+        : [];
+      assert.deepEqual(written, [], "a failed generation must not leave partial agents");
     } finally {
       cleanupDir(root);
     }

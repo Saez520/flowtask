@@ -56,6 +56,157 @@ export function extractSkillReferences(runnerBody) {
   return [...names];
 }
 
+// ─── Skill declaration translation ────────────────────────────────────────────
+
+export const SKILL_CALL_PATTERN = /skill\(\{\s*name:\s*["']([^"']+)["']\s*\}\)/g;
+export const SKILL_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+
+/** List the calls declared in a body, in source order, ignoring the placeholder. */
+export function findSkillCalls(body) {
+  const pattern = new RegExp(SKILL_CALL_PATTERN.source, "g");
+  const calls = [];
+  for (const match of body.matchAll(pattern)) {
+    if (match[1] === "...") continue;
+    calls.push({ name: match[1], index: match.index, length: match[0].length });
+  }
+  return calls;
+}
+
+function listInstalledSkillNames(skillsDir) {
+  if (!skillsDir || !fs.existsSync(skillsDir)) return [];
+  return fs
+    .readdirSync(skillsDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && fileExists(path.join(skillsDir, entry.name, "SKILL.md")))
+    .map((entry) => entry.name);
+}
+
+function bodyMentionsSkill(body, name) {
+  let index = body.indexOf(name);
+  while (index !== -1) {
+    const before = index === 0 ? "" : body[index - 1];
+    const after = body[index + name.length] ?? "";
+    if (!/[a-z0-9-]/.test(before) && !/[a-z0-9-]/.test(after)) return true;
+    index = body.indexOf(name, index + 1);
+  }
+  return false;
+}
+
+/**
+ * Names declared by a body: every skill call plus every installed skill whose
+ * name appears as a standalone word. Sorted so the generated appendix is stable.
+ */
+export function collectDeclaredSkillNames(body, { skillsDir }) {
+  const names = new Set(findSkillCalls(body).map((call) => call.name));
+  for (const name of listInstalledSkillNames(skillsDir)) {
+    if (bodyMentionsSkill(body, name)) names.add(name);
+  }
+  return [...names].sort((left, right) => left.localeCompare(right, "en"));
+}
+
+/** Problems that prevent resolving the calls of a body, unique per skill. */
+export function resolveSkillCallProblems(body, { skillsDir }) {
+  const problems = [];
+  const seen = new Set();
+  for (const call of findSkillCalls(body)) {
+    if (seen.has(call.name)) continue;
+    seen.add(call.name);
+    const skillPath = path.join(skillsDir, call.name, "SKILL.md");
+    if (!SKILL_NAME_PATTERN.test(call.name)) {
+      problems.push({ skill: call.name, path: skillPath, reason: "invalid_name" });
+      continue;
+    }
+    if (!fileExists(skillPath)) {
+      problems.push({ skill: call.name, path: skillPath, reason: "missing" });
+    }
+  }
+  return problems;
+}
+
+/** Replace every skill call with a direct read of the file in the payload. */
+export function translateSkillCalls(body, { skillsDir }) {
+  const calls = findSkillCalls(body);
+  if (calls.length === 0) return body;
+
+  const parts = [];
+  let cursor = 0;
+  for (const call of calls) {
+    parts.push(body.slice(cursor, call.index));
+    const skillPath = path.join(skillsDir, call.name, "SKILL.md");
+    parts.push(`**Read** \`${skillPath}\` — carga de la skill \`${call.name}\` antes de continuar.`);
+    cursor = call.index + call.length;
+  }
+  parts.push(body.slice(cursor));
+  return parts.join("");
+}
+
+/** Rewrite canonical `.flowtask/skills/<rel>` references to the payload path. */
+export function normalizeSkillPaths(body, { skillsDir, context = null } = {}) {
+  return body.replace(/\.flowtask\/skills\/([A-Za-z0-9._/-]+)/g, (match, rawRelative) => {
+    const punctuation = rawRelative.match(/[.,;:]+$/)?.[0] ?? "";
+    const relative = punctuation ? rawRelative.slice(0, -punctuation.length) : rawRelative;
+    const segments = relative.split("/").filter(Boolean);
+
+    if (segments.includes("..")) {
+      const error = new Error(
+        `Skill path "${relative}" escapes the skills directory; only payload-relative paths are allowed.`,
+      );
+      error.code = "claude_agent_skill_path_invalid";
+      error.context = context;
+      error.path = relative;
+      throw error;
+    }
+
+    const target = path.join(skillsDir, ...segments);
+    if (!fileExists(target)) {
+      const error = new Error(`Skill path "${relative}" does not exist at ${target}.`);
+      error.code = "claude_agent_skill_path_missing";
+      error.context = context;
+      error.path = target;
+      throw error;
+    }
+    return `${target}${punctuation}`;
+  });
+}
+
+/** Markdown appendix listing skills named without a call, with their path. */
+export function buildSkillFilesSection(names, { skillsDir } = {}) {
+  if (!names || names.length === 0) return "";
+  return [
+    "## Archivos de skills referenciadas",
+    "",
+    ...names.map((name) => `- \`${name}\` → \`${path.join(skillsDir, name, "SKILL.md")}\``),
+  ].join("\n");
+}
+
+/** Fail when a generated body still contains a skill call. */
+export function assertNoSkillCalls(content, context = null) {
+  const calls = findSkillCalls(content);
+  if (calls.length === 0) return content;
+
+  const skills = [...new Set(calls.map((call) => call.name))];
+  const error = new Error(
+    `Skill calls remain untranslated in ${context ?? "generated content"}: ${skills.join(", ")}.`,
+  );
+  error.code = "claude_agent_skill_untranslated";
+  error.context = context;
+  error.skills = skills;
+  throw error;
+}
+
+/** Fail when a declared skill has no absolute path in the content. */
+export function assertEveryDeclaredSkillHasPath(content, names, { skillsDir, context = null } = {}) {
+  const missing = names.filter((name) => !content.includes(path.join(skillsDir, name, "SKILL.md")));
+  if (missing.length === 0) return content;
+
+  const error = new Error(
+    `Declared skills without an absolute path in ${context ?? "generated content"}: ${missing.join(", ")}.`,
+  );
+  error.code = "claude_agent_skill_unreferenced";
+  error.context = context;
+  error.missing = missing;
+  throw error;
+}
+
 /**
  * Build the startup block emitted by the global hook. Every path points at the
  * active runtime payload so the block is independent of the project layout.
