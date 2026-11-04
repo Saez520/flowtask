@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { logInfo, logWarn, logSuccess, logError, fileExists } from "./logger.js";
+import { hasFerrisSearch, withoutFerrisSearch } from "./ferris-search.js";
 
 /**
  * Deep merge two plain objects; source values take precedence.
@@ -232,7 +233,8 @@ export function registerPluginArrayEntry(configPath, entry, schema = "https://op
  * Merge FlowTask V2 agents/commands/mcp/plugins sections into the IDE's opencode.json.
  * Legacy singular section names are accepted on input and normalized to V2 names.
  */
-export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
+export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir, options = {}) {
+  const { removeFerrisSearch = true } = options;
   const flowtaskOpencodePath = findOpencodeConfig(flowtaskDir);
   if (!flowtaskOpencodePath) return;
 
@@ -250,6 +252,7 @@ export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
     }
 
     const targetSubDir = path.join(ideDir, "flowtask");
+    const hadLocalFerrisSearch = hasFerrisSearch(ideConfig);
 
     // FlowTask owns the default for new installations, but an existing
     // consumer's explicit choice is preserved on update.
@@ -296,6 +299,15 @@ export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
       delete ideConfig.agents["flowtask-runner"].permission;
     }
 
+    // The web search MCP lives once per user. Install and update remove any
+    // project-local copy, even when the canonical declaration still carries it.
+    let removedFerrisSearch = false;
+    if (removeFerrisSearch) {
+      const sanitized = withoutFerrisSearch(ideConfig);
+      ideConfig = sanitized.config;
+      removedFerrisSearch = hadLocalFerrisSearch && sanitized.removed;
+    }
+
     if (!ideConfig.$schema) ideConfig.$schema = "https://opencode.ai/config.json";
 
     fs.mkdirSync(path.dirname(ideConfigPath), { recursive: true });
@@ -316,7 +328,9 @@ export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir) {
       throw writeError;
     }
     logSuccess("Configuration merged successfully.");
+    return { ok: true, removedFerrisSearch };
   } catch (err) {
     logError(`Failed to merge config: ${err.message}`);
+    return { ok: false, removedFerrisSearch: false, error: err.message };
   }
 }

@@ -1602,7 +1602,8 @@ test("the manager is not registered as a consumer server and no permission is wi
   });
   mergeOpencodeConfig(targetConfig, source, ".opencode");
   const merged = readJson(targetConfig);
-  assert.deepEqual(Object.keys(merged.mcp), ["unrelated-server", "engram", "ferris-search"]);
+  assert.deepEqual(Object.keys(merged.mcp), ["unrelated-server", "engram"]);
+  assert.equal(Object.keys(merged.mcp).includes("ferris-search"), false);
   assert.equal(Object.keys(merged.mcp).includes("worktree-manager"), false);
   assert.deepEqual(merged.agents["flowtask-runner"].permissions, canonicalRunnerPermission);
   assert.equal(JSON.stringify(merged).includes("worktree-manager"), false);

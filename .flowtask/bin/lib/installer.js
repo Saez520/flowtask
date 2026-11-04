@@ -1,6 +1,5 @@
 import fs from "fs";
 import path from "path";
-import os from "os";
 import { execFileSync } from "child_process";
 import {
   COLORS, log, logStep, logSuccess, logError, logWarn, logInfo,
@@ -8,6 +7,7 @@ import {
 } from "./logger.js";
 import { copyWithProgress, copyDirectoryDelta, pruneDirectoryExtras, verifyDirectoryMirror } from "./copy.js";
 import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
+import { ensureGlobalFerrisSearch, isFerrisSearchSupported } from "./ferris-search.js";
 import { installClaudeTarget, updateClaudeTarget } from "./claude-install.js";
 import { resolveClaudePaths } from "./claude.js";
 import {
@@ -40,7 +40,7 @@ import {
 } from "./layers.js";
 
 export const INSTALLER_WRITERS = Object.freeze([
-  "W01 removeLegacyConsumerFiles", "W02 migrateProfileLocation", "W03 promptFerrisSearch",
+  "W01 removeLegacyConsumerFiles", "W02 migrateProfileLocation", "W03 ensureGlobalFerrisSearch",
   "W04 root migration", "W05 target creation", "W06 asset copy/mirror", "W07 OpenCode skills/config",
   "W08 plugin copy/register", "W09 markers", "W10 runner/persona/sync config", "W11 Claude outputs",
   "W12 TUI canonical/legacy", "W13 classifier cleanup", "W14 legacy scripts/consumers",
@@ -444,59 +444,6 @@ function checkEngram() {
     logWarn("Engram is not installed.");
     logInfo("Install it: https://github.com/Gentleman-Programming/engram/blob/main/docs/INSTALLATION.md");
   }
-}
-
-async function promptFerrisSearch(flowtaskDir, readline) {
-  const SUPPORTED_PLATFORMS = ["darwin", "win32"];
-  if (!SUPPORTED_PLATFORMS.includes(process.platform)) {
-    logInfo(`ferris-search MCP is not available on ${process.platform}. Skipping.`);
-    return;
-  }
-  const binaryName = process.platform === "win32"
-    ? `ferris-search-windows-${os.arch()}.exe`
-    : `ferris-search-darwin-${os.arch()}`;
-  const srcBinary = path.join(flowtaskDir, "bin", binaryName);
-  if (!fileExists(srcBinary)) {
-    logWarn(`ferris-search binary not found at ${srcBinary}. Skipping.`);
-    return;
-  }
-  const answer = await new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(`${COLORS.cyan}?${COLORS.reset} Install ferris-search MCP for web search? ${COLORS.dim}(Y/n):${COLORS.reset} `, (ans) => { rl.close(); resolve(ans.trim().toLowerCase()); });
-  });
-  if (answer === "n" || answer === "no") {
-    logInfo("ferris-search installation skipped.");
-    return;
-  }
-  const destDir = path.join(os.homedir(), ".opencode", "bin");
-  const destBinary = path.join(destDir, process.platform === "win32" ? "ferris-search.exe" : "ferris-search");
-  try {
-    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-    fs.copyFileSync(srcBinary, destBinary);
-    fs.chmodSync(destBinary, 0o755);
-    logSuccess("ferris-search installed to ~/.opencode/bin/ferris-search");
-  } catch (err) {
-    logError(`Failed to install ferris-search binary: ${err.message}`);
-    return;
-  }
-  const configDir = path.join(os.homedir(), ".config", "opencode");
-  const configPath = path.join(configDir, "opencode.json");
-  try {
-    if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
-    let config = {};
-    if (fs.existsSync(configPath)) {
-      try {
-        const content = fs.readFileSync(configPath, "utf8").trim();
-        if (content) config = JSON.parse(content);
-      } catch { logWarn("Existing global opencode.json is invalid, starting fresh."); }
-    }
-    const mcpBlock = { "ferris-search": { type: "local", command: ["ferris-search"], env: { DEFAULT_SEARCH_ENGINE: "bing" }, enabled: true } };
-    if (!config.mcp) { config.mcp = mcpBlock; }
-    else { config.mcp = { ...config.mcp, ...mcpBlock }; }
-    if (!config.$schema) config.$schema = "https://opencode.ai/config.json";
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
-    logSuccess("ferris-search MCP configured in global opencode.json");
-  } catch (err) { logError(`Failed to configure MCP: ${err.message}`); }
 }
 
 // ─── Persona Selection ────────────────────────────────────────────────────────
@@ -1340,6 +1287,54 @@ export function migrateProfileLocation(projectDir, flowtaskDir, targetDirs = [fl
   }
 }
 
+// ─── Web search reporting ─────────────────────────────────────────────────────
+
+function describeLocalFerrisSearch(result) {
+  if (!result) return "copia local no evaluada";
+  if (result.ok !== true) {
+    return result.error ? `copia local no retirada (${result.error})` : "copia local no retirada";
+  }
+  return result.removedFerrisSearch ? "copia local retirada" : "copia local ausente";
+}
+
+function failedFerrisSearchResult(err) {
+  return {
+    status: "failed",
+    globalConfigPath: null,
+    binaryInstalled: false,
+    cause: err.message,
+    action: "retry with flowtask update",
+  };
+}
+
+function reportFerrisSearch(globalResult, localResult) {
+  if (!globalResult) return;
+  const local = describeLocalFerrisSearch(localResult);
+  switch (globalResult.status) {
+    case "configured":
+      logInfo(`ferris-search ya configurado para este usuario; ${local}.`);
+      return;
+    case "installed":
+      logInfo(`ferris-search instalado para este usuario; ${local}.`);
+      return;
+    case "declined":
+      logInfo(`ferris-search no instalado por decisión del operador; ${local}.`);
+      return;
+    case "skipped":
+      logInfo(`ferris-search omitido por falta de TTY; ${local}; ejecutar un update interactivo para configurarlo.`);
+      return;
+    case "unsupported":
+      logInfo("ferris-search no disponible en esta plataforma; superficies sin cambios.");
+      return;
+    default:
+      logWarn(
+        `ferris-search no instalado: ${globalResult.cause ?? "causa desconocida"}. `
+        + `${globalResult.action ?? "reintentar con flowtask update."} `
+        + "La instalación continúa sin búsqueda; reintentar con flowtask update.",
+      );
+  }
+}
+
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir, options = {}) {
@@ -1382,7 +1377,16 @@ ${COLORS.blue}╔═════════════════════
   if (targetDirs.length > 0 && !migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
     throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
   }
+  let ferrisSearchResult = null;
+  if (targets.some(({ id }) => id === "opencode")) {
+    try {
+      ferrisSearchResult = await ensureGlobalFerrisSearch({ flowtaskDir, readline, isTTY: Boolean(process.stdin.isTTY) });
+    } catch (err) {
+      ferrisSearchResult = failedFerrisSearchResult(err);
+    }
+  }
   const results = [];
+  let localFerrisSearch = null;
 
   for (const { id, ideDir, targetSubDir } of nonClaudeTargets) {
     const TARGET_DIR = path.join(projectDir, targetSubDir);
@@ -1396,10 +1400,6 @@ ${COLORS.blue}╔═════════════════════
       // ── Step 2: Engram ───────────────────────────────────────────────────
       logStep(2, "Checking Engram...");
       checkEngram();
-
-      // ── Ferris Search MCP ──────────────────────────────────────────────
-      logStep("+", "ferris-search MCP…");
-      await promptFerrisSearch(flowtaskDir, readline);
 
       // ── Step 3: Migrate legacy root .flowtask/ if present ────────────────
       logStep(3, "Checking existing installation...");
@@ -1440,7 +1440,12 @@ ${COLORS.blue}╔═════════════════════
       if (id === "opencode") {
         const srcSkills = path.join(flowtaskDir, "skills");
         if (fileExists(srcSkills)) copyWithProgress(srcSkills, path.join(projectDir, ".opencode", "skills"), "skills (opencode)", readline);
-        mergeOpencodeConfig(path.join(projectDir, ideDir, "opencode.json"), flowtaskDir, ideDir);
+        localFerrisSearch = mergeOpencodeConfig(
+          path.join(projectDir, ideDir, "opencode.json"),
+          flowtaskDir,
+          ideDir,
+          { removeFerrisSearch: isFerrisSearchSupported() },
+        );
       }
 
       // ── Step 5: Install plugins from manifest (OpenCode only) ────────────
@@ -1523,6 +1528,7 @@ ${COLORS.blue}╔═════════════════════
     try { if (fs.readdirSync(rootFT).length === 0) fs.rmdirSync(rootFT); } catch (_) {}
   }
 
+  reportFerrisSearch(ferrisSearchResult, localFerrisSearch);
   printSummary("Installation Summary", results);
 }
 
@@ -1592,6 +1598,15 @@ ${COLORS.blue}╔═════════════════════
     throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
   }
 
+  let ferrisSearchResult = null;
+  if (nonClaudeTargets.some(({ id }) => id === "opencode")) {
+    try {
+      ferrisSearchResult = await ensureGlobalFerrisSearch({ flowtaskDir, readline, isTTY: Boolean(process.stdin.isTTY) });
+    } catch (err) {
+      ferrisSearchResult = failedFerrisSearchResult(err);
+    }
+  }
+
   // ── Step 1.5: Agent Personality ──────────────────────────────
   let currentLevel = null;
   for (const targetDir of targetDirs) {
@@ -1615,6 +1630,7 @@ ${COLORS.blue}╔═════════════════════
   // ── Step 2: Delta sync each target ──────────────────────────────────────
   const preservePaths = ["CA-", "workspace", ".workspace", ".installation-method"];
   const results = [];
+  let localFerrisSearch = null;
   const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
 
   for (const { id, subDir, ideDir, previousMethod } of nonClaudeTargets) {
@@ -1649,7 +1665,12 @@ ${COLORS.blue}╔═════════════════════
           totalCopied += stats.copied;
           totalSkipped += stats.skipped;
         }
-        mergeOpencodeConfig(path.join(projectDir, ideDir, "opencode.json"), flowtaskDir, ideDir);
+        localFerrisSearch = mergeOpencodeConfig(
+          path.join(projectDir, ideDir, "opencode.json"),
+          flowtaskDir,
+          ideDir,
+          { removeFerrisSearch: isFerrisSearchSupported() },
+        );
       }
 
       logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
@@ -1751,6 +1772,7 @@ ${COLORS.blue}╔═════════════════════
     }
   }
 
+  reportFerrisSearch(ferrisSearchResult, localFerrisSearch);
   printSummary("Update Summary", results, (res) => {
     if (res.stats?.copied !== undefined) {
       return ` (${res.stats.copied} updated, ${res.stats.skipped} preserved)`;

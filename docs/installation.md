@@ -220,6 +220,36 @@ can be selected explicitly with `--target opencode`, `--target vscode`, or
 | VS Code | `.vscode/flowtask/` | mirror of the VS Code target |
 | Standalone | `.flowtask/` | agents, commands, skills, plugins, and scripts |
 
+OpenCode is also the only target that offers the web search MCP, installed once
+per user as described in [Web search MCP (OpenCode only)](#web-search-mcp-opencode-only).
+
+## Web search MCP (OpenCode only)
+
+OpenCode can install a web search MCP that remains available across every
+project in the operating-system account. The offer appears only when OpenCode is
+one of the selected or detected targets. Claude Code, VS Code, and standalone
+installations never offer it and never receive the entry.
+
+The MCP is installed once per user:
+
+- Configuration: `~/.config/opencode/opencode.json`.
+- Binary: `~/.opencode/bin/ferris-search` (`ferris-search.exe` on Windows).
+
+The first interactive installation asks once whether to install it. If the entry
+already exists in the user configuration, FlowTask preserves it, even when it is
+disabled, and does not ask again. Without a TTY the offer is skipped and the
+omission is reported.
+
+Both `install` and `update` reconcile the two surfaces: they keep a single copy
+in the user configuration and remove any project-local `mcp.ferris-search` entry
+from the OpenCode configuration. The run reports whether the user-level entry
+was configured or installed and whether the local copy was retired or was
+already absent.
+
+When the user-level write cannot complete, the command shows the cause and the
+next action, continues without web search, and leaves the project installation
+registered. The next `flowtask update` retries the user-level installation.
+
 ## Target configuration layers
 
 Each target resolves three configuration layers: persona (tone), autonomy
@@ -269,10 +299,11 @@ flowtask update --persona senior
 
 For OpenCode and VS Code, `update` detects `.installation-method` markers,
 synchronizes the delta, preserves preservable paths, reinstalls plugins,
-regenerates configuration, and coordinates Graphify. For a Claude registration,
-the runtime and materialized artifacts are refreshed as described above. If no
-installation is found and there is no user-level Claude runtime, run `install`
-first.
+regenerates configuration, and coordinates Graphify. For OpenCode, `update` also
+retries the user-level web search installation described above. For a Claude
+registration, the runtime and materialized artifacts are refreshed as described
+above. If no installation is found and there is no user-level Claude runtime,
+run `install` first.
 
 ## Worktree Manager
 
