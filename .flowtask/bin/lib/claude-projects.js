@@ -496,6 +496,17 @@ export function removeClaudeProject({ projectDir, runtimeRoot }) {
     removed.push(registryPath);
   }
 
+  for (const directory of [projectAgentsDir, projectCommandsDir]) {
+    try {
+      if (fs.existsSync(directory) && fs.readdirSync(directory).length === 0) {
+        fs.rmdirSync(directory);
+        removed.push(directory);
+      }
+    } catch {
+      // Left in place for the report.
+    }
+  }
+
   const gitignorePath = path.join(projectFlowtaskDir, ".gitignore");
   if (fileExists(gitignorePath)) {
     const content = fs.readFileSync(gitignorePath, "utf8");

@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { runCliAction } from "./lib/cli-errors.js";
 import { install, update } from "./lib/installer.js";
+import { uninstallClaudeGlobal, uninstallClaudeProject } from "./lib/claude-install.js";
 import { resolveClaudePaths } from "./lib/claude.js";
 import {
   PERSONA_LEVELS,
@@ -241,6 +242,56 @@ switch (command) {
     await runCliAction(async () => { await update(FLOWTASK_DIR, options); });
     break;
 
+  case "uninstall": {
+    await runCliAction(async () => {
+      if (!options.yes) {
+        if (!process.stdin.isTTY) {
+          throw new Error("uninstall requires --yes when no interactive terminal is available.");
+        }
+        const { createInterface } = await import("node:readline/promises");
+        const readline = createInterface({ input: process.stdin, output: process.stdout });
+        const scope = options.project ? "this project" : "the user-level runtime and every registered project";
+        const answer = await readline.question(`Remove FlowTask from ${scope}? (y/N) `);
+        readline.close();
+        if (!/^y(es)?$/i.test(answer.trim())) {
+          console.log("Uninstall cancelled.");
+          return;
+        }
+      }
+
+      const projectDir = process.cwd();
+      const claudePaths = resolveClaudePaths(projectDir);
+
+      if (options.project) {
+        const result = uninstallClaudeProject({
+          projectDir,
+          runtimeRoot: claudePaths.runtimeRoot,
+          flowtaskDir: FLOWTASK_DIR,
+        });
+        console.log(`Removed ${result.removed.length} FlowTask artifact(s) from ${projectDir}.`);
+        if (result.preserved.length > 0) {
+          console.log(`Preserved ${result.preserved.length} unowned file(s): ${result.preserved.join(", ")}`);
+        }
+        return;
+      }
+
+      const result = uninstallClaudeGlobal({
+        runtimeRoot: claudePaths.runtimeRoot,
+        claudeUserDir: claudePaths.claudeUserDir,
+        flowtaskDir: FLOWTASK_DIR,
+      });
+      if (!result.ok) throw new Error(result.error);
+      console.log(`Removed the FlowTask runtime and ${result.projects.length} project registration(s).`);
+      if (result.manualReview.length > 0) {
+        for (const message of result.manualReview) console.log(message);
+      }
+      if (result.preserved.length > 0) {
+        console.log(`Preserved ${result.preserved.length} unowned file(s): ${result.preserved.join(", ")}`);
+      }
+    });
+    break;
+  }
+
   case "layers": {
     const subCommand = args[1];
     if (subCommand !== "resolve") {
@@ -276,10 +327,17 @@ FlowTask CLI
 
 Usage:
   flowtask install    Install FlowTask in the current project
+  flowtask install --target <opencode|claude|vscode|standalone>
+                      Select targets explicitly; repeat the flag or use commas
   flowtask install --persona <training|mid|senior|custom>
                       Select the agent personality explicitly
   flowtask update     Update FlowTask files (delta-only sync)
   flowtask update --persona <training|mid|senior|custom>
+  flowtask uninstall  Remove the user-level runtime and registered projects
+  flowtask uninstall --project
+                      Remove only the current project registration
+  flowtask uninstall --yes
+                      Skip the interactive confirmation
   flowtask layers resolve --target <opencode|claude|vscode|standalone>
                       Show the resolved persona, autonomy and permissions layers
   flowtask layers resolve --json
@@ -289,10 +347,11 @@ Usage:
   flowtask --version  Show version
 
 Examples:
-  flowtask install    Install FlowTask in current directory
-  flowtask update     Update existing FlowTask installation
-  flowtask layers resolve --target opencode
-  flowtask layers resolve --json
+  flowtask install --target claude --persona senior
+  flowtask install --target opencode,claude
+  flowtask update
+  flowtask uninstall --project --yes
+  flowtask layers resolve --target claude
   flowtask graphify query --query UserService  Deprecated; use Graphify MCP
     `);
     break;

@@ -11,9 +11,10 @@ import {
   ensureClaudeRuntime,
   ensureClaudeRuntimeConfig,
   readClaudeRuntimeManifest,
+  removeClaudeRuntime,
 } from "./claude-runtime.js";
-import { registerClaudeProject } from "./claude-projects.js";
-import { ensureUserEngram } from "./claude-mcp.js";
+import { readProjectsIndex, registerClaudeProject, removeClaudeProject } from "./claude-projects.js";
+import { ensureUserEngram, removeUserEngram } from "./claude-mcp.js";
 import { CUSTOM_PERSONA_TEXT, buildRuntimeRunnerBody } from "./runner-content.js";
 import {
   LAYER_FILES,
@@ -109,6 +110,12 @@ const LEGACY_LAYERS = Object.freeze([
 const LEGACY_FLOWTASK_HOOK = 'cat "$CLAUDE_PROJECT_DIR/.claude/session-start.md"';
 const LEGACY_CLAUDE_START = "<!-- FLOWTASK:START -->";
 const LEGACY_CLAUDE_END = "<!-- FLOWTASK:END -->";
+const ENGRAM_TEMPLATE = Object.freeze({
+  type: "stdio",
+  command: "engram",
+  args: Object.freeze(["mcp"]),
+  env: Object.freeze({}),
+});
 
 function stableStringify(value) {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
@@ -165,9 +172,24 @@ function projectDirFromPaths(paths) {
   return paths.projectDir;
 }
 
-function migrateLegacyConfig(paths, removed, preserved, manualReview) {
+function migrateLegacyConfig(paths, removed, preserved, manualReview, { migrate = true } = {}) {
   const configDir = path.join(paths.projectFlowtaskDir, "config");
   const globalConfigDir = paths.runtimeConfigDir;
+
+  if (!migrate) {
+    for (const layer of LEGACY_LAYERS) {
+      const source = path.join(configDir, layer.file);
+      if (!fileExists(source)) continue;
+      fs.rmSync(source, { force: true });
+      removed.push(source);
+    }
+    const review = path.join(configDir, "review.json");
+    if (fileExists(review)) {
+      fs.rmSync(review, { force: true });
+      removed.push(review);
+    }
+    return;
+  }
 
   for (const layer of LEGACY_LAYERS) {
     const source = path.join(configDir, layer.file);
@@ -252,13 +274,14 @@ function removeLegacyProjectMcp(paths, flowtaskDir, removed, preserved, manualRe
     return;
   }
 
-  const templatePath = path.join(flowtaskDir, "claude", "mcp.json");
-  const template = readJsonFile(templatePath);
+  const template = flowtaskDir
+    ? readJsonFile(path.join(flowtaskDir, "claude", "mcp.json"))
+    : { ok: false };
   const entry = read.value?.mcpServers?.engram;
   if (!entry) return;
 
-  const expected = template.ok ? template.value?.mcpServers?.engram : null;
-  if (!expected || stableStringify(entry) !== stableStringify(expected)) {
+  const expected = template.ok ? template.value?.mcpServers?.engram : ENGRAM_TEMPLATE;
+  if (stableStringify(entry) !== stableStringify(expected)) {
     preserved.push(`${mcpPath}#mcpServers.engram`);
     manualReview.push(
       `${mcpPath} keeps an Engram entry that does not match the FlowTask template; review it manually.`,
@@ -285,8 +308,9 @@ function removeLegacyProjectMcp(paths, flowtaskDir, removed, preserved, manualRe
 export function migrateLegacyClaudeProject({
   projectDir,
   runtimeRoot,
-  flowtaskDir,
+  flowtaskDir = null,
   runtimeManifest = null,
+  migrateConfig = true,
 }) {
   const paths = resolveClaudePaths(projectDir);
   const removed = [];
@@ -297,7 +321,7 @@ export function migrateLegacyClaudeProject({
     return { removed, preserved, manualReview, migrated: false };
   }
 
-  migrateLegacyConfig(paths, removed, preserved, manualReview);
+  migrateLegacyConfig(paths, removed, preserved, manualReview, { migrate: migrateConfig });
 
   for (const directory of ["skills", "scripts", "agents", "commands"]) {
     const target = path.join(paths.projectFlowtaskDir, directory);
@@ -440,6 +464,132 @@ export function installClaudeTarget({
  * is already registered (or carries a legacy installation marker); update never
  * registers a project on its own.
  */
+export function uninstallClaudeProject({ projectDir, runtimeRoot, flowtaskDir = null }) {
+  const paths = resolveClaudePaths(projectDir);
+  const effectiveRuntimeRoot = runtimeRoot ?? paths.runtimeRoot;
+  const legacy = migrateLegacyClaudeProject({
+    projectDir,
+    runtimeRoot: effectiveRuntimeRoot,
+    flowtaskDir,
+    migrateConfig: false,
+  });
+  const removal = removeClaudeProject({
+    projectDir,
+    runtimeRoot: fileExists(effectiveRuntimeRoot) ? effectiveRuntimeRoot : null,
+  });
+  return { ok: true, ...removal, legacy };
+}
+
+/**
+ * Remove the user-level runtime, the FlowTask hook, the Engram registration it
+ * added, and every project listed in the index. It stops before deleting the
+ * runtime when a global surface or a project cannot be cleaned.
+ */
+export function uninstallClaudeGlobal({ runtimeRoot, claudeUserDir, flowtaskDir = null }) {
+  const manualReview = [];
+  const manifestPath = path.join(runtimeRoot, "runtime.json");
+  const manifestExists = fileExists(manifestPath);
+  let manifest = null;
+
+  if (manifestExists) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+      if (parsed?.schema === 1) manifest = parsed;
+    } catch {
+      manifest = null;
+    }
+  }
+
+  const indexRead = readProjectsIndex(runtimeRoot);
+  if (!indexRead.ok) {
+    return {
+      ok: false,
+      error: `The projects index is unreadable and uninstall stopped before removing the runtime: ${indexRead.error}`,
+      removed: [],
+      preserved: [],
+      failures: [],
+      manualReview,
+    };
+  }
+
+  const hook = removeClaudeHook(path.join(claudeUserDir, "settings.json"), {
+    command: manifest?.hookCommand ?? null,
+    commandIncludes: path.join(runtimeRoot, "bin", "session-start.mjs"),
+  });
+  if (!hook.ok) {
+    return {
+      ok: false,
+      error: `The FlowTask hook could not be removed: ${hook.error}`,
+      removed: [],
+      preserved: [],
+      failures: [],
+      manualReview,
+    };
+  }
+
+  let mcp;
+  if (manifest) {
+    mcp = removeUserEngram({ claudeUserDir, runtimeManifest: manifest });
+    if (!mcp.ok) {
+      return {
+        ok: false,
+        error: `Engram could not be removed from the user scope: ${mcp.error}`,
+        mcp,
+        removed: [],
+        preserved: [],
+        failures: [],
+        manualReview,
+      };
+    }
+  } else {
+    mcp = { ok: true, action: "manual", managed: false, error: null };
+    manualReview.push(
+      "The runtime manifest is missing; if FlowTask added Engram, run: claude mcp remove --scope user engram",
+    );
+  }
+
+  const failures = [];
+  const projects = [];
+  for (const entry of indexRead.index.projects) {
+    if (!entry || typeof entry.path !== "string") continue;
+    try {
+      const result = uninstallClaudeProject({
+        projectDir: entry.path,
+        runtimeRoot,
+        flowtaskDir,
+      });
+      projects.push({ path: entry.path, removed: result.removed.length, preserved: result.preserved });
+    } catch (error) {
+      failures.push({ path: entry.path, error: error.message });
+    }
+  }
+
+  if (failures.length > 0) {
+    return {
+      ok: false,
+      error: "One or more projects could not be uninstalled; the runtime was preserved.",
+      mcp,
+      hook,
+      projects,
+      failures,
+      removed: [],
+      preserved: [],
+      manualReview,
+    };
+  }
+
+  const runtimeRemoval = removeClaudeRuntime(runtimeRoot);
+  return {
+    ok: true,
+    mcp,
+    hook,
+    projects,
+    failures,
+    manualReview,
+    ...runtimeRemoval,
+  };
+}
+
 export function updateClaudeTarget({
   flowtaskDir,
   projectDir,

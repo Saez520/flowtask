@@ -353,6 +353,13 @@ export function ensureClaudeRuntime(flowtaskDir, options = {}) {
       installedAt: new Date().toISOString(),
       source: path.resolve(flowtaskDir),
       files,
+      retainedPayloads:
+        previousManifest && previousManifest.payloadId !== payloadId
+          ? [{
+              payloadId: previousManifest.payloadId,
+              files: previousManifest.files ?? [],
+            }]
+          : [],
       launcher,
       hookCommand: buildSessionStartHookCommand(runtimeRoot),
       mcp: previousManifest?.mcp ?? null,
@@ -395,24 +402,41 @@ export function removeClaudeRuntime(runtimeRoot) {
   const removed = [];
   const preserved = [];
   let manifest = null;
+  const manifestPath = path.join(runtimeRoot, "runtime.json");
+  const manifestFileExists = fileExists(manifestPath);
 
+  // Removal reads the manifest without adopting it: a tampered payload is not
+  // a reason to delete files whose hash does not match.
   try {
-    manifest = readClaudeRuntimeManifest(runtimeRoot);
+    const parsed = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (parsed?.schema === CLAUDE_RUNTIME_SCHEMA && typeof parsed.payloadId === "string" && Array.isArray(parsed.files)) {
+      manifest = parsed;
+    }
   } catch {
     manifest = null;
   }
 
   if (manifest) {
-    const active = resolveActiveRuntimePaths(runtimeRoot, manifest);
-    for (const file of manifest.files) {
-      const absolute = path.resolve(active.payloadDir, file.path);
-      if (!absolute.startsWith(path.resolve(active.payloadDir) + path.sep) || !fileExists(absolute)) continue;
-      if (sha256File(absolute) !== file.sha256) {
-        preserved.push(absolute);
-        continue;
+    const removePayload = (payloadId, files) => {
+      const payloadDir = path.join(runtimeRoot, "versions", payloadId);
+      for (const file of files) {
+        if (!file || typeof file.path !== "string" || typeof file.sha256 !== "string") continue;
+        const absolute = path.resolve(payloadDir, file.path);
+        if (!absolute.startsWith(path.resolve(payloadDir) + path.sep) || !fileExists(absolute)) continue;
+        if (sha256File(absolute) !== file.sha256) {
+          preserved.push(absolute);
+          continue;
+        }
+        fs.rmSync(absolute, { force: true });
+        removed.push(absolute);
       }
-      fs.rmSync(absolute, { force: true });
-      removed.push(absolute);
+    };
+
+    removePayload(manifest.payloadId, manifest.files);
+    for (const retained of manifest.retainedPayloads ?? []) {
+      if (retained && typeof retained.payloadId === "string" && Array.isArray(retained.files)) {
+        removePayload(retained.payloadId, retained.files);
+      }
     }
   }
 
@@ -427,33 +451,27 @@ export function removeClaudeRuntime(runtimeRoot) {
     }
   }
 
-  if (!manifest) {
-    const versionsDir = path.join(runtimeRoot, "versions");
-    if (fileExists(versionsDir)) {
-      fs.rmSync(versionsDir, { recursive: true, force: true });
-      removed.push(versionsDir);
-    }
-  } else {
-    const versionsDir = path.join(runtimeRoot, "versions");
-    if (fileExists(versionsDir)) {
-      for (const entry of fs.readdirSync(versionsDir, { withFileTypes: true })) {
-        const payloadDir = path.join(versionsDir, entry.name);
-        if (entry.isDirectory()) {
-          for (const file of walkFiles(payloadDir)) {
-            if (!removed.includes(file) && !preserved.includes(file)) preserved.push(file);
-          }
-          try {
-            if (walkFiles(payloadDir).length === 0) {
-              fs.rmSync(payloadDir, { recursive: true, force: true });
-              removed.push(payloadDir);
-            }
-          } catch {
-            // Left in place for the report.
-          }
-        }
+  const versionsDir = path.join(runtimeRoot, "versions");
+  if (!manifestFileExists && fileExists(versionsDir)) {
+    fs.rmSync(versionsDir, { recursive: true, force: true });
+    removed.push(versionsDir);
+  } else if (fileExists(versionsDir)) {
+    for (const entry of fs.readdirSync(versionsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const payloadDir = path.join(versionsDir, entry.name);
+      for (const file of walkFiles(payloadDir)) {
+        if (!removed.includes(file) && !preserved.includes(file)) preserved.push(file);
       }
-      removeIfEmpty(versionsDir);
+      try {
+        if (walkFiles(payloadDir).length === 0) {
+          fs.rmSync(payloadDir, { recursive: true, force: true });
+          removed.push(payloadDir);
+        }
+      } catch {
+        // Left in place for the report.
+      }
     }
+    removeIfEmpty(versionsDir);
   }
 
   const configDir = path.join(runtimeRoot, "config");
