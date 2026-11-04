@@ -372,10 +372,22 @@ export default Plugin.define({
             if (result == null)
                 return;
             const budgetTool = event.tool;
+            const deliveredText = readDeliveredText(result);
+            // Image/PDF attachments: the short text lies about the real cost; the
+            // runner receives no attachments (v1) and it is delegated to the Inspector.
+            if (isImageOrPdfOutput(result)) {
+                const actual = deliveredText?.length ?? 0;
+                const metadata = { ...(result.metadata ?? {}) };
+                delete metadata.attachment;
+                result.metadata = metadata;
+                applyReducedDelivery(result, buildAttachmentDelivery(budgetTool, actual), "attachment_delegated", {
+                    omittedChars: actual,
+                });
+                return;
+            }
             // GAP-003: if it cannot be measured, never deliver silently without control:
             // it is observed with a trace and the delivery is marked as unmeasurable. An
             // integration smoke revalidates the mutation.
-            const deliveredText = readDeliveredText(result);
             if (deliveredText === undefined) {
                 console.warn(`[FlowTask Context Budget] could not measure ${budgetTool} output (session ${event.sessionID}); delivering without budgeting.`);
                 result.metadata = {
@@ -386,17 +398,6 @@ export default Plugin.define({
             }
             const budget = loadContextBudgetConfig(sessionDir || process.cwd(), sessionDir);
             const actual = deliveredText.length;
-            // Image/PDF attachments: the short text lies about the real cost; the
-            // runner receives no attachments (v1) and it is delegated to the Inspector.
-            if (isImageOrPdfOutput(result)) {
-                const metadata = { ...(result.metadata ?? {}) };
-                delete metadata.attachment;
-                result.metadata = metadata;
-                applyReducedDelivery(result, buildAttachmentDelivery(budgetTool, actual), "attachment_delegated", {
-                    omittedChars: actual,
-                });
-                return;
-            }
             // Per-call budget: delivered reduced, without preview, and with the
             // explicit delegation of what was omitted.
             if (actual > (budgetTool === "read" ? budget.readThreshold : budgetTool === "grep" ? budget.grepThreshold : budget.globThreshold)) {
