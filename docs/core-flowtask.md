@@ -282,6 +282,7 @@ Squash-merge to `main` at `198cf54` — it is the hotfix that produced THIS file
 | `flowtask-permission-gate` | server | runner permissions + commit gate |
 | `flowtask-context-checkpoint` | server | forced checkpoint at 70% context |
 | `agent-model-selector-opencode` | cli (TUI) | selects model and variant per agent |
+| `agent-model-selector-claude-code` | mod | selects the model per agent in Claude Code |
 
 #### `flowtask-permission-gate` (detail)
 
@@ -303,6 +304,23 @@ Squash-merge to `main` at `198cf54` — it is the hotfix that produced THIS file
 - copies only `dist`, `package.json`, and `README.md` according to the manifest's `files` allowlist
 - registers the entrypoint `dist/tui.js` in `.opencode/cli.json`
 - removes the legacy `flowtask-model-selector` installation (directory and configuration entries) after copying and validating the replacement
+
+#### `agent-model-selector-claude-code` (detail)
+
+- installs from the submodule `.flowtask/plugins/agent-model-selector/packages/claude-code`
+- the manifest declares `kind: "mod"`, `destinations: ["claude-code"]` and the hooks entrypoint `hooks/dist/register.js`; the OpenCode installer discards entries without the `opencode` destination before copying or registering anything, so this entry is inert for OpenCode
+- the Claude Code runtime consumes the payload (`files`: `.claude-plugin`, `hooks/dist`, `hooks/hooks.json`, `package.json`, `README.md`); loading it with `claude --plugin-dir <path>` is the development path
+- exposes `/flowtask-model` with `list`, `set`, `clear`, `clear --all`, `export` and `import`; the pane shows one row per agent with a `Select` and a Clear button where the surface has those elements
+- persists one store key per project and agent: `flowtask-model:v1:<encoded-root>:<agent-key>`; it does not write frontmatter or settings
+- applies the override in the `agent.spawn` hook; forks and resumes ignore the model and the Mod logs that it did
+- requires Claude Code `2.1.287`; `2.1.299` is recommended and `2.1.304` adds `availableModels` from settings
+- in `-p`, Agent SDK or any surface without a pane the command keeps working; the listing goes to the log and the answer text
+
+#### Claude Code Mod rollback
+
+1. Run `/flowtask-model clear --all` in each project that used an override.
+2. Remove or disable the plugin in Claude Code (`--plugin-dir` removal, or the plugin manager).
+3. Confirm that `/flowtask-model` no longer exists and that OpenCode is unchanged: the Mod never writes `.opencode`, `opencode.json` or the global OpenCode configuration.
 
 #### Selector rollback
 

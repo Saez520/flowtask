@@ -26,6 +26,14 @@
     "files": ["dist", "package.json", "README.md", "tui.ts"]
   },
   {
+    "name": "agent-model-selector-claude-code",
+    "path": "agent-model-selector/packages/claude-code",
+    "kind": "mod",
+    "destinations": ["claude-code"],
+    "entrypoint": "hooks/dist/register.js",
+    "files": [".claude-plugin", "hooks/dist", "hooks/hooks.json", "package.json", "README.md"]
+  },
+  {
     "name": "flowtask-permission-gate",
     "path": "flowtask-permission-gate",
     "kind": "server",
