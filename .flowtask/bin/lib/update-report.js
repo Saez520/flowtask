@@ -17,6 +17,28 @@ const WARNING_PREFIX = /^⚠️?\s*/;
 const ACTION_PATTERN = /flowtask (update|install)|https?:\/\//i;
 const ACTION_SUFFIX = " · run flowtask update --verbose for details";
 const STATE_GLYPHS = { ok: "✓", warn: "!", fail: "✗" };
+const GRADIENT_STOPS = ["#6366F1", "#A855F7", "#2DD4BF"];
+const HEADER_COLOR = "#64748B";
+const DETAIL_COLOR = "#E2E8F0";
+const NUMBER_COLOR = "#2DD4BF";
+const TIME_COLOR = "#64748B";
+const BRAND_BACKGROUND = "#4F46E5";
+const BRAND_TEXT = "#FFFFFF";
+const VERSION_TEXT = "#A5B4FC";
+const PHASE_COLORS = {
+  detect: "#818CF8",
+  sync: "#38BDF8",
+  plugins: "#A78BFA",
+  graphify: "#34D399",
+  search: "#FBBF24",
+};
+const STATUS_COLORS = { ok: "#22C55E", warn: "#F59E0B", fail: "#EF4444" };
+const TARGET_CHIP = { background: "#16A34A", text: "#052E16" };
+const WARNING_CHIP = { background: "#F59E0B", text: "#052E16" };
+const WARNING_CHIP_EMPTY = { background: "#475569", text: "#E2E8F0" };
+const FAILURE_CHIP = { background: "#EF4444", text: "#FFFFFF" };
+const COMPLETE_BADGE = { background: "#0EA5E9", text: "#FFFFFF" };
+const FAILED_BADGE = { background: "#EF4444", text: "#FFFFFF" };
 const SEARCH_PHASE_TEXT = {
   configured: "already configured",
   installed: "installed",
@@ -64,6 +86,31 @@ export function describeGraphifyPhase(states) {
 export function describeSearchPhase(result) {
   if (!result) return null;
   return SEARCH_PHASE_TEXT[result.status] ?? "failed";
+}
+
+function supportsColor({ isTTY = process.stdout.isTTY, env = process.env } = {}) {
+  return Boolean(isTTY) && !env.NO_COLOR && env.TERM !== "dumb";
+}
+
+function hexToRgb(hex) {
+  const value = hex.replace("#", "");
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function gradientColorAt(position, total) {
+  const ratio = total <= 1 ? 0 : Math.min(Math.max(position / (total - 1), 0), 1);
+  const scaled = ratio * (GRADIENT_STOPS.length - 1);
+  const index = Math.min(Math.floor(scaled), GRADIENT_STOPS.length - 2);
+  const local = scaled - index;
+  const from = hexToRgb(GRADIENT_STOPS[index]);
+  const to = hexToRgb(GRADIENT_STOPS[index + 1]);
+  const channel = (start, end) => Math.round(start + (end - start) * local);
+  const hex = (value) => value.toString(16).padStart(2, "0");
+  return `#${hex(channel(from.r, to.r))}${hex(channel(from.g, to.g))}${hex(channel(from.b, to.b))}`;
 }
 
 function truncateTo(text, width) {
@@ -152,8 +199,8 @@ function normalizeMessage(text) {
   return value.replace(WARNING_PREFIX, "").trim();
 }
 
-export function createUpdateReport({ version, verbose = false, color = false } = {}) {
-  void color;
+export function createUpdateReport({ version, verbose = false, color } = {}) {
+  const useColor = color ?? supportsColor();
   const warnings = [];
   const errors = [];
   const seenWarnings = new Set();
@@ -183,11 +230,43 @@ export function createUpdateReport({ version, verbose = false, color = false } =
     console.log(line);
   };
 
+  const paint = (text, style = {}) => {
+    if (!useColor || !text) return text;
+    const { fg, bg, bold } = style;
+    if (!fg && !bg && !bold) return text;
+    let codes = "";
+    if (fg) {
+      const color = hexToRgb(fg);
+      codes += `\x1b[38;2;${color.r};${color.g};${color.b}m`;
+    }
+    if (bg) {
+      const color = hexToRgb(bg);
+      codes += `\x1b[48;2;${color.r};${color.g};${color.b}m`;
+    }
+    if (bold) codes += "\x1b[1m";
+    return `${codes}${text}\x1b[0m`;
+  };
+
+  const render = (segments) => segments.map(({ text, style }) => (style ? paint(text, style) : text)).join("");
+
   const withAction = (text) => (ACTION_PATTERN.test(text) ? text : `${text}${ACTION_SUFFIX}`);
 
-  const frameLine = (left, right) => `${left}${"─".repeat(INNER_WIDTH)}${right}`;
+  const borderStyle = (column) => ({ fg: gradientColorAt(column, FRAME_WIDTH) });
 
-  const emptyRow = () => `│${" ".repeat(INNER_WIDTH)}│`;
+  const frameLine = (left, right) => {
+    const segments = [{ text: left, style: borderStyle(0) }];
+    for (let column = 1; column < FRAME_WIDTH - 1; column += 1) {
+      segments.push({ text: "─", style: borderStyle(column) });
+    }
+    segments.push({ text: right, style: borderStyle(FRAME_WIDTH - 1) });
+    return render(segments);
+  };
+
+  const emptyRow = () => render([
+    { text: "│", style: borderStyle(0) },
+    { text: " ".repeat(INNER_WIDTH) },
+    { text: "│", style: borderStyle(FRAME_WIDTH - 1) },
+  ]);
 
   const brandRow = () => {
     const label = "FLOWTASK · update";
@@ -195,31 +274,99 @@ export function createUpdateReport({ version, verbose = false, color = false } =
     const right = versionText ? `${versionText}${" ".repeat(3)}` : "";
     const left = `${" ".repeat(LEFT_MARGIN)}${label}`;
     const fill = " ".repeat(Math.max(0, INNER_WIDTH - left.length - right.length));
-    return `│${left}${fill}${right}│`;
+    const segments = [
+      { text: "│", style: borderStyle(0) },
+      { text: " ".repeat(LEFT_MARGIN), style: { bg: BRAND_BACKGROUND } },
+      { text: label, style: { fg: BRAND_TEXT, bg: BRAND_BACKGROUND, bold: true } },
+      { text: fill, style: { bg: BRAND_BACKGROUND } },
+    ];
+    if (versionText) {
+      segments.push({ text: versionText, style: { fg: VERSION_TEXT, bg: BRAND_BACKGROUND } });
+      segments.push({ text: " ".repeat(3), style: { bg: BRAND_BACKGROUND } });
+    }
+    segments.push({ text: "│", style: borderStyle(FRAME_WIDTH - 1) });
+    return render(segments);
   };
 
   const headerRow = () => {
     const interior = `${" ".repeat(LEFT_MARGIN)}${padRight("PHASE", COL_PHASE)}${" ".repeat(COL_GAP)}${padRight("DETAIL", COL_DETAIL)}${" ".repeat(COL_GAP)}${padLeft("TIME", COL_TIME)}${" ".repeat(COL_GAP)}${center("STATE", COL_STATE)}${" ".repeat(RIGHT_MARGIN)}`;
-    return `│${interior}│`;
+    return render([
+      { text: "│", style: borderStyle(0) },
+      { text: interior, style: { fg: HEADER_COLOR } },
+      { text: "│", style: borderStyle(FRAME_WIDTH - 1) },
+    ]);
   };
 
   const ruleRow = () => {
-    const interior = `${" ".repeat(LEFT_MARGIN)}${"─".repeat(INNER_WIDTH - LEFT_MARGIN * 2)}${" ".repeat(LEFT_MARGIN)}`;
-    return `│${interior}│`;
+    const segments = [
+      { text: "│", style: borderStyle(0) },
+      { text: " ".repeat(LEFT_MARGIN) },
+    ];
+    for (let column = LEFT_MARGIN + 1; column <= INNER_WIDTH - LEFT_MARGIN; column += 1) {
+      segments.push({ text: "─", style: borderStyle(column) });
+    }
+    segments.push({ text: " ".repeat(LEFT_MARGIN) });
+    segments.push({ text: "│", style: borderStyle(FRAME_WIDTH - 1) });
+    return render(segments);
+  };
+
+  const detailSegments = (cell) => {
+    const segments = [];
+    const pattern = /\d+(?:\.\d+)?/g;
+    let lastIndex = 0;
+    let match = pattern.exec(cell);
+    while (match !== null) {
+      if (match.index > lastIndex) {
+        segments.push({ text: cell.slice(lastIndex, match.index), style: { fg: DETAIL_COLOR } });
+      }
+      segments.push({ text: match[0], style: { fg: NUMBER_COLOR, bold: true } });
+      lastIndex = match.index + match[0].length;
+      match = pattern.exec(cell);
+    }
+    if (lastIndex < cell.length) {
+      segments.push({ text: cell.slice(lastIndex), style: { fg: DETAIL_COLOR } });
+    }
+    if (segments.length === 0) {
+      segments.push({ text: cell, style: { fg: DETAIL_COLOR } });
+    }
+    return segments;
   };
 
   const emitRow = (phaseLabel, detail, timeText, status) => {
-    const interior = `${" ".repeat(LEFT_MARGIN)}${padRight(truncateTo(phaseLabel, COL_PHASE), COL_PHASE)}${" ".repeat(COL_GAP)}${padRight(truncateTo(detail, COL_DETAIL), COL_DETAIL)}${" ".repeat(COL_GAP)}${padLeft(truncateTo(timeText, COL_TIME), COL_TIME)}${" ".repeat(COL_GAP)}${center(stateGlyph(status), COL_STATE)}${" ".repeat(RIGHT_MARGIN)}`;
-    print(`│${interior}│`);
+    const phaseCell = padRight(truncateTo(phaseLabel, COL_PHASE), COL_PHASE);
+    const detailCell = padRight(truncateTo(detail, COL_DETAIL), COL_DETAIL);
+    const timeCell = padLeft(truncateTo(timeText, COL_TIME), COL_TIME);
+    const stateCell = center(stateGlyph(status), COL_STATE);
+    const segments = [
+      { text: "│", style: borderStyle(0) },
+      { text: " ".repeat(LEFT_MARGIN) },
+      { text: phaseCell, style: PHASE_COLORS[phaseLabel] ? { fg: PHASE_COLORS[phaseLabel] } : undefined },
+      { text: " ".repeat(COL_GAP) },
+      ...detailSegments(detailCell),
+      { text: " ".repeat(COL_GAP) },
+      { text: timeCell, style: { fg: TIME_COLOR } },
+      { text: " ".repeat(COL_GAP) },
+      { text: stateCell, style: { fg: STATUS_COLORS[status] } },
+      { text: " ".repeat(RIGHT_MARGIN) },
+      { text: "│", style: borderStyle(FRAME_WIDTH - 1) },
+    ];
+    print(render(segments));
   };
 
-  const printNotice = (glyph, text) => {
+  const printNotice = (glyph, text, color) => {
     const lines = wrapText(text, WARNING_WRAP_WIDTH);
     if (lines.length === 0) lines.push("");
     lines.forEach((line, index) => {
       const indent = " ".repeat(LEFT_MARGIN + 2);
       const prefix = index === 0 ? `${" ".repeat(LEFT_MARGIN)}${glyph} ` : indent;
-      print(`│${padRight(`${prefix}${line}`, INNER_WIDTH)}│`);
+      const contentWidth = prefix.length + line.length;
+      print(render([
+        { text: "│", style: borderStyle(0) },
+        { text: prefix, style: { fg: color } },
+        { text: line, style: { fg: color } },
+        { text: " ".repeat(Math.max(0, INNER_WIDTH - contentWidth)) },
+        { text: "│", style: borderStyle(FRAME_WIDTH - 1) },
+      ]));
     });
   };
 
@@ -229,22 +376,37 @@ export function createUpdateReport({ version, verbose = false, color = false } =
     const warningsText = warnings.length === 1 ? "1 WARNING" : `${warnings.length} WARNINGS`;
     const failedCount = Math.max(failures, errors.length);
     const failed = failures > 0 || errors.length > 0;
-    const chips = [` ${targetsText} `, ` ${warningsText} `];
-    if (failedCount > 0) chips.push(` ${failedCount} FAILED `);
-    const badge = failed ? " FAILED " : " COMPLETE ";
-    const leftAvailable = INNER_WIDTH - LEFT_MARGIN - 1 - badge.length - 1;
-    let pieces = [...chips, formatDuration(Date.now() - startedAt)];
-    let left = pieces.join("   ");
-    if (left.length > leftAvailable) {
-      pieces = [...chips];
-      left = pieces.join("   ");
-      while (pieces.length > 0 && left.length > leftAvailable) {
-        pieces = pieces.slice(0, -1);
-        left = pieces.join("   ");
-      }
+    const warningChip = warnings.length > 0 ? WARNING_CHIP : WARNING_CHIP_EMPTY;
+    const pieces = [
+      { text: ` ${targetsText} `, style: { fg: TARGET_CHIP.text, bg: TARGET_CHIP.background } },
+      { text: ` ${warningsText} `, style: { fg: warningChip.text, bg: warningChip.background } },
+    ];
+    if (failedCount > 0) {
+      pieces.push({ text: ` ${failedCount} FAILED `, style: { fg: FAILURE_CHIP.text, bg: FAILURE_CHIP.background } });
     }
-    const interior = `${" ".repeat(LEFT_MARGIN)}${padRight(left, leftAvailable)} ${badge} `;
-    return `│${interior}│`;
+    pieces.push({ text: formatDuration(Date.now() - startedAt), style: { fg: TIME_COLOR } });
+    const badge = failed ? " FAILED " : " COMPLETE ";
+    const badgeStyle = failed ? FAILED_BADGE : COMPLETE_BADGE;
+    const leftAvailable = INNER_WIDTH - LEFT_MARGIN - 1 - badge.length - 1;
+    let left = pieces.map(({ text }) => text).join("   ");
+    while (pieces.length > 0 && left.length > leftAvailable) {
+      pieces.pop();
+      left = pieces.map(({ text }) => text).join("   ");
+    }
+    const segments = [
+      { text: "│", style: borderStyle(0) },
+      { text: " ".repeat(LEFT_MARGIN) },
+    ];
+    pieces.forEach((piece, index) => {
+      if (index > 0) segments.push({ text: "   " });
+      segments.push(piece);
+    });
+    segments.push({ text: " ".repeat(Math.max(0, leftAvailable - left.length)) });
+    segments.push({ text: " " });
+    segments.push({ text: badge, style: { fg: badgeStyle.text, bg: badgeStyle.background } });
+    segments.push({ text: " " });
+    segments.push({ text: "│", style: borderStyle(FRAME_WIDTH - 1) });
+    return render(segments);
   };
 
   return {
@@ -296,9 +458,9 @@ export function createUpdateReport({ version, verbose = false, color = false } =
       finished = true;
       if (warnings.length > 0 || errors.length > 0) {
         print(emptyRow());
-        for (const warning of warnings) printNotice("⚠", withAction(warning));
+        for (const warning of warnings) printNotice("⚠", withAction(warning), STATUS_COLORS.warn);
         if (warnings.length > 0 && errors.length > 0) print(emptyRow());
-        for (const error of errors) printNotice("✗", withAction(error));
+        for (const error of errors) printNotice("✗", withAction(error), STATUS_COLORS.fail);
       }
       print(frameLine("├", "┤"));
       print(footerRow());
