@@ -14,13 +14,15 @@ recovery, and output contract, see the
 [`docs/cli-contract-v1.md`](https://github.com/Saez520/worktree-manager/blob/main/docs/cli-contract-v1.md).
 This document describes only the integration with FlowTask.
 
-## FlowTask Adapter
+## Direct consumption
 
-The consumer implementation is `.flowtask/bin/lib/worktree-consumer-adapter.js`; its validation contract is `.flowtask/bin/lib/worktree-consumer-contract.js`.
+The Runner consumes the manager through the MCP server `worktree_manager`, which the installer registers per project in the destination configuration: `mcp.worktree_manager` in `.opencode/opencode.json` and `mcpServers.worktree_manager` in `.mcp.json`. The registration uses `python3 -m worktree_manager.mcp_transport` with the managed global directory on `PYTHONPATH`, so the server does not depend on the working directory: every call carries `repo`.
 
-The closure commit carries a descriptive subject and body (`--title`/`--body` or `commit_title`/`commit_body`); the consumer injects the Spanish generic fallback when no title is supplied.
+The standalone publishes seven tools: `worktree_create`, `worktree_complete`, `worktree_cleanup`, `worktree_recover`, `worktree_list`, `worktree_prune` and `worktree_status`. The Runner plans a mutating operation with `dry_run: true`, reads the plan digest and the planned transaction identifier, and executes with the same fields plus `plan_hash` and, when it applies, `transaction_id`; `list` and `status` use a single call.
 
-`.flowtask/scripts/worktree.sh` is the consumer entrypoint and delegates to
+The closure commit carries a descriptive subject and body (`commit_title`/`commit_body`); the Runner composes the Spanish generic fallback when no source is available.
+
+`.flowtask/scripts/worktree.sh` is the compatibility entrypoint and delegates to
 `.flowtask/scripts/worktree-adapter.sh`, which delegates to the canonical
 manager. There is no parallel engine.
 
@@ -41,66 +43,32 @@ the authorization or the execution. The controls of the standalone tests are
 `WORKTREE_MANAGER_TEST_*`. The standalone does not know about FlowTask or
 inspect its legacy paths or refs.
 
-The installer downloads the published package and publishes a managed global copy of the manager under the user's global FlowTask directory, and it excludes the manager from the generic asset copy. The consumer resolves the manager only from the global installation. The npm package does not expose a bin or `npx`; its MCP publishes the seven operations and the guide in `initialize.instructions`. The authorized bridge remains the surface exposed by FlowTask.
+The installer downloads the published package and publishes a managed global copy of the manager under the user's global FlowTask directory, and it excludes the manager from the generic asset copy. The consumer resolves the manager only from the global installation. The npm package does not expose a bin or `npx`; its MCP publishes the seven operations and the guide in `initialize.instructions`. The installer registers that server per project in each selected destination; FlowTask does not expose its own tool for the manager.
 
-## Consumer bridge
+## Retired bridge
 
-The assistant never reaches the manager directly. The bridge is
-`.flowtask/plugins/flowtask-permission-gate/src/worktree-consumer-bridge.ts`
-and it exposes one tool, `flowtask_worktree_consume`, restricted to the
-FlowTask runner identity. The tool arguments are reduced to the canonical
-request fields before they cross the boundary; the caller identity and the
-derived paths stay in the plugin.
+FlowTask no longer exposes a consumer tool for the manager and no longer requires the runner identity to use isolated worktrees. The former bridge, its MCP client, its JavaScript translator, its validation contract and their tests were removed. A session that names the retired tool receives a visible answer that the route no longer exists and the seven direct tools are the current surface; the runtime returns its unknown-tool error as a fallback. The compatibility matrix records the retired name and its removal.
 
-The bridge owns the association of every worktree. The intent is registered
-before the operation and confirmed after it, and a worktree that was created
-without a confirmed association is reported as blocked with the resource
-preserved, never as a completed operation.
+The durable association remains in Engram under `worktree/association/{work_id}`: the Runner records `state: pending` before the first `create` call and replaces it with `state: confirmed` after the manager confirms the worktree. If the association cannot be confirmed, the resource is preserved and the work is blocked instead of reported as completed.
 
-## Transport detection and fallback
+## Direct MCP and compatibility path
 
-Two transports are available and both publish the same nine-key envelope:
-`contract_version`, `tool_version`, `operation`, `repository`, `result`, `data`,
-`warnings`, `error` and `transaction_id`.
+The MCP server is the primary path. `${FLOWTASK_SCRIPTS}/worktree.sh` remains a declared alternative for administration and compatibility; it runs the same canonical manager and can be used when the server is not registered or does not respond. There is no automatic fallback between the two paths.
 
-- The MCP client is `.flowtask/plugins/flowtask-permission-gate/src/worktree-mcp.ts`.
-  It starts the standalone server over stdio with `python3 -m
-  worktree_manager.mcp_transport` and the standalone checkout on the Python
-  path, and it never imports the manager in process.
-- The CLI client sends one canonical request document with `python3 -m
-  worktree_manager --request-json -`.
-
-The transport is chosen with an explicit precedence: an explicit choice in the
-request, then the transport persisted with the worktree, then the read-only
-detection, which prefers MCP and falls back to CLI. The chosen transport is
-persisted with the worktree and a later operation does not change it.
-
-The other transport is used exactly once, and only when the request was never
-delivered. A rejection, a contract error, lock contention, a timeout or a lost
-answer are never retried on the other transport: the outcome of a delivered
-request is unknown, and the operation is reported as uncertain with the
-reconciliation as its next action. The report names the operation, the work,
-the repository, the way, the result, the cause and the next action, and it
-never invents a transaction identifier.
-
-A mutating operation is planned before it is executed: the preflight publishes
-the plan digest and, for a completion, the planned transaction identifier, and
-the execute call replays both. A read-only operation and a target-direct
-operation use a single call. The manager rejects an execute whose repository
-state or request changed since the preflight, and that rejection is reported
-without mutating either repository.
+A delivered request is never retried on the other path: a rejection, a contract error, lock contention, a timeout or a lost answer produce an uncertain outcome, and the next action is to reconcile before a new attempt. The manager rejects an execute whose repository state or request changed since the preflight, and that rejection is reported without mutating either repository.
 
 ## Responsibility boundaries
 
 - The standalone owns the parent-only lifecycle, generic configuration,
   transactions, locks, journals, and target-direct behavior.
-- FlowTask provides the compatible entrypoint, the adapter, the acquisition of
-  the npm package and the global publication.
-- The adapter does not commit, merge, or push on behalf of the consumer
+- FlowTask provides the compatibility entrypoint, the acquisition of the npm
+  package, the global publication and the per-project MCP registration of the
+  manager server.
+- The compatibility adapter does not commit, merge, or push on behalf of the consumer
   repository.
 - The historical local URL in `.gitmodules` is not a distribution reference.
 - The manager is distributed as the npm package `worktree-for-agents` and the
   published global copy is the single runtime source. A vendored copy of the
   manager core is not maintained in this repository.
-- The bridge and the transport clients belong to FlowTask; the manager owns the
-  lifecycle, the transactions, the locks and the journals.
+- The manager owns the lifecycle, the transactions, the locks and the journals;
+  FlowTask does not translate its requests or choose a transport.
