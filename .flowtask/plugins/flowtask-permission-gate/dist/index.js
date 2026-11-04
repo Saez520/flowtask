@@ -1,9 +1,10 @@
+import { Plugin } from "@opencode/plugin";
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, isWorktreeManagerMcpTool, } from "./authorizer.js";
 import { buildLayerBlockMessage, readOperationalLayers } from "./layers.js";
-import { buildAttachmentDelivery, buildDegradationMetadata, buildNarrowingNotice, buildReducedDelivery, isImageOrPdfOutput, loadContextBudgetConfig, registerNarrowingNotice, resetNarrowingNotices, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
+import { applyReducedDelivery, buildAttachmentDelivery, buildDegradationMetadata, buildNarrowingNotice, buildReducedDelivery, isImageOrPdfOutput, loadContextBudgetConfig, readDeliveredText, registerNarrowingNotice, resetNarrowingNotices, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
 /**
  * Candidate configuration paths, tried in order within each directory.
  * Precedence: commit workdir first; sessionDir only as a fallback for
@@ -19,9 +20,9 @@ const DEFAULT_STAMP_TTL_MINUTES = 30;
 const TRIVIAL_CHANGE_LINES = 5;
 const SESSION_AGENTS = new Map();
 /**
- * Accumulated per runner turn (GAP-002): turn = cycle between consecutive
- * `chat.message` events of the same sessionID. `TURN_STATE` stores the sum of
- * delivered (not omitted) chars and the turn number; `TURN_SEQ` numbers the turns.
+ * Accumulated per runner turn (GAP-002): turn = cycle opened by each `prompt`
+ * event of the same sessionID. `TURN_STATE` stores the sum of delivered (not
+ * omitted) chars and the turn number; `TURN_SEQ` numbers the turns.
  */
 const TURN_STATE = new Map();
 const TURN_SEQ = new Map();
@@ -40,6 +41,24 @@ function normalizeAgent(agent) {
  */
 function isRunner(agent) {
     return typeof agent === "string" && normalizeAgent(agent) === "flowtask-runner";
+}
+/**
+ * Resolves the identity exposed by the V2 event. The runner is registered per
+ * session so later phases without an identity can reuse it; any other identity
+ * keeps the session fallback without contaminating the recorded runner.
+ */
+function resolveSessionAgent(sessionID, eventAgent) {
+    if (isRunner(eventAgent)) {
+        const agent = eventAgent;
+        SESSION_AGENTS.set(sessionID, agent);
+        return agent;
+    }
+    return SESSION_AGENTS.get(sessionID);
+}
+/** Commit workdir precedence: explicit workdir, explicit cwd, then the session directory. */
+function readWorkdir(args, fallback) {
+    const candidate = args.workdir ?? args.cwd;
+    return typeof candidate === "string" && candidate ? candidate : fallback;
 }
 function runnerToolAllowed(tool, args) {
     if (isWorktreeManagerMcpTool(tool))
@@ -260,71 +279,55 @@ function readStatSizeSafe(args) {
         return undefined;
     }
 }
-export default async function (input) {
-    const sessionDir = input.directory;
-    return {
-        "chat.message": async (hookInput) => {
-            // GATE: SESSION_AGENTS only records the flowtask-runner personality;
-            // any other identity exposed as `agent` is ignored so as not to
-            // contaminate the session identity or overwrite a validated runner.
-            if (hookInput.agent !== undefined && isRunner(hookInput.agent)) {
-                SESSION_AGENTS.set(hookInput.sessionID, hookInput.agent);
-            }
-            // Each new message opens a turn: it is numbered, the accumulated total is
-            // reset, and the turn's narrowing notice state is reset.
-            const turn = (TURN_SEQ.get(hookInput.sessionID) ?? 0) + 1;
-            TURN_SEQ.set(hookInput.sessionID, turn);
-            TURN_STATE.set(hookInput.sessionID, { sum: 0, turn });
-            resetNarrowingNotices(hookInput.sessionID);
-        },
-        "tool.execute.before": async (hookInput, hookOutput) => {
-            const command = String(hookOutput?.args?.command ?? "");
-            // OpenCode 1.18.4 does not expose agent in tool.execute.before; chat.message
-            // is the authoritative source for the session. Defensive fallback: if 1.18.15+
-            // exposes the agent in the tool hook and it qualifies as runner, that
-            // identity is used; if it does not qualify (or is absent), it falls back to the session.
-            const hookAgent = hookInput.agent;
-            const agent = hookAgent !== undefined && isRunner(hookAgent) ? hookAgent : SESSION_AGENTS.get(hookInput.sessionID);
+export default Plugin.define({
+    id: "flowtask-permission-gate",
+    async setup(ctx) {
+        const sessionDir = ctx.location.directory || process.cwd();
+        const beforeHook = await ctx.tool.hook("execute.before", async (event) => {
+            const input = event.input && typeof event.input === "object"
+                ? event.input
+                : {};
+            const command = String(input.command ?? "");
+            const agent = resolveSessionAgent(event.sessionID, event.agent);
             if (isRunner(agent)) {
                 // Permissions layer: autonomy and permissions must exist and be
                 // valid in the target before applying the technical allowlist. Autonomy
                 // does not authorize: it only checks that the layer is healthy.
-                const layerWorkdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
+                const layerWorkdir = readWorkdir(input, sessionDir);
                 const operationalLayers = readOperationalLayers([layerWorkdir, sessionDir]);
                 if (!operationalLayers.ok && operationalLayers.configDir) {
                     throw new Error(buildLayerBlockMessage(operationalLayers));
                 }
-                if (!runnerToolAllowed(hookInput.tool, hookOutput?.args ?? {}))
+                if (!runnerToolAllowed(event.tool, input))
                     runnerBlocked();
             }
             // --- context budget: cheap pre-gate (runner, closed list, no tree walk) ---
             // Degradation by levels, level 1: the first broad request of the turn is
             // announced with the way to narrow it and is not executed. The same request
             // repeated in the turn is allowed and its delivery is reduced in the post-gate.
-            if (isRunner(agent) && (hookInput.tool === "read" || hookInput.tool === "glob" || hookInput.tool === "grep")) {
-                const budgetArgs = hookOutput?.args ?? {};
-                const budgetTool = hookInput.tool;
+            if (isRunner(agent) && (event.tool === "read" || event.tool === "glob" || event.tool === "grep")) {
+                const budgetTool = event.tool;
                 const broad = budgetTool === "read"
-                    ? shouldPreventiveBlockRead(budgetArgs, readStatSizeSafe(budgetArgs))
+                    ? shouldPreventiveBlockRead(input, readStatSizeSafe(input))
                     : budgetTool === "glob"
-                        ? shouldPreventiveBlockGlob(budgetArgs)
-                        : shouldPreventiveBlockGrep(budgetArgs);
-                if (broad && registerNarrowingNotice(hookInput.sessionID, budgetTool, budgetArgs)) {
-                    throw new Error(buildNarrowingNotice(budgetTool, budgetArgs));
+                        ? shouldPreventiveBlockGlob(input)
+                        : shouldPreventiveBlockGrep(input);
+                if (broad && registerNarrowingNotice(event.sessionID, budgetTool, input)) {
+                    throw new Error(buildNarrowingNotice(budgetTool, input));
                 }
             }
-            if (hookInput.tool !== "bash" || !/\bgit\s+commit\b/.test(command))
+            if (event.tool !== "bash" || !/\bgit\s+commit\b/.test(command))
                 return;
             if (command.includes("--no-verify") || command.includes("--no-review")) {
                 // The bypass is only legitimate for trivial changes (≤ TRIVIAL_CHANGE_LINES).
                 // If the diff cannot be measured (getDiffStats throws), the error propagates and the commit is blocked (deny-by-default).
-                const workdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
+                const workdir = readWorkdir(input, sessionDir);
                 const stats = getDiffStats(workdir);
                 if (stats.lines <= TRIVIAL_CHANGE_LINES)
                     return; // trivial → legitimate bypass
                 throw new Error(buildGateMessage(stats)); // non-trivial → bypass denied, review required
             }
-            const workdir = hookOutput?.args?.workdir || sessionDir || process.cwd();
+            const workdir = readWorkdir(input, sessionDir);
             const config = readConfig(workdir, sessionDir);
             if (!config)
                 return;
@@ -356,71 +359,80 @@ export default async function (input) {
             // Valid stamp: NOT consumed. Validity is governed by the TTL and branch
             // binding; a later failed commit does not require regenerating the stamp.
             return;
-        },
-        "tool.execute.after": async (hookInput, hookOutput) => {
-            const agent = SESSION_AGENTS.get(hookInput.sessionID);
+        });
+        const afterHook = await ctx.tool.hook("execute.after", async (event) => {
+            if (event.status !== "completed")
+                return;
+            const agent = resolveSessionAgent(event.sessionID, event.agent);
             if (!isRunner(agent))
                 return;
-            if (hookInput.tool !== "read" && hookInput.tool !== "glob" && hookInput.tool !== "grep")
+            if (event.tool !== "read" && event.tool !== "glob" && event.tool !== "grep")
                 return;
-            if (hookOutput == null)
+            const result = event.result;
+            if (result == null)
                 return;
-            const budgetTool = hookInput.tool;
-            if (typeof hookOutput.output !== "string") {
-                // GAP-003: if it cannot be measured, never deliver silently without control:
-                // it is observed with a trace and the delivery is marked as unmeasurable. An
-                // integration smoke revalidates the mutation.
-                console.warn(`[FlowTask Context Budget] could not measure ${budgetTool} output (session ${hookInput.sessionID}); delivering without budgeting.`);
-                hookOutput.metadata = { ...(hookOutput.metadata ?? {}), ...buildDegradationMetadata("measurement_unavailable") };
+            const budgetTool = event.tool;
+            // GAP-003: if it cannot be measured, never deliver silently without control:
+            // it is observed with a trace and the delivery is marked as unmeasurable. An
+            // integration smoke revalidates the mutation.
+            const deliveredText = readDeliveredText(result);
+            if (deliveredText === undefined) {
+                console.warn(`[FlowTask Context Budget] could not measure ${budgetTool} output (session ${event.sessionID}); delivering without budgeting.`);
+                result.metadata = {
+                    ...(result.metadata ?? {}),
+                    ...buildDegradationMetadata("measurement_unavailable"),
+                };
                 return;
             }
             const budget = loadContextBudgetConfig(sessionDir || process.cwd(), sessionDir);
-            const threshold = budgetTool === "read" ? budget.readThreshold : budgetTool === "grep" ? budget.grepThreshold : budget.globThreshold;
-            const actual = hookOutput.output.length;
+            const actual = deliveredText.length;
             // Image/PDF attachments: the short text lies about the real cost; the
             // runner receives no attachments (v1) and it is delegated to the Inspector.
-            if (isImageOrPdfOutput(hookOutput)) {
-                hookOutput.output = buildAttachmentDelivery(budgetTool, actual);
-                if (hookOutput.metadata)
-                    delete hookOutput.metadata.attachment;
-                hookOutput.metadata = {
-                    ...(hookOutput.metadata ?? {}),
-                    truncated: true,
-                    ...buildDegradationMetadata("attachment_delegated", { omittedChars: actual }),
-                };
+            if (isImageOrPdfOutput(result)) {
+                const metadata = { ...(result.metadata ?? {}) };
+                delete metadata.attachment;
+                result.metadata = metadata;
+                applyReducedDelivery(result, buildAttachmentDelivery(budgetTool, actual), "attachment_delegated", {
+                    omittedChars: actual,
+                });
                 return;
             }
             // Per-call budget: delivered reduced, without preview, and with the
             // explicit delegation of what was omitted.
-            if (actual > threshold) {
-                hookOutput.output = buildReducedDelivery(budgetTool, actual, "call");
-                hookOutput.metadata = {
-                    ...(hookOutput.metadata ?? {}),
-                    truncated: true,
-                    ...buildDegradationMetadata("reduced", { budget: "call", omittedChars: actual }),
-                };
+            if (actual > (budgetTool === "read" ? budget.readThreshold : budgetTool === "grep" ? budget.grepThreshold : budget.globThreshold)) {
+                applyReducedDelivery(result, buildReducedDelivery(budgetTool, actual, "call"), "reduced", {
+                    budget: "call",
+                    omittedChars: actual,
+                });
                 return;
             }
             // Accumulated per-turn budget: even if under the individual threshold, the
             // turn's delivered total cannot exceed the turn budget.
-            const state = TURN_STATE.get(hookInput.sessionID) ?? { sum: 0, turn: TURN_SEQ.get(hookInput.sessionID) ?? 0 };
+            const state = TURN_STATE.get(event.sessionID) ?? { sum: 0, turn: TURN_SEQ.get(event.sessionID) ?? 0 };
             if (state.sum + actual > budget.turnAccumulated) {
-                hookOutput.output = buildReducedDelivery(budgetTool, actual, "turn");
-                hookOutput.metadata = {
-                    ...(hookOutput.metadata ?? {}),
-                    truncated: true,
-                    ...buildDegradationMetadata("turn_omitted", { budget: "turn", omittedChars: actual }),
-                };
+                applyReducedDelivery(result, buildReducedDelivery(budgetTool, actual, "turn"), "turn_omitted", {
+                    budget: "turn",
+                    omittedChars: actual,
+                });
                 return;
             }
             state.sum += actual;
-            TURN_STATE.set(hookInput.sessionID, state);
-        },
-        dispose: async () => {
+            TURN_STATE.set(event.sessionID, state);
+        });
+        const promptHook = await ctx.session.hook("prompt", (event) => {
+            // Each new prompt opens a turn: it is numbered, the accumulated total is
+            // reset, and the turn's narrowing notice state is reset.
+            const turn = (TURN_SEQ.get(event.sessionID) ?? 0) + 1;
+            TURN_SEQ.set(event.sessionID, turn);
+            TURN_STATE.set(event.sessionID, { sum: 0, turn });
+            resetNarrowingNotices(event.sessionID);
+        });
+        return async () => {
             SESSION_AGENTS.clear();
             TURN_STATE.clear();
             TURN_SEQ.clear();
             resetNarrowingNotices();
-        },
-    };
-}
+            await Promise.all([promptHook.dispose(), beforeHook.dispose(), afterHook.dispose()]);
+        };
+    },
+});
