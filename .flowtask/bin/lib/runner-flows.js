@@ -7,6 +7,7 @@ import {
   RUNNER_CORE_BASELINE_BYTES,
   extractFlowMoments,
   extractFlowReferences,
+  findSkillCalls,
   parseFrontmatter,
 } from "./runner-content.js";
 
@@ -464,8 +465,12 @@ export function checkOpenCodeDelivery({ projectDir, canonicalSkillsDir, flows })
   return states;
 }
 
-/** State of every flow inside the active Claude Code payload. */
-export function checkClaudeDelivery({ runtimeRoot, canonicalSkillsDir, flows }) {
+/** State of every flow inside the active Claude Code payload for a project. */
+export function checkClaudeDelivery({ projectDir, runtimeRoot, canonicalSkillsDir, flows }) {
+  const registrationPath = projectDir ? path.join(projectDir, ".claude", "flowtask", "project.json") : null;
+  if (registrationPath && !fileExists(registrationPath)) {
+    return Object.fromEntries(flows.map((flow) => [flow.name, "not_installed"]));
+  }
   const manifestPath = path.join(runtimeRoot, "runtime.json");
   if (!fileExists(manifestPath)) {
     return Object.fromEntries(flows.map((flow) => [flow.name, "not_installed"]));
@@ -485,9 +490,18 @@ export function checkClaudeDelivery({ runtimeRoot, canonicalSkillsDir, flows }) 
       continue;
     }
     const content = fs.readFileSync(targetPath, "utf8");
-    // The payload rewrites skill calls to absolute reads, so the body differs
-    // from the canonical file by design; presence and shape are what matter.
-    states[flow.name] = content.includes("**Read**") && !content.includes("skill(") ? "present" : "missing";
+    if (content.includes("skill(")) {
+      states[flow.name] = "missing";
+      continue;
+    }
+    // Every canonical skill call must resolve to a Read inside the payload.
+    const canonicalPath = path.join(canonicalSkillsDir, flow.name, "SKILL.md");
+    const canonicalBody = fileExists(canonicalPath)
+      ? parseFrontmatter(fs.readFileSync(canonicalPath, "utf8")).body
+      : "";
+    const calls = [...new Set(findSkillCalls(canonicalBody).map((call) => call.name))];
+    const resolved = calls.every((name) => content.includes(path.join(payloadSkillsDir, name, "SKILL.md")));
+    states[flow.name] = resolved ? "present" : "missing";
   }
   return states;
 }

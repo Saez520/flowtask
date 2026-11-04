@@ -2,11 +2,21 @@
 
 import fs from "fs";
 import path from "path";
+import { execFileSync } from "child_process";
 import { fileURLToPath } from "url";
 import { runCliAction } from "./lib/cli-errors.js";
 import { install, update } from "./lib/installer.js";
 import { uninstallClaudeGlobal, uninstallClaudeProject } from "./lib/claude-install.js";
 import { resolveClaudePaths } from "./lib/claude.js";
+import { SESSION_START_LIMIT_BYTES, buildSessionStartContent } from "./lib/runner-content.js";
+import {
+  buildFlowsReport,
+  checkClaudeDelivery,
+  checkOpenCodeDelivery,
+  compareBaselineLines,
+  composeRunnerDocument,
+  verifyRunnerCanon,
+} from "./lib/runner-flows.js";
 import {
   PERSONA_LEVELS,
   describeOperationalFailure,
@@ -224,6 +234,249 @@ function runLayersResolve(commandArgs) {
   process.exit(0);
 }
 
+function parseFlowsVerifyOptions(commandArgs) {
+  const options = { flowtaskDir: null, baseline: null, allowDeltas: null, report: null, json: false };
+
+  for (let index = 0; index < commandArgs.length; index += 1) {
+    const argument = commandArgs[index];
+    const takeValue = (flag) => {
+      const value = commandArgs[index + 1];
+      if (!value || value.startsWith("--")) throw new Error(`${flag} requires a value`);
+      index += 1;
+      return value;
+    };
+
+    if (argument === "--flowtask-dir") {
+      options.flowtaskDir = takeValue(argument);
+      continue;
+    }
+    if (argument.startsWith("--flowtask-dir=")) {
+      options.flowtaskDir = argument.slice("--flowtask-dir=".length);
+      continue;
+    }
+    if (argument === "--baseline") {
+      options.baseline = takeValue(argument);
+      continue;
+    }
+    if (argument.startsWith("--baseline=")) {
+      options.baseline = argument.slice("--baseline=".length);
+      continue;
+    }
+    if (argument === "--allow-deltas") {
+      options.allowDeltas = takeValue(argument);
+      continue;
+    }
+    if (argument.startsWith("--allow-deltas=")) {
+      options.allowDeltas = argument.slice("--allow-deltas=".length);
+      continue;
+    }
+    if (argument === "--report") {
+      options.report = takeValue(argument);
+      continue;
+    }
+    if (argument.startsWith("--report=")) {
+      options.report = argument.slice("--report=".length);
+      continue;
+    }
+    if (argument === "--json") {
+      options.json = true;
+      continue;
+    }
+    throw new Error(`Unknown option: ${argument}`);
+  }
+
+  if (options.json && options.report) {
+    throw new Error("--json and --report cannot be combined.");
+  }
+  return options;
+}
+
+function readBaselineRunner({ projectDir, runnerPath, ref }) {
+  const root = execFileSync("git", ["-C", projectDir, "rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+  }).trim();
+  const relative = path.relative(root, runnerPath).split(path.sep).join("/");
+  try {
+    return execFileSync("git", ["-C", root, "show", `${ref}:${relative}`], {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (error) {
+    // A copy verified with --flowtask-dir still compares against the canonical
+    // runner path recorded in the baseline commit.
+    return execFileSync("git", ["-C", root, "show", `${ref}:.flowtask/agents/runner.md`], {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+    });
+  }
+}
+
+function countFlowIndexLines(content) {
+  return content
+    .split("\n")
+    .filter((line) => /^- `skill\(\{ name: "runner-flow-[a-z0-9-]+" \}\)`/.test(line)).length;
+}
+
+function runFlowsVerify(commandArgs) {
+  let options;
+  try {
+    options = parseFlowsVerifyOptions(commandArgs);
+  } catch (error) {
+    process.stderr.write(`[FlowTask Flows] ${error.message}\n`);
+    process.exit(1);
+  }
+
+  const projectDir = process.cwd();
+  const flowtaskDir = path.resolve(projectDir, options.flowtaskDir ?? ".flowtask");
+  const runnerPath = path.join(flowtaskDir, "agents", "runner.md");
+  const skillsDir = path.join(flowtaskDir, "skills");
+
+  if (!fs.existsSync(runnerPath)) {
+    process.stderr.write(`[FlowTask Flows] runner.md not found at ${runnerPath}.\n`);
+    process.exit(1);
+  }
+
+  const runnerContent = fs.readFileSync(runnerPath, "utf8");
+  const verification = verifyRunnerCanon({ runnerContent, skillsDir, requireFlows: true });
+  const failures = [...verification.failures];
+
+  let sessionStart = { bytes: 0, limit: SESSION_START_LIMIT_BYTES, flow_lines: 0 };
+  try {
+    const content = buildSessionStartContent({
+      skillsDir,
+      runnerPath,
+      runnerContent,
+      verificationSkillsDir: skillsDir,
+    });
+    sessionStart = {
+      bytes: Buffer.byteLength(content, "utf8"),
+      limit: SESSION_START_LIMIT_BYTES,
+      flow_lines: countFlowIndexLines(content),
+    };
+    if (sessionStart.flow_lines !== verification.flows.length) {
+      failures.push({
+        code: "runner_flows_missing",
+        message: `The Claude startup index declares ${sessionStart.flow_lines} flow line(s); expected ${verification.flows.length}.`,
+      });
+    }
+  } catch (error) {
+    failures.push({
+      code: error.code ?? "runner_session_start_invalid",
+      message: error.message,
+    });
+  }
+
+  const opencodeStates = checkOpenCodeDelivery({
+    projectDir,
+    canonicalSkillsDir: skillsDir,
+    flows: verification.flows,
+  });
+  const claudeStates = checkClaudeDelivery({
+    projectDir,
+    runtimeRoot: resolveClaudePaths(projectDir).runtimeRoot,
+    canonicalSkillsDir: skillsDir,
+    flows: verification.flows,
+  });
+  for (const flow of verification.flows) {
+    flow.opencode = opencodeStates[flow.name];
+    flow.claude = claudeStates[flow.name];
+    for (const [target, state] of [["opencode", flow.opencode], ["claude", flow.claude]]) {
+      if (state !== "missing") continue;
+      failures.push({
+        code: "runner_flows_missing",
+        message: `Flow ${flow.name} is missing from the ${target} delivery.`,
+      });
+    }
+  }
+
+  let parity = null;
+  if (options.baseline) {
+    try {
+      const baselineContent = readBaselineRunner({ projectDir, runnerPath, ref: options.baseline });
+      let allowedDeltas = [];
+      if (options.allowDeltas) {
+        allowedDeltas = JSON.parse(fs.readFileSync(path.resolve(projectDir, options.allowDeltas), "utf8"));
+        if (
+          !Array.isArray(allowedDeltas) ||
+          allowedDeltas.some((entry) => typeof entry?.line !== "string")
+        ) {
+          throw new Error("--allow-deltas must be a JSON array of { line, reason } entries.");
+        }
+      }
+      const composed = composeRunnerDocument({ runnerBody: runnerContent, skillsDir });
+      const comparison = compareBaselineLines({
+        baselineContent,
+        composedContent: composed,
+        allowedDeltas,
+      });
+      parity = {
+        baseline_ref: options.baseline,
+        baseline_lines: comparison.baseline_lines,
+        matched: comparison.matched,
+        allowed_deltas: comparison.allowed_deltas,
+        missing_outside_allowlist: comparison.missing_outside_allowlist,
+        missing_headings: comparison.missing_headings,
+      };
+      if (comparison.missing_outside_allowlist > 0 || comparison.missing_headings.length > 0) {
+        failures.push({
+          code: "runner_parity_missing_lines",
+          message:
+            `Parity against ${options.baseline} has ${comparison.missing_outside_allowlist} ` +
+            `missing line(s) outside the allowlist and ${comparison.missing_headings.length} missing heading(s).`,
+          lines: comparison.missing.slice(0, 20),
+          headings: comparison.missing_headings,
+        });
+      }
+    } catch (error) {
+      failures.push({
+        code: error.code ?? "runner_baseline_unavailable",
+        message: `Could not read the baseline ${options.baseline}: ${error.message}`,
+      });
+    }
+  }
+
+  verification.ok = failures.length === 0;
+  verification.failures = failures;
+  verification.session_start = sessionStart;
+  const report = buildFlowsReport({ runnerPath, verification, parity });
+
+  if (options.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(`Core: ${report.core.bytes} bytes (limit ${report.core.limit})`);
+    console.log(`Flows: ${report.flows.length}`);
+    console.log(`Moments: ${Object.keys(report.moments).length}`);
+    console.log(
+      `Session start: ${report.session_start.bytes} bytes, ${report.session_start.flow_lines} flow lines`,
+    );
+    if (report.parity.baseline_ref) {
+      console.log(
+        `Parity: ${report.parity.missing_outside_allowlist} missing outside allowlist, ` +
+          `${report.parity.missing_headings.length} missing headings`,
+      );
+    }
+    for (const flow of report.flows) {
+      console.log(
+        `- ${flow.name}: trigger ${flow.trigger}; opencode ${flow.opencode}; ` +
+          `claude ${flow.claude}; load ${flow.load_instruction}`,
+      );
+    }
+    for (const failure of report.failures) {
+      console.log(`✖ ${failure.code}: ${failure.message}`);
+    }
+    console.log(`Verdict: ${report.verdict}`);
+    if (options.report) {
+      const reportPath = path.resolve(projectDir, options.report);
+      fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+      fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+      console.log(`Report: ${reportPath}`);
+    }
+  }
+
+  if (report.verdict !== "pass") process.exit(1);
+}
+
 async function main() {
 let options;
 try {
@@ -303,6 +556,17 @@ switch (command) {
     break;
   }
 
+  case "flows": {
+    const subCommand = args[1];
+    if (subCommand !== "verify") {
+      process.stderr.write(`[FlowTask Flows] Unknown subcommand: ${subCommand ?? "(none)"}. Use: flows verify.\n`);
+      process.exitCode = 1;
+      break;
+    }
+    runFlowsVerify(args.slice(2));
+    break;
+  }
+
   case "graphify": {
     // Legacy compatibility shim: graphify query no longer runs local queries.
     const subCommand = args[1];
@@ -342,6 +606,12 @@ Usage:
                       Show the resolved persona, autonomy and permissions layers
   flowtask layers resolve --json
                       Show the resolved layers as JSON
+  flowtask flows verify [--flowtask-dir <path>] [--baseline <ref>]
+                      Verify the permanent core, its flows and the target deliveries
+  flowtask flows verify --allow-deltas <json> --report <path>
+                      Compare against a baseline and write the report outside the versioned tree
+  flowtask flows verify --json
+                      Print the report as JSON without writing files
   flowtask graphify query --query <q>  Deprecated shim; no local query is executed
   flowtask --help     Show this help message
   flowtask --version  Show version
