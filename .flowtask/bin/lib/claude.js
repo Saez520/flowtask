@@ -1,26 +1,102 @@
 import fs from "fs";
+import os from "os";
 import path from "path";
+import crypto from "crypto";
 import { logInfo, logSuccess, logError, fileExists } from "./logger.js";
 import { deepMergeObjects } from "./opencode.js";
 
 // ─── Claude paths ─────────────────────────────────────────────────────────────
 
+/** Schema of the runtime manifest written at the user-level runtime root. */
+export const CLAUDE_RUNTIME_SCHEMA = 1;
+/** Schema of the per-project registration file. */
+export const PROJECT_REGISTRY_SCHEMA = 1;
+/** Schema of the user-level project index. */
+export const PROJECTS_INDEX_SCHEMA = 1;
+/** Exact ownership marker for generated agents and commands. */
+export const FLOWTASK_MANAGED_MARKER = "<!-- FLOWTASK:MANAGED v1 -->";
+
 /**
- * Single resolver for every Claude Code path used by the installer.
+ * Single resolver for every Claude Code path.
+ *
+ * The runtime lives once per operating-system account under the Claude user
+ * directory; the project only receives a registration and the artifacts Claude
+ * Code discovers per project. `CLAUDE_CONFIG_DIR` takes precedence over the
+ * home directory, so isolated smoke tests can redirect the whole layout.
  */
-export function resolveClaudePaths(projectDir) {
-  const claudeDir = path.join(projectDir, ".claude");
+export function resolveClaudePaths(projectDir = process.cwd(), options = {}) {
+  const homeDir = options.homeDir ?? os.homedir();
+  const claudeUserDir =
+    options.claudeUserDir ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(homeDir, ".claude");
+
+  const runtimeRoot = path.join(claudeUserDir, "flowtask");
+  const projectClaudeDir = path.join(projectDir, ".claude");
+  const projectFlowtaskDir = path.join(projectClaudeDir, "flowtask");
+
   return {
     projectDir,
-    claudeDir,
-    skillsDir: path.join(claudeDir, "flowtask", "skills"),
-    sessionStartPath: path.join(claudeDir, "session-start.md"),
-    settingsPath: path.join(claudeDir, "settings.json"),
+    homeDir,
+    claudeUserDir,
+    runtimeRoot,
+    runtimeBinDir: path.join(runtimeRoot, "bin"),
+    runtimeManifestPath: path.join(runtimeRoot, "runtime.json"),
+    runtimeConfigDir: path.join(runtimeRoot, "config"),
+    runtimeVersionsDir: path.join(runtimeRoot, "versions"),
+    projectsIndexPath: path.join(runtimeRoot, "projects.json"),
+    hookScriptPath: path.join(runtimeRoot, "bin", "session-start.mjs"),
+    projectClaudeDir,
+    projectFlowtaskDir,
+    registryPath: path.join(projectFlowtaskDir, "project.json"),
+    projectSettingsPath: path.join(projectClaudeDir, "settings.json"),
+    projectMcpPath: path.join(projectDir, ".mcp.json"),
+    projectAgentsDir: path.join(projectClaudeDir, "agents"),
+    projectCommandsDir: path.join(projectClaudeDir, "commands"),
+    legacySessionStartPath: path.join(projectClaudeDir, "session-start.md"),
   };
 }
 
-function toProjectRelative(projectDir, absolutePath) {
-  return path.relative(projectDir, absolutePath).split(path.sep).join("/");
+/**
+ * Resolve the paths inside the active payload directory.
+ * `manifest` may be the runtime manifest or a payload id string.
+ */
+export function resolveActiveRuntimePaths(runtimeRoot, manifest) {
+  const payloadId = typeof manifest === "string" ? manifest : manifest?.payloadId;
+  if (!payloadId) throw new Error("runtime manifest does not declare a payloadId");
+  const payloadDir = path.join(runtimeRoot, "versions", payloadId);
+  return {
+    payloadId,
+    payloadDir,
+    runnerPath: path.join(payloadDir, "runner.md"),
+    sessionStartPath: path.join(payloadDir, "session-start.md"),
+    skillsDir: path.join(payloadDir, "skills"),
+    scriptsDir: path.join(payloadDir, "scripts"),
+    binLibDir: path.join(payloadDir, "bin", "lib"),
+  };
+}
+
+/** Exact hook command that launches the runtime script without relying on PATH. */
+export function buildSessionStartHookCommand(runtimeRoot, nodePath = process.execPath) {
+  return `"${nodePath}" "${path.join(runtimeRoot, "bin", "session-start.mjs")}"`;
+}
+
+/** Write a file atomically: temp file in the same directory, then rename. */
+export function writeFileAtomic(filePath, content) {
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true });
+  const tempPath = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
+  try {
+    fs.writeFileSync(tempPath, content);
+    fs.renameSync(tempPath, filePath);
+    return true;
+  } catch (error) {
+    try { fs.rmSync(tempPath, { force: true }); } catch { /* already gone */ }
+    throw error;
+  }
+}
+
+/** SHA-256 hex digest of a file. */
+export function sha256File(filePath) {
+  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
 // ─── Startup block and skill index ────────────────────────────────────────────
@@ -55,9 +131,8 @@ export function extractSkillReferences(runnerBody) {
 /**
  * Build the startup block reused by CLAUDE.md and .claude/session-start.md.
  */
-export function buildStartupBlock(claudePaths) {
-  const skillRead = (name) =>
-    toProjectRelative(claudePaths.projectDir, path.join(claudePaths.skillsDir, name, "SKILL.md"));
+export function buildStartupBlock({ skillsDir, runnerPath }) {
+  const skillRead = (name) => path.join(skillsDir, name, "SKILL.md");
 
   return [
     "## Startup — run before answering",
@@ -69,32 +144,30 @@ export function buildStartupBlock(claudePaths) {
     '3. Load heuristics with `mem_search(query: "heuristic", scope: "project")` and `mem_search(query: "heuristic", scope: "personal")`; when the same key exists in both scopes, the project value wins.',
     "4. Read the startup skills with **Read**:",
     ...STARTUP_SKILLS.map((name) => `   - \`${skillRead(name)}\``),
-    "5. Show your identity at the start of every response: `[capa: orquestador] {base_name}`. Replace `{base_name}` with the BaseName assigned in the handshake; if no name is assigned, say the identity is unavailable instead of inventing one.",
+    `5. Read the runner definition with **Read**: \`${runnerPath}\``,
+    "6. Show your identity at the start of every response: `[capa: orquestador] {base_name}`. Replace `{base_name}` with the BaseName assigned in the handshake; if no name is assigned, say the identity is unavailable instead of inventing one.",
   ].join("\n");
 }
 
 /**
  * Build the full skill index from runner.md, resolved against the installed skills.
  */
-export function buildSkillIndex(runnerBody, claudePaths) {
+export function buildSkillIndex(runnerBody, { skillsDir }) {
   const references = extractSkillReferences(runnerBody);
   const missing = references.filter(
-    (name) => !fileExists(path.join(claudePaths.skillsDir, name, "SKILL.md")),
+    (name) => !fileExists(path.join(skillsDir, name, "SKILL.md")),
   );
 
   if (missing.length > 0) {
     throw new Error(
-      `Skill index references skills that are not installed in ${claudePaths.skillsDir}: ${missing.join(", ")}. ` +
+      `Skill index references skills that are not installed in ${skillsDir}: ${missing.join(", ")}. ` +
         `Install the canonical skills or fix "${SKILLS_SECTION_HEADING}" in runner.md.`,
     );
   }
 
   const lines = references.map((name) => {
-    const relativePath = toProjectRelative(
-      claudePaths.projectDir,
-      path.join(claudePaths.skillsDir, name, "SKILL.md"),
-    );
-    return `- \`skill({ name: "${name}" })\` → **Read** \`${relativePath}\``;
+    const skillPath = path.join(skillsDir, name, "SKILL.md");
+    return `- \`skill({ name: "${name}" })\` → **Read** \`${skillPath}\``;
   });
 
   return [
@@ -125,19 +198,19 @@ export function generateClaudeSessionStart(flowtaskDir, projectDir, runnerBodyOv
     return;
   }
 
+  const skillsDir = path.join(claudePaths.runtimeRoot, "skills");
+  const runnerPath = path.join(claudePaths.runtimeRoot, "runner.md");
   const content = [
     "# FlowTask session start",
     "",
-    buildStartupBlock(claudePaths),
+    buildStartupBlock({ skillsDir, runnerPath }),
     "",
-    buildSkillIndex(runnerBody, claudePaths),
+    buildSkillIndex(runnerBody, { skillsDir }),
     "",
   ].join("\n");
 
-  const dir = path.dirname(claudePaths.sessionStartPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(claudePaths.sessionStartPath, content, "utf8");
-  logSuccess(`Claude Code startup written to ${claudePaths.sessionStartPath}.`);
+  writeFileAtomic(claudePaths.legacySessionStartPath, content);
+  logSuccess(`Claude Code startup written to ${claudePaths.legacySessionStartPath}.`);
 }
 
 // ─── Frontmatter parser ───────────────────────────────────────────────────────
@@ -279,11 +352,13 @@ export function generateClaudeMd(flowtaskDir, projectDir, runnerBodyOverride = n
   }
 
   const claudePaths = resolveClaudePaths(projectDir);
+  const runtimeSkillsDir = path.join(claudePaths.runtimeRoot, "skills");
+  const runtimeRunnerPath = path.join(claudePaths.runtimeRoot, "runner.md");
   const adaptationHeader = `# FlowTask Runner
 
 You are the FlowTask runner. Your operational definition follows.
 
-${buildStartupBlock(claudePaths)}
+${buildStartupBlock({ skillsDir: runtimeSkillsDir, runnerPath: runtimeRunnerPath })}
 
 ## Claude Code adaptations
 
@@ -293,7 +368,7 @@ ${buildStartupBlock(claudePaths)}
 
 Subagents are in \`.claude/agents/flowtask-*.md\`.
 
-${buildSkillIndex(runnerBody, claudePaths)}
+${buildSkillIndex(runnerBody, { skillsDir: runtimeSkillsDir })}
 
 **Classification**: FLOWTASK_CLASSIFICATION is unavailable in Claude Code — always use \`manual-classification\` as a fallback.
 
