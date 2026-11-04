@@ -29,7 +29,7 @@ afterEach(async () => {
 
 // --- contexto V2 falso: captura execute.before / execute.after / prompt ---
 
-async function createGate(directory = process.cwd()) {
+async function createGate(directory = makeLayeredRoot()) {
   const callbacks = {};
   const disposals = [];
   let seq = 0;
@@ -101,6 +101,7 @@ function makeRepo(root, branch = "main") {
   fs.writeFileSync(path.join(root, "seed.txt"), "seed\n");
   git("add", "seed.txt");
   git("commit", "-m", "seed");
+  writeValidLayers(root);
   return root;
 }
 
@@ -137,6 +138,21 @@ function writeLayers(root, { autonomy = { version: 1, profile: "autonomous-dev" 
     );
   }
   return configDir;
+}
+
+/** Escribe las dos capas válidas que el gate V2 exige al runner. */
+function writeValidLayers(root) {
+  writeLayers(root, {
+    autonomy: { version: 1, profile: "autonomous-dev" },
+    permissions: { version: 1, envelope: "standard" },
+  });
+}
+
+/** Directorio de sesión con capas válidas; el gate V2 deniega si faltan. */
+function makeLayeredRoot(prefix = "flowtask-gate-layers-") {
+  const root = makeTemp(prefix);
+  writeValidLayers(root);
+  return root;
 }
 
 async function runGate(gate, workdir, sessionID = "s-commit") {
@@ -233,7 +249,7 @@ test("legacy task contract remains blocked under the V2 gate", async () => {
  *   agente no autorizado rechazan con RUNNER_DELEGATION_MESSAGE.
  */
 test("C3 V2: la inspección permitida se ejecuta y el efecto externo se deniega con la derivación", async () => {
-  const gate = await createGate(makeTemp("flowtask-gate-c3-"));
+  const gate = await createGate(makeLayeredRoot("flowtask-gate-c3-"));
   const sessionID = "s-c3";
 
   for (const [tool, input] of [
@@ -795,6 +811,48 @@ test("C7 V2: sin permissions.json el hook deniega con capa, archivo, causa y acc
     agent: "flowtask-runner",
     input: { file: "package.json", limit: 5 },
   });
+});
+
+/**
+ * gap_ref: C3
+ * criterio: sin ningún archivo de capa en ningún directorio candidato, el
+ *   runner es denegado con el mensaje operativo (capa, archivo esperado, causa
+ *   de ausencia, acción).
+ * defecto: la ausencia total se trata como "la comprobación no aplica" y el
+ *   Runner ejecuta con límites ampliados.
+ * why_not_detected: la suite vigente afirmaba el fail-open en el resolver y en
+ *   la condición del hook; el caso C7 solo cubre capa incompleta o inválida.
+ * comportamiento observable: con un target temporal sin autonomy.json ni
+ *   permissions.json, execute.before rechaza una lectura permitida con el
+ *   mensaje exacto de la capa permissions y la ruta del primer candidato.
+ */
+test("V2: un target sin ningún archivo de capa deniega al runner con el mensaje operativo", async () => {
+  const root = makeTemp("flowtask-gate-absent-");
+  const permissionsPath = path.join(root, ".opencode", "flowtask", "config", "permissions.json");
+  const gate = await createGate(root);
+
+  await assert.rejects(
+    gate.before({
+      tool: "read",
+      sessionID: "s-absent",
+      agent: "flowtask-runner",
+      input: { file: "package.json", limit: 5 },
+    }),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.equal(
+        error.message,
+        [
+          "[FlowTask Permission Gate] Missing or invalid permissions layer.",
+          `File: ${permissionsPath}`,
+          "Cause: missing permissions layer: the target declares no layer configuration",
+          "Action: fix the layer or run flowtask update; the Runner does not execute tools with expanded limits.",
+        ].join("\n"),
+        "la ausencia total debe denegar con capa, archivo esperado, causa y acción",
+      );
+      return true;
+    },
+  );
 });
 
 // --- context-budget: presupuesto de contexto read/glob/grep del runner ---

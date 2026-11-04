@@ -65,7 +65,9 @@ current technical gate and adds no capability.
 `permissions.json` is the source, and in that source both files must exist and
 be valid. Candidates are tried in order: `.opencode/flowtask/config`,
 `.claude/flowtask/config` (legacy per-project location),
-`.vscode/flowtask/config`, and `.flowtask/config`.
+`.vscode/flowtask/config`, and `.flowtask/config`. When no candidate contains
+either file, the target declares no layer configuration and the gate denies with
+the permissions-layer message; absence is not a pass.
 
 This plugin is the OpenCode runtime control. It does not govern Claude Code
 sessions: Claude Code reads its three layers from the user-level
@@ -81,7 +83,7 @@ configuration; new installations do not create it.
 | `permissions.json` has an unknown `envelope` | Denial with the same cause and the unknown value named. |
 | `autonomy.json` is missing in the source | Denial with `[FlowTask Permission Gate] Missing or invalid autonomy layer.` |
 | `autonomy.json` has an unknown `profile` | Denial with the same cause and the unknown value named. |
-| The target declares no layer configuration | The check does not apply: the current technical envelope (the allowlist) remains the limit. |
+| The target declares no layer configuration | Denial with `[FlowTask Permission Gate] Missing or invalid permissions layer.`, the expected file, the cause (the target declares no layer configuration), and the action. |
 
 The denial message names the layer, the file, the cause, and the action:
 
@@ -99,9 +101,12 @@ allowlist and the list of authorized subagents are not expanded.
 **Smoke.** In an installed target, delete `permissions.json`, restart OpenCode,
 and verify that a runner tool is denied with the operational message;
 restore the file, restart OpenCode, and verify that the allowed operation
-works again. The actual denial depends on OpenCode reloading the installed
-package: fixture tests verify the parser, the message, and parity,
-not the load cycle.
+works again. Then delete both `autonomy.json` and `permissions.json` (or use an
+empty target), restart OpenCode, and verify the same permissions denial with the
+expected file, the cause of absence, and the action; restore both files, restart
+OpenCode, and verify that the allowed operation works again. The actual denial
+depends on OpenCode reloading the installed package: fixture tests verify the
+parser, the message, and parity, not the load cycle.
 
 ## Context budget
 
@@ -349,3 +354,10 @@ fixture tests only verify the script and do not replace this test.
    with `[FlowTask Permission Gate] Missing or invalid permissions layer.` and the
    cause and recommended action. Restore the file, restart OpenCode, and
    repeat: the allowed operation works again.
+9. Test the total absence of layer configuration: delete both
+   `.opencode/flowtask/config/autonomy.json` and
+   `.opencode/flowtask/config/permissions.json` (or use an empty target),
+   restart OpenCode, and invoke a runner tool. Expected result: the tool is
+   denied with `[FlowTask Permission Gate] Missing or invalid permissions layer.`,
+   the expected file, the cause of absence, and the recommended action. Restore
+   both files, restart OpenCode, and repeat: the allowed operation works again.
