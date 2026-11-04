@@ -253,7 +253,6 @@ describe("agent-loop-progress skill contract", () => {
       "F1.",
       "F2.",
       "AgentRun",
-      "Hermes",
       "Runner",
       "Engram",
       "mem_save",

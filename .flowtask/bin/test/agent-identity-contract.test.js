@@ -40,15 +40,22 @@ const subagents = definitions.filter((definition) => definition.mode === "subage
 const SUBAGENT_IDENTITY_SECTION = "## Identidad de capa";
 
 describe("contrato de identidad por capas", () => {
-  it("declara las tres capas y el nombre reservado", () => {
+  it("declara las dos capas sin reserva", () => {
     for (const document of [handshake, docs]) {
-      assert.match(document, /núcleo Hermes/);
       assert.match(document, /orquestador/);
       assert.match(document, /subagente/);
     }
-    assert.match(handshake, /Hermes/);
-    assert.match(handshake, /reserva nominal dev-only/);
-    assert.match(docs, /dev-only nominal reservation/);
+    assert.match(handshake, /dos capas separadas/);
+    assert.match(docs, /two separate layers/);
+    assert.doesNotMatch(handshake, /reserva nominal/i);
+    assert.doesNotMatch(docs, /nominal reservation/i);
+  });
+
+  it("declara el rechazo de capa desconocida sin alias", () => {
+    assert.match(handshake, /layer_unknown/);
+    assert.match(handshake, /sin alias/);
+    assert.match(docs, /rejected as unknown/);
+    assert.match(docs, /without alias/);
   });
 
   it("expone el parámetro work_kind y el contrato de salida completo", () => {
@@ -134,20 +141,19 @@ describe("identidad visible en los agentes", () => {
     }
   });
 
-  it("impide que un subagente se presente como orquestador o como núcleo Hermes", () => {
+  it("impide que un subagente se presente como orquestador", () => {
     for (const definition of subagents) {
       assert.doesNotMatch(
         definition.content,
-        /\[capa: orquestador\]|\[capa: núcleo Hermes\]/,
+        /\[capa: orquestador\]/,
         `${definition.file} no puede presentar otra capa`,
       );
     }
   });
 
-  it("identifica al orquestador y a la reserva dev-only en el runner", () => {
+  it("identifica al orquestador en el runner", () => {
     const runnerContent = flat(readComposedRunner({ root: ROOT }));
     assert.match(runnerContent, /\[capa: orquestador\]/);
-    assert.match(runnerContent, /\[capa: núcleo Hermes\] Hermes \(dev-only\)/);
     assert.match(runnerContent, /\{identity_display\}/);
     assert.match(runnerContent, /layer: "orchestrator"/);
     assert.match(runnerContent, /layer_label: "orquestador"/);
