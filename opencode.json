@@ -1,5 +1,15 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "warming": {
+    "prompt": "No realices ninguna acción. Responde exactamente con: «OK»",
+    "interval": "4 minutes",
+    "duration": "40 minutes"
+  },
+  "compaction": {
+    "auto": true,
+    "keep": { "tokens": 50000 },
+    "buffer": "15%"
+  },
   "default_agent": "flowtask-runner",
   "mcp": {
     "engram": {
@@ -20,6 +30,7 @@
     }
   },
   "agents": {
+    "compaction": { "model": "opencode-go/deepseek-v4-pro#max" },
     "flowtask-runner": {
       "description": "Orchestrator of FlowTask workflow. Activates subagents, manages state via Engram. Only agent the user talks to directly.",
       "mode": "primary",
