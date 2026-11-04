@@ -14,6 +14,7 @@ const COL_GAP = 1;
 const SYNC_TARGET_WIDTH = 11;
 const WARNING_WRAP_WIDTH = 61;
 const WARNING_PREFIX = /^⚠️?\s*/;
+const ANSI_PATTERN = /\x1b\[[0-9;]*[A-Za-z]/g;
 const ACTION_PATTERN = /flowtask (update|install)|https?:\/\//i;
 const ACTION_SUFFIX = " · run flowtask update --verbose for details";
 const STATE_GLYPHS = { ok: "✓", warn: "!", fail: "✗" };
@@ -113,53 +114,130 @@ function gradientColorAt(position, total) {
   return `#${hex(channel(from.r, to.r))}${hex(channel(from.g, to.g))}${hex(channel(from.b, to.b))}`;
 }
 
+function codePointWidth(codePoint) {
+  if (
+    codePoint === 0x200d ||
+    (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
+    (codePoint >= 0xe0100 && codePoint <= 0xe01ef)
+  ) {
+    return 0;
+  }
+  if (
+    (codePoint >= 0x1100 && codePoint <= 0x115f) ||
+    (codePoint >= 0x2e80 && codePoint <= 0x303e) ||
+    (codePoint >= 0x3041 && codePoint <= 0x33ff) ||
+    (codePoint >= 0x3400 && codePoint <= 0x4dbf) ||
+    (codePoint >= 0x4e00 && codePoint <= 0x9fff) ||
+    (codePoint >= 0xa000 && codePoint <= 0xa4cf) ||
+    (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+    (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+    (codePoint >= 0xfe10 && codePoint <= 0xfe19) ||
+    (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
+    (codePoint >= 0xff00 && codePoint <= 0xff60) ||
+    (codePoint >= 0xffe0 && codePoint <= 0xffe6) ||
+    (codePoint >= 0x1f300 && codePoint <= 0x1f5ff) ||
+    (codePoint >= 0x1f600 && codePoint <= 0x1f64f) ||
+    (codePoint >= 0x1f680 && codePoint <= 0x1f6ff) ||
+    (codePoint >= 0x1f900 && codePoint <= 0x1f9ff) ||
+    (codePoint >= 0x1fa70 && codePoint <= 0x1faff) ||
+    (codePoint >= 0x20000 && codePoint <= 0x3fffd)
+  ) {
+    return 2;
+  }
+  return 1;
+}
+
+function displayWidth(text) {
+  const value = String(text ?? "").replace(ANSI_PATTERN, "");
+  let width = 0;
+  for (const character of value) {
+    width += codePointWidth(character.codePointAt(0));
+  }
+  return width;
+}
+
 function truncateTo(text, width) {
-  const value = String(text ?? "");
+  const value = String(text ?? "").replace(ANSI_PATTERN, "");
   if (width <= 0) return "";
-  if (value.length <= width) return value;
-  return `${value.slice(0, width - 1)}…`;
+  if (displayWidth(value) <= width) return value;
+  const target = width - 1;
+  let result = "";
+  let used = 0;
+  for (const character of value) {
+    const characterWidth = codePointWidth(character.codePointAt(0));
+    if (used + characterWidth > target) break;
+    result += character;
+    used += characterWidth;
+  }
+  return `${result.replace(/\u200d+$/u, "")}…`;
 }
 
 function padRight(text, width) {
   const value = String(text ?? "");
-  return value.length >= width ? value : `${value}${" ".repeat(width - value.length)}`;
+  const current = displayWidth(value);
+  return current >= width ? value : `${value}${" ".repeat(width - current)}`;
 }
 
 function padLeft(text, width) {
   const value = String(text ?? "");
-  return value.length >= width ? value : `${" ".repeat(width - value.length)}${value}`;
+  const current = displayWidth(value);
+  return current >= width ? value : `${" ".repeat(width - current)}${value}`;
 }
 
 function center(text, width) {
   const value = String(text ?? "");
-  const total = Math.max(0, width - value.length);
+  const total = Math.max(0, width - displayWidth(value));
   const left = Math.floor(total / 2);
   return `${" ".repeat(left)}${value}${" ".repeat(total - left)}`;
 }
 
+function splitByDisplayWidth(text, width) {
+  const chunks = [];
+  let current = "";
+  let used = 0;
+  for (const character of text) {
+    const characterWidth = codePointWidth(character.codePointAt(0));
+    if (current && used + characterWidth > width) {
+      chunks.push(current);
+      current = "";
+      used = 0;
+    }
+    current += character;
+    used += characterWidth;
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
 function wrapText(text, width) {
-  const words = String(text ?? "").split(/\s+/).filter((word) => word.length > 0);
+  const value = String(text ?? "").replace(ANSI_PATTERN, "");
+  const words = value.split(/\s+/).filter((word) => displayWidth(word) > 0);
   const lines = [];
   let current = "";
+  let currentWidth = 0;
   for (const word of words) {
-    if (word.length > width) {
+    const wordWidth = displayWidth(word);
+    if (wordWidth > width) {
       if (current) {
         lines.push(current);
         current = "";
+        currentWidth = 0;
       }
-      for (let index = 0; index < word.length; index += width) {
-        lines.push(word.slice(index, index + width));
-      }
+      const chunks = splitByDisplayWidth(word, width);
+      lines.push(...chunks.slice(0, -1));
+      current = chunks[chunks.length - 1] ?? "";
+      currentWidth = displayWidth(current);
       continue;
     }
-    if (!current) {
-      current = word;
-    } else if (current.length + 1 + word.length <= width) {
-      current = `${current} ${word}`;
-    } else {
+    const separatorWidth = current ? 1 : 0;
+    if (current && currentWidth + separatorWidth + wordWidth > width) {
       lines.push(current);
       current = word;
+      currentWidth = wordWidth;
+      continue;
     }
+    current = current ? `${current} ${word}` : word;
+    currentWidth += separatorWidth + wordWidth;
   }
   if (current) lines.push(current);
   return lines;
@@ -273,7 +351,7 @@ export function createUpdateReport({ version, verbose = false, color } = {}) {
     const versionText = version && version !== "unknown" ? `v${version}` : "";
     const right = versionText ? `${versionText}${" ".repeat(3)}` : "";
     const left = `${" ".repeat(LEFT_MARGIN)}${label}`;
-    const fill = " ".repeat(Math.max(0, INNER_WIDTH - left.length - right.length));
+    const fill = " ".repeat(Math.max(0, INNER_WIDTH - displayWidth(left) - displayWidth(right)));
     const segments = [
       { text: "│", style: borderStyle(0) },
       { text: " ".repeat(LEFT_MARGIN), style: { bg: BRAND_BACKGROUND } },
@@ -359,7 +437,7 @@ export function createUpdateReport({ version, verbose = false, color } = {}) {
     lines.forEach((line, index) => {
       const indent = " ".repeat(LEFT_MARGIN + 2);
       const prefix = index === 0 ? `${" ".repeat(LEFT_MARGIN)}${glyph} ` : indent;
-      const contentWidth = prefix.length + line.length;
+      const contentWidth = displayWidth(prefix) + displayWidth(line);
       print(render([
         { text: "│", style: borderStyle(0) },
         { text: prefix, style: { fg: color } },
@@ -387,9 +465,9 @@ export function createUpdateReport({ version, verbose = false, color } = {}) {
     pieces.push({ text: formatDuration(Date.now() - startedAt), style: { fg: TIME_COLOR } });
     const badge = failed ? " FAILED " : " COMPLETE ";
     const badgeStyle = failed ? FAILED_BADGE : COMPLETE_BADGE;
-    const leftAvailable = INNER_WIDTH - LEFT_MARGIN - 1 - badge.length - 1;
+    const leftAvailable = INNER_WIDTH - LEFT_MARGIN - 1 - displayWidth(badge) - 1;
     let left = pieces.map(({ text }) => text).join("   ");
-    while (pieces.length > 0 && left.length > leftAvailable) {
+    while (pieces.length > 0 && displayWidth(left) > leftAvailable) {
       pieces.pop();
       left = pieces.map(({ text }) => text).join("   ");
     }
@@ -401,7 +479,7 @@ export function createUpdateReport({ version, verbose = false, color } = {}) {
       if (index > 0) segments.push({ text: "   " });
       segments.push(piece);
     });
-    segments.push({ text: " ".repeat(Math.max(0, leftAvailable - left.length)) });
+    segments.push({ text: " ".repeat(Math.max(0, leftAvailable - displayWidth(left))) });
     segments.push({ text: " " });
     segments.push({ text: badge, style: { fg: badgeStyle.text, bg: badgeStyle.background } });
     segments.push({ text: " " });
