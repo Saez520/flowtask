@@ -26,7 +26,8 @@ export function parsePermissionsLayer(raw: string): LayerParseResult;
  * The first candidate directory that contains `autonomy.json` or
  * `permissions.json` is the source: both files must exist and be valid there.
  * When no candidate contains a layer, the target declares no layer
- * configuration and the check does not apply.
+ * configuration: the result is a failure with `configDir: null` and the gate
+ * denies with the permissions-layer message.
  *
  * @param {string[]} directories
  * @returns {OperationalLayersOk | OperationalLayersError}

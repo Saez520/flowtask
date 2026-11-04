@@ -292,10 +292,11 @@ export default Plugin.define({
             if (isRunner(agent)) {
                 // Permissions layer: autonomy and permissions must exist and be
                 // valid in the target before applying the technical allowlist. Autonomy
-                // does not authorize: it only checks that the layer is healthy.
+                // does not authorize: it only checks that the layer is healthy. An
+                // absent configuration is also a denial, not a pass.
                 const layerWorkdir = readWorkdir(input, sessionDir);
                 const operationalLayers = readOperationalLayers([layerWorkdir, sessionDir]);
-                if (!operationalLayers.ok && operationalLayers.configDir) {
+                if (!operationalLayers.ok) {
                     throw new Error(buildLayerBlockMessage(operationalLayers));
                 }
                 if (!runnerToolAllowed(event.tool, input))
