@@ -8,7 +8,7 @@ import {
 } from "./logger.js";
 import { copyWithProgress, copyDirectoryDelta, pruneDirectoryExtras, verifyDirectoryMirror } from "./copy.js";
 import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
-import { generateClaudeAgents, generateClaudeCommands, generateClaudeMd, mergeClaudeSettings, mergeClaudeMcpConfig } from "./claude.js";
+import { generateClaudeAgents, generateClaudeCommands, generateClaudeMd, generateClaudeSessionStart, mergeClaudeSettings, mergeClaudeMcpConfig } from "./claude.js";
 import { showInteractiveSelector } from "./ui.js";
 import { coordinateGraphify } from "./graphify.js";
 import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA, classifyOwnership, replaceManagedPackage } from "./ownership.js";
@@ -1573,6 +1573,7 @@ ${COLORS.blue}╔═════════════════════
         );
         if (autonomyDescriptor) runnerBody = injectAutonomyIntoRunnerContent(runnerBody, autonomyDescriptor);
         generateClaudeMd(flowtaskDir, projectDir, runnerBody);
+        generateClaudeSessionStart(flowtaskDir, projectDir, runnerBody);
       }
 
       // ── Step 5: Install plugins from manifest (OpenCode only) ────────────
@@ -1772,6 +1773,7 @@ ${COLORS.blue}╔═════════════════════
         );
         if (autonomyDescriptor) runnerBody = injectAutonomyIntoRunnerContent(runnerBody, autonomyDescriptor);
         generateClaudeMd(flowtaskDir, projectDir, runnerBody);
+        generateClaudeSessionStart(flowtaskDir, projectDir, runnerBody);
       }
 
       fs.writeFileSync(

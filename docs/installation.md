@@ -27,7 +27,7 @@ flowtask install
 
 The installer interactively selects OpenCode, VS Code, and Claude Code targets. One or more can be checked; confirming without checking any installs standalone in `.flowtask/`. It then selects a personality: `training`, `mid`, `senior`, or `custom`. `--persona` skips personality selection, not target selection; without a TTY the installation fails explicitly.
 
-During `install` it copies resources, skills, and scripts; for Claude it generates agents, commands, settings, MCP, and `CLAUDE.md`; for OpenCode it installs plugins from the manifest in `.opencode/plugins` and generates `.opencode/opencode.json` and `.opencode/tui.json`; it writes `config/profile.json`, `config/review.json`, `config/autonomy.json`, `config/permissions.json`, and `.installation-method` in the target; and it coordinates Graphify/ferris-search according to the installer's questions.
+During `install` it copies resources, skills, and scripts; for Claude it generates agents, commands, settings, MCP, `session-start.md`, and `CLAUDE.md`; for OpenCode it installs plugins from the manifest in `.opencode/plugins` and generates `.opencode/opencode.json` and `.opencode/tui.json`; it writes `config/profile.json`, `config/review.json`, `config/autonomy.json`, `config/permissions.json`, and `.installation-method` in the target; and it coordinates Graphify/ferris-search according to the installer's questions.
 
 ## Target configuration layers
 
@@ -64,9 +64,19 @@ The full contract is in
 | Target | Installation | Derived files |
 | --- | --- | --- |
 | OpenCode | `.opencode/flowtask/` and `.opencode/skills/` | `.opencode/opencode.json`, `.opencode/tui.json`, `.opencode/plugins/` |
-| Claude Code | `.claude/flowtask/` | `.claude/agents/`, `.claude/commands/`, `.claude/settings.json`, `.mcp.json`, `CLAUDE.md` |
+| Claude Code | `.claude/flowtask/` | `.claude/agents/`, `.claude/commands/`, `.claude/settings.json`, `.claude/session-start.md`, `.mcp.json`, `CLAUDE.md` |
 | VS Code | `.vscode/flowtask/` | mirror of the VS Code target |
 | Standalone | `.flowtask/` | agents, commands, skills, plugins, and scripts |
+
+## Claude Code startup and skills
+
+For a Claude Code target, `install` and `update` generate `.claude/session-start.md` and write the same startup block at the top of `CLAUDE.md`. The block asks a new session, without waiting for the user to request it, to load the Engram tools with ToolSearch, run `mem_context`, load project and personal heuristics, read the `investigacion`, `memory-protocol`, and `zero-assumptions` skills, and show the orchestrator identity line with the `{base_name}` placeholder resolved by the handshake.
+
+The skill index is generated from the `## Skills disponibles` section of `runner.md`: every skill declared there is mapped to its installed `Read` path. The index does not list the whole skills directory. If a declared skill is missing from `.claude/flowtask/skills/`, generation fails with an error that names the missing skills.
+
+`.claude/settings.json` receives a `SessionStart` hook that prints `.claude/session-start.md` through `cat "$CLAUDE_PROJECT_DIR/.claude/session-start.md"`, so the block also enters the session through the hook regardless of the working directory. The hook matcher covers `startup`, `resume`, `clear`, `compact`, and `fork`, so the startup context survives a lost or compacted context. The hook merge is additive and idempotent: it adds an entry only when the same matcher and command are absent, preserves hooks added by the user, and never replaces hook arrays through an object deep merge. If the existing `settings.json` or `.mcp.json` is not valid JSON, the installer reports the problem and leaves the file byte-identical instead of overwriting it.
+
+`update` rewrites only the section delimited by `<!-- FLOWTASK:START -->` and `<!-- FLOWTASK:END -->` in `CLAUDE.md`; content outside those markers is preserved. The generated agents inherit no `model` field, so a model pinned in a generated agent comes from an external edit.
 
 ## Update
 
@@ -75,7 +85,7 @@ flowtask update
 flowtask update --persona senior
 ```
 
-`update` detects `.installation-method` markers, synchronizes the delta, preserves preservable paths, reinstalls plugins, regenerates configuration, and coordinates Graphify. Without a marker, run `install` first. On a Claude target it regenerates `CLAUDE.md`; on OpenCode it regenerates the TUI declaration and cleans the legacy `tui.json` when it verifies the destination.
+`update` detects `.installation-method` markers, synchronizes the delta, preserves preservable paths, reinstalls plugins, regenerates configuration, and coordinates Graphify. Without a marker, run `install` first. On a Claude target it regenerates `CLAUDE.md`, `session-start.md`, and the skill index while preserving content outside the FlowTask markers; on OpenCode it regenerates the TUI declaration and cleans the legacy `tui.json` when it verifies the destination.
 
 ## Worktree Manager
 
