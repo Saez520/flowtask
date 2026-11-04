@@ -89,36 +89,41 @@ flowtask update --persona senior
 
 ## Worktree Manager
 
-The worktree manager is published once at the user's global level in
+The installer downloads the worktree manager from the public npm registry as
+`worktree-for-agents@latest` and publishes it once at the user's global level in
 FlowTask's global directory (`$XDG_CONFIG_HOME/flowtask/worktree-manager`
 or `~/.config/flowtask/worktree-manager`; on Windows `%APPDATA%/FlowTask/worktree-manager`).
-The `.flowtask/scripts/worktree-manager/` submodule remains the source of the copy;
-the consumer target receives no copy of the manager or the submodule.
+The consumer target receives no copy of the manager.
 
-The installer publishes a managed copy with an ownership marker
-(`.flowtask-worktree-manager-owner.json`) that records the version, source
-commit, and managed-file manifest. Destination classification is
+The published copy is managed with an ownership marker
+(`.flowtask-worktree-manager-owner.json`) that records `source: "npm"`, the
+installed version, and the managed-file manifest. Destination classification is
 `ABSENT`, `MANAGED`, `EXTERNAL`, or `AMBIGUOUS`; only the first two are published.
-An `EXTERNAL` or `AMBIGUOUS` destination fails closed without modifying it.
+An `EXTERNAL` or `AMBIGUOUS` destination fails closed without modifying it. A
+managed copy published with `source: "submodule"` is overwritten and its marker
+records the npm origin.
 
 `flowtask update` overwrites the managed copy, warns only when the version
 changes, preserves unmanaged files, and deletes only files from the previous
 manifest that no longer exist. An unmanaged file with the same name as a managed
 one is overwritten because it belongs to the manifest.
 
-Consumption resolves the copy in this order: global installation, consumer
-repository, session directory. A valid checkout requires
-`worktree_manager/__main__.py` and `worktree_manager/mcp_transport.py`. If no
-location is valid, the operation fails with a message that names the expected
-global path and the `flowtask install` action.
+Consumption resolves the manager only from the global installation. A valid
+installation requires `worktree_manager/__main__.py` and
+`worktree_manager/mcp_transport.py`. If the global copy is missing or broken,
+the operation fails with a message that names the expected global path and the
+`flowtask install` action.
 
-The standalone manager is published on npm as `worktree-for-agents`; it is installed
-with npm or pnpm and does not expose a bin or `npx`. Its MCP publishes the seven operations
-and the guide in `initialize.instructions`. The FlowTask integration keeps the
-submodule and the global copy during the transition, and the bridge
-`flowtask_worktree_consume` remains its surface. The npm package is
-independent and coexists with the global copy; `node <package>/setup.mjs`
-diagnoses which installation is active.
+The standalone manager is published on npm as `worktree-for-agents`; it does not
+expose a bin or `npx`. Its MCP publishes the seven operations and the guide in
+`initialize.instructions`. The FlowTask bridge `flowtask_worktree_consume`
+remains the only surface exposed to the assistant.
+
+If the download fails because the registry is unreachable or the package is
+incomplete, `install` and `update` continue with the rest of the installation
+and warn that worktrees are not available, with the cause and the required
+action (`flowtask update` when the registry is reachable). A failed update leaves
+the previous copy untouched.
 
 If the machine does not have a compatible Python (floor 3.9), the complete
 installation is blocked with a diagnosis and a non-exit status, without leaving

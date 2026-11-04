@@ -1,7 +1,7 @@
 import { resolve, join } from "node:path";
 import { existsSync, statSync } from "node:fs";
 
-export type WorktreeManagerSource = "global" | "repo" | "session";
+export type WorktreeManagerSource = "global";
 
 export function globalWorktreeManagerDirectory(options?: { env?: Record<string, string | undefined>; home?: string }): string {
   const env = options?.env ?? process.env;
@@ -27,23 +27,14 @@ export function isValidManagerCheckout(dir: string): boolean {
 }
 
 export function resolveWorktreeManagerLocation(options: {
-  repoRoot: string;
-  sessionDir: string;
   env?: Record<string, string | undefined>;
   home?: string;
-}): { directory: string; source: WorktreeManagerSource } | null {
-  const candidates: Array<{ directory: string; source: WorktreeManagerSource }> = [
-    { directory: globalWorktreeManagerDirectory({ env: options.env, home: options.home }), source: "global" },
-    { directory: resolve(options.repoRoot, ".flowtask", "scripts", "worktree-manager"), source: "repo" },
-    { directory: resolve(options.sessionDir, ".flowtask", "scripts", "worktree-manager"), source: "session" },
-  ];
-  for (const candidate of candidates) {
-    if (isValidManagerCheckout(candidate.directory)) return candidate;
-  }
-  return null;
+} = {}): { directory: string; source: WorktreeManagerSource } | null {
+  const directory = globalWorktreeManagerDirectory({ env: options.env, home: options.home });
+  return isValidManagerCheckout(directory) ? { directory, source: "global" } : null;
 }
 
-export function missingManagerCause(options: { repoRoot: string; sessionDir: string; env?: Record<string, string | undefined>; home?: string }): string {
+export function missingManagerCause(options: { env?: Record<string, string | undefined>; home?: string } = {}): string {
   const globalDir = globalWorktreeManagerDirectory({ env: options.env, home: options.home });
   return `Worktree Manager is not installed at ${globalDir}. Run 'flowtask install' to install the global dependency.`;
 }

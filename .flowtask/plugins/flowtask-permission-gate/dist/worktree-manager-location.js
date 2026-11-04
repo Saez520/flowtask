@@ -20,19 +20,11 @@ export function isValidManagerCheckout(dir) {
         return false;
     }
 }
-export function resolveWorktreeManagerLocation(options) {
-    const candidates = [
-        { directory: globalWorktreeManagerDirectory({ env: options.env, home: options.home }), source: "global" },
-        { directory: resolve(options.repoRoot, ".flowtask", "scripts", "worktree-manager"), source: "repo" },
-        { directory: resolve(options.sessionDir, ".flowtask", "scripts", "worktree-manager"), source: "session" },
-    ];
-    for (const candidate of candidates) {
-        if (isValidManagerCheckout(candidate.directory))
-            return candidate;
-    }
-    return null;
+export function resolveWorktreeManagerLocation(options = {}) {
+    const directory = globalWorktreeManagerDirectory({ env: options.env, home: options.home });
+    return isValidManagerCheckout(directory) ? { directory, source: "global" } : null;
 }
-export function missingManagerCause(options) {
+export function missingManagerCause(options = {}) {
     const globalDir = globalWorktreeManagerDirectory({ env: options.env, home: options.home });
     return `Worktree Manager is not installed at ${globalDir}. Run 'flowtask install' to install the global dependency.`;
 }

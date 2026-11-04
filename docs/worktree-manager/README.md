@@ -21,10 +21,10 @@ exit codes, and other technical literals remain exactly as implemented.
 
 ## Source policy
 
-The standalone Worktree Manager implementation and its
-`docs/cli-contract-v1.md` and `docs/mcp-contract.md` take precedence for the
-lifecycle and the interface facts. The FlowTask integration document is
-authoritative for the adapter, the bridge and the submodule boundary. Unverified
-behavior is recorded as a gap and is not presented as a capability. Runtime
-comments and human-readable script, CLI, and MCP messages are outside this
-section.
+The standalone Worktree Manager implementation, distributed as the npm package
+`worktree-for-agents`, and its `docs/cli-contract-v1.md` and `docs/mcp-contract.md`
+take precedence for the lifecycle and the interface facts. The FlowTask
+integration document is authoritative for the adapter, the bridge and the global
+publication boundary. Unverified behavior is recorded as a gap and is not
+presented as a capability. Runtime comments and human-readable script, CLI, and
+MCP messages are outside this section.

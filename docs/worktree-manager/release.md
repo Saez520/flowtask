@@ -2,7 +2,7 @@
 
 This procedure publishes documentation only. It does not change version
 metadata, runtime behavior, comments, messages, tests, configuration, the
-submodule, or the protected artifacts of the previous phases. Every gate
+published package, or the protected artifacts of the previous phases. Every gate
 below is a pass or fail check, and a failed gate stops the publication and is
 recorded as a gap.
 
@@ -11,8 +11,8 @@ recorded as a gap.
 - [ ] Confirm the candidate diff contains only the documents of
   `docs/worktree-manager/` and, when a link is broken, the navigation lines of
   `docs/README.md` and `docs/architecture/INDEX.md`.
-- [ ] Confirm the diff contains no runtime, configuration, test, submodule,
-  gitlink, package manifest, or evidence path.
+- [ ] Confirm the diff contains no runtime, configuration, test, published
+  package, version, or evidence path.
 - [ ] Confirm the diff contains no comment or message change; those belong to
   the later language phase.
 - [ ] Confirm the previous phase artifacts and the protected artifacts of the
@@ -22,15 +22,15 @@ recorded as a gap.
 
 ## Source gate
 
-- [ ] Confirm the base commit, the registered gitlink and the head of the
-  materialized submodule are the ones declared by the phase, and that they did
-  not move.
-- [ ] Confirm that the registered gitlink and the head of the materialized
-  submodule are the same commit, and that the commit exists on the remote.
-- [ ] Confirm every source consulted for the comparison is available in this
-  checkout: the standalone entrypoint, the package, the manager contracts and
-  the transition history, the consumer entrypoint, the adapter and the
-  integration document.
+- [ ] Confirm the base commit and the published npm version of
+  `worktree-for-agents` declared by the phase, and that they did not move.
+- [ ] Confirm that the declared package version is available in the registry and
+  that the reviewed sources match the standalone repository at
+  `https://github.com/Saez520/worktree-manager`.
+- [ ] Confirm every source consulted for the comparison is available in the
+  installed package or in the standalone repository: the entrypoint, the package,
+  the manager contracts and the transition history, the consumer entrypoint, the
+  adapter and the integration document.
 - [ ] Record every unavailable source as a named gap instead of replacing it
   with an inferred behavior.
 
@@ -56,7 +56,7 @@ recorded as a gap.
 
 - [ ] Check the consent, `--discard`, `--preserve-dirty`, the locks, the
   journals, the backups, the conflicts and the `pending_intervention` wording.
-- [ ] Check the parent-only, the target-direct, the submodule/gitlink and the
+- [ ] Check the parent-only, the target-direct, the distribution and the
   adapter boundaries separately.
 - [ ] Ensure no claim implies an automatic merge, an automatic push, a silent
   discard, or a recovery presented as a success.

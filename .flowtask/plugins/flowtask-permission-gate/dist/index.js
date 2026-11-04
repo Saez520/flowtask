@@ -335,16 +335,15 @@ export default async function (input) {
     const sessionDir = input.directory;
     let dispatchSessionID = "";
     /**
-     * The standalone checkout that serves the target repository. The target
-     * repository owns its own copy; the session copy is the fallback for a
-     * repository that does not carry the manager.
+     * The manager is resolved only from the global installation published by the
+     * installer. A repository or session copy is never a second source.
      */
-    const resolveManagerLocation = (repoRoot) => resolveWorktreeManagerLocation({ repoRoot, sessionDir, env: process.env });
+    const resolveManagerLocation = (_repoRoot) => resolveWorktreeManagerLocation({ env: process.env });
     const managerDirectoryFor = (repoRoot) => {
         const location = resolveManagerLocation(repoRoot);
         return location ? location.directory : null;
     };
-    const missingCauseFor = (repoRoot) => missingManagerCause({ repoRoot, sessionDir, env: process.env });
+    const missingCauseFor = (_repoRoot) => missingManagerCause({ env: process.env });
     const worktreeConsumer = createWorktreeConsumerBridge({
         invokeEngram: createConfiguredEngramInvoker(sessionDir),
         isDirectory: (path) => { try {

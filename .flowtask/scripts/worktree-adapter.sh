@@ -5,10 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/worktree-locate.sh"
 
-MANAGER="$SCRIPT_DIR/worktree-manager/worktree.sh"
-if [[ ! -x "$MANAGER" ]]; then
-  MANAGER="$(resolve_worktree_manager)"
-fi
+MANAGER="$(resolve_worktree_manager)"
 if [[ -z "$MANAGER" || ! -x "$MANAGER" ]]; then
   printf '%s\n' "Worktree Manager is not installed. Run 'flowtask install' to install the global dependency." >&2
   exit 1

@@ -136,11 +136,11 @@ descriptor and the snapshot are retained for human intervention.
 ## FlowTask adapter behavior
 
 The consumer entrypoint `.flowtask/scripts/worktree.sh` delegates to
-`.flowtask/scripts/worktree-adapter.sh`, which delegates to
-`.flowtask/scripts/worktree-manager/worktree.sh`, which runs
-`python3 -m worktree_manager`. There is a single lifecycle in that chain. The
-adapter publishes the output of the manager unchanged, and its compatibility
-notices go to stderr without any content of the backups.
+`.flowtask/scripts/worktree-adapter.sh`, which resolves the global copy
+published from npm and runs `python3 -m worktree_manager`. There is a single
+lifecycle in that chain. The adapter publishes the output of the manager
+unchanged, and its compatibility notices go to stderr without any content of the
+backups.
 
 The adapter translates a legacy setting or a legacy transaction only when the
 request asks for it explicitly, and it declares the compatibility it applies.

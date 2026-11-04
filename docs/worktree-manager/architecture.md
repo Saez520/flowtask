@@ -42,12 +42,12 @@ point `__main__.py`, which is what `python3 -m worktree_manager` executes. The
 stdio entry point is `python3 -m worktree_manager.mcp_transport`, and that
 module delegates to `mcp_server.main`.
 
-## Two cooperating repositories
+## Standalone implementation and npm distribution
 
-The standalone `worktree-manager` repository is the implementation source. In
-FlowTask it is materialized at `.flowtask/scripts/worktree-manager/` as the
-submodule recorded by `.gitmodules`. FlowTask must not maintain a second copy
-of the manager core.
+The standalone `worktree-manager` repository is the implementation source and is
+distributed as the npm package `worktree-for-agents`. FlowTask acquires the
+published package and publishes one managed global copy; FlowTask must not
+maintain a second copy of the manager core.
 
 The standalone manager owns:
 
@@ -61,7 +61,7 @@ FlowTask owns:
 - `.flowtask/scripts/worktree.sh`, the consumer entrypoint;
 - `.flowtask/scripts/worktree-adapter.sh`, the compatibility adapter;
 - the consumer bridge and the transport clients;
-- submodule installation and gitlink validation.
+- npm package acquisition and global publication.
 
 The adapter does not commit, merge, or push for a consumer repository. The
 standalone manager does not inspect the paths, refs or variables of the
@@ -91,9 +91,10 @@ persisted descriptor identity with the arguments of the command.
 
 ## Installation boundary
 
-The installer publishes a managed global copy from the submodule source. The
-target does not receive the manager. If the source is unavailable, installation
-fails rather than creating an alternative implementation.
+The installer downloads the published package and publishes a managed global
+copy. The target does not receive the manager. If the package cannot be
+acquired or has no usable transport, the manager is not published and the
+installer reports the outcome according to its download and transport rules.
 
 ## Consumer transport boundary
 
@@ -115,9 +116,9 @@ delivered request is unknown. The manager owns the plan digest, the planned
 transaction identifier, the locks, the journal and the reconciliation; the
 consumer only plans, replays the plan and reports.
 
-## Submodule boundary
+## Distribution boundary
 
-The manager is consumed as a submodule and the registered gitlink is the single
-reference of its version. A vendored copy of the manager core is not
-maintained in the consumer repository, and the manager is never copied into an
-installed target.
+The manager is distributed as the npm package `worktree-for-agents`. FlowTask
+publishes a managed global copy and resolves it only from there. A vendored copy
+of the manager core is not maintained in the consumer repository, and the
+manager is never copied into an installed target.

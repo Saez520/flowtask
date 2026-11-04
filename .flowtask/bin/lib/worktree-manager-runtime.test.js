@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   publishGlobalWorktreeManager,
+  ensureGlobalWorktreeManager,
   classifyGlobalManagerOwnership,
   readManagerVersion,
   formatWorktreeManagerVersionNotice,
@@ -172,6 +173,60 @@ test("a missing source runtime entry fails before the destination is created", (
     /source runtime entry missing: worktree\.sh/,
   );
   assert.equal(fs.existsSync(dest), false);
+});
+
+/**
+ * gap_ref: G3 — C2
+ * defecto: A `submodule` marker could be rejected or keep its old origin after
+ *   update.
+ * why_not_detected: The runtime tests created markers but never asserted the
+ *   origin migration.
+ * comportamiento observable: A MANAGED submodule marker is accepted, the
+ *   updated marker reports `source: "npm"` and `sourceCommit: null`, and
+ *   non-managed files survive.
+ */
+test("a managed submodule marker becomes npm on update and keeps non-managed files", () => {
+  const src = mkTmp();
+  makeSource(src);
+  fs.writeFileSync(path.join(src, "worktree_manager", "__init__.py"), '__version__ = "2.0.0"\n');
+  const dest = path.join(mkTmp(), "worktree-manager");
+  fs.mkdirSync(path.join(dest, "worktree_manager"), { recursive: true });
+  fs.writeFileSync(path.join(dest, "worktree.sh"), "old entrypoint");
+  fs.writeFileSync(path.join(dest, "worktree_manager", "__main__.py"), "old main");
+  fs.writeFileSync(path.join(dest, "worktree_manager", "mcp_transport.py"), "old transport");
+  fs.writeFileSync(path.join(dest, "custom.txt"), "preserve-me");
+  fs.writeFileSync(path.join(dest, WORKTREE_MANAGER_OWNER_FILE), JSON.stringify({
+    schema: 1,
+    managedBy: "flowtask",
+    component: "worktree-manager",
+    source: "submodule",
+    sourceCommit: "584e909",
+    version: "1.0.1",
+    files: ["worktree.sh", "worktree_manager/__main__.py", "worktree_manager/mcp_transport.py"],
+  }));
+
+  assert.equal(classifyGlobalManagerOwnership(dest).state, "MANAGED", "the previous submodule copy is accepted");
+
+  const report = ensureGlobalWorktreeManager({
+    sourceDir: src,
+    destinationDir: dest,
+    source: "npm",
+    version: "2.0.0",
+    detectCapabilities: () => ({
+      transports: ["cli"],
+      cli: { available: true, version: "2.0.0" },
+      mcp: { available: false, cause: "fixture" },
+    }),
+  });
+
+  const marker = JSON.parse(fs.readFileSync(path.join(dest, WORKTREE_MANAGER_OWNER_FILE), "utf8"));
+  assert.equal(marker.source, "npm");
+  assert.equal(marker.sourceCommit, null, "an npm copy has no source commit");
+  assert.equal(marker.version, "2.0.0");
+  assert.equal(report.sourceKind, "npm");
+  assert.equal(report.previousVersion, "1.0.1");
+  assert.equal(report.versionChanged, true);
+  assert.equal(fs.readFileSync(path.join(dest, "custom.txt"), "utf8"), "preserve-me");
 });
 
 test("readManagerVersion returns null without a readable package", () => {

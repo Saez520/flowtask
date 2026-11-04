@@ -10,11 +10,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 const ADAPTER = path.join(ROOT, ".flowtask", "scripts", "worktree-adapter.sh");
 const ENTRYPOINT = path.join(ROOT, ".flowtask", "scripts", "worktree.sh");
 
-function makeTree({ localManager = true } = {}) {
+function makeTree() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ft-adapter-fallback-"));
   const root = path.join(tmp, "root");
   const scripts = path.join(root, ".flowtask", "scripts");
-  const managerDir = path.join(scripts, "worktree-manager");
   fs.mkdirSync(scripts, { recursive: true });
   const adapterCopy = path.join(scripts, "worktree-adapter.sh");
   fs.copyFileSync(ADAPTER, adapterCopy);
@@ -27,12 +26,10 @@ function makeTree({ localManager = true } = {}) {
   fs.copyFileSync(locateSrc, locateCopy);
   fs.chmodSync(locateCopy, 0o755);
   const capture = path.join(tmp, "capture.txt");
-  if (localManager) {
-    fs.mkdirSync(managerDir, { recursive: true });
-    const stub = path.join(managerDir, "worktree.sh");
-    fs.writeFileSync(stub, '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$CAPTURE"\n', { mode: 0o755 });
-  }
-  return { tmp, adapterCopy, entryCopy, capture };
+  // The manager lives only in the global installation: no local copy is created.
+  const home = path.join(tmp, "home");
+  installGlobalManager(home, capture);
+  return { tmp, adapterCopy, entryCopy, capture, home };
 }
 
 function installGlobalManager(home, capture) {
@@ -45,9 +42,9 @@ function installGlobalManager(home, capture) {
 
 
 test("worktree-adapter.sh injects the spanish fallback when complete has no title", () => {
-  const { adapterCopy, capture } = makeTree();
+  const { adapterCopy, capture, home } = makeTree();
   const result = spawnSync(adapterCopy, ["complete", "alpha", "--base", "main"], {
-    env: { ...process.env, CAPTURE: capture },
+    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: "", CAPTURE: capture },
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
@@ -57,9 +54,9 @@ test("worktree-adapter.sh injects the spanish fallback when complete has no titl
 });
 
 test("worktree-adapter.sh does not inject the fallback when --title is present", () => {
-  const { adapterCopy, capture } = makeTree();
+  const { adapterCopy, capture, home } = makeTree();
   const result = spawnSync(adapterCopy, ["complete", "beta", "--base", "main", "--title", "Mi titulo"], {
-    env: { ...process.env, CAPTURE: capture },
+    env: { ...process.env, HOME: home, XDG_CONFIG_HOME: "", CAPTURE: capture },
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
@@ -71,7 +68,7 @@ test("worktree-adapter.sh does not inject the fallback when --title is present",
 
 test("worktree-adapter.sh uses the global manager when the local copy is absent", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "ft-adapter-home-"));
-  const { adapterCopy, capture } = makeTree({ localManager: false });
+  const { adapterCopy, capture } = makeTree();
   installGlobalManager(home, capture);
   const result = spawnSync(adapterCopy, ["complete", "gamma", "--base", "main"], {
     env: { ...process.env, HOME: home, XDG_CONFIG_HOME: "", CAPTURE: capture },
@@ -83,7 +80,7 @@ test("worktree-adapter.sh uses the global manager when the local copy is absent"
 
 test("worktree-adapter.sh fails with an actionable message when no manager exists", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "ft-adapter-empty-home-"));
-  const { adapterCopy } = makeTree({ localManager: false });
+  const { adapterCopy } = makeTree();
   const result = spawnSync(adapterCopy, ["list"], {
     env: { ...process.env, HOME: home, XDG_CONFIG_HOME: "" },
     encoding: "utf8",
@@ -95,7 +92,7 @@ test("worktree-adapter.sh fails with an actionable message when no manager exist
 
 test("worktree.sh uses the global manager when the local copy is absent", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "ft-entry-home-"));
-  const { entryCopy, capture } = makeTree({ localManager: false });
+  const { entryCopy, capture } = makeTree();
   installGlobalManager(home, capture);
   const result = spawnSync(entryCopy, ["list"], {
     env: { ...process.env, HOME: home, XDG_CONFIG_HOME: "", CAPTURE: capture },
@@ -107,7 +104,7 @@ test("worktree.sh uses the global manager when the local copy is absent", () => 
 
 test("worktree.sh fails with an actionable message when no manager exists", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "ft-entry-empty-home-"));
-  const { entryCopy } = makeTree({ localManager: false });
+  const { entryCopy } = makeTree();
   const result = spawnSync(entryCopy, ["list"], {
     env: { ...process.env, HOME: home, XDG_CONFIG_HOME: "" },
     encoding: "utf8",

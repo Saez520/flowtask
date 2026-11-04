@@ -4,9 +4,9 @@
 
 The implementation lives in the standalone
 [`worktree-manager`](https://github.com/Saez520/worktree-manager) and is
-integrated into FlowTask as a submodule at
-`.flowtask/scripts/worktree-manager/`. The integrated checkout must match the
-gitlink registered by FlowTask; a local copy of the core must not be maintained.
+distributed as the npm package `worktree-for-agents`. FlowTask publishes a
+managed global copy of that package; a local copy of the manager core is not
+maintained in this repository.
 
 For the architecture, configuration, commands, target-direct behavior,
 recovery, and output contract, see the
@@ -41,16 +41,7 @@ the authorization or the execution. The controls of the standalone tests are
 `WORKTREE_MANAGER_TEST_*`. The standalone does not know about FlowTask or
 inspect its legacy paths or refs.
 
-The installer publishes a managed global copy of the manager under the user's
-global FlowTask directory and excludes it from the generic asset copy. The
-consumer resolves the manager in this order: global installation, repository
-checkout, session directory. The standalone manager is also distributed on npm
-as `worktree-for-agents` (installed with npm or pnpm, no bin and no `npx`);
-its MCP publishes the seven operations and the guide in
-`initialize.instructions`, and `node <paquete>/setup.mjs` diagnoses which
-installation is active. The FlowTask integration is unchanged: it keeps the
-submodule and the managed global copy in transition, and the authorized bridge
-remains the exposed surface of FlowTask.
+The installer downloads the published package and publishes a managed global copy of the manager under the user's global FlowTask directory, and it excludes the manager from the generic asset copy. The consumer resolves the manager only from the global installation. The npm package does not expose a bin or `npx`; its MCP publishes the seven operations and the guide in `initialize.instructions`. The authorized bridge remains the surface exposed by FlowTask.
 
 ## Consumer bridge
 
@@ -103,14 +94,13 @@ without mutating either repository.
 
 - The standalone owns the parent-only lifecycle, generic configuration,
   transactions, locks, journals, and target-direct behavior.
-- FlowTask provides the compatible entrypoint, the adapter, and the submodule
-  integration.
+- FlowTask provides the compatible entrypoint, the adapter, the acquisition of
+  the npm package and the global publication.
 - The adapter does not commit, merge, or push on behalf of the consumer
   repository.
-- The historical local URL in `.gitmodules` is only used to bootstrap this
-  checkout and is not a portable distribution reference.
-- The manager is integrated as a submodule and the registered gitlink is the
-  single reference of its version. A vendored copy of the manager core is not
-  maintained in this repository.
+- The historical local URL in `.gitmodules` is not a distribution reference.
+- The manager is distributed as the npm package `worktree-for-agents` and the
+  published global copy is the single runtime source. A vendored copy of the
+  manager core is not maintained in this repository.
 - The bridge and the transport clients belong to FlowTask; the manager owns the
   lifecycle, the transactions, the locks and the journals.

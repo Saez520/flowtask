@@ -5,11 +5,12 @@ import { verifyDirectoryMirror } from "./copy.js";
 
 export const WORKTREE_MANAGER_OWNER_FILE = ".flowtask-worktree-manager-owner.json";
 export const WORKTREE_MANAGER_OWNER = "flowtask";
+export const WORKTREE_MANAGER_SOURCES = Object.freeze(["submodule", "npm"]);
 export const GLOBAL_MANAGER_OWNERSHIP = Object.freeze({
   schema: 1,
   managedBy: "flowtask",
   component: "worktree-manager",
-  source: "submodule",
+  source: "npm",
 });
 export const WORKTREE_MANAGER_RUNTIME_ENTRIES = Object.freeze(["worktree.sh", "worktree_manager"]);
 
@@ -33,7 +34,7 @@ function isValidMarker(marker) {
   if (marker.schema !== 1) return false;
   if (marker.managedBy !== "flowtask") return false;
   if (marker.component !== "worktree-manager") return false;
-  if (marker.source !== "submodule") return false;
+  if (!WORKTREE_MANAGER_SOURCES.includes(marker.source)) return false;
   if (marker.sourceCommit !== null && typeof marker.sourceCommit !== "string") return false;
   if (typeof marker.version !== "string") return false;
   if (!Array.isArray(marker.files)) return false;
@@ -109,8 +110,13 @@ function copyRuntimeEntry(src, dest, relative, fileSet) {
   }
 }
 
-export function publishGlobalWorktreeManager({ sourceDir, destinationDir, sourceCommit, version, faultInjector } = {}) {
+export function publishGlobalWorktreeManager({ sourceDir, destinationDir, sourceCommit, version, source = "submodule", faultInjector } = {}) {
   if (!sourceDir || !destinationDir) throw new Error("sourceDir and destinationDir are required");
+  if (!WORKTREE_MANAGER_SOURCES.includes(source)) {
+    const err = new Error(`invalid Worktree Manager source: ${source}`);
+    err.code = "WORKTREE_MANAGER_SOURCE_INVALID";
+    throw err;
+  }
 
   const ownership = classifyGlobalManagerOwnership(destinationDir);
   if (ownership.state === OWNERSHIP.EXTERNAL) {
@@ -169,8 +175,8 @@ export function publishGlobalWorktreeManager({ sourceDir, destinationDir, source
       schema: 1,
       managedBy: "flowtask",
       component: "worktree-manager",
-      source: "submodule",
-      sourceCommit: sourceCommit ?? null,
+      source,
+      sourceCommit: source === "submodule" ? (sourceCommit ?? null) : null,
       version: resolvedVersion,
       files: managedFiles,
     };
@@ -213,28 +219,29 @@ export function publishGlobalWorktreeManager({ sourceDir, destinationDir, source
   }
 }
 
-export function ensureGlobalWorktreeManager({ sourceReport, destinationDir, pythonBin, timeoutMs, faultInjector, detectCapabilities } = {}) {
-  const sourceDir = (sourceReport && (sourceReport.managerDir || sourceReport.sourceDir)) || sourceReport;
-  const sourceCommit = sourceReport?.gitlink ?? sourceReport?.sourceCommit ?? null;
-  const version = readManagerVersion(sourceDir);
-  const publishResult = publishGlobalWorktreeManager({ sourceDir, destinationDir, sourceCommit, version, faultInjector });
+export function ensureGlobalWorktreeManager({ sourceDir, destinationDir, source = "submodule", version, pythonBin, timeoutMs, faultInjector, detectCapabilities } = {}) {
+  if (!sourceDir || !destinationDir) throw new Error("sourceDir and destinationDir are required");
   const detect = typeof detectCapabilities === "function"
     ? detectCapabilities
     : () => ({ transports: [], cli: { available: false, cause: "no detector" }, mcp: { available: false, cause: "no detector" } });
-  const capabilities = detect(destinationDir, { pythonBin, timeoutMs });
+  const capabilities = detect(sourceDir, { pythonBin, timeoutMs });
   const transports = capabilities?.transports ?? [];
   if (transports.length === 0) {
     const causes = [capabilities?.cli?.cause, capabilities?.mcp?.cause].filter(Boolean).join("; ");
-    throw new Error(`Worktree Manager has no usable transport: ${causes || "no transport was detected"}`);
+    const error = new Error(`Worktree Manager has no usable transport: ${causes || "no transport was detected"}`);
+    error.code = "WORKTREE_MANAGER_UNUSABLE";
+    throw error;
   }
+  const resolvedVersion = version ?? readManagerVersion(sourceDir);
+  const publishResult = publishGlobalWorktreeManager({ sourceDir, destinationDir, version: resolvedVersion, source, faultInjector });
   return {
     managerDir: destinationDir,
-    gitlink: sourceCommit,
     version: publishResult.version,
     previousVersion: publishResult.previousVersion,
     versionChanged: publishResult.versionChanged,
     capabilities,
     source: "global",
+    sourceKind: source,
   };
 }
 

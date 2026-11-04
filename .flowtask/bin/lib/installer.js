@@ -15,6 +15,7 @@ import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA, classifyOwnership, rep
 import { resolveGlobalConfigDir } from "./global-paths.js";
 import { globalWorktreeManagerDir } from "./global-paths.js";
 import { ensureGlobalWorktreeManager, formatWorktreeManagerVersionNotice } from "./worktree-manager-runtime.js";
+import { downloadWorktreeManagerPackage } from "./worktree-manager-package.js";
 import { ensureCanonicalSubmodule } from "./submodule-publication.js";
 import {
   AUTONOMY_PROFILES,
@@ -34,17 +35,15 @@ export const INSTALLER_WRITERS = Object.freeze([
   "W15 root cleanup", "W16 Graphify", "W17 JSON/file primitives",
 ]);
 
-// ─── Worktree Manager submodule ───────────────────────────────────────────────
-// The manager is consumed as a submodule. It is never copied into a target and
-// it is never registered as a consumer server: the capabilities below describe
-// what the checkout can actually do, not what a configuration claims.
+// ─── Worktree Manager ────────────────────────────────────────────────────────
+// The manager is acquired from the published npm package and published as a
+// single managed copy in the user's global directory. It is never copied into a
+// target and it is never registered as a consumer server: the capabilities
+// below describe what the downloaded package can actually do, not what a
+// configuration claims.
 
 const WORKTREE_MANAGER_PROBE_TIMEOUT_MS = 5000;
 const WORKTREE_MANAGER_MIN_PYTHON = "3.9";
-const WORKTREE_MANAGER_REQUIRED_ENTRYPOINTS = Object.freeze([
-  "worktree.sh",
-  "worktree_manager/__main__.py",
-]);
 const WORKTREE_MANAGER_MCP_ENTRYPOINTS = Object.freeze([
   "worktree_manager/mcp_transport.py",
   "worktree_manager/mcp_server.py",
@@ -211,93 +210,58 @@ export function detectWorktreeManagerCapabilities(managerDir, options = {}) {
 }
 
 /**
- * Verify that a manager checkout matches the recorded gitlink and exposes the
- * entrypoints the installation requires. No alternative copy is produced.
+ * Acquire the manager from npm, gate the installation on a usable package and
+ * publish the single managed global copy. The temporary download is removed in
+ * every outcome.
  */
-export function verifyWorktreeManagerCheckout({ managerDir, expectedGitlink }) {
-  const missing = WORKTREE_MANAGER_REQUIRED_ENTRYPOINTS
-    .filter((entry) => !fs.existsSync(path.join(managerDir, entry)));
-  if (missing.length > 0) {
-    throw new Error(`Worktree Manager checkout is missing required entrypoints: ${missing.join(", ")}`);
-  }
-  const entrypoint = path.join(managerDir, "worktree.sh");
-  if (!fs.statSync(entrypoint).isFile()) {
-    throw new Error("Worktree Manager entrypoint is not a file: worktree.sh");
-  }
-  if ((fs.statSync(entrypoint).mode & 0o111) === 0) {
-    throw new Error("Worktree Manager entrypoint is not executable: worktree.sh");
-  }
-  if (expectedGitlink) {
-    const actual = execFileSync("git", ["-C", managerDir, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-    if (actual !== expectedGitlink) {
-      throw new Error(`Worktree Manager checkout does not match the recorded gitlink (${actual} != ${expectedGitlink})`);
-    }
-  }
-  return managerDir;
-}
-
-export function ensureWorktreeManagerSubmodule(flowtaskDir, options = {}) {
-  const managerDir = path.join(flowtaskDir, "scripts", "worktree-manager");
-  let expected = null;
+export function prepareGlobalWorktreeManager(options = {}) {
+  const destinationDir = options.globalManagerDir ?? globalWorktreeManagerDir();
+  const pkg = downloadWorktreeManagerPackage({
+    npmBin: options.npmBin,
+    timeoutMs: options.downloadTimeoutMs,
+    workDir: options.workDir,
+    env: options.env,
+  });
   try {
-    const gitRoot = execFileSync("git", ["-C", flowtaskDir, "rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-    // The reported root and the requested path may differ by a symlink, so the
-    // relative path is resolved against the real location of both.
-    let root = gitRoot;
-    let relative = path.relative(root, managerDir);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
-      root = fs.realpathSync(gitRoot);
-      relative = path.relative(root, path.join(fs.realpathSync(flowtaskDir), "scripts", "worktree-manager"));
-      if (relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("manager path is outside the FlowTask checkout");
-    }
-    try {
-      execFileSync("git", ["-C", root, "submodule", "update", "--init", "--", relative], { stdio: "ignore" });
-    } catch (error) {
-      throw new Error(`cannot materialize Worktree Manager submodule (${relative}): ${error.message}`);
-    }
-    const indexEntry = execFileSync("git", ["-C", root, "ls-files", "--stage", "--", relative], { encoding: "utf8" }).trim();
-    const match = indexEntry.match(/^160000 ([0-9a-f]{40,64}) 0\t/);
-    if (!match) throw new Error("Worktree Manager path is not a staged submodule gitlink");
-    expected = match[1];
-    verifyWorktreeManagerCheckout({ managerDir: path.join(root, relative), expectedGitlink: expected });
-  } catch (error) {
-    throw new Error(`Worktree Manager submodule unavailable: ${error.message}`);
+    return ensureGlobalWorktreeManager({
+      sourceDir: pkg.dir,
+      destinationDir,
+      version: pkg.version,
+      source: "npm",
+      pythonBin: options.pythonBin,
+      timeoutMs: options.timeoutMs,
+      faultInjector: options.faultInjector,
+      detectCapabilities: (dir, opts) => detectWorktreeManagerCapabilities(dir, opts),
+    });
+  } finally {
+    pkg.cleanup();
   }
-  const resolvedManagerDir = path.join(fs.realpathSync(flowtaskDir), "scripts", "worktree-manager");
-  return { managerDir: resolvedManagerDir, gitlink: expected, capabilities: detectWorktreeManagerCapabilities(resolvedManagerDir, { pythonBin: options.pythonBin, timeoutMs: options.timeoutMs }) };
 }
 
 /**
- * Gate the installation on a usable manager.
- *
- * A single usable transport is enough to continue; the other one is reported
- * with its cause. Without any transport the installation fails here, before
- * any target is written.
+ * Install or update the global manager without turning a download failure into
+ * a failed installation. Any other failure keeps its fail-closed behavior.
  */
-export function prepareWorktreeManager(flowtaskDir, options = {}) {
-  const ensure = options.ensureWorktreeManager ?? ensureWorktreeManagerSubmodule;
-  const report = ensure(flowtaskDir, options);
-  const capabilities = report?.capabilities ?? report;
-  const transports = capabilities?.transports ?? [];
-  if (transports.length === 0) {
-    const causes = [capabilities?.cli?.cause, capabilities?.mcp?.cause].filter(Boolean).join("; ");
-    throw new Error(`Worktree Manager has no usable transport: ${causes || "no transport was detected"}`);
+export function prepareWorktreeManagerForRun(options = {}, { mode = "install" } = {}) {
+  try {
+    const report = prepareGlobalWorktreeManager(options);
+    reportWorktreeManagerCapabilities(report, { quiet: mode === "update" ? !report.versionChanged : false });
+    return report;
+  } catch (error) {
+    if (error?.code === "WORKTREE_MANAGER_DOWNLOAD_FAILED") {
+      reportWorktreeManagerUnavailable(error, { mode });
+      return null;
+    }
+    throw error;
   }
-  return report;
 }
 
-export function prepareGlobalWorktreeManager(flowtaskDir, options = {}) {
-  const sourceReport = prepareWorktreeManager(flowtaskDir, options);
-  const destinationDir = options.globalManagerDir ?? globalWorktreeManagerDir();
-  const report = ensureGlobalWorktreeManager({
-    sourceReport,
-    destinationDir,
-    pythonBin: options.pythonBin,
-    timeoutMs: options.timeoutMs,
-    faultInjector: options.faultInjector,
-    detectCapabilities: (dir, opts) => detectWorktreeManagerCapabilities(dir, opts),
-  });
-  return report;
+/** Publish the visible degradation when the package could not be downloaded. */
+export function reportWorktreeManagerUnavailable(error, { mode = "install" } = {}) {
+  const action = mode === "update" ? "updated" : "installed";
+  logWarn(`Worktree Manager could not be ${action}: ${error.message}`);
+  const intact = mode === "update" ? " The previous copy, if any, was left unchanged." : "";
+  logWarn(`Worktrees are not available from this ${mode}. Run 'flowtask update' when the registry is reachable.${intact}`);
 }
 export function reportWorktreeManagerCapabilities(report, { quiet } = {}) {
   const capabilities = report?.capabilities ?? report;
@@ -1459,8 +1423,7 @@ function cleanupOrphanedClaudeAssets(projectDir) {
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir, options = {}) {
-  const worktreeManager = prepareGlobalWorktreeManager(flowtaskDir, options);
-  reportWorktreeManagerCapabilities(worktreeManager, { quiet: false });
+  const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "install" });
   console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
 ║        FlowTask Installation Wizard       ║
@@ -1626,10 +1589,11 @@ ${COLORS.blue}╔═════════════════════
 // ─── Update ───────────────────────────────────────────────────────────────────
 
 export async function update(flowtaskDir, options = {}) {
-  const worktreeManager = prepareGlobalWorktreeManager(flowtaskDir, options);
-  reportWorktreeManagerCapabilities(worktreeManager, { quiet: !worktreeManager.versionChanged });
-  const versionNotice = formatWorktreeManagerVersionNotice({ previousVersion: worktreeManager.previousVersion, version: worktreeManager.version });
-  if (versionNotice) logInfo(versionNotice);
+  const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "update" });
+  if (worktreeManager) {
+    const versionNotice = formatWorktreeManagerVersionNotice({ previousVersion: worktreeManager.previousVersion, version: worktreeManager.version });
+    if (versionNotice) logInfo(versionNotice);
+  }
   console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
 ║        FlowTask Update Wizard (Delta)     ║

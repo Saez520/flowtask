@@ -4,12 +4,13 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { createWorktreeCliClient } from "../src/index.js";
 import { createWorktreeMcpClient, WORKTREE_MANAGER_TOOLS } from "../src/worktree-mcp.js";
+import { globalWorktreeManagerDirectory } from "../dist/worktree-manager-location.js";
 
-const here = fileURLToPath(new URL(".", import.meta.url));
-const managerDirectory = resolve(here, "../../../scripts/worktree-manager");
+const managerDirectory = process.env.WORKTREE_MANAGER_SUBMODULE
+  ? resolve(process.env.WORKTREE_MANAGER_SUBMODULE)
+  : globalWorktreeManagerDirectory();
 const managerReady = existsSync(join(managerDirectory, "worktree_manager", "mcp_transport.py"));
 const python = process.env.WORKTREE_MANAGER_PYTHON ?? "python3";
 const only = managerReady ? test : test.skip;

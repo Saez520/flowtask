@@ -20,8 +20,6 @@ const GATE = path.join(ROOT, ".flowtask", "bin", "lib", "worktree-language-gate.
 const ALLOWLIST = path.join(ROOT, ".flowtask", "bin", "lib", "worktree-language-allowlist.json");
 const CONSUMER = path.join(ROOT, ".flowtask", "scripts", "worktree.sh");
 const ADAPTER = path.join(ROOT, ".flowtask", "scripts", "worktree-adapter.sh");
-const MANAGER = path.join(ROOT, ".flowtask", "scripts", "worktree-manager");
-const STANDALONE = path.join(MANAGER, "worktree.sh");
 const BASE = "166fc9961576fd313681d683d33dde92fb4c5f65";
 
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ft-language-gate-"));
@@ -188,46 +186,6 @@ test("C: the usage error publishes one JSON document and nothing else", () => {
   assert.equal(document.result, "failure");
 });
 
-test("D: the inventory of the real surfaces is complete and clean", () => {
-  const result = runGate({ root: ROOT, manager: MANAGER, inventory: path.join(temporaryRoot, "real.json") });
-  assert.equal(result.status, 0, result.stderr);
-  const summary = result.document.summary;
-  assert.equal(result.document.surfaces.length, 4);
-  assert.equal(summary.files, 21);
-  assert.equal(summary.python_files, 18);
-  assert.equal(summary.shell_files, 3);
-  assert.equal(summary.pending, 0);
-  assert.equal(summary.allowlisted, 2);
-  assert.equal(summary.mcp_sources, 4);
-  assert.equal(summary.mcp_tools, 7);
-  assert.equal(summary.unresolved_markers, 0);
-  assert.deepEqual(result.document.files_without_human_text, ["worktree_manager/__main__.py"]);
-  assert.deepEqual(result.document.surfaces, [
-    "python-package", "standalone-entrypoint", "consumer-entrypoint", "consumer-adapter",
-  ]);
-  for (const [name, record] of Object.entries(result.document.runtime_checks)) {
-    assert.ok(["english", "implemented"].includes(record.status), `${name}: ${record.status}`);
-  }
-  const allowed = result.document.entries.filter((entry) => entry.status === "allowlisted");
-  assert.equal(allowed.length, 2);
-  for (const entry of allowed) {
-    assert.deepEqual(entry.allowlist_ids, ["L-EX-001"]);
-    assert.match(entry.text, /façade/);
-  }
-});
-
-test("E: two consecutive runs publish the same inventory", () => {
-  const first = runGate({ root: ROOT, manager: MANAGER, inventory: path.join(temporaryRoot, "stable-a.json") });
-  const second = runGate({ root: ROOT, manager: MANAGER, inventory: path.join(temporaryRoot, "stable-b.json") });
-  assert.equal(first.status, 0, first.stderr);
-  assert.equal(second.status, 0, second.stderr);
-  assert.equal(
-    fs.readFileSync(first.inventory, "utf8"),
-    fs.readFileSync(second.inventory, "utf8"),
-    "the inventory is deterministic",
-  );
-});
-
 test("F: a Spanish comment is pending and it names the path and the line", () => {
   const fixture = createFixture("spanish-comment");
   const sample = path.join(fixture.manager, "worktree_manager", "sample.py");
@@ -363,19 +321,6 @@ test("Q: the protocol request publishes the nine key envelope", () => {
   assert.equal(failure.error.exit_code, 3);
 });
 
-test("R: a missing Python 3 dependency exits 127 with an English diagnostic", () => {
-  const isolated = path.join(temporaryRoot, "no-python");
-  fs.mkdirSync(isolated, { recursive: true });
-  for (const tool of ["sh", "dirname"]) {
-    fs.symlinkSync(execFileSync("command", ["-v", tool], { encoding: "utf8" }).trim(), path.join(isolated, tool));
-  }
-  const result = run(STANDALONE, ["list"], { cwd: temporaryRoot, env: { PATH: isolated } });
-  assert.equal(result.status, 127, result.stderr);
-  assert.equal(result.stdout, "");
-  assert.match(result.stderr, /requires Python 3/);
-  assert.doesNotMatch(result.stderr, /[áéíóúñ¿¡]/i);
-});
-
 test("S: the public exit codes keep their observable classification", () => {
   const repository = createRepository("exit-codes");
 
@@ -387,18 +332,6 @@ test("S: the public exit codes keep their observable classification", () => {
 
   const relative = run(CONSUMER, ["--repo", "relative", "list"], { cwd: repository });
   assert.equal(relative.status, 3, "3 is the invalid identity code");
-
-  const isolated = path.join(temporaryRoot, "no-git");
-  fs.mkdirSync(isolated, { recursive: true });
-  for (const tool of ["python3", "sh", "dirname"]) {
-    fs.symlinkSync(execFileSync("command", ["-v", tool], { encoding: "utf8" }).trim(), path.join(isolated, tool));
-  }
-  const dependency = run(STANDALONE, ["--repo", repository, "list"], {
-    cwd: temporaryRoot,
-    env: { PATH: isolated },
-  });
-  assert.equal(dependency.status, 6, "6 is the inaccessible dependency code");
-  assert.match(dependency.stderr, /Git executable is unavailable/);
 
   const created = run(CONSUMER, ["create", "dirty", "--base", "main"], { cwd: repository });
   assert.equal(created.status, 0, created.stderr);

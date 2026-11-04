@@ -13,10 +13,16 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { globalWorktreeManagerDirectory } from "../../plugins/flowtask-permission-gate/dist/worktree-manager-location.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const CONSUMER = path.join(ROOT, ".flowtask", "scripts", "worktree.sh");
-const MANAGER = path.join(ROOT, ".flowtask", "scripts", "worktree-manager", "worktree.sh");
+const MANAGER = path.join(
+  process.env.WORKTREE_MANAGER_SUBMODULE
+    ? path.resolve(process.env.WORKTREE_MANAGER_SUBMODULE)
+    : globalWorktreeManagerDirectory(),
+  "worktree.sh",
+);
 
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ft-adapter-compat-"));
 process.on("exit", () => { try { fs.rmSync(temporaryRoot, { recursive: true, force: true }); } catch { /* best effort */ } });
