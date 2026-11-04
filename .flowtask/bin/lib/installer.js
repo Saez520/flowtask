@@ -1596,7 +1596,11 @@ export async function update(flowtaskDir, options = {}) {
   report.begin();
   try {
     await runUpdate(flowtaskDir, options, report);
+  } catch (error) {
+    report.fail(error?.message ?? String(error));
+    throw error;
   } finally {
+    report.finish();
     report.dispose();
   }
 }
@@ -1612,6 +1616,7 @@ async function runUpdate(flowtaskDir, options, report) {
   const readline = await import("readline");
   const projectDir = process.cwd();
   // ── Step 1: Detect installed targets ────────────────────────────────────
+  const detectStartedAt = Date.now();
   logStep(1, "Detecting installed targets...");
   const possibleTargets = [
     { id: "standalone", marker: ".flowtask/.installation-method",         subDir: ".flowtask",         ideDir: "" },
@@ -1643,7 +1648,11 @@ async function runUpdate(flowtaskDir, options, report) {
   const nonClaudeTargets = targets.filter(({ id }) => id !== "claude");
   const claudeTarget = targets.find(({ id }) => id === "claude") ?? null;
   const claudeActive = Boolean(claudeTarget || claudeRegistered || claudeRuntimeInstalled);
-  report.phase("detect", targets.map(({ id }) => id).join(" · ") || "none");
+  const installationFound = targets.length > 0 || claudeRuntimeInstalled;
+  report.phase("detect", targets.map(({ id }) => id).join(" · ") || "none", {
+    status: installationFound ? "ok" : "fail",
+    durationMs: Date.now() - detectStartedAt,
+  });
 
   if (targets.length === 0 && !claudeRuntimeInstalled) {
     logError("No FlowTask installation found. Run 'flowtask install' first.");
@@ -1698,12 +1707,14 @@ async function runUpdate(flowtaskDir, options, report) {
   const results = [];
   let localFerrisSearch = null;
   let pluginsRegistered = null;
+  let pluginsDurationMs = null;
   const graphifyStates = [];
   const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
 
   for (const { id, subDir, ideDir, previousMethod } of nonClaudeTargets) {
     const TARGET_DIR = path.join(projectDir, subDir);
     logStep(2, `Updating ${id}...`);
+    const syncStartedAt = Date.now();
 
     try {
       if (!fs.existsSync(TARGET_DIR)) throw new Error(`Target directory not found: ${subDir}`);
@@ -1756,7 +1767,9 @@ async function runUpdate(flowtaskDir, options, report) {
 
       // ── Re-install plugins from manifest (OpenCode only) ─────────────────
       if (id === "opencode") {
+        const pluginsStartedAt = Date.now();
         pluginsRegistered = installManifestPlugins(projectDir, manifest, flowtaskDir, preflight).registered;
+        pluginsDurationMs = Date.now() - pluginsStartedAt;
       }
 
       // ── Inject persona and autonomy into runner.md ───────────────────
@@ -1776,16 +1789,19 @@ async function runUpdate(flowtaskDir, options, report) {
       );
 
       results.push({ target: id, status: "Success", stats: { copied: totalCopied, skipped: totalSkipped } });
-      report.syncRow(id, `${totalCopied} updated · ${totalSkipped} unchanged`);
+      report.syncRow(id, `${totalCopied} updated · ${totalSkipped} unchanged`, {
+        durationMs: Date.now() - syncStartedAt,
+      });
     } catch (err) {
       logError(`Failed to update ${id}: ${err.message}`);
       results.push({ target: id, status: "Error", message: err.message });
-      report.syncRow(id, `✗ ${err.message}`, { failed: true });
+      report.syncRow(id, err.message, { failed: true, durationMs: Date.now() - syncStartedAt });
     }
   }
 
   if (claudeActive) {
     logStep(2, "Updating claude...");
+    const claudeStartedAt = Date.now();
     try {
       const explicitPersona = Boolean(options.persona);
       const claudeResult = updateClaudeTarget({
@@ -1800,16 +1816,20 @@ async function runUpdate(flowtaskDir, options, report) {
         status: "Success",
         stats: { registered: claudeResult.registered },
       });
-      report.syncRow("claude", claudeResult.registered === false ? "runtime refreshed · not registered" : "runtime refreshed");
+      report.syncRow("claude", claudeResult.registered === false ? "runtime refreshed · not registered" : "runtime refreshed", {
+        durationMs: Date.now() - claudeStartedAt,
+      });
     } catch (err) {
       logError(`Failed to update claude: ${err.message}`);
       results.push({ target: "claude", status: "Error", message: err.message });
-      report.syncRow("claude", `✗ ${err.message}`, { failed: true });
+      report.syncRow("claude", err.message, { failed: true, durationMs: Date.now() - claudeStartedAt });
     }
   }
 
   report.endSync();
-  if (pluginsRegistered !== null) report.phase("plugins", `${pluginsRegistered} registered`);
+  if (pluginsRegistered !== null) {
+    report.phase("plugins", `${pluginsRegistered} registered`, { durationMs: pluginsDurationMs });
+  }
 
   if (nonClaudeTargets.length > 0) {
     try {
@@ -1827,6 +1847,7 @@ async function runUpdate(flowtaskDir, options, report) {
     }
   }
 
+  const graphifyStartedAt = Date.now();
   for (const { id, subDir } of nonClaudeTargets) {
     try {
       graphifyStates.push(await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, subDir), flowtaskDir, selectedClis: [id], readline }));
@@ -1851,12 +1872,15 @@ async function runUpdate(flowtaskDir, options, report) {
     }
   }
 
+  const graphifyDurationMs = Date.now() - graphifyStartedAt;
   const graphifyText = describeGraphifyPhase(graphifyStates);
-  if (graphifyText) report.phase("graphify", graphifyText);
+  if (graphifyText) report.phase("graphify", graphifyText, { durationMs: graphifyDurationMs });
 
+  const searchStartedAt = Date.now();
   reportFerrisSearch(ferrisSearchResult, localFerrisSearch);
+  const searchDurationMs = Date.now() - searchStartedAt;
   const searchText = describeSearchPhase(ferrisSearchResult);
-  if (searchText) report.phase("search", searchText);
+  if (searchText) report.phase("search", searchText, { durationMs: searchDurationMs });
 
   if (report.verbose) {
     printSummary("Update Summary", results, (res) => {
