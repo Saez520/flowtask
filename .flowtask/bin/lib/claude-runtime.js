@@ -26,8 +26,6 @@ import {
 
 const BIN_LIB_ALLOWLIST = Object.freeze([
   "target-direct-transport.js",
-  "worktree-consumer-adapter.js",
-  "worktree-consumer-contract.js",
   "worktree-commit-message.js",
 ]);
 

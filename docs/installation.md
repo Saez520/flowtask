@@ -336,10 +336,17 @@ installation requires `worktree_manager/__main__.py` and
 the operation fails with a message that names the expected global path and the
 `flowtask install` action.
 
+When the MCP probe succeeds, `install` and `update` register the server per
+project: `mcp.worktree_manager` in `.opencode/opencode.json` for OpenCode and
+`mcpServers.worktree_manager` in `.mcp.json` for Claude Code. The entry uses
+`python3 -m worktree_manager.mcp_transport` with the managed global directory
+on `PYTHONPATH`. A foreign `worktree_manager` entry is preserved with a
+warning; an unreadable or invalid document is not modified.
+
 The standalone manager is published on npm as `worktree-for-agents`; it does not
 expose a bin or `npx`. Its MCP publishes the seven operations and the guide in
-`initialize.instructions`. The FlowTask bridge `flowtask_worktree_consume`
-remains the only surface exposed to the assistant.
+`initialize.instructions`. The Runner consumes those seven tools directly;
+`${FLOWTASK_SCRIPTS}/worktree.sh` remains the compatibility alternative.
 
 If the download fails because the registry is unreachable or the package is
 incomplete, `install` and `update` continue with the rest of the installation
@@ -372,8 +379,8 @@ activate any previous path: no backup mirrors or inherited references are create
 No publication, definitive removal of the entry point, or unlimited compatibility
 is announced; the deprecation phase comes later.
 
-Installation does not expand permissions. The assistant consumes the manager with the
-`flowtask_worktree_consume` tool; the manager's request protocol is not
+Installation does not expand permissions. The Runner consumes the manager through the
+seven tools of its MCP server; the manager's request protocol is not
 authorized through the shell. See
 [architecture/worktree.md](architecture/worktree.md) for the responsibility boundary and
 [permission-gate.md](permission-gate.md) for consent.

@@ -60,8 +60,8 @@ FlowTask owns:
 
 - `.flowtask/scripts/worktree.sh`, the consumer entrypoint;
 - `.flowtask/scripts/worktree-adapter.sh`, the compatibility adapter;
-- the consumer bridge and the transport clients;
-- npm package acquisition and global publication.
+- npm package acquisition, global publication and the per-project MCP
+  registration of the manager server.
 
 The adapter does not commit, merge, or push for a consumer repository. The
 standalone manager does not inspect the paths, refs or variables of the
@@ -96,25 +96,20 @@ copy. The target does not receive the manager. If the package cannot be
 acquired or has no usable transport, the manager is not published and the
 installer reports the outcome according to its download and transport rules.
 
-## Consumer transport boundary
+## Direct consumption boundary
 
-FlowTask reaches the manager through a bridge that exposes one tool,
-`flowtask_worktree_consume`, restricted to the FlowTask runner identity. The
-bridge reduces the tool arguments to the canonical request fields before they
-cross the boundary and owns the durable association of every worktree.
+FlowTask registers the manager's MCP server per project in the destination
+configuration and the agent consumes its seven tools directly. Each mutating
+call is planned with a dry run and replayed with the plan digest and the
+planned transaction identifier; the manager owns the plan, the locks, the
+journal, the transaction state and the reconciliation.
 
-Two transports implement the same request and publish the same nine-key
-envelope: the stdio service of the manager and its `--request-json` command
-line. The transport is selected with an explicit precedence — an explicit
-choice, the transport persisted with the worktree, and the read-only detection
-— and the selection is persisted with the worktree.
-
-The other transport is used once, and only when the request was never
-delivered. A rejection, a contract error, lock contention, a timeout and a
-lost answer are reported without a second attempt, because the outcome of a
-delivered request is unknown. The manager owns the plan digest, the planned
-transaction identifier, the locks, the journal and the reconciliation; the
-consumer only plans, replays the plan and reports.
+FlowTask does not translate requests, does not choose a transport and does not
+retry a delivered request on another path. `${FLOWTASK_SCRIPTS}/worktree.sh`,
+the compatibility adapter and the standalone `--request-json` command line
+remain an alternative declared by the consumer. A rejection, a contract error,
+lock contention, a timeout and a lost answer are reported as uncertain and are
+reconciled before a new attempt.
 
 ## Distribution boundary
 

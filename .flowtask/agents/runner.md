@@ -582,15 +582,15 @@ Recuperación de contexto:
 ## Reconciliación post-compaction
 
 Para worktrees, después de recuperar el contexto durable según `### Recuperación tras
-compactación o relevo`, si el Runner pierde contexto o se reinicia, solicita `list`
-al gestor mediante el adapter y cruza su salida con `flow-state/*/instances`. Si
+compactación o relevo`, si el Runner pierde contexto o se reinicia, invoca
+`worktree_manager_worktree_list` y cruza su salida con `flow-state/*/instances`. Si
 Engram no está disponible o la lectura del gestor es ilegible, falla cerrado: no
 inventes un inventario vacío ni hagas cambios. Reporta como huérfanos los worktrees
 sin asociación durable; no los borres automáticamente.
 
 ## Mantenimiento de huérfanos
 
-Durante mantenimiento explícito, solicita `prune` mediante el adapter y usa la
+Durante mantenimiento explícito, invoca `worktree_manager_worktree_prune` y usa la
 respuesta del gestor para reportar metadata stale y directorios no asociados.
 No borres worktrees huérfanos automáticamente.
 

@@ -1,80 +1,9 @@
-import { tool } from "@opencode-ai/plugin";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, isAuthorizedWorktreeConsumer, WORKTREE_CONSUMER_TOOL, } from "./authorizer.js";
-import { createWorktreeConsumerBridge } from "./worktree-consumer-bridge.js";
-import { createConfiguredEngramInvoker } from "./engram-mcp.js";
-import { createWorktreeMcpClient } from "./worktree-mcp.js";
-import { resolveWorktreeManagerLocation, missingManagerCause } from "./worktree-manager-location.js";
+import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, isWorktreeManagerMcpTool, } from "./authorizer.js";
 import { buildLayerBlockMessage, readOperationalLayers } from "./layers.js";
 import { buildAttachmentDelivery, buildDegradationMetadata, buildNarrowingNotice, buildReducedDelivery, isImageOrPdfOutput, loadContextBudgetConfig, registerNarrowingNotice, resetNarrowingNotices, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
-/** The nine keys published by the worktree manager for every accepted and rejected request. */
-const PROTOCOL_KEYS = [
-    "contract_version", "tool_version", "operation", "repository",
-    "result", "data", "warnings", "error", "transaction_id",
-];
-/** A document is a protocol envelope only when it publishes every key of the contract. */
-function isProtocolEnvelope(value) {
-    if (!value || typeof value !== "object")
-        return false;
-    const keys = Object.keys(value);
-    return PROTOCOL_KEYS.every((key) => keys.includes(key));
-}
-/**
- * Client of the worktree manager command line.
- *
- * The request travels as one canonical document over `--request-json`; the
- * legacy argument form is never used, and the manager always answers with the
- * same envelope, accepted or rejected.
- */
-export function createWorktreeCliClient(options) {
-    const python = options.python ?? "python3";
-    const managerDirectory = options.managerDirectory;
-    const env = { ...process.env, PYTHONPATH: [managerDirectory, process.env.PYTHONPATH].filter(Boolean).join(":") };
-    function run(request) {
-        const result = spawnSync(python, ["-m", "worktree_manager", "--request-json", "-"], {
-            cwd: managerDirectory,
-            input: JSON.stringify(request),
-            encoding: "utf8",
-            env,
-            timeout: options.timeoutMs ?? 60000,
-        });
-        if (result.error) {
-            const code = result.error.code;
-            // A timeout means the request was delivered but the answer was lost.
-            return { sent: code === "ETIMEDOUT", cause: result.error.message };
-        }
-        let parsed = null;
-        const stdout = (result.stdout ?? "").trim();
-        if (stdout) {
-            try {
-                parsed = JSON.parse(stdout);
-            }
-            catch {
-                parsed = null;
-            }
-        }
-        if (!isProtocolEnvelope(parsed)) {
-            const stderr = (result.stderr ?? "").trim().split("\n").slice(-2).join(" ").trim();
-            return { sent: false, cause: stderr || "the worktree manager does not publish the request protocol" };
-        }
-        return { envelope: parsed, sent: true };
-    }
-    return {
-        async detect() {
-            // The probe is rejected by the protocol itself and never touches the
-            // repository, so the detection stays read-only.
-            const outcome = run({ operation: "worktree_list" });
-            if (outcome.sent && outcome.envelope)
-                return { available: true };
-            return { available: false, cause: outcome.cause };
-        },
-        async invoke(request) {
-            return run(request);
-        },
-    };
-}
 /**
  * Candidate configuration paths, tried in order within each directory.
  * Precedence: commit workdir first; sessionDir only as a fallback for
@@ -113,8 +42,8 @@ function isRunner(agent) {
     return typeof agent === "string" && normalizeAgent(agent) === "flowtask-runner";
 }
 function runnerToolAllowed(tool, args) {
-    if (tool === WORKTREE_CONSUMER_TOOL)
-        return isAuthorizedWorktreeConsumer(args.agent, tool);
+    if (isWorktreeManagerMcpTool(tool))
+        return true;
     if (tool === "bash")
         return isAuthorizedRunnerCommand(String(args.command ?? ""));
     if (tool === "read" || tool === "glob" || tool === "grep" || tool === "skill" || tool.startsWith("engram_"))
@@ -333,89 +262,7 @@ function readStatSizeSafe(args) {
 }
 export default async function (input) {
     const sessionDir = input.directory;
-    let dispatchSessionID = "";
-    /**
-     * The manager is resolved only from the global installation published by the
-     * installer. A repository or session copy is never a second source.
-     */
-    const resolveManagerLocation = (_repoRoot) => resolveWorktreeManagerLocation({ env: process.env });
-    const managerDirectoryFor = (repoRoot) => {
-        const location = resolveManagerLocation(repoRoot);
-        return location ? location.directory : null;
-    };
-    const missingCauseFor = (_repoRoot) => missingManagerCause({ env: process.env });
-    const worktreeConsumer = createWorktreeConsumerBridge({
-        invokeEngram: createConfiguredEngramInvoker(sessionDir),
-        isDirectory: (path) => { try {
-            return statSync(path).isDirectory();
-        }
-        catch {
-            return false;
-        } },
-        listLocalBranches: (repoRoot) => execFileSync("git", ["branch", "--format=%(refname:short)"], { cwd: repoRoot, encoding: "utf8" }).split(/\r?\n/).filter(Boolean),
-        detectTransport: async ({ repoRoot }) => {
-            const managerDirectory = managerDirectoryFor(repoRoot);
-            if (!managerDirectory) {
-                const cause = missingCauseFor(repoRoot);
-                return { cli: { available: false, cause }, mcp: { available: false, cause } };
-            }
-            const cli = await createWorktreeCliClient({ managerDirectory }).detect();
-            const mcp = await createWorktreeMcpClient({ managerDirectory }).detect();
-            return {
-                cli: { available: cli.available, cause: cli.cause },
-                mcp: { available: mcp.available, cause: mcp.cause },
-            };
-        },
-        invokeCli: async ({ repoRoot, request }) => {
-            const managerDirectory = managerDirectoryFor(repoRoot);
-            if (!managerDirectory)
-                return { sent: false, cause: missingCauseFor(repoRoot) };
-            return createWorktreeCliClient({ managerDirectory }).invoke(request);
-        },
-        invokeMcp: async ({ repoRoot, tool, request }) => {
-            const managerDirectory = managerDirectoryFor(repoRoot);
-            if (!managerDirectory)
-                return { sent: false, cause: missingCauseFor(repoRoot) };
-            return createWorktreeMcpClient({ managerDirectory }).invoke(tool, request);
-        },
-        dispatchConstructor: async (record) => input.client.session.prompt({
-            path: { id: dispatchSessionID },
-            body: { agent: "flowtask-constructor", parts: [{ type: "text", text: `Implement the confirmed worktree association: ${JSON.stringify(record)}` }] },
-            query: { directory: sessionDir },
-        }),
-        dispatchValidator: async (record) => input.client.session.prompt({
-            path: { id: dispatchSessionID },
-            body: { agent: "flowtask-validator", parts: [{ type: "text", text: `Validate the confirmed worktree association: ${JSON.stringify(record)}` }] },
-            query: { directory: sessionDir },
-        }),
-    });
     return {
-        tool: {
-            [WORKTREE_CONSUMER_TOOL]: tool({
-                description: "Create and dispatch a worktree consumer operation for the authorized FlowTask runner.",
-                args: {
-                    agent: tool.schema.string(), operation: tool.schema.enum(["create", "complete", "cleanup", "recover", "list", "prune", "status"]),
-                    transport: tool.schema.enum(["cli", "mcp"]).optional(),
-                    repo_root: tool.schema.string(), path: tool.schema.string().optional(), branch: tool.schema.string().optional(),
-                    base_branch: tool.schema.string().optional(), work_id: tool.schema.string().optional(), init_submodules: tool.schema.boolean().optional(),
-                    preserve_dirty: tool.schema.boolean().optional(), discard: tool.schema.boolean().optional(), discard_consent: tool.schema.boolean().optional(),
-                    commit_title: tool.schema.string().optional(), commit_body: tool.schema.string().optional(),
-                    merge_strategy: tool.schema.enum(["squash", "preserve-history"]).optional(),
-                    prepare: tool.schema.boolean().optional(), verify: tool.schema.boolean().optional(),
-                    confirm: tool.schema.boolean().optional(), transaction_id: tool.schema.string().optional(), plan_hash: tool.schema.string().optional(),
-                    dry_run: tool.schema.boolean().optional(), target_direct: tool.schema.boolean().optional(),
-                    parent_repo: tool.schema.string().optional(), submodule_path: tool.schema.string().optional(),
-                },
-                async execute(args, context) {
-                    if (!isAuthorizedWorktreeConsumer(args.agent, WORKTREE_CONSUMER_TOOL))
-                        throw new Error("worktree consumer denied");
-                    if (context.agent !== "flowtask-runner")
-                        throw new Error("worktree consumer denied");
-                    dispatchSessionID = context.sessionID;
-                    return JSON.stringify(await worktreeConsumer.execute(args));
-                },
-            }),
-        },
         "chat.message": async (hookInput) => {
             // GATE: SESSION_AGENTS only records the flowtask-runner personality;
             // any other identity exposed as `agent` is ignored so as not to

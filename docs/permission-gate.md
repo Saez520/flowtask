@@ -248,58 +248,39 @@ degrades without applying and the universal commit gate remains.
 
 ## Worktree Manager
 
-The gate does not expose the worktree manager to the shell. The Runner consumes
-the manager with the `flowtask_worktree_consume` tool, available only to the exact
-identity `flowtask-runner`; any other identity receives
-`worktree consumer denied`.
+The gate does not expose a tool for the worktree manager and does not require a
+runner identity to use isolated worktrees. The Runner consumes the seven tools
+published by the `worktree_manager` MCP server, which the installer registers
+per project. Any `worktree_manager_*` name outside that exact set is rejected;
+the retired consumer tool does not exist and the direct tools are its
+replacement. The compatibility matrix records the retired name and its removal.
 
-### Request fields
+### Direct tools
 
-The `flowtask_worktree_consume` tool accepts `operation`, `transport`,
-`repo_root`, `path`, `branch`, `base_branch`, `work_id`, `init_submodules`,
-`prepare`, `verify`, `preserve_dirty`, `discard`, `discard_consent`, `confirm`,
-`transaction_id`, `plan_hash`, `dry_run`, `target_direct`, `parent_repo`, and
-`submodule_path`. The consumer keeps the canonical request fields from that set
-and derives the rest; a canonical field with an invalid type or value is
-rejected before any effect.
+The authorized surface is exactly `worktree_manager_worktree_create`,
+`worktree_manager_worktree_complete`, `worktree_manager_worktree_cleanup`,
+`worktree_manager_worktree_recover`, `worktree_manager_worktree_list`,
+`worktree_manager_worktree_prune` and `worktree_manager_worktree_status`.
 
-- `operation` accepts `create`, `complete`, `cleanup`, `recover`, `list`,
-  `prune`, and `status`.
-- `transport` is optional and accepts `cli` or `mcp`. If not declared, the
-  transport persisted with the worktree is used, and if there is none, read-only
-  detection, which prefers MCP.
-- `init_submodules`, `prepare`, and `verify` are valid only in `create`.
-- `preserve_dirty` is valid only in `complete`.
-- `discard` is valid only in `cleanup` and requires `discard_consent: true`.
-
-### Confirmation and discard
-
-`complete`, `cleanup`, `prune`, and `recover` are destructive operations: they
-require `confirm: true`. A confirmation and an authorization that disagree are
-rejected as `authorization_mismatch`. Discarding unintegrated work also requires
-`discard_consent: true`, a separate consent that is not inherited between
-requests. Manager authorization is not preserved between requests.
-
-### Transport and fallback
-
-The other transport is used once and only when the request never reached
-the manager. A denial, contract error, busy lock, timeout, or lost response is
-not retried through the other path: the result is uncertain and the next action
-is to reconcile the operation before any new attempt. Each phase report names the
-operation, the work, the repository, the path, the result, the cause, and the next action.
+The request fields, the two-phase plan (`dry_run`, `plan_hash`,
+`transaction_id`), the confirmation and the discard consent belong to the
+manager's contract and travel in each call. `complete`, `cleanup`, `prune` and
+`recover` require `authorization` and `confirm: true`; `discard` also requires
+`discard_consent: true`. Manager authorization is not preserved between
+requests.
 
 ### Administrative shell forms
 
 The `${FLOWTASK_SCRIPTS}/worktree.sh` forms with `list`, `create`, `prune`,
-`complete`, and `cleanup` are administrative: they run the same canonical manager
-and are not the assistant's path. The Runner consumes the manager with
-`flowtask_worktree_consume`, and the gate does not expand the bash allowlist.
+`complete`, and `cleanup` remain administrative and are a compatibility
+alternative: they run the same canonical manager. They are not the primary
+path and the gate does not expand the bash allowlist.
 
 ### Shell request protocol
 
 `--request-json` is not authorized through the shell: `${FLOWTASK_SCRIPTS}/worktree.sh`
-is rejected when it includes that flag. The canonical request protocol is
-reserved for the consumer, and the bash allowlist is not expanded to admit it.
+is rejected when it includes that flag. The canonical request protocol belongs
+to the manager and is not admitted through bash.
 
 ## Diagnostics
 

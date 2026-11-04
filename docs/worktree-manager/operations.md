@@ -200,24 +200,24 @@ above. The variables `FLOWTASK_*` are inert: they change neither the
 configuration, nor the authorization, nor the execution. The controls of the
 standalone tests are `WORKTREE_MANAGER_TEST_*`.
 
-## Consumer transport failures
+## Direct consumption failures
 
-The consumer reaches the manager over two transports that publish the same
-envelope. The transport is chosen with an explicit precedence: an explicit
-choice, then the transport persisted with the worktree, then the read-only
-detection, which prefers MCP.
+The consumer reaches the manager through the `worktree_manager` MCP server,
+registered per project. A mutating operation is planned with `dry_run: true` and
+executed with the same fields plus `plan_hash` and, when it applies,
+`transaction_id`; `list` and `status` use a single call. A `plan_mismatch` is
+replanned and an `uncertain` outcome is reconciled before a new attempt.
 
-The other transport is used exactly once, and only when the request was never
-delivered. A rejection, a contract error, lock contention, a timeout and a
-lost answer are never retried on the other transport: the outcome of a
-delivered request is unknown, the operation is reported as uncertain, and its
-next action is the reconciliation. The report of every phase names the
-operation, the work, the repository, the way, the result, the cause and the
-next action, and it never invents a transaction identifier.
+The compatibility entrypoint and the adapter remain a declared alternative and
+never become an automatic fallback: a rejection, a contract error, lock
+contention, a timeout and a lost answer are reported as uncertain and are not
+retried on another path. The report of every phase names the operation, the
+work, the repository, the way, the result, the cause and the next action, and
+it never invents a transaction identifier.
 
 A worktree whose association cannot be registered is reported as blocked
 before any mutation. A worktree that was created and whose association could
 not be confirmed is reported as blocked with the effect confirmed and the
 resource preserved, so that the operator can reconcile it.
 
-Closure commits use `commit_title`/`commit_body` (or `--title`/`--body`); the consumer injects the Spanish generic fallback when they are absent.
+Closure commits use `commit_title`/`commit_body` (or `--title`/`--body`); the Runner composes the Spanish generic fallback when they are absent.

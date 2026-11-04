@@ -3,9 +3,9 @@
 This inventory is the review index for the Worktree Manager documentation. The
 published npm package `worktree-for-agents` is the source of truth for the
 lifecycle, the configuration, the transactions, the target-direct behavior and
-the CLI and MCP contracts. FlowTask owns only the consumer entrypoint, the
-compatibility adapter, the bridge, npm package acquisition and global
-publication.
+the CLI and MCP contracts. FlowTask owns only the compatibility entrypoint, npm
+package acquisition, global publication and the per-project MCP registration of
+the manager server.
 
 Every topic below names one owning document, one owning maintainer group, the
 source status of that topic and a checklist that a reviewer can execute
@@ -25,7 +25,7 @@ without undocumented knowledge.
 | Recovery, transactions and reconciliation | Worktree Manager maintainers | [operations.md](operations.md) | Verified against the recovery manager and the transaction journal | Check locks, journals, backups, conflicts and the intervention states |
 | Standalone isolation | Worktree Manager maintainers | [architecture.md](architecture.md), [compatibility.md](compatibility.md) | Verified: the package answers the version and the seven tools without a consumer checkout | Confirm that the package reads no path, ref or variable of the consumer |
 | Target-direct | Worktree Manager maintainers | [architecture.md](architecture.md), [interfaces.md](interfaces.md), [operations.md](operations.md) | Verified for the `staged-only` boundary and for the descriptor identity checks | Confirm that the target and the parent repository remain distinct and that the descriptor identity is compared with the request |
-| Consumer adapter | FlowTask maintainers | [architecture.md](architecture.md), [operations.md](operations.md), [compatibility.md](compatibility.md) | Verified against the [consumer entrypoint](../../.flowtask/scripts/worktree.sh), the [adapter](../../.flowtask/scripts/worktree-adapter.sh) and the implemented contracts | Check the declared compatibility, the absence of any legacy write and that no commit, merge or push is claimed |
+| Direct consumption and compatibility path | FlowTask maintainers | [architecture.md](architecture.md), [operations.md](operations.md), [compatibility.md](compatibility.md) | Verified against the per-project MCP registration, the [consumer entrypoint](../../.flowtask/scripts/worktree.sh) and the [adapter](../../.flowtask/scripts/worktree-adapter.sh) | Check the seven direct tools, the two-phase calls, the declared compatibility and that no commit, merge or push is claimed |
 | Compatibility and deprecation | Release maintainers | [compatibility.md](compatibility.md) | Verified where the contract has evidence; every gap is named instead of qualified | Review the standalone and the consumer matrices independently |
 | Release | Release maintainers | [release.md](release.md) | Verified as a documentation-only procedure | Run the scope, source, contract, safety, compatibility, editorial, evidence, publication and version checks |
 | Transition history | Worktree Manager maintainers | [history-bash-to-python.md](https://github.com/Saez520/worktree-manager/blob/main/docs/history-bash-to-python.md) | Verified against the current package layout and the published tags | Confirm the single historical account and that it does not duplicate the contracts |

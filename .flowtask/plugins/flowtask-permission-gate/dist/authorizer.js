@@ -1,11 +1,13 @@
 export const RUNNER_DELEGATION_MESSAGE = "Remember that you must delegate this operation to the corresponding subagent.";
-export const WORKTREE_CONSUMER_TOOL = "flowtask_worktree_consume";
-/** The worktree bridge is available only to the exact FlowTask runner identity. */
-export function isAuthorizedWorktreeConsumer(agent, tool) {
-    return typeof agent === "string" && normalizeRunner(agent) && tool === WORKTREE_CONSUMER_TOOL;
-}
-function normalizeRunner(agent) {
-    return agent.trim().toLowerCase().replace(/_/g, "-").replace(/\s+/g, "-") === "flowtask-runner";
+export const WORKTREE_MANAGER_MCP_SERVER = "worktree_manager";
+export const WORKTREE_MANAGER_MCP_TOOLS = Object.freeze([
+    "worktree_create", "worktree_complete", "worktree_cleanup",
+    "worktree_recover", "worktree_list", "worktree_prune", "worktree_status",
+]);
+/** The runner may invoke exactly the seven capabilities the manager publishes. */
+export function isWorktreeManagerMcpTool(tool) {
+    return typeof tool === "string"
+        && WORKTREE_MANAGER_MCP_TOOLS.some((name) => tool === `${WORKTREE_MANAGER_MCP_SERVER}_${name}`);
 }
 export const FLOWTASK_SUBAGENTS = new Set([
     "flowtask-ca-writer", "flowtask-planner", "flowtask-plan-auditor", "flowtask-constructor",

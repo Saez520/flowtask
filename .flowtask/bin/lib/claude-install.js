@@ -15,6 +15,7 @@ import {
 } from "./claude-runtime.js";
 import { readProjectsIndex, registerClaudeProject, removeClaudeProject } from "./claude-projects.js";
 import { ensureUserEngram, removeUserEngram } from "./claude-mcp.js";
+import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
 import { CUSTOM_PERSONA_TEXT, buildRuntimeRunnerBody } from "./runner-content.js";
 import {
   LAYER_FILES,
@@ -97,6 +98,42 @@ function persistMcpState(runtimeRoot, result) {
     },
   };
   writeFileAtomic(manifestPath, JSON.stringify(manifest, null, 2));
+}
+
+/**
+ * Register the manager server in the project's `.mcp.json`. A manager that was
+ * not downloaded already produced its own notice; a downloaded manager whose
+ * MCP probe failed is reported with its cause and the config stays untouched.
+ */
+function registerWorktreeManagerMcpForClaude(paths, worktreeManager) {
+  if (!worktreeManager) return null;
+  const mcp = worktreeManager.capabilities?.mcp;
+  if (mcp?.available !== true) {
+    logWarn(`Worktree Manager MCP is not registered in ${paths.projectMcpPath}: ${mcp?.cause ?? "the MCP probe did not succeed"}. Worktrees are not available in this target.`);
+    return null;
+  }
+  const result = registerWorktreeManagerMcp({
+    configPath: paths.projectMcpPath,
+    format: "claude",
+    managerDir: worktreeManager.managerDir,
+  });
+  switch (result.status) {
+    case "registered":
+      logSuccess(`Worktree Manager MCP registered in ${paths.projectMcpPath}.`);
+      break;
+    case "unchanged":
+      logInfo(`Worktree Manager MCP already registered in ${paths.projectMcpPath}.`);
+      break;
+    case "preserved":
+      logWarn(`Worktree Manager MCP was not registered in ${paths.projectMcpPath}: ${result.cause}. The existing configuration was preserved.`);
+      break;
+    case "unavailable":
+      logWarn(`Worktree Manager MCP is not available: ${result.cause}. Worktrees are not available in ${paths.projectMcpPath}.`);
+      break;
+    default:
+      logWarn(`Worktree Manager MCP could not be registered in ${paths.projectMcpPath}: ${result.cause ?? "unknown cause"}. Retry with flowtask update.`);
+  }
+  return result;
 }
 
 // ─── Legacy migration ────────────────────────────────────────────────────────
@@ -442,10 +479,12 @@ export function installClaudeTarget({
   personaChoice = null,
   personaContent = undefined,
   options = {},
+  worktreeManager = null,
 }) {
   const surfaces = ensureGlobalSurfaces({ flowtaskDir, projectDir, personaChoice, personaContent });
   const runtimeManifest = readClaudeRuntimeManifest(surfaces.paths.runtimeRoot);
   const registration = registerClaudeProject({ projectDir, runtimeManifest, flowtaskDir });
+  const worktreeMcp = registerWorktreeManagerMcpForClaude(surfaces.paths, worktreeManager);
 
   logSuccess(`Claude Code target ready (runtime ${surfaces.version}).`);
   return {
@@ -456,6 +495,7 @@ export function installClaudeTarget({
     registration,
     mcp: surfaces.mcp,
     hook: surfaces.hook,
+    worktreeMcp,
   };
 }
 
@@ -596,6 +636,7 @@ export function updateClaudeTarget({
   personaChoice = null,
   personaContent = undefined,
   options = {},
+  worktreeManager = null,
 }) {
   const beforePaths = resolveClaudePaths(projectDir);
   const legacyBefore =
@@ -622,6 +663,7 @@ export function updateClaudeTarget({
 
   const runtimeManifest = readClaudeRuntimeManifest(paths.runtimeRoot);
   const registration = registerClaudeProject({ projectDir, runtimeManifest, flowtaskDir });
+  const worktreeMcp = registerWorktreeManagerMcpForClaude(paths, worktreeManager);
   logSuccess("FlowTask project registration refreshed.");
   return {
     ok: true,
@@ -631,5 +673,6 @@ export function updateClaudeTarget({
     runtime: surfaces.runtime,
     registration,
     options,
+    worktreeMcp,
   };
 }

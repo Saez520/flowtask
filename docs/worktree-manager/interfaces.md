@@ -175,7 +175,7 @@ A target-direct creation, a target-direct completion and a target-direct
 recovery have no safe simulation: they are rejected as `unsupported_dry_run`
 with exit code `3` when a dry run is requested.
 
-Closure commits use `commit_title`/`commit_body` (or `--title`/`--body`); the consumer injects the Spanish generic fallback when they are absent.
+Closure commits use `commit_title`/`commit_body` (or `--title`/`--body`); the Runner composes the Spanish generic fallback when they are absent.
 
 Closure strategy is selected with `merge_strategy`: `squash` (default, one
 delivery commit) or `preserve-history` (opt-in `merge --no-ff` keeping SHAs,
