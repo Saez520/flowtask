@@ -38,13 +38,15 @@
     "path": "flowtask-permission-gate",
     "kind": "server",
     "destinations": ["opencode"],
-    "entrypoint": "dist/index.js"
+    "entrypoint": "dist/index.js",
+    "managedPackage": true
   },
   {
     "name": "flowtask-context-checkpoint",
     "path": "flowtask-context-checkpoint",
     "kind": "server",
     "destinations": ["opencode"],
-    "entrypoint": "index.ts"
+    "entrypoint": "index.ts",
+    "managedPackage": true
   }
 ]

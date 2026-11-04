@@ -275,6 +275,14 @@ Squash-merge to `main` at `198cf54` — it is the hotfix that produced THIS file
 
 **Manifest:** `.flowtask/plugins/flowtask-plugins.json`
 
+The permission gate and the context checkpoint load as V2 packages. Install and
+update copy each package into `.opencode/plugins/<name>`, write
+`.flowtask-plugin-owner.json`, verify the copy against the source, and register
+a single `{"package":"./plugins/<name>"}` entry in `.opencode/opencode.json`. An
+older registration that points to a file under `plugins/<name>/` is replaced.
+The package entrypoint (`dist/index.js` for the gate, `index.ts` for the
+checkpoint) belongs to the package, not to the configuration entry.
+
 #### Active
 
 | Plugin | Kind | Function |
@@ -286,6 +294,7 @@ Squash-merge to `main` at `198cf54` — it is the hotfix that produced THIS file
 
 #### `flowtask-permission-gate` (detail)
 
+- loads as a managed V2 package registered once as `{"package":"./plugins/flowtask-permission-gate"}`
 - authorizes the runner's tools (`read`/`glob`/`grep`/`skill`/`mem_*`/`graphify`)
 - authorizes the runner's `bash` (whitelist: `worktree.sh`, read-only git, commit)
 - blocks `task()` to subagents outside the list → *"delegate to the subagent"*

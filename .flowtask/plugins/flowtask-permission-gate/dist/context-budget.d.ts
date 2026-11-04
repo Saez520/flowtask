@@ -4,7 +4,7 @@ export declare const DEFAULT_READ_THRESHOLD = 16000;
 export declare const DEFAULT_GREP_THRESHOLD = 8000;
 /** Per-call threshold — glob (chars of `output.output`). */
 export declare const DEFAULT_GLOB_THRESHOLD = 8000;
-/** Maximum chars delivered per runner turn (reset by chat.message). */
+/** Maximum chars delivered per runner turn (reset by the prompt hook). */
 export declare const DEFAULT_TURN_ACCUMULATED = 32000;
 /** `stat.size` (bytes) that without `limit`/`offset` triggers the read pre-gate. */
 export declare const PREVENTIVE_READ_STAT_LIMIT: number;
@@ -101,12 +101,27 @@ export declare function shouldPreventiveBlockGlob(args: Record<string, unknown>)
 export declare function shouldPreventiveBlockGrep(args: Record<string, unknown>): boolean;
 type ToolOutput = {
     output?: unknown;
+    content?: unknown;
     metadata?: Record<string, unknown>;
 };
 /**
+ * Text delivered by a V2 tool result: `output` first, then `content` when it is
+ * a string. Returns undefined when the delivery cannot be measured.
+ */
+export declare function readDeliveredText(result: ToolOutput | undefined): string | undefined;
+/**
+ * Applies a reduced delivery to a mutable V2 tool result: replaces the string
+ * delivery fields and merges the observable degradation metadata. Never throws.
+ */
+export declare function applyReducedDelivery(result: ToolOutput | undefined, reduced: string, level: DegradationLevel, options?: {
+    budget?: BudgetScope;
+    omittedChars?: number;
+}): ToolOutput | undefined;
+/**
  * Detects image/PDF attachment delivery: the tool returns a short text
  * (`Image read successfully`) plus a base64 attachment that is not reflected in
- * `string.length` but does saturate multimodal context/memory.
+ * `string.length` but does saturate multimodal context/memory. V2 may also
+ * deliver the payload as file parts in `content` or mark it in `metadata`.
  */
 export declare function isImageOrPdfOutput(output: ToolOutput | undefined): boolean;
 export {};
