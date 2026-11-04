@@ -1379,7 +1379,7 @@ ${COLORS.blue}╔═════════════════════
   const preflight = nonClaudeTargets.some(({ id }) => id === "opencode")
     ? await prepareInstallation(flowtaskDir, projectDir, "install", { targets: nonClaudeTargets, worktreeManager }) : null;
   const targetDirs = nonClaudeTargets.map(({ targetSubDir }) => path.join(projectDir, targetSubDir));
-  if (!migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
+  if (targetDirs.length > 0 && !migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
     throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
   }
   const results = [];
@@ -1588,7 +1588,7 @@ ${COLORS.blue}╔═════════════════════
   }
 
   const targetDirs = nonClaudeTargets.map(({ subDir }) => path.join(projectDir, subDir));
-  if (!migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
+  if (targetDirs.length > 0 && !migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
     throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
   }
 
