@@ -1340,22 +1340,6 @@ export function migrateProfileLocation(projectDir, flowtaskDir, targetDirs = [fl
   }
 }
 
-function cleanupOrphanedClaudeAssets(projectDir) {
-  const orphanDirs = [
-    path.join(projectDir, ".claude", "flowtask", "agents"),
-    path.join(projectDir, ".claude", "flowtask", "commands"),
-  ];
-  for (const dir of orphanDirs) {
-    if (!fs.existsSync(dir)) continue;
-    try {
-      fs.rmSync(dir, { recursive: true, force: true });
-      logSuccess(`Obsolete folder removed: ${path.relative(projectDir, dir)}`);
-    } catch (err) {
-      logError(`Could not remove obsolete folder ${path.relative(projectDir, dir)}: ${err.message}`);
-    }
-  }
-}
-
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir, options = {}) {

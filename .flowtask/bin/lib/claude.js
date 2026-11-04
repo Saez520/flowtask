@@ -2,14 +2,8 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import crypto from "crypto";
-import { logInfo, logSuccess, logError, fileExists } from "./logger.js";
-import { deepMergeObjects } from "./opencode.js";
-import {
-  buildSkillIndex,
-  buildStartupBlock,
-  extractSkillReferences,
-  parseFrontmatter,
-} from "./runner-content.js";
+import { logSuccess, logError } from "./logger.js";
+import { parseFrontmatter } from "./runner-content.js";
 export { buildSkillIndex, buildStartupBlock, extractSkillReferences } from "./runner-content.js";
 
 // ─── Claude paths ─────────────────────────────────────────────────────────────
@@ -104,15 +98,6 @@ export function writeFileAtomic(filePath, content) {
 /** SHA-256 hex digest of a file. */
 export function sha256File(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
-}
-
-function loadRunnerBody(flowtaskDir, runnerBodyOverride) {
-  if (runnerBodyOverride !== null && runnerBodyOverride !== undefined) {
-    return parseFrontmatter(runnerBodyOverride).body;
-  }
-  const runnerPath = path.join(flowtaskDir, "agents", "runner.md");
-  if (!fileExists(runnerPath)) return null;
-  return parseFrontmatter(fs.readFileSync(runnerPath, "utf8")).body;
 }
 
 // ─── Agent generator ──────────────────────────────────────────────────────────
@@ -224,97 +209,6 @@ export function generateClaudeCommands(flowtaskDir, projectDir) {
   return { generated: files.length, skipped, files };
 }
 
-/**
- * Transitional writer for the legacy per-project startup document. It keeps the
- * previous layout readable until the installer stops materializing it.
- */
-export function generateClaudeSessionStart(flowtaskDir, projectDir, runnerBodyOverride = null) {
-  const runnerBody = loadRunnerBody(flowtaskDir, runnerBodyOverride);
-  if (runnerBody === null) {
-    logError("runner.md not found — cannot generate .claude/session-start.md");
-    return;
-  }
-
-  const claudePaths = resolveClaudePaths(projectDir);
-  const skillsDir = path.join(projectDir, ".claude", "flowtask", "skills");
-  const runnerPath = path.join(projectDir, ".claude", "flowtask", "agents", "runner.md");
-  const content = [
-    "# FlowTask session start",
-    "",
-    buildStartupBlock({ skillsDir, runnerPath }),
-    "",
-    buildSkillIndex(runnerBody, { skillsDir }),
-    "",
-  ].join("\n");
-
-  writeFileAtomic(claudePaths.legacySessionStartPath, content);
-  logSuccess(`Claude Code startup written to ${claudePaths.legacySessionStartPath}.`);
-}
-
-// ─── CLAUDE.md generator ──────────────────────────────────────────────────────
-
-/**
- * Inject runner.md content into the project's CLAUDE.md using FLOWTASK markers.
- * @param {string} flowtaskDir - Path to the FlowTask source directory
- * @param {string} projectDir - Path to the target project directory
- * @param {string|null} runnerBodyOverride - Optional pre-injected runner.md content (from target). If null, reads from source.
- */
-export function generateClaudeMd(flowtaskDir, projectDir, runnerBodyOverride = null) {
-  const runnerBody = loadRunnerBody(flowtaskDir, runnerBodyOverride);
-  if (runnerBody === null) {
-    logError("runner.md not found — cannot generate CLAUDE.md");
-    return;
-  }
-
-  const claudePaths = resolveClaudePaths(projectDir);
-  const runtimeSkillsDir = path.join(claudePaths.runtimeRoot, "skills");
-  const runtimeRunnerPath = path.join(claudePaths.runtimeRoot, "runner.md");
-  const adaptationHeader = `# FlowTask Runner
-
-You are the FlowTask runner. Your operational definition follows.
-
-${buildStartupBlock({ skillsDir: runtimeSkillsDir, runnerPath: runtimeRunnerPath })}
-
-## Claude Code adaptations
-
-**Subagent tool**: Instead of \`task(prompt: "...", subagent_type: "...")\`, use the **Agent** tool:
-- \`subagent_type\`: agent name (e.g., \`flowtask-ca-writer\`)
-- \`prompt\`: user text or required context, copied literally
-
-Subagents are in \`.claude/agents/flowtask-*.md\`.
-
-${buildSkillIndex(runnerBody, { skillsDir: runtimeSkillsDir })}
-
-**Classification**: FLOWTASK_CLASSIFICATION is unavailable in Claude Code — always use \`manual-classification\` as a fallback.
-
----
-
-${runnerBody}`;
-
-  const section = `<!-- FLOWTASK:START -->\n${adaptationHeader.trimEnd()}\n<!-- FLOWTASK:END -->`;
-  const claudeMdPath = path.join(projectDir, "CLAUDE.md");
-
-  logInfo(`Merging FlowTask runner into ${claudeMdPath}...`);
-
-  try {
-    let existing = fs.existsSync(claudeMdPath) ? fs.readFileSync(claudeMdPath, "utf8") : "";
-    let updated;
-
-    if (existing.includes("<!-- FLOWTASK:START -->")) {
-      updated = existing.replace(/<!-- FLOWTASK:START -->[\s\S]*?<!-- FLOWTASK:END -->/, section);
-      logSuccess("FlowTask section updated in CLAUDE.md.");
-    } else {
-      const separator = existing.trim().length > 0 ? "\n\n---\n\n" : "";
-      updated = existing + separator + section + "\n";
-      logSuccess("FlowTask section added to CLAUDE.md.");
-    }
-
-    fs.writeFileSync(claudeMdPath, updated, "utf8");
-  } catch (err) {
-    logError(`Failed to generate CLAUDE.md: ${err.message}`);
-  }
-}
-
 // ─── Settings merger ──────────────────────────────────────────────────────────
 
 function readJsonFile(filePath, label) {
@@ -339,7 +233,7 @@ function hookMatches(group, matcher, command) {
 /**
  * Additive hook merge: keeps every existing entry and appends only the
  * template (matcher, command) combinations that are not present yet.
- * Arrays are never passed through deepMergeObjects.
+ * Arrays are never passed through an object deep merge.
  */
 export function mergeHooks(existingHooks = {}, templateHooks = {}) {
   const merged = JSON.parse(JSON.stringify(existingHooks ?? {}));
@@ -490,28 +384,3 @@ export function buildSessionStartHook(runtimeRoot, nodePath = process.execPath) 
   };
 }
 
-// ─── MCP Config merger ───────────────────────────────────────────────────────
-
-export function mergeClaudeMcpConfig(mcpJsonPath, flowtaskDir) {
-  const templatePath = path.join(flowtaskDir, "claude", "mcp.json");
-  if (!fileExists(templatePath)) return { ok: true, skipped: true };
-  logInfo(`Merging Engram MCP into ${mcpJsonPath}...`);
-  try {
-    const template = JSON.parse(fs.readFileSync(templatePath, "utf8"));
-    const existingRead = readJsonFile(mcpJsonPath, mcpJsonPath);
-
-    if (!existingRead.ok) {
-      const message = `Refusing to overwrite ${mcpJsonPath}: ${existingRead.error}. Fix or move the file and retry.`;
-      logError(message);
-      return { ok: false, error: message };
-    }
-
-    const merged = deepMergeObjects(existingRead.value, template);
-    fs.writeFileSync(mcpJsonPath, JSON.stringify(merged, null, 2), "utf8");
-    logSuccess(".mcp.json updated with Engram MCP.");
-    return { ok: true };
-  } catch (err) {
-    logError(`Failed to merge .mcp.json: ${err.message}`);
-    return { ok: false, error: err.message };
-  }
-}
