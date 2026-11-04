@@ -165,8 +165,13 @@ it never registers a project on its own. Repeated updates do not duplicate the
 hook, the MCP entry, the agents, or the registration. The registration keeps its
 original `registeredAt` value.
 
-By default the command prints one line per phase and a closing summary.
-`--verbose` prints the per-step detail for every target instead.
+By default the command prints a framed dashboard of fixed width: one row per
+phase with its elapsed time and state, one row per environment under `sync`,
+warnings and errors grouped inside the frame, and a footer with the environment
+and warning counts, the total time, and a final status badge. Without an
+interactive terminal, with `NO_COLOR` or with `TERM=dumb`, the same dashboard is
+printed without color or ANSI escape sequences. `--verbose` prints the per-step
+detail for every target instead.
 
 ### Uninstall
 
