@@ -4,6 +4,13 @@ import path from "path";
 import crypto from "crypto";
 import { logInfo, logSuccess, logError, fileExists } from "./logger.js";
 import { deepMergeObjects } from "./opencode.js";
+import {
+  buildSkillIndex,
+  buildStartupBlock,
+  extractSkillReferences,
+  parseFrontmatter,
+} from "./runner-content.js";
+export { buildSkillIndex, buildStartupBlock, extractSkillReferences } from "./runner-content.js";
 
 // ─── Claude paths ─────────────────────────────────────────────────────────────
 
@@ -99,84 +106,6 @@ export function sha256File(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
-// ─── Startup block and skill index ────────────────────────────────────────────
-
-export const SKILLS_SECTION_HEADING = "## Skills disponibles";
-const STARTUP_SKILLS = ["investigacion", "memory-protocol", "zero-assumptions"];
-
-/**
- * Extract the skills declared in runner.md's "## Skills disponibles" section.
- * Both `skill({ name: "..." })` calls and single-backticked skill names count.
- */
-export function extractSkillReferences(runnerBody) {
-  const start = runnerBody.indexOf(SKILLS_SECTION_HEADING);
-  if (start === -1) {
-    throw new Error(`runner.md is missing the "${SKILLS_SECTION_HEADING}" section — cannot build the skill index.`);
-  }
-
-  const rest = runnerBody.slice(start + SKILLS_SECTION_HEADING.length);
-  const nextHeading = rest.search(/^## /m);
-  const section = nextHeading === -1 ? rest : rest.slice(0, nextHeading);
-
-  const names = new Set();
-  for (const match of section.matchAll(/skill\(\{\s*name:\s*["']([^"']+)["']\s*\}\)/g)) {
-    if (match[1] !== "...") names.add(match[1]);
-  }
-  for (const match of section.matchAll(/`([a-z][a-z0-9]*(?:-[a-z0-9]+)*)`/g)) {
-    names.add(match[1]);
-  }
-  return [...names];
-}
-
-/**
- * Build the startup block reused by CLAUDE.md and .claude/session-start.md.
- */
-export function buildStartupBlock({ skillsDir, runnerPath }) {
-  const skillRead = (name) => path.join(skillsDir, name, "SKILL.md");
-
-  return [
-    "## Startup — run before answering",
-    "",
-    "Run this sequence at the start of every session, before classifying the request and without waiting for the user to ask:",
-    "",
-    "1. Load the Engram tools with **ToolSearch** (`mcp__engram__*`) before calling any `mem_*` tool.",
-    "2. Run `mem_context` to recover context from previous sessions.",
-    '3. Load heuristics with `mem_search(query: "heuristic", scope: "project")` and `mem_search(query: "heuristic", scope: "personal")`; when the same key exists in both scopes, the project value wins.',
-    "4. Read the startup skills with **Read**:",
-    ...STARTUP_SKILLS.map((name) => `   - \`${skillRead(name)}\``),
-    `5. Read the runner definition with **Read**: \`${runnerPath}\``,
-    "6. Show your identity at the start of every response: `[capa: orquestador] {base_name}`. Replace `{base_name}` with the BaseName assigned in the handshake; if no name is assigned, say the identity is unavailable instead of inventing one.",
-  ].join("\n");
-}
-
-/**
- * Build the full skill index from runner.md, resolved against the installed skills.
- */
-export function buildSkillIndex(runnerBody, { skillsDir }) {
-  const references = extractSkillReferences(runnerBody);
-  const missing = references.filter(
-    (name) => !fileExists(path.join(skillsDir, name, "SKILL.md")),
-  );
-
-  if (missing.length > 0) {
-    throw new Error(
-      `Skill index references skills that are not installed in ${skillsDir}: ${missing.join(", ")}. ` +
-        `Install the canonical skills or fix "${SKILLS_SECTION_HEADING}" in runner.md.`,
-    );
-  }
-
-  const lines = references.map((name) => {
-    const skillPath = path.join(skillsDir, name, "SKILL.md");
-    return `- \`skill({ name: "${name}" })\` → **Read** \`${skillPath}\``;
-  });
-
-  return [
-    "**Loading skills**: Instead of `skill({ name: \"...\" })`, use **Read** on the skill file:",
-    "",
-    ...lines,
-  ].join("\n");
-}
-
 function loadRunnerBody(flowtaskDir, runnerBodyOverride) {
   if (runnerBodyOverride !== null && runnerBodyOverride !== undefined) {
     return parseFrontmatter(runnerBodyOverride).body;
@@ -184,57 +113,6 @@ function loadRunnerBody(flowtaskDir, runnerBodyOverride) {
   const runnerPath = path.join(flowtaskDir, "agents", "runner.md");
   if (!fileExists(runnerPath)) return null;
   return parseFrontmatter(fs.readFileSync(runnerPath, "utf8")).body;
-}
-
-/**
- * Write .claude/session-start.md with the startup block and the skill index.
- */
-export function generateClaudeSessionStart(flowtaskDir, projectDir, runnerBodyOverride = null) {
-  const claudePaths = resolveClaudePaths(projectDir);
-  const runnerBody = loadRunnerBody(flowtaskDir, runnerBodyOverride);
-
-  if (runnerBody === null) {
-    logError("runner.md not found — cannot generate .claude/session-start.md");
-    return;
-  }
-
-  const skillsDir = path.join(claudePaths.runtimeRoot, "skills");
-  const runnerPath = path.join(claudePaths.runtimeRoot, "runner.md");
-  const content = [
-    "# FlowTask session start",
-    "",
-    buildStartupBlock({ skillsDir, runnerPath }),
-    "",
-    buildSkillIndex(runnerBody, { skillsDir }),
-    "",
-  ].join("\n");
-
-  writeFileAtomic(claudePaths.legacySessionStartPath, content);
-  logSuccess(`Claude Code startup written to ${claudePaths.legacySessionStartPath}.`);
-}
-
-// ─── Frontmatter parser ───────────────────────────────────────────────────────
-
-function parseFrontmatter(content) {
-  const match = content.match(/^---\n([\s\S]*?)\n---\n?/);
-  if (!match) return { name: null, description: null, body: content };
-
-  const yaml = match[1];
-  const body = content.slice(match[0].length).trimStart();
-
-  const nameMatch = yaml.match(/^name:\s*(.+)$/m);
-  const name = nameMatch ? nameMatch[1].trim() : null;
-
-  let description = null;
-  const descFolded = yaml.match(/^description:\s*>-\s*\n((?:[ \t]+.+\n?)*)/m);
-  if (descFolded) {
-    description = descFolded[1].split("\n").map((l) => l.trim()).filter(Boolean).join(" ");
-  } else {
-    const descSimple = yaml.match(/^description:\s*(.+)$/m);
-    if (descSimple) description = descSimple[1].trim();
-  }
-
-  return { name, description, body };
 }
 
 // ─── Agent generator ──────────────────────────────────────────────────────────
@@ -253,6 +131,7 @@ function generateClaudeAgent(srcPath, destPath) {
     `name: ${displayName}`,
     `description: ${description || "FlowTask subagent. Activated only through the runner."}`,
     "---",
+    FLOWTASK_MANAGED_MARKER,
     "",
     body,
   ].join("\n");
@@ -260,27 +139,28 @@ function generateClaudeAgent(srcPath, destPath) {
   const dir = path.dirname(destPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(destPath, claudeContent, "utf8");
+  return destPath;
 }
 
 /**
  * Generate all Claude Code agent files from .flowtask/agents/ (except runner.md).
+ * `flowtask-*` agents are owned by FlowTask and are replaced on every refresh.
  */
 export function generateClaudeAgents(flowtaskDir, projectDir) {
   const agentsDir = path.join(flowtaskDir, "agents");
-  if (!fs.existsSync(agentsDir)) return { generated: 0 };
+  if (!fs.existsSync(agentsDir)) return { generated: 0, skipped: [], files: [] };
 
   const destDir = path.join(projectDir, ".claude", "agents");
-  let generated = 0;
+  const files = [];
 
-  fs.readdirSync(agentsDir)
-    .filter((f) => f.endsWith(".md") && f !== "runner.md")
-    .forEach((file) => {
-      const agentName = path.basename(file, ".md");
-      generateClaudeAgent(path.join(agentsDir, file), path.join(destDir, `flowtask-${agentName}.md`));
-      generated++;
-    });
+  for (const file of fs.readdirSync(agentsDir)) {
+    if (!file.endsWith(".md") || file === "runner.md") continue;
+    const agentName = path.basename(file, ".md");
+    const destPath = path.join(destDir, `flowtask-${agentName}.md`);
+    files.push(generateClaudeAgent(path.join(agentsDir, file), destPath));
+  }
 
-  return { generated };
+  return { generated: files.length, skipped: [], files };
 }
 
 // ─── Command generator ────────────────────────────────────────────────────────
@@ -293,6 +173,11 @@ const CLAUDE_COMMAND_REPLACEMENTS = [
 ];
 
 function generateClaudeCommand(srcPath, destPath) {
+  if (fs.existsSync(destPath)) {
+    const existing = fs.readFileSync(destPath, "utf8");
+    if (!existing.includes(FLOWTASK_MANAGED_MARKER)) return { written: false, path: destPath };
+  }
+
   const content = fs.readFileSync(srcPath, "utf8");
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n?/);
   let description = "";
@@ -310,30 +195,60 @@ function generateClaudeCommand(srcPath, destPath) {
     adaptedBody = adaptedBody.split(from).join(to);
   }
 
-  const claudeContent = `---\ndescription: ${description}\n---\n${adaptedBody}`;
+  const claudeContent = `---\ndescription: ${description}\n---\n${FLOWTASK_MANAGED_MARKER}\n${adaptedBody}`;
   const dir = path.dirname(destPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(destPath, claudeContent, "utf8");
+  return { written: true, path: destPath };
 }
 
 /**
  * Generate all Claude Code command files from .flowtask/commands/.
+ * A pre-existing command without the ownership marker is never overwritten.
  */
 export function generateClaudeCommands(flowtaskDir, projectDir) {
   const commandsDir = path.join(flowtaskDir, "commands");
-  if (!fs.existsSync(commandsDir)) return { generated: 0 };
+  if (!fs.existsSync(commandsDir)) return { generated: 0, skipped: [], files: [] };
 
   const destDir = path.join(projectDir, ".claude", "commands");
-  let generated = 0;
+  const files = [];
+  const skipped = [];
 
-  fs.readdirSync(commandsDir)
-    .filter((f) => f.endsWith(".md"))
-    .forEach((file) => {
-      generateClaudeCommand(path.join(commandsDir, file), path.join(destDir, file));
-      generated++;
-    });
+  for (const file of fs.readdirSync(commandsDir)) {
+    if (!file.endsWith(".md")) continue;
+    const result = generateClaudeCommand(path.join(commandsDir, file), path.join(destDir, file));
+    if (result.written) files.push(result.path);
+    else skipped.push(result.path);
+  }
 
-  return { generated };
+  return { generated: files.length, skipped, files };
+}
+
+/**
+ * Transitional writer for the legacy per-project startup document. It keeps the
+ * previous layout readable until the installer stops materializing it.
+ */
+export function generateClaudeSessionStart(flowtaskDir, projectDir, runnerBodyOverride = null) {
+  const runnerBody = loadRunnerBody(flowtaskDir, runnerBodyOverride);
+  if (runnerBody === null) {
+    logError("runner.md not found — cannot generate .claude/session-start.md");
+    return;
+  }
+
+  const claudePaths = resolveClaudePaths(projectDir);
+  const skillsDir = path.join(projectDir, ".claude", "flowtask", "skills");
+  const runnerPath = path.join(projectDir, ".claude", "flowtask", "agents", "runner.md");
+  const content = [
+    "# FlowTask session start",
+    "",
+    buildStartupBlock({ skillsDir, runnerPath }),
+    "",
+    buildSkillIndex(runnerBody, { skillsDir }),
+    "",
+  ].join("\n");
+
+  writeFileAtomic(claudePaths.legacySessionStartPath, content);
+  logSuccess(`Claude Code startup written to ${claudePaths.legacySessionStartPath}.`);
 }
 
 // ─── CLAUDE.md generator ──────────────────────────────────────────────────────

@@ -9,6 +9,16 @@ import {
 import { copyWithProgress, copyDirectoryDelta, pruneDirectoryExtras, verifyDirectoryMirror } from "./copy.js";
 import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
 import { generateClaudeAgents, generateClaudeCommands, generateClaudeMd, generateClaudeSessionStart, mergeClaudeSettings, mergeClaudeMcpConfig } from "./claude.js";
+import {
+  configureRunnerScriptsContent,
+  injectAutonomyIntoRunnerContent,
+  injectPersonaIntoRunnerContent,
+} from "./runner-content.js";
+export {
+  configureRunnerScriptsContent,
+  injectAutonomyIntoRunnerContent,
+  injectPersonaIntoRunnerContent,
+} from "./runner-content.js";
 import { showInteractiveSelector } from "./ui.js";
 import { coordinateGraphify } from "./graphify.js";
 import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA, classifyOwnership, replaceManagedPackage } from "./ownership.js";
@@ -588,36 +598,6 @@ function resolvePersonaContent(flowtaskDir, personaChoice) {
   return fs.readFileSync(personaPath, "utf8");
 }
 
-const PERSONA_START_MARKER = "<!-- FLOWTASK:PERSONA_START -->";
-const PERSONA_END_MARKER = "<!-- FLOWTASK:PERSONA_END -->";
-const AUTONOMY_START_MARKER = "<!-- FLOWTASK:AUTONOMY_START -->";
-const AUTONOMY_END_MARKER = "<!-- FLOWTASK:AUTONOMY_END -->";
-
-/**
- * Injects a runner's persona block.
- *
- * `undefined` leaves the block intact; `null` (or empty content) clears it.
- * Missing markers only warn: persona is optional.
- */
-export function injectPersonaIntoRunnerContent(content, personaContent) {
-  if (personaContent === undefined) return content;
-
-  const startIdx = content.indexOf(PERSONA_START_MARKER);
-  const endIdx = content.indexOf(PERSONA_END_MARKER);
-
-  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx + PERSONA_START_MARKER.length) {
-    logWarn("PERSONA markers not found in runner.md. No personality was injected.");
-    return content;
-  }
-
-  const block = personaContent ? `\n${personaContent}\n` : "\n";
-  return (
-    content.slice(0, startIdx + PERSONA_START_MARKER.length) +
-    block +
-    content.slice(endIdx)
-  );
-}
-
 function injectPersonaIntoRunner(targetDir, personaContent) {
   if (personaContent === undefined) return;
 
@@ -632,42 +612,6 @@ function injectPersonaIntoRunner(targetDir, personaContent) {
   logSuccess(personaContent
     ? `Personality injected into runner.md of ${targetDir}.`
     : `Personality block cleared in runner.md of ${targetDir}.`);
-}
-
-/**
- * Injects the resolved autonomy value between the autonomy markers.
- * Unlike persona, autonomy is mandatory: without markers or with an
- * invalid descriptor, the operation fails.
- */
-export function injectAutonomyIntoRunnerContent(content, descriptor) {
-  const profile = descriptor && descriptor.profile;
-  const source = descriptor && descriptor.source;
-
-  if (!AUTONOMY_PROFILES.includes(profile) || !LAYER_SOURCES.includes(source)) {
-    const error = new Error(
-      "[FlowTask Layers] Could not inject autonomy into runner.md: invalid autonomy descriptor.",
-    );
-    error.code = "autonomy_descriptor_invalid";
-    throw error;
-  }
-
-  const startIdx = content.indexOf(AUTONOMY_START_MARKER);
-  const endIdx = content.indexOf(AUTONOMY_END_MARKER);
-
-  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx + AUTONOMY_START_MARKER.length) {
-    const error = new Error(
-      `[FlowTask Layers] Could not inject autonomy into runner.md: markers ${AUTONOMY_START_MARKER} and ${AUTONOMY_END_MARKER} are missing.`,
-    );
-    error.code = "autonomy_markers_missing";
-    throw error;
-  }
-
-  const block = `\nCurrent autonomy: ${profile} (source: ${source}).\n`;
-  return (
-    content.slice(0, startIdx + AUTONOMY_START_MARKER.length) +
-    block +
-    content.slice(endIdx)
-  );
 }
 
 export function injectAutonomyIntoRunner(targetDir, descriptor) {
@@ -690,11 +634,6 @@ function autonomyDescriptorFrom(targetConfig) {
   const layer = targetConfig && targetConfig.autonomy;
   if (!layer || layer.status !== "valid" || !layer.value) return null;
   return { profile: layer.value.profile, source: layer.source };
-}
-
-function configureRunnerScriptsContent(content, targetSubDir) {
-  const scriptsDir = `${targetSubDir.replace(/\\/g, "/")}/scripts`;
-  return content.replace('FLOWTASK_SCRIPTS="./.flowtask/scripts"', `FLOWTASK_SCRIPTS="./${scriptsDir}"`);
 }
 
 function configureRunnerScripts(targetDir, targetSubDir) {
