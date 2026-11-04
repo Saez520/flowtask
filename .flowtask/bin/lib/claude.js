@@ -3,7 +3,17 @@ import os from "os";
 import path from "path";
 import crypto from "crypto";
 import { logSuccess, logError } from "./logger.js";
-import { parseFrontmatter } from "./runner-content.js";
+import {
+  assertEveryDeclaredSkillHasPath,
+  assertNoSkillCalls,
+  buildSkillFilesSection,
+  collectDeclaredSkillNames,
+  findSkillCalls,
+  normalizeSkillPaths,
+  parseFrontmatter,
+  resolveSkillCallProblems,
+  translateSkillCalls,
+} from "./runner-content.js";
 export { buildSkillIndex, buildStartupBlock, extractSkillReferences } from "./runner-content.js";
 
 // ─── Claude paths ─────────────────────────────────────────────────────────────
@@ -102,47 +112,96 @@ export function sha256File(filePath) {
 
 // ─── Agent generator ──────────────────────────────────────────────────────────
 
-function generateClaudeAgent(srcPath, destPath) {
-  const content = fs.readFileSync(srcPath, "utf8");
-  const { name, description, body } = parseFrontmatter(content);
+const SKILL_PREAMBLE =
+  "> En Claude Code, cargá cada skill con **Read** sobre la ruta indicada; la herramienta nativa no resuelve las skills de FlowTask. Si no podés leerla, declaralo antes de continuar en lugar de improvisar.";
 
-  const rawName = name || path.basename(srcPath, ".md");
+function composeClaudeAgent({ body, name, description, skillsDir }) {
   const displayName =
     "FlowTask " +
-    rawName.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+    name.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
-  const claudeContent = [
+  const declared = collectDeclaredSkillNames(body, { skillsDir });
+  const callNames = new Set(findSkillCalls(body).map((call) => call.name));
+  const extras = declared.filter((skill) => !callNames.has(skill));
+
+  const normalizedBody = normalizeSkillPaths(body, { skillsDir, context: name });
+  let composedBody = translateSkillCalls(normalizedBody, { skillsDir });
+  if (extras.length > 0) {
+    composedBody = `${composedBody.trimEnd()}\n\n---\n\n${buildSkillFilesSection(extras, { skillsDir })}\n`;
+  }
+
+  const parts = [
     "---",
     `name: ${displayName}`,
     `description: ${description || "FlowTask subagent. Activated only through the runner."}`,
     "---",
     FLOWTASK_MANAGED_MARKER,
     "",
-    body,
-  ].join("\n");
+  ];
+  if (declared.length > 0) parts.push(SKILL_PREAMBLE, "");
+  parts.push(composedBody);
 
-  const dir = path.dirname(destPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(destPath, claudeContent, "utf8");
-  return destPath;
+  const content = parts.join("\n");
+  assertNoSkillCalls(content, name);
+  assertEveryDeclaredSkillHasPath(content, declared, { skillsDir, context: name });
+  return content;
 }
 
 /**
  * Generate all Claude Code agent files from .flowtask/agents/ (except runner.md).
  * `flowtask-*` agents are owned by FlowTask and are replaced on every refresh.
+ *
+ * Composition is three-phase: every agent is read and validated, every body is
+ * composed in memory, and only then are files written. An unresolved skill
+ * aborts the whole generation without leaving a partial agent set.
  */
-export function generateClaudeAgents(flowtaskDir, projectDir) {
+export function generateClaudeAgents(flowtaskDir, projectDir, options = {}) {
   const agentsDir = path.join(flowtaskDir, "agents");
   if (!fs.existsSync(agentsDir)) return { generated: 0, skipped: [], files: [] };
 
+  const skillsDir = options.skillsDir ?? path.join(flowtaskDir, "skills");
   const destDir = path.join(projectDir, ".claude", "agents");
-  const files = [];
 
+  const sources = [];
+  const problems = [];
   for (const file of fs.readdirSync(agentsDir)) {
     if (!file.endsWith(".md") || file === "runner.md") continue;
     const agentName = path.basename(file, ".md");
-    const destPath = path.join(destDir, `flowtask-${agentName}.md`);
-    files.push(generateClaudeAgent(path.join(agentsDir, file), destPath));
+    const content = fs.readFileSync(path.join(agentsDir, file), "utf8");
+    const { description, body } = parseFrontmatter(content);
+
+    for (const problem of resolveSkillCallProblems(body, { skillsDir })) {
+      problems.push({ ...problem, agent: agentName });
+    }
+    sources.push({ agentName, description, body });
+  }
+
+  if (problems.length > 0) {
+    const error = new Error(
+      "Cannot generate Claude agents because declared skills are not installed: " +
+        problems
+          .map((problem) => `skill "${problem.skill}" declared in agent "${problem.agent}" (expected at ${problem.path})`)
+          .join("; "),
+    );
+    error.code = "claude_agent_skill_unresolved";
+    error.problems = problems;
+    throw error;
+  }
+
+  const composed = sources.map((source) => ({
+    destPath: path.join(destDir, `flowtask-${source.agentName}.md`),
+    content: composeClaudeAgent({
+      body: source.body,
+      name: source.agentName,
+      description: source.description,
+      skillsDir,
+    }),
+  }));
+
+  const files = [];
+  for (const item of composed) {
+    writeFileAtomic(item.destPath, item.content);
+    files.push(item.destPath);
   }
 
   return { generated: files.length, skipped: [], files };
