@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readComposedRunner } from "./helpers/runner-document.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const AGENTS_DIR = path.join(ROOT, ".flowtask", "agents");
@@ -21,7 +22,7 @@ const readOptional = (relative) => (
 
 const skill = flat(read(".flowtask/skills/validation-contract/SKILL.md"));
 const validator = flat(read(".flowtask/agents/validator.md"));
-const runner = flat(read(".flowtask/agents/runner.md"));
+const runner = flat(readComposedRunner({ root: ROOT }));
 const validationDoc = readOptional("docs/architecture/validation.md");
 const index = flat(read("docs/architecture/INDEX.md"));
 const coreFlow = flat(read("docs/core-flowtask.md"));

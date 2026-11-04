@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readComposedRunner } from "./helpers/runner-document.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -102,7 +103,7 @@ describe("planner mediated references contract", () => {
   });
 
   it("declara la rama de derivaciones y huecos del Runner", () => {
-    assertRunnerContract(read(RUNNER));
+    assertRunnerContract(readComposedRunner({ root: ROOT }));
   });
 
   it("rechaza una copia que pierde la espera por derivación", () => {
@@ -143,11 +144,20 @@ describe("hygiene of the functional surfaces", () => {
   it("no publica identificadores de coordinación en la prosa funcional", () => {
     // Los bloques de código y las citas en línea no son prosa: los ejemplos
     // canónicos viven ahí y no constituyen una referencia de coordinación.
+    // El recorte en línea se hace por línea para que un backtick impar no
+    // consuma prosa de líneas siguientes al leer el documento compuesto.
     const stripCode = (text) =>
-      text.replace(/```[\s\S]*?```/g, " ").replace(/`[^`]*`/g, " ");
+      text
+        .replace(/```[\s\S]*?```/g, " ")
+        .split("\n")
+        .map((line) => line.replace(/`[^`]*`/g, " "))
+        .join("\n");
 
-    for (const relPath of [PLANNER, RUNNER]) {
-      const prose = stripCode(read(relPath));
+    for (const [relPath, content] of [
+      [PLANNER, read(PLANNER)],
+      [RUNNER, readComposedRunner({ root: ROOT })],
+    ]) {
+      const prose = stripCode(content);
       assert.doesNotMatch(
         prose,
         /CA-[a-z0-9]/,

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readComposedRunner } from "./helpers/runner-document.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const AGENTS_DIR = path.join(ROOT, ".flowtask", "agents");
@@ -144,11 +145,12 @@ describe("identidad visible en los agentes", () => {
   });
 
   it("identifica al orquestador y a la reserva dev-only en el runner", () => {
-    assert.match(orchestrator.content, /\[capa: orquestador\]/);
-    assert.match(orchestrator.content, /\[capa: núcleo Hermes\] Hermes \(dev-only\)/);
-    assert.match(orchestrator.content, /\{identity_display\}/);
-    assert.match(orchestrator.content, /layer: "orchestrator"/);
-    assert.match(orchestrator.content, /layer_label: "orquestador"/);
+    const runnerContent = flat(readComposedRunner({ root: ROOT }));
+    assert.match(runnerContent, /\[capa: orquestador\]/);
+    assert.match(runnerContent, /\[capa: núcleo Hermes\] Hermes \(dev-only\)/);
+    assert.match(runnerContent, /\{identity_display\}/);
+    assert.match(runnerContent, /layer: "orchestrator"/);
+    assert.match(runnerContent, /layer_label: "orquestador"/);
   });
 
   it("agrega la capa a los ejemplos de checkpoint inline", () => {

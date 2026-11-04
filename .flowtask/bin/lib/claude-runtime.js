@@ -18,7 +18,11 @@ import {
   validatePersonaLayer,
 } from "./layers.js";
 import { logInfo, logSuccess, logWarn, fileExists } from "./logger.js";
-import { generateClaudeSessionStart } from "./runner-content.js";
+import {
+  adaptFlowBodyForClaude,
+  extractFlowReferences,
+  generateClaudeSessionStart,
+} from "./runner-content.js";
 
 const BIN_LIB_ALLOWLIST = Object.freeze([
   "target-direct-transport.js",
@@ -93,6 +97,34 @@ function removeIfEmpty(directory) {
     if (fs.readdirSync(directory).length === 0) fs.rmdirSync(directory);
   } catch {
     // Missing or non-empty directories are left untouched.
+  }
+}
+
+/**
+ * Rewrite every flow body for Claude Code: skill calls become direct reads of
+ * the final payload. The canonical frontmatter is preserved byte for byte.
+ */
+function adaptStagingFlows({ stagingDir, runnerBody, finalPaths }) {
+  const stagingSkillsDir = path.join(stagingDir, "skills");
+  for (const reference of extractFlowReferences(runnerBody)) {
+    const flowPath = path.join(stagingSkillsDir, reference.flow, "SKILL.md");
+    if (!fileExists(flowPath)) {
+      const error = new Error(
+        `Flow ${reference.flow} is missing from the Claude payload staging copy.`,
+      );
+      error.code = "runner_flows_missing";
+      error.flow = reference.flow;
+      throw error;
+    }
+    const content = fs.readFileSync(flowPath, "utf8");
+    const frontmatter = content.match(/^---\n[\s\S]*?\n---\n?/);
+    const prefix = frontmatter ? frontmatter[0] : "";
+    const body = content.slice(prefix.length);
+    const adapted = adaptFlowBodyForClaude(body, {
+      skillsDir: finalPaths.skillsDir,
+      context: reference.flow,
+    });
+    writeFileAtomic(flowPath, prefix + adapted);
   }
 }
 
@@ -292,6 +324,7 @@ export function ensureClaudeRuntime(flowtaskDir, options = {}) {
     const payloadId = buildPayloadId(version, buildPayloadFiles(stagingDir));
     const payloadDir = path.join(runtimeVersionsDir, payloadId);
     const finalPaths = resolveActiveRuntimePaths(runtimeRoot, { payloadId });
+    adaptStagingFlows({ stagingDir, runnerBody, finalPaths });
     generateClaudeSessionStart({
       skillsDir: finalPaths.skillsDir,
       runnerPath: finalPaths.runnerPath,

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readComposedRunner } from "./helpers/runner-document.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -13,7 +14,6 @@ const read = (relPath) => fs.readFileSync(path.join(ROOT, relPath), "utf8");
 const flat = (text) => text.replace(/\s+/g, " ");
 
 const TESTER = ".flowtask/agents/tester.md";
-const RUNNER = ".flowtask/agents/runner.md";
 const VALIDATOR = ".flowtask/agents/validator.md";
 const PLANNER = ".flowtask/agents/planner.md";
 const PLAN_AUDITOR = ".flowtask/agents/plan-auditor.md";
@@ -248,7 +248,7 @@ describe("guarda del contrato gap-driven", () => {
    *   Runner o `tests_report_missing` del Validator hace fallar la guarda.
    */
   it("G-2: reintroducir una decisión antes del worktree o perder el reporte de gaps rompe la guarda del flujo", () => {
-    const runner = read(RUNNER);
+    const runner = readComposedRunner({ root: ROOT });
     const validator = read(VALIDATOR);
     assertRunnerValidatorFlow(runner, validator);
 

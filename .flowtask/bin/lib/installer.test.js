@@ -23,6 +23,7 @@ import { registerPluginArrayEntry, mergeOpencodeConfig } from "./opencode.js";
 import { generateClaudeCommands } from "./claude.js";
 import { verifyDirectoryMirror, copyDirectoryDelta, copyWithProgress, pruneDirectoryExtras } from "./copy.js";
 import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA } from "./ownership.js";
+import { readComposedRunner } from "../test/helpers/runner-document.js";
 
 const fixtures = [];
 const FLOWTASK_CLI = fileURLToPath(new URL("../flowtask.js", import.meta.url));
@@ -887,8 +888,8 @@ test("update integrates config and cleans legacy scripts into an installed targe
 });
 
 test("Runner delegates worktree lifecycle through the consumer adapter", () => {
-  const source = path.resolve(path.dirname(FLOWTASK_CLI), "..", "agents", "runner.md");
-  const runner = fs.readFileSync(source, "utf8");
+  const root = path.resolve(path.dirname(FLOWTASK_CLI), "..", "..");
+  const runner = readComposedRunner({ root });
   assert.match(runner, /worktree-consumer-adapter\.js/);
   assert.match(runner, /`cli` o `mcp`[\s\S]*?obligatoria y explícita/);
   assert.match(runner, /Engram debe confirmar la asociación efectiva[\s\S]*?antes de despachar Constructor/);

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readComposedRunner } from "./helpers/runner-document.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -239,7 +240,7 @@ describe("constructor pause and consent contract", () => {
 });
 
 describe("runner autonomy contract", () => {
-  const content = read(".flowtask/agents/runner.md");
+  const content = readComposedRunner({ root: ROOT });
   const flatContent = flat(content);
 
   it("declares the automatic transition after a gate pass", () => {

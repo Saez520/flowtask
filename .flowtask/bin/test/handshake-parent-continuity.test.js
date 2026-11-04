@@ -3,15 +3,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readComposedRunner } from "./helpers/runner-document.js";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const flowtaskDir = path.resolve(testDir, "../..");
+const root = path.resolve(flowtaskDir, "..");
 
 // Los documentos son markdown con saltos de línea arbitrarios: se normaliza el
 // espacio para que las aserciones verifiquen contenido, no wrap.
 const normalize = (content) => content.replace(/\s+/g, " ");
 
-const runner = normalize(fs.readFileSync(path.join(flowtaskDir, "agents/runner.md"), "utf8"));
+const runner = normalize(readComposedRunner({ root }));
 const handshake = normalize(fs.readFileSync(path.join(flowtaskDir, "skills/handshake-protocol/SKILL.md"), "utf8"));
 const checkpoint = normalize(fs.readFileSync(path.join(flowtaskDir, "skills/checkpoint-mixin/SKILL.md"), "utf8"));
 

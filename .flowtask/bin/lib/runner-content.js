@@ -30,7 +30,12 @@ export function parseFrontmatter(content) {
 // ─── Startup block and skill index ────────────────────────────────────────────
 
 export const SKILLS_SECTION_HEADING = "## Skills disponibles";
+export const FLOWS_SECTION_HEADING = "## Flujos bajo demanda";
+export const RUNNER_CORE_BASELINE_BYTES = 97054;
 const STARTUP_SKILLS = ["investigacion", "memory-protocol", "zero-assumptions"];
+const FLOW_TRIGGER_PATTERN = /^evento:[a-z][a-z0-9-]*$/;
+const FLOW_NAME_PATTERN = /^runner-flow-[a-z0-9-]+$/;
+const FLOW_MOMENTS = ["intake", "define", "plan", "build", "validate", "close"];
 
 /**
  * Extract the skills declared in runner.md's "## Skills disponibles" section.
@@ -44,7 +49,12 @@ export function extractSkillReferences(runnerBody) {
 
   const rest = runnerBody.slice(start + SKILLS_SECTION_HEADING.length);
   const nextHeading = rest.search(/^## /m);
-  const section = nextHeading === -1 ? rest : rest.slice(0, nextHeading);
+  const rawSection = nextHeading === -1 ? rest : rest.slice(0, nextHeading);
+  // Flows and event names are declared in their own section; they are not
+  // skills and must not enter the Claude skill index.
+  const section = rawSection
+    .replace(/`runner-flow-[a-z0-9-]+`/g, "")
+    .replace(/evento\s+`[^`]+`/g, "");
 
   const names = new Set();
   for (const match of section.matchAll(/skill\(\{\s*name:\s*["']([^"']+)["']\s*\}\)/g)) {
@@ -54,6 +64,227 @@ export function extractSkillReferences(runnerBody) {
     names.add(match[1]);
   }
   return [...names];
+}
+
+// ─── Flow references ─────────────────────────────────────────────────────────
+
+function flowSection(runnerBody) {
+  const pattern = new RegExp(`^${FLOWS_SECTION_HEADING.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
+  const match = pattern.exec(runnerBody);
+  if (!match) return null;
+  const rest = runnerBody.slice(match.index + match[0].length);
+  const next = rest.search(/^## /m);
+  return next === -1 ? rest : rest.slice(0, next);
+}
+
+function flowSubsection(section, heading) {
+  const pattern = new RegExp(`^### ${heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
+  const match = pattern.exec(section);
+  if (!match) return null;
+  const rest = section.slice(match.index + match[0].length);
+  const next = rest.search(/^### /m);
+  return next === -1 ? rest : rest.slice(0, next);
+}
+
+function flowTableRows(block) {
+  const rows = [];
+  for (const line of block.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
+    if (cells.every((cell) => /^:?-{3,}:?$/.test(cell))) continue;
+    rows.push({ cells, line: trimmed });
+  }
+  return rows;
+}
+
+function flowError(code, message, extra = {}) {
+  const error = new Error(message);
+  error.code = code;
+  Object.assign(error, extra);
+  return error;
+}
+
+/**
+ * Read the closed trigger index declared by the permanent core. A missing
+ * section returns an empty list so the module works before the split lands.
+ */
+export function extractFlowReferences(runnerBody) {
+  const section = flowSection(runnerBody);
+  if (section === null) return [];
+
+  const events = flowSubsection(section, "Índice de eventos");
+  if (events === null) {
+    throw flowError(
+      "runner_flows_index_invalid",
+      `The "${FLOWS_SECTION_HEADING}" section is missing "### Índice de eventos".`,
+    );
+  }
+
+  const references = [];
+  const triggers = new Set();
+  const flows = new Set();
+  let rowIndex = 0;
+  for (const row of flowTableRows(events)) {
+    rowIndex += 1;
+    if (row.cells[0] === "Disparador") continue;
+    if (row.cells.length !== 3) {
+      throw flowError(
+        "runner_flows_index_invalid",
+        `Flow index row ${rowIndex} must have exactly 3 cells: ${row.line}`,
+        { row: rowIndex, line: row.line, reason: "cell_count" },
+      );
+    }
+    const [triggerCell, flowCell, beforeCell] = row.cells;
+    const triggerMatch = triggerCell.match(/^`([^`]+)`$/);
+    if (!triggerMatch || !FLOW_TRIGGER_PATTERN.test(triggerMatch[1])) {
+      throw flowError(
+        "runner_flows_index_invalid",
+        `Flow index row ${rowIndex} has an invalid trigger: ${triggerCell}`,
+        { row: rowIndex, line: row.line, reason: "trigger" },
+      );
+    }
+    const flowMatch = flowCell.match(/^`skill\(\{\s*name:\s*"([^"]+)"\s*\}\)`$/);
+    if (!flowMatch || !FLOW_NAME_PATTERN.test(flowMatch[1])) {
+      throw flowError(
+        "runner_flows_index_invalid",
+        `Flow index row ${rowIndex} has an invalid flow call: ${flowCell}`,
+        { row: rowIndex, line: row.line, reason: "flow" },
+      );
+    }
+    if (beforeCell.trim() === "") {
+      throw flowError(
+        "runner_flows_index_invalid",
+        `Flow index row ${rowIndex} does not declare when the flow loads.`,
+        { row: rowIndex, line: row.line, reason: "before" },
+      );
+    }
+
+    const trigger = triggerMatch[1];
+    const flow = flowMatch[1];
+    if (triggers.has(trigger)) {
+      throw flowError(
+        "runner_flows_trigger_duplicate",
+        `The trigger ${trigger} is declared more than once.`,
+        { trigger },
+      );
+    }
+    if (flows.has(flow)) {
+      throw flowError(
+        "runner_flows_index_invalid",
+        `The flow ${flow} is declared more than once.`,
+        { flow },
+      );
+    }
+    triggers.add(trigger);
+    flows.add(flow);
+    references.push({ trigger, flow, before: beforeCell });
+  }
+
+  if (references.length === 0) {
+    throw flowError(
+      "runner_flows_index_invalid",
+      `The "${FLOWS_SECTION_HEADING}" index does not declare any flow.`,
+    );
+  }
+
+  return references;
+}
+
+/**
+ * Read the moment table. Every declared name must exist in the trigger index;
+ * `ninguno` is only valid for intake.
+ */
+export function extractFlowMoments(runnerBody, { declaredFlows = null } = {}) {
+  const section = flowSection(runnerBody);
+  if (section === null) return Object.fromEntries(FLOW_MOMENTS.map((moment) => [moment, []]));
+
+  const table = flowSubsection(section, "Flujos por momento");
+  if (table === null) {
+    throw flowError(
+      "runner_flows_moment_invalid",
+      `The "${FLOWS_SECTION_HEADING}" section is missing "### Flujos por momento".`,
+    );
+  }
+
+  const declared = declaredFlows ?? extractFlowReferences(runnerBody).map((reference) => reference.flow);
+  const declaredSet = new Set(declared);
+  const moments = {};
+  let rowIndex = 0;
+  for (const row of flowTableRows(table)) {
+    rowIndex += 1;
+    if (row.cells[0] === "Momento") continue;
+    if (row.cells.length !== 2) {
+      throw flowError(
+        "runner_flows_moment_invalid",
+        `Moment row ${rowIndex} must have exactly 2 cells: ${row.line}`,
+        { row: rowIndex, line: row.line, reason: "cell_count" },
+      );
+    }
+    const [momentCell, flowsCell] = row.cells;
+    const momentMatch = momentCell.match(/^`([^`]+)`$/);
+    if (!momentMatch || !FLOW_MOMENTS.includes(momentMatch[1])) {
+      throw flowError(
+        "runner_flows_moment_invalid",
+        `Moment row ${rowIndex} has an invalid moment: ${momentCell}`,
+        { row: rowIndex, line: row.line, reason: "moment" },
+      );
+    }
+    const moment = momentMatch[1];
+    if (moments[moment]) {
+      throw flowError(
+        "runner_flows_moment_invalid",
+        `The moment ${moment} is declared more than once.`,
+        { moment, reason: "duplicate" },
+      );
+    }
+
+    const names = [...flowsCell.matchAll(/runner-flow-[a-z0-9-]+/g)].map((match) => match[0]);
+    if (names.length === 0) {
+      const normalized = flowsCell.trim();
+      if (normalized === "ninguno") {
+        if (moment !== "intake") {
+          throw flowError(
+            "runner_flows_moment_invalid",
+            `Moment ${moment} cannot be "ninguno"; only intake has no required flow.`,
+            { moment, reason: "ninguno" },
+          );
+        }
+        moments[moment] = [];
+        continue;
+      }
+      if (normalized.includes("el flujo del trabajo")) {
+        // The canonical table names the work flow generically for close.
+        moments[moment] = [];
+        continue;
+      }
+      throw flowError(
+        "runner_flows_moment_invalid",
+        `Moment ${moment} must declare flow names, "el flujo del trabajo" or "ninguno": ${flowsCell}`,
+        { moment, reason: "names" },
+      );
+    }
+    for (const name of names) {
+      if (!declaredSet.has(name)) {
+        throw flowError(
+          "runner_flows_moment_invalid",
+          `Moment ${moment} references ${name}, which the trigger index does not declare.`,
+          { moment, flow: name, reason: "undeclared" },
+        );
+      }
+    }
+    moments[moment] = [...new Set(names)];
+  }
+
+  const missing = FLOW_MOMENTS.filter((moment) => moments[moment] === undefined);
+  if (missing.length > 0) {
+    throw flowError(
+      "runner_flows_moment_invalid",
+      `The moment table does not declare: ${missing.join(", ")}.`,
+      { missing },
+    );
+  }
+  return moments;
 }
 
 // ─── Skill declaration translation ────────────────────────────────────────────
@@ -98,6 +329,7 @@ function bodyMentionsSkill(body, name) {
 export function collectDeclaredSkillNames(body, { skillsDir }) {
   const names = new Set(findSkillCalls(body).map((call) => call.name));
   for (const name of listInstalledSkillNames(skillsDir)) {
+    if (name.startsWith("runner-flow-")) continue;
     if (bodyMentionsSkill(body, name)) names.add(name);
   }
   return [...names].sort((left, right) => left.localeCompare(right, "en"));
@@ -130,10 +362,18 @@ export function translateSkillCalls(body, { skillsDir }) {
   const parts = [];
   let cursor = 0;
   for (const call of calls) {
-    parts.push(body.slice(cursor, call.index));
+    // An inline backticked call must consume its delimiters; otherwise the
+    // translated read would stay wrapped in code spans and render nested.
+    const startsInline = call.index > 0 && body[call.index - 1] === "`";
+    const endsInline = body[call.index + call.length] === "`";
+    const start = startsInline ? call.index - 1 : call.index;
+    const end = call.index + call.length + (endsInline ? 1 : 0);
+    parts.push(body.slice(cursor, start));
     const skillPath = path.join(skillsDir, call.name, "SKILL.md");
     parts.push(`**Read** \`${skillPath}\` — carga de la skill \`${call.name}\` antes de continuar.`);
-    cursor = call.index + call.length;
+    // An inline call usually closes the sentence; consume its period so the
+    // translated sentence does not end with a double stop.
+    cursor = startsInline && endsInline && body[end] === "." ? end + 1 : end;
   }
   parts.push(body.slice(cursor));
   return parts.join("");
@@ -250,6 +490,22 @@ export function buildSkillIndex(runnerBody, { skillsDir, verificationDir = skill
     return `- \`skill({ name: "${name}" })\` → **Read** \`${skillPath}\``;
   });
 
+  const flows = extractFlowReferences(runnerBody);
+  const missingFlows = flows.filter(
+    (reference) => !fileExists(path.join(verificationDir, reference.flow, "SKILL.md")),
+  );
+  if (missingFlows.length > 0) {
+    throw new Error(
+      `Flow index references flows that are not installed in ${verificationDir}: ` +
+        `${missingFlows.map((reference) => reference.flow).join(", ")}. ` +
+        `Install the canonical flows or fix "${FLOWS_SECTION_HEADING}" in runner.md.`,
+    );
+  }
+  for (const reference of flows) {
+    const flowPath = path.join(skillsDir, reference.flow, "SKILL.md");
+    lines.push(`- \`skill({ name: "${reference.flow}" })\` → **Read** \`${flowPath}\``);
+  }
+
   return [
     "**Loading skills**: Instead of `skill({ name: \"...\" })`, use **Read** on the skill file:",
     "",
@@ -259,6 +515,25 @@ export function buildSkillIndex(runnerBody, { skillsDir, verificationDir = skill
 
 /** Hard limit of a SessionStart hook payload, in UTF-8 bytes. */
 export const SESSION_START_LIMIT_BYTES = 10000;
+
+/**
+ * Reject a permanent core that reached the monolithic baseline. A relative
+ * limit would allow the split to drift back into a single document.
+ */
+export function assertRunnerCoreUnderLimit(content, limit = RUNNER_CORE_BASELINE_BYTES) {
+  const bytes = Buffer.byteLength(content, "utf8");
+  if (bytes >= limit) {
+    const error = new Error(
+      `The runner core is ${bytes} bytes and must stay under ${limit} bytes. ` +
+        "Move the sections that belong to a flow out of the permanent core.",
+    );
+    error.code = "runner_core_too_large";
+    error.bytes = bytes;
+    error.limit = limit;
+    throw error;
+  }
+  return content;
+}
 
 export function assertSessionStartUnderLimit(content) {
   const bytes = Buffer.byteLength(content, "utf8");
@@ -275,12 +550,12 @@ export function assertSessionStartUnderLimit(content) {
 }
 
 /**
- * Write the startup document consumed by the global hook and return its content.
+ * Compose the startup document content without writing. The flow index is
+ * appended after the skills so Claude can resolve both with **Read**.
  */
-export function generateClaudeSessionStart({
+export function buildSessionStartContent({
   skillsDir,
   runnerPath,
-  sessionStartPath,
   runnerContent = null,
   verificationSkillsDir = null,
 }) {
@@ -291,7 +566,7 @@ export function generateClaudeSessionStart({
   const runnerBody = parseFrontmatter(
     runnerContent ?? fs.readFileSync(runnerPath, "utf8"),
   ).body;
-  const content = [
+  return [
     "# FlowTask session start",
     "",
     buildStartupBlock({ skillsDir, runnerPath }),
@@ -299,11 +574,42 @@ export function generateClaudeSessionStart({
     buildSkillIndex(runnerBody, { skillsDir, verificationDir: verificationSkillsDir ?? skillsDir }),
     "",
   ].join("\n");
+}
+
+/**
+ * Write the startup document consumed by the global hook and return its content.
+ */
+export function generateClaudeSessionStart({
+  skillsDir,
+  runnerPath,
+  sessionStartPath,
+  runnerContent = null,
+  verificationSkillsDir = null,
+}) {
+  const content = buildSessionStartContent({
+    skillsDir,
+    runnerPath,
+    runnerContent,
+    verificationSkillsDir,
+  });
 
   assertSessionStartUnderLimit(content);
   fs.mkdirSync(path.dirname(sessionStartPath), { recursive: true });
   fs.writeFileSync(sessionStartPath, content, "utf8");
   return content;
+}
+
+/**
+ * Adapt a flow body for the Claude Code payload: rewrite relative skill paths,
+ * turn every skill call into a direct read and fail if any call remains.
+ */
+export function adaptFlowBodyForClaude(flowBody, { skillsDir, context = null } = {}) {
+  const declared = [...new Set(findSkillCalls(flowBody).map((call) => call.name))];
+  const normalized = normalizeSkillPaths(flowBody, { skillsDir, context });
+  const translated = translateSkillCalls(normalized, { skillsDir });
+  assertNoSkillCalls(translated, context);
+  assertEveryDeclaredSkillHasPath(translated, declared, { skillsDir, context });
+  return translated;
 }
 
 // ─── Runner adaptation ────────────────────────────────────────────────────────
@@ -346,6 +652,7 @@ export function adaptRunnerForRuntime(runnerBody, runtimeRoot) {
  * autonomy. The canonical runner.md is never written.
  */
 export function buildRuntimeRunnerBody({ runnerContent, runtimeRoot, personaContent, autonomyDescriptor }) {
+  assertRunnerCoreUnderLimit(runnerContent);
   let content = adaptRunnerForRuntime(runnerContent, runtimeRoot);
   content = injectPersonaIntoRunnerContent(content, personaContent);
   if (autonomyDescriptor) content = injectAutonomyIntoRunnerContent(content, autonomyDescriptor);

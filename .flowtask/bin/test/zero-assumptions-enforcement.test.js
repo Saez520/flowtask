@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
+import { readComposedRunner } from "./helpers/runner-document.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -763,8 +764,7 @@ describe("validation evidence contract", () => {
   });
 });
 
-const RUNNER = ".flowtask/agents/runner.md";
-const runner = read(RUNNER);
+const runner = readComposedRunner({ root: ROOT });
 const runnerFlat = flat(runner);
 
 describe("runner evidence contract", () => {
@@ -821,7 +821,10 @@ describe("runner evidence contract", () => {
   });
 
   it("agrega el criterio de evidencia material al Gate", () => {
-    const gate = runner.slice(runner.indexOf("## Gate de Ejecución"), runner.indexOf("## Checkpoint Protocol"));
+    const gateStart = runner.indexOf("## Gate de Ejecución");
+    assert.ok(gateStart >= 0, "falta la sección del Gate");
+    const gateEnd = runner.indexOf("\n## ", gateStart + 1);
+    const gate = runner.slice(gateStart, gateEnd === -1 ? undefined : gateEnd);
     assert.ok(gate.includes("4. **Evidencia material del plan**"), "falta el criterio 4 del Gate");
     assert.ok(gate.includes("sección de evidencia verificada"), "falta la sección exigida");
     assert.ok(gate.includes("`unverified` o `discrepant` queda fuera de `pending_decisions` o de `blockers`"), "falta la condición de estado");
@@ -1148,12 +1151,15 @@ describe("cross-surface and regression guards", () => {
     for (const target of EVIDENCE_TARGETS) {
       assertNoUnverifiedAsFact(read(target));
     }
+    // El documento compuesto cubre las secciones movidas a los flujos.
+    assertNoUnverifiedAsFact(runner);
   });
 
   it("no introduce un enum de motivo de pausa nuevo en las superficies clave", () => {
     for (const target of EVIDENCE_TARGETS) {
       assertNoNewPauseReason(read(target));
     }
+    assertNoNewPauseReason(runner);
   });
 
   it("carga el protocolo y declara su sección en los seis contratos de rol", () => {
