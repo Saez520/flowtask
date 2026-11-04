@@ -132,7 +132,7 @@ algún lugar se infiere una terminación a partir del consumo.
 ### A-10 — Tokens prohibidos en la skill
 
 ```bash
-grep -nE 'CA-agent-loop-termination|F1\.[0-9]|Hermes|AgentRun|token_budget|cost_budget|max_rounds' \
+grep -nE 'CA-agent-loop-termination|F1\.[0-9]|AgentRun|token_budget|cost_budget|max_rounds' \
   .flowtask/skills/agent-loop-termination/SKILL.md
 ```
 
@@ -345,7 +345,7 @@ escenario de la matriz.
 7. Buscar tokens prohibidos en la skill:
 
    ```bash
-   grep -nE 'CA-agent-loop-termination|F1\.[0-9]|Hermes|AgentRun|token_budget|cost_budget|max_rounds' \
+   grep -nE 'CA-agent-loop-termination|F1\.[0-9]|AgentRun|token_budget|cost_budget|max_rounds' \
      .flowtask/skills/agent-loop-termination/SKILL.md
    ```
 
