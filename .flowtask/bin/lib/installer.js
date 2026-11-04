@@ -23,6 +23,12 @@ export {
 } from "./runner-content.js";
 import { showInteractiveSelector } from "./ui.js";
 import { coordinateGraphify } from "./graphify.js";
+import {
+  createUpdateReport,
+  describeGraphifyPhase,
+  describeSearchPhase,
+  readProjectVersion,
+} from "./update-report.js";
 import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA, classifyOwnership, replaceManagedPackage } from "./ownership.js";
 import { resolveGlobalConfigDir } from "./global-paths.js";
 import { globalWorktreeManagerDir } from "./global-paths.js";
@@ -1080,7 +1086,7 @@ function cleanupDisabledClassifier(projectDir, manifest, preparedDecisions = nul
 export function installManifestPlugins(projectDir, manifest, flowtaskDir, preflight = null) {
   if (!Array.isArray(manifest) || manifest.length === 0) {
     logInfo("No plugins to install from manifest");
-    return;
+    return { registered: 0 };
   }
 
   const opencodePluginsDir = path.join(projectDir, ".opencode", "plugins");
@@ -1100,6 +1106,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
   }
   const migratedLegacyIndexes = new Set();
   let installedAgentModelSelector = false;
+  let registeredCount = 0;
 
   for (const entry of manifest) {
     if (!validateManifestEntry(entry)) continue;
@@ -1177,7 +1184,10 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
       }
     } else {
       logWarn(`Unknown plugin kind "${entry.kind}" for ${entry.name}, skipping registration.`);
+      continue;
     }
+
+    registeredCount += 1;
   }
 
   // A legacy consumer manifest is cleaned only after installation manifest writes succeeded.
@@ -1196,6 +1206,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
   cleanupDisabledClassifier(projectDir, manifest, preflight?.classifierOwnership ?? null);
   if (installedAgentModelSelector) cleanupLegacyModelSelector(projectDir, flowtaskDir, manifest);
   if (manifest.some((entry) => entry?.kind === "cli")) regenerateCanonicalCli(projectDir, flowtaskDir, manifest);
+  return { registered: registeredCount };
 }
 
 /** Remove destination entries outside an explicit manifest allowlist. */
@@ -1537,17 +1548,25 @@ ${COLORS.blue}╔═════════════════════
 // ─── Update ───────────────────────────────────────────────────────────────────
 
 export async function update(flowtaskDir, options = {}) {
+  const report = createUpdateReport({
+    version: readProjectVersion(flowtaskDir),
+    verbose: options.verbose === true,
+  });
+  report.begin();
+  try {
+    await runUpdate(flowtaskDir, options, report);
+  } finally {
+    report.dispose();
+  }
+}
+
+async function runUpdate(flowtaskDir, options, report) {
   assertRunnerCanon({ flowtaskDir });
   const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "update" });
   if (worktreeManager) {
     const versionNotice = formatWorktreeManagerVersionNotice({ previousVersion: worktreeManager.previousVersion, version: worktreeManager.version });
     if (versionNotice) logInfo(versionNotice);
   }
-  console.log(`
-${COLORS.blue}╔═══════════════════════════════════════════╗
-║        FlowTask Update Wizard (Delta)     ║
-╚═══════════════════════════════════════════╝${COLORS.reset}
-  `);
 
   const readline = await import("readline");
   const projectDir = process.cwd();
@@ -1583,9 +1602,12 @@ ${COLORS.blue}╔═════════════════════
   const nonClaudeTargets = targets.filter(({ id }) => id !== "claude");
   const claudeTarget = targets.find(({ id }) => id === "claude") ?? null;
   const claudeActive = Boolean(claudeTarget || claudeRegistered || claudeRuntimeInstalled);
+  report.phase("detect", targets.map(({ id }) => id).join(" · ") || "none");
 
   if (targets.length === 0 && !claudeRuntimeInstalled) {
     logError("No FlowTask installation found. Run 'flowtask install' first.");
+    report.markFailure();
+    report.finish();
     return;
   }
 
@@ -1634,6 +1656,8 @@ ${COLORS.blue}╔═════════════════════
   const preservePaths = ["CA-", "workspace", ".workspace", ".installation-method"];
   const results = [];
   let localFerrisSearch = null;
+  let pluginsRegistered = null;
+  const graphifyStates = [];
   const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
 
   for (const { id, subDir, ideDir, previousMethod } of nonClaudeTargets) {
@@ -1690,7 +1714,7 @@ ${COLORS.blue}╔═════════════════════
 
       // ── Re-install plugins from manifest (OpenCode only) ─────────────────
       if (id === "opencode") {
-        installManifestPlugins(projectDir, manifest, flowtaskDir, preflight);
+        pluginsRegistered = installManifestPlugins(projectDir, manifest, flowtaskDir, preflight).registered;
       }
 
       // ── Inject persona and autonomy into runner.md ───────────────────
@@ -1710,9 +1734,11 @@ ${COLORS.blue}╔═════════════════════
       );
 
       results.push({ target: id, status: "Success", stats: { copied: totalCopied, skipped: totalSkipped } });
+      report.syncRow(id, `${totalCopied} updated · ${totalSkipped} unchanged`);
     } catch (err) {
       logError(`Failed to update ${id}: ${err.message}`);
       results.push({ target: id, status: "Error", message: err.message });
+      report.syncRow(id, `✗ ${err.message}`, { failed: true });
     }
   }
 
@@ -1731,11 +1757,16 @@ ${COLORS.blue}╔═════════════════════
         status: "Success",
         stats: { registered: claudeResult.registered },
       });
+      report.syncRow("claude", claudeResult.registered === false ? "runtime refreshed · not registered" : "runtime refreshed");
     } catch (err) {
       logError(`Failed to update claude: ${err.message}`);
       results.push({ target: "claude", status: "Error", message: err.message });
+      report.syncRow("claude", `✗ ${err.message}`, { failed: true });
     }
   }
+
+  report.endSync();
+  if (pluginsRegistered !== null) report.phase("plugins", `${pluginsRegistered} registered`);
 
   if (nonClaudeTargets.length > 0) {
     try {
@@ -1755,36 +1786,48 @@ ${COLORS.blue}╔═════════════════════
 
   for (const { id, subDir } of nonClaudeTargets) {
     try {
-      await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, subDir), flowtaskDir, selectedClis: [id], readline });
+      graphifyStates.push(await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, subDir), flowtaskDir, selectedClis: [id], readline }));
     } catch (err) {
       logWarn(`Graphify (${id}): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
+      graphifyStates.push(null);
     }
   }
 
   if (claudeActive) {
     try {
-      await coordinateGraphify({
+      graphifyStates.push(await coordinateGraphify({
         projectDir,
         targetDir: path.join(projectDir, ".claude", "flowtask"),
         flowtaskDir,
         selectedClis: ["claude"],
         readline,
-      });
+      }));
     } catch (err) {
       logWarn(`Graphify (claude): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
+      graphifyStates.push(null);
     }
   }
 
+  const graphifyText = describeGraphifyPhase(graphifyStates);
+  if (graphifyText) report.phase("graphify", graphifyText);
+
   reportFerrisSearch(ferrisSearchResult, localFerrisSearch);
-  printSummary("Update Summary", results, (res) => {
-    if (res.stats?.copied !== undefined) {
-      return ` (${res.stats.copied} updated, ${res.stats.skipped} preserved)`;
-    }
-    if (res.target === "claude" && res.stats) {
-      return res.stats.registered === false ? " (not registered)" : " (registered)";
-    }
-    return "";
-  });
+  const searchText = describeSearchPhase(ferrisSearchResult);
+  if (searchText) report.phase("search", searchText);
+
+  if (report.verbose) {
+    printSummary("Update Summary", results, (res) => {
+      if (res.stats?.copied !== undefined) {
+        return ` (${res.stats.copied} updated, ${res.stats.skipped} preserved)`;
+      }
+      if (res.target === "claude" && res.stats) {
+        return res.stats.registered === false ? " (not registered)" : " (registered)";
+      }
+      return "";
+    });
+  } else {
+    report.finish();
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
