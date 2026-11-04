@@ -19,6 +19,7 @@ import {
   ASSETS,
 } from "./installer.js";
 import { showInteractiveSelector } from "./ui.js";
+import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
 import { registerPluginArrayEntry, mergeOpencodeConfig } from "./opencode.js";
 import { generateClaudeCommands } from "./claude.js";
 import { verifyDirectoryMirror, copyDirectoryDelta, copyWithProgress, pruneDirectoryExtras } from "./copy.js";
@@ -887,17 +888,28 @@ test("update integrates config and cleans legacy scripts into an installed targe
   assert.equal(fs.existsSync(path.join(root, ".flowtask", "scripts")), false);
 });
 
-test("Runner delegates worktree lifecycle through the consumer adapter", () => {
+/**
+ * gap_ref: G3 (C9)
+ * criterio: la política del Runner conserva las tres invariantes ajenas al
+ *   puente y no referencia el adaptador retirado ni la elección de transporte.
+ * defecto: la política podría perder una de las tres reglas de seguridad, o
+ *   conservar una referencia al adapter retirado, sin que ninguna prueba lo
+ *   detecte; la prueba anterior afirmaba la superficie eliminada.
+ * why_not_detected: la prueba vigente estaba acoplada al adaptador retirado y
+ *   no cubría las tres invariantes en la redacción nueva.
+ * comportamiento observable: el documento compuesto del Runner contiene las
+ *   tres frases de seguridad y no nombra el artefacto retirado, la elección
+ *   `cli`/`mcp` ni el adapter como mecanismo vigente.
+ */
+test("Runner worktree policy keeps the three bridge-independent invariants", () => {
   const root = path.resolve(path.dirname(FLOWTASK_CLI), "..", "..");
   const runner = readComposedRunner({ root });
-  assert.match(runner, /worktree-consumer-adapter\.js/);
-  assert.match(runner, /`cli` o `mcp`[\s\S]*?obligatoria y explícita/);
-  assert.match(runner, /Engram debe confirmar la asociación efectiva[\s\S]*?antes de despachar Constructor/);
-  assert.match(runner, /No repitas una operación[\s\S]*?`uncertain`/);
-  assert.doesNotMatch(runner, /Ejecuta `\$\{FLOWTASK_SCRIPTS\}\/worktree\.sh/);
   assert.match(runner, /no ejecuta Git ni mantiene/i);
   assert.match(runner, /init_submodules/);
   assert.match(runner, /`--auto` no agrega permisos ni sustituye\s+consentimientos/i);
+  assert.doesNotMatch(runner, /worktree-consumer-adapter\.js/);
+  assert.doesNotMatch(runner, /`cli` o `mcp`[\s\S]*?obligatoria y explícita/);
+  assert.doesNotMatch(runner, /mediante el adapter/i);
 });
 
 test("writes TUI only in the native consumer manifest", () => {
@@ -1502,6 +1514,87 @@ test("repeating the preparation preserves unrelated configuration, work state an
   const config = readJson(path.join(projectDir, ".opencode", "opencode.json"));
   assert.deepEqual(Object.keys(config.mcp), ["unrelated-server"]);
   assert.deepEqual(config.agent["flowtask-runner"].permissions, canonicalRunnerPermission);
+});
+
+/**
+ * gap_ref: G2 (C3)
+ * criterio: el instalador registra el servidor `worktree_manager` en
+ *   `.opencode/opencode.json` y en `.mcp.json` por proyecto, preserva claves
+ *   ajenas y no pisa una entrada ajena.
+ * defecto: si el registro se omite o se escribe con otra forma, las
+ *   herramientas directas nunca aparecen y toda operación de worktree queda
+ *   indisponible; una escritura sobre una entrada ajena corrompe la config del
+ *   usuario.
+ * why_not_detected: ninguna prueba existente inspecciona `mcp.worktree_manager`
+ *   ni `mcpServers.worktree_manager`; la prueba de merge solo verifica la
+ *   plantilla.
+ * comportamiento observable: ambos formatos reciben la entrada canónica con
+ *   `PYTHONPATH` del directorio gestionado, las claves ajenas sobreviven y un
+ *   JSON inválido o una entrada ajena quedan byte a byte iguales.
+ */
+test("registers the manager MCP server in both project formats and preserves foreign configuration", () => {
+  const fixture = createManagerFixture();
+  const managerDir = fixture.sourceDir;
+  const projectDir = path.join(fixture.root, "project");
+
+  const opencodePath = path.join(projectDir, ".opencode", "opencode.json");
+  writeJson(opencodePath, {
+    $schema: "https://custom/schema.json",
+    mcp: { "unrelated-server": { type: "local", command: ["unrelated"], enabled: true } },
+    agent: { existing: { description: "manual" } },
+  });
+  const opencodeResult = registerWorktreeManagerMcp({ configPath: opencodePath, format: "opencode", managerDir });
+  assert.equal(opencodeResult.status, "registered");
+  const opencodeConfig = readJson(opencodePath);
+  assert.deepEqual(opencodeConfig.mcp.worktree_manager, {
+    type: "local",
+    command: ["python3", "-m", "worktree_manager.mcp_transport"],
+    environment: { PYTHONPATH: managerDir },
+    enabled: true,
+  });
+  assert.deepEqual(opencodeConfig.mcp["unrelated-server"], {
+    type: "local",
+    command: ["unrelated"],
+    enabled: true,
+  });
+  assert.equal(opencodeConfig.$schema, "https://custom/schema.json");
+  assert.deepEqual(opencodeConfig.agent, { existing: { description: "manual" } });
+
+  const claudePath = path.join(projectDir, ".mcp.json");
+  writeJson(claudePath, { mcpServers: { keep: { type: "stdio", command: "keep-server" } } });
+  const claudeResult = registerWorktreeManagerMcp({ configPath: claudePath, format: "claude", managerDir });
+  assert.equal(claudeResult.status, "registered");
+  const claudeConfig = readJson(claudePath);
+  assert.deepEqual(claudeConfig.mcpServers.worktree_manager, {
+    type: "stdio",
+    command: "python3",
+    args: ["-m", "worktree_manager.mcp_transport"],
+    env: { PYTHONPATH: managerDir },
+  });
+  assert.deepEqual(claudeConfig.mcpServers.keep, { type: "stdio", command: "keep-server" });
+
+  const invalidPath = path.join(projectDir, "invalid", "opencode.json");
+  fs.mkdirSync(path.dirname(invalidPath), { recursive: true });
+  fs.writeFileSync(invalidPath, "{invalid", "utf8");
+  const invalidBefore = fs.readFileSync(invalidPath, "utf8");
+  const invalidResult = registerWorktreeManagerMcp({ configPath: invalidPath, format: "opencode", managerDir });
+  assert.equal(invalidResult.status, "preserved");
+  assert.equal(fs.readFileSync(invalidPath, "utf8"), invalidBefore, "el JSON inválido no se reescribe");
+
+  for (const [format, configPath, foreign] of [
+    ["opencode", path.join(projectDir, "foreign", "opencode.json"), {
+      mcp: { worktree_manager: { type: "local", command: ["otro"], enabled: true } },
+    }],
+    ["claude", path.join(projectDir, "foreign", ".mcp.json"), {
+      mcpServers: { worktree_manager: { type: "stdio", command: "otro" } },
+    }],
+  ]) {
+    writeJson(configPath, foreign);
+    const before = fs.readFileSync(configPath, "utf8");
+    const result = registerWorktreeManagerMcp({ configPath, format, managerDir });
+    assert.equal(result.status, "preserved", `${format}: la entrada ajena no se pisa`);
+    assert.equal(fs.readFileSync(configPath, "utf8"), before, `${format}: el archivo queda igual`);
+  }
 });
 
 /** A local npm replacement that installs a prepared package into the prefix. */

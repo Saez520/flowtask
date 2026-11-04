@@ -217,6 +217,50 @@ test("runner permite MCP graphify_query_graph y bloquea tools graphify distintos
    );
 });
 
+/**
+ * gap_ref: G1 (C1)
+ * criterio: el Runner resuelve crear y listar trabajos aislados por las siete
+ *   herramientas directas y rechaza cualquier otro `worktree_manager_*`.
+ * defecto: una omisión o errata en la allowlist bloquea todas las operaciones
+ *   de worktree del Runner, o una coincidencia por prefijo habilita una
+ *   herramienta inexistente.
+ * why_not_detected: las pruebas del puente se retiraron y el caso MCP existente
+ *   solo cubre Graphify; no hay caso para los nombres calificados del gestor.
+ * comportamiento observable: cada una de las siete herramientas directas pasa
+ *   el gate del runner; `worktree_manager_delete` y `flowtask_worktree_consume`
+ *   se rechazan con el mensaje de delegación.
+ */
+test("runner autoriza las siete herramientas directas del gestor y rechaza el resto", async () => {
+  const hooks = await plugin({ directory: process.cwd() });
+  await hooks["chat.message"]({ sessionID: "s-worktree-mcp", agent: "flowtask-runner" }, { message: {}, parts: [] });
+
+  for (const tool of [
+    "worktree_manager_worktree_create",
+    "worktree_manager_worktree_complete",
+    "worktree_manager_worktree_cleanup",
+    "worktree_manager_worktree_recover",
+    "worktree_manager_worktree_list",
+    "worktree_manager_worktree_prune",
+    "worktree_manager_worktree_status",
+  ]) {
+    await hooks["tool.execute.before"](
+      { tool, sessionID: "s-worktree-mcp", callID: `c-${tool}` },
+      { args: { repo: "/tmp/repo" } },
+    );
+  }
+
+  for (const tool of ["worktree_manager_delete", "flowtask_worktree_consume"]) {
+    await assert.rejects(
+      hooks["tool.execute.before"](
+        { tool, sessionID: "s-worktree-mcp", callID: `c-${tool}` },
+        { args: { repo: "/tmp/repo" } },
+      ),
+      (error) => error instanceof Error && error.message === RUNNER_DELEGATION_MESSAGE,
+      `${tool} no pertenece a la allowlist del gestor`,
+    );
+  }
+});
+
 test("rejects malformed, mixed and dangerous commands", () => {
   for (const command of [
     "git status; git diff", "git status | git diff",
