@@ -123,7 +123,7 @@ enable modification of protected files.
 
 ## Limits
 
-- The autonomy layer declares initiative (`assistant`, `autonomous-dev`, `hermes`); it is not a
+- The autonomy layer declares initiative (`assistant`, `autonomous-dev`); it is not a
   per-flow switch and does not alter the gate, audit, validation, or consents. The
   execution policy remains `gate-then-auto`.
 - There are no new persistence spaces: policy decisions live in the execution

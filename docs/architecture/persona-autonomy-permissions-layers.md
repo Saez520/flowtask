@@ -37,13 +37,12 @@ schema version:
 { "version": 1, "profile": "assistant" }
 ```
 
-The values of `profile` are exactly three:
+The values of `profile` are exactly two:
 
 | Value | Semantics |
 |-------|-----------|
 | `assistant` | Does not start autonomous execution: waits for an explicit order per job. |
 | `autonomous-dev` | Runs the full loop under gates, audit, validation, and permissions. |
-| `hermes` | Operates general-purpose domains under the capability policy and domain permissions; without that policy it does not expand the technical envelope. |
 
 **Permissions.** `permissions.json` is a new and separate layer:
 
@@ -141,12 +140,12 @@ sources and does not fix that path.
 ## Boundary with the domain policy
 
 This phase defines **only the enforcement mechanism** of the technical envelope. The
-capability policy and Hermes domain permissions belong to the domain permissions
-phase and are not implemented here.
+capability policy and its domain permissions belong to a later phase and are not
+implemented here.
 
-Consequently, `hermes` declares initiative for general-purpose domains, but
-without the capability policy and without domain permissions it does not expand the technical
-envelope: the current technical gate remains the limit.
+Consequently, autonomy declares initiative, but without the capability policy and
+without domain permissions it does not expand the technical envelope: the current
+technical gate remains the limit.
 
 ## Verification
 

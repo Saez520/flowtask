@@ -57,7 +57,7 @@ live once per user in `~/.claude/flowtask/config/`:
 { "version": 1, "envelope": "standard" }
 ```
 
-`profile` accepts `assistant`, `autonomous-dev`, and `hermes`. `envelope` accepts
+`profile` accepts `assistant` and `autonomous-dev`. `envelope` accepts
 `standard`, the only technical envelope in this phase: it is equivalent to the
 current technical gate and adds no capability.
 
