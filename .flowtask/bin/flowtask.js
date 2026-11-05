@@ -304,13 +304,24 @@ function parseAllowlist(content) {
     throw new Error(`invalid JSON (${error.message})`);
   }
   if (!Array.isArray(entries)) {
-    throw new Error('expected a JSON array of { line, reason } entries');
+    throw new Error('expected a JSON array of { line | sha256, reason } entries');
   }
   for (const [index, entry] of entries.entries()) {
-    if (typeof entry?.line !== "string" || entry.line.length === 0) {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`entry ${index} must be an object with exactly one of "line" or "sha256"`);
+    }
+    const hasLine = Object.prototype.hasOwnProperty.call(entry, "line");
+    const hasFingerprint = Object.prototype.hasOwnProperty.call(entry, "sha256");
+    if (hasLine === hasFingerprint) {
+      throw new Error(`entry ${index} needs exactly one of "line" or "sha256"`);
+    }
+    if (hasLine && (typeof entry.line !== "string" || entry.line.length === 0)) {
       throw new Error(`entry ${index} needs a non-empty "line" string`);
     }
-    if (typeof entry?.reason !== "string" || entry.reason.length === 0) {
+    if (hasFingerprint && (typeof entry.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(entry.sha256))) {
+      throw new Error(`entry ${index} needs a lowercase 64-character hexadecimal "sha256"`);
+    }
+    if (typeof entry.reason !== "string" || entry.reason.length === 0) {
       throw new Error(`entry ${index} needs a non-empty "reason" string`);
     }
   }
@@ -464,6 +475,7 @@ function runFlowsVerify(commandArgs) {
           allowed_deltas: comparison.allowed_deltas,
           missing_outside_allowlist: comparison.missing_outside_allowlist,
           missing_headings: comparison.missing_headings,
+          missing: comparison.missing,
         };
         if (comparison.missing_outside_allowlist > 0 || comparison.missing_headings.length > 0) {
           failures.push({
@@ -471,7 +483,6 @@ function runFlowsVerify(commandArgs) {
             message:
               `Parity against ${options.baseline} has ${comparison.missing_outside_allowlist} ` +
               `missing line(s) outside the allowlist and ${comparison.missing_headings.length} missing heading(s).`,
-            lines: comparison.missing.slice(0, 20),
             headings: comparison.missing_headings,
           });
         }
@@ -503,6 +514,9 @@ function runFlowsVerify(commandArgs) {
         `Parity: ${report.parity.missing_outside_allowlist} missing outside allowlist, ` +
           `${report.parity.missing_headings.length} missing headings`,
       );
+      for (const missing of report.parity.missing) {
+        console.log(`missing line ${missing.line_number}: sha256 ${missing.sha256}`);
+      }
     }
     for (const flow of report.flows) {
       console.log(

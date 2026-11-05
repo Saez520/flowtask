@@ -96,24 +96,33 @@ export function composeRunnerDocument({ runnerBody, skillsDir }) {
 
 /** Compare a baseline document against the composed canon, line by line. */
 export function compareBaselineLines({ baselineContent, composedContent, allowedDeltas = [] }) {
-  const baselineLines = baselineContent.split("\n").filter((line) => line.trim() !== "");
+  const baselineSourceLines = baselineContent.split("\n");
+  const baselineLines = baselineSourceLines.filter((line) => line.trim() !== "");
   const composedLines = composedContent.split("\n").filter((line) => line.trim() !== "");
   const composedCounts = new Map();
   for (const line of composedLines) {
     composedCounts.set(line, (composedCounts.get(line) ?? 0) + 1);
   }
 
-  const allowlist = allowedDeltas.map((entry) => entry.line);
+  const literalDeltas = allowedDeltas
+    .filter((entry) => typeof entry.line === "string")
+    .map((entry) => entry.line);
   const allowlistCounts = new Map();
-  for (const line of allowlist) {
+  for (const line of literalDeltas) {
     allowlistCounts.set(line, (allowlistCounts.get(line) ?? 0) + 1);
+  }
+  const fingerprintCounts = new Map();
+  for (const entry of allowedDeltas) {
+    if (typeof entry.sha256 !== "string") continue;
+    fingerprintCounts.set(entry.sha256, (fingerprintCounts.get(entry.sha256) ?? 0) + 1);
   }
 
   let matched = 0;
   let allowedMatched = 0;
   const missing = [];
   const missingOutsideAllowlist = [];
-  for (const line of baselineLines) {
+  for (const [index, line] of baselineSourceLines.entries()) {
+    if (line.trim() === "") continue;
     const available = composedCounts.get(line) ?? 0;
     if (available > 0) {
       composedCounts.set(line, available - 1);
@@ -126,8 +135,16 @@ export function compareBaselineLines({ baselineContent, composedContent, allowed
       allowedMatched += 1;
       continue;
     }
-    missing.push(line);
-    missingOutsideAllowlist.push(line);
+    const fingerprint = sha256(line);
+    const allowedByFingerprint = fingerprintCounts.get(fingerprint) ?? 0;
+    if (allowedByFingerprint > 0) {
+      fingerprintCounts.set(fingerprint, allowedByFingerprint - 1);
+      allowedMatched += 1;
+      continue;
+    }
+    const delta = { line_number: index + 1, sha256: fingerprint };
+    missing.push(delta);
+    missingOutsideAllowlist.push(delta);
   }
 
   const baselineHeadings = headingInventory(baselineContent, "baseline");
@@ -145,7 +162,7 @@ export function compareBaselineLines({ baselineContent, composedContent, allowed
       composedHeadingCounts.set(key, available - 1);
       continue;
     }
-    if (allowlist.includes(`#`.repeat(entry.level) + " " + entry.heading)) continue;
+    if (literalDeltas.includes(`#`.repeat(entry.level) + " " + entry.heading)) continue;
     missingHeadings.push(entry.heading);
   }
 
@@ -457,6 +474,7 @@ export function buildFlowsReport({
       allowed_deltas: 0,
       missing_outside_allowlist: 0,
       missing_headings: [],
+      missing: [],
     },
     verdict: verification.ok && (parity ? parity.missing_outside_allowlist === 0 : true) ? "pass" : "fail",
     failures: verification.failures.map((failure) => ({
