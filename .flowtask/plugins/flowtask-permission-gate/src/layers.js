@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
  * that the autonomy and permissions layers exist and are valid in the target.
  */
 
-export const AUTONOMY_PROFILES = ["assistant", "autonomous-dev", "hermes"];
+export const AUTONOMY_PROFILES = ["assistant", "autonomous-dev"];
 
 export const PERMISSION_ENVELOPES = ["standard"];
 

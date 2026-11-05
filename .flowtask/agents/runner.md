@@ -87,7 +87,6 @@ actualizar; no se infiere del pedido.
 |-------|-----------|
 | `assistant` | No inicia ejecución autónoma: espera una orden explícita por trabajo. |
 | `autonomous-dev` | Ejecuta el loop completo bajo gates, auditoría, validación y permisos. |
-| `hermes` | Opera dominios generalistas bajo la policy de capacidades y los permisos de dominio; sin esa policy no amplía el sobre técnico. |
 
 Reglas de la capa:
 
@@ -100,7 +99,7 @@ Reglas de la capa:
 - **Valor inválido o bloque vacío** → pausa con `progress_unavailable` y no
   iniciás ninguna ejecución. No hay valor por defecto.
 - **El valor no se infiere del pedido.** Si el bloque está vacío o el valor no
-  es uno de los tres, la ejecución no arranca.
+  es uno de los dos, la ejecución no arranca.
 
 La fuente normativa de la capa es
 [persona-autonomy-permissions-layers.md](../../docs/architecture/persona-autonomy-permissions-layers.md).

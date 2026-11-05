@@ -191,7 +191,7 @@ pasa, la construcción comienza sin espera rutinaria.
   el gate, ni la auditoría del plan, ni la validación de la implementación.
 - **Un indicador de invocación como `--auto` no altera el gate ni los consentimientos.**
   Solo declara que no hay espera rutinaria.
-- **La capa de autonomía declara la iniciativa (`assistant`, `autonomous-dev`, `hermes`); no es un
+- **La capa de autonomía declara la iniciativa (`assistant`, `autonomous-dev`); no es un
   interruptor por flujo y no altera el gate, la auditoría, la validación ni los consentimientos.
   La política de ejecución sigue siendo `gate-then-auto`.**
 - **La autonomía solo puede restringir dentro del sobre de permisos; nunca lo amplía.** La
@@ -316,7 +316,7 @@ origen (`termination` o `budget`) y es `null` cuando la pausa es propia del cont
 
 **Bloque `autonomy`.** Contiene `policy`, `profile`, `source` y `decisions[]`. La política vigente
 es `gate-then-auto`. `profile` es el valor de la capa de autonomía resuelta
-(`assistant`, `autonomous-dev` o `hermes`) y `source` es su origen (`team` o `project`).
+(`assistant` o `autonomous-dev`) y `source` es su origen (`team` o `project`).
 `decisions[]` es una lista append-only de decisiones de política: cada gate PASS, cada pausa por
 excepción y cada reanudación agregan **exactamente una** entrada.
 
@@ -366,7 +366,7 @@ La evidencia de las decisiones automáticas se modela como `PolicyDecision v1`:
 | `closure.verdict` | `success`, `safe_abandonment`, `external_cause` |
 | `hard_limit.effect` | `pause` |
 | `autonomy.policy` | `gate-then-auto` |
-| `autonomy.profile` | `assistant`, `autonomous-dev`, `hermes` |
+| `autonomy.profile` | `assistant`, `autonomous-dev` |
 | `autonomy.source` | `team`, `project` |
 | `PolicyDecision.kind` | `gate`, `pause`, `resume` |
 | `PolicyDecision.policy` | `execution_gate`, `exception_pause`, `resume_gate` |

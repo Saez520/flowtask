@@ -466,7 +466,7 @@ describe("agent-loop-run autonomy contract", () => {
   });
 
   it("declares the autonomy layer values, precedence and recorded fields", () => {
-    for (const profile of ["assistant", "autonomous-dev", "hermes"]) {
+    for (const profile of ["assistant", "autonomous-dev"]) {
       assert.ok(flatContent.includes(`\`${profile}\``), `missing autonomy profile ${profile}`);
     }
     assert.ok(

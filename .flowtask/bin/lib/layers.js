@@ -12,7 +12,7 @@ export const PERSONA_LEVELS = Object.freeze(["training", "mid", "senior", "custo
 /** Legacy read alias. It is normalized to `training`; it is never emitted on write. */
 export const LEGACY_PERSONA_LEVELS = Object.freeze(["junior"]);
 
-export const AUTONOMY_PROFILES = Object.freeze(["assistant", "autonomous-dev", "hermes"]);
+export const AUTONOMY_PROFILES = Object.freeze(["assistant", "autonomous-dev"]);
 
 export const PERMISSION_ENVELOPES = Object.freeze(["standard"]);
 
@@ -295,7 +295,7 @@ export function describeOperationalFailure(error) {
   const layerLabel = isPermissions ? "permissions" : "autonomy";
   const action = isPermissions
     ? 'Action: define "envelope": "standard" and retry; no action with expanded limits is executed.'
-    : 'Action: define "profile" as assistant, autonomous-dev, or hermes and retry; no execution starts.';
+    : 'Action: define "profile" as assistant or autonomous-dev and retry; no execution starts.';
   return [
     `[FlowTask Layers] ${layerLabel} layer missing or invalid.`,
     `File: ${error && error.path ? error.path : "unidentified"}`,

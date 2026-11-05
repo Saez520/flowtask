@@ -8,7 +8,7 @@ Each installed target has its own layer configuration in
 | File | Layer | Values |
 |------|-------|--------|
 | `profile.json` | Persona (tone) | `level`: `training`, `mid`, `senior`, `custom`. `persona`: tone identity. `onboarded`: onboarding state. |
-| `autonomy.json` | Autonomy (initiative) | `version`: `1`. `profile`: `assistant`, `autonomous-dev`, or `hermes`. |
+| `autonomy.json` | Autonomy (initiative) | `version`: `1`. `profile`: `assistant` or `autonomous-dev`. |
 | `permissions.json` | Permissions (technical envelope) | `version`: `1`. `envelope`: `standard`. |
 
 - The precedence between layers is `permissions > autonomy > persona`: persona

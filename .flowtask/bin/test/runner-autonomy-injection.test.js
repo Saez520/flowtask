@@ -92,7 +92,7 @@ describe("runner del repositorio — capa de autonomia", () => {
     assert.ok(runner.includes(AUTONOMY_START), "missing the autonomy start marker");
     assert.ok(runner.includes(AUTONOMY_END), "missing the autonomy end marker");
     assert.ok(runner.includes("## Capa de autonomía"), "missing the autonomy section");
-    for (const profile of ["assistant", "autonomous-dev", "hermes"]) {
+    for (const profile of ["assistant", "autonomous-dev"]) {
       assert.ok(runner.includes(`\`${profile}\``), `missing autonomy profile ${profile}`);
     }
     assert.ok(
@@ -105,7 +105,6 @@ describe("runner del repositorio — capa de autonomia", () => {
     );
     assert.match(runner, /`assistant` \| No inicia ejecución autónoma/);
     assert.match(runner, /`autonomous-dev` \| Ejecuta el loop completo bajo gates, auditoría, validación y permisos/);
-    assert.match(runner, /`hermes` \| Opera dominios generalistas bajo la policy de capacidades/);
     assert.ok(runner.includes("`progress_unavailable`"), "missing the pause for an empty or invalid autonomy block");
   });
 });
@@ -217,7 +216,7 @@ describe("convivencia de los bloques de persona y autonomia", () => {
     const runner = readRunner();
     const withPersona = injectPersonaIntoRunnerContent(runner, "Personalidad de prueba");
 
-    const injected = injectAutonomyIntoRunnerContent(withPersona, { profile: "hermes", source: "project" });
+    const injected = injectAutonomyIntoRunnerContent(withPersona, { profile: "assistant", source: "project" });
 
     assert.equal(blockBetween(injected, PERSONA_START, PERSONA_END), blockBetween(withPersona, PERSONA_START, PERSONA_END));
   });
@@ -285,7 +284,7 @@ describe("migracion y sincronizacion de capas", () => {
     const targets = [
       [".opencode/flowtask", "assistant"],
       [".claude/flowtask", "autonomous-dev"],
-      [".vscode/flowtask", "hermes"],
+      [".vscode/flowtask", "assistant"],
     ];
 
     for (const [subDir, profile] of targets) {
@@ -396,14 +395,14 @@ describe("base de equipo y override por proyecto en el instalador", () => {
 
   it("applies the project override per layer over the team base", () => {
     const { targetDir } = createTarget({
-      "autonomy.json": { version: 1, profile: "hermes" },
+      "autonomy.json": { version: 1, profile: "autonomous-dev" },
     });
     const teamConfigDir = createConfigSource(TEAM_LAYERS);
 
     const { resolution, created } = ensureTargetLayers(targetDir, { teamConfigDir });
 
     assert.deepEqual(created, []);
-    assert.equal(resolution.layers.autonomy.value.profile, "hermes");
+    assert.equal(resolution.layers.autonomy.value.profile, "autonomous-dev");
     assert.equal(resolution.layers.autonomy.source, "project");
     assert.equal(resolution.layers.permissions.value.envelope, "standard");
     assert.equal(resolution.layers.permissions.source, "team");
