@@ -23,7 +23,7 @@ import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
 import { registerPluginArrayEntry, mergeOpencodeConfig } from "./opencode.js";
 import { generateClaudeCommands } from "./claude.js";
 import { verifyDirectoryMirror, copyDirectoryDelta, copyWithProgress, pruneDirectoryExtras } from "./copy.js";
-import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA } from "./ownership.js";
+import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA, OWNER_MARKER, OWNERSHIP } from "./ownership.js";
 import { readComposedRunner } from "../test/helpers/runner-document.js";
 
 const fixtures = [];
@@ -288,6 +288,12 @@ function createPreflightFixture({ manifest = true, config, owner = "absent" } = 
   if (owner === "ambiguous") {
     fs.mkdirSync(dest, { recursive: true });
     writeJson(path.join(dest, ".flowtask-plugin-owner.json"), { managedBy: "someone-else" });
+  } else if (owner === "previous-revision") {
+    fs.mkdirSync(dest, { recursive: true });
+    writeJson(path.join(dest, ".flowtask-plugin-owner.json"), {
+      ...OWNER_MARKER,
+      sourceCommit: "d21ad9fe148a513d5a776ae7dfac064463f3bac7",
+    });
   } else if (owner === "external") {
     fs.mkdirSync(dest, { recursive: true });
     fs.writeFileSync(path.join(dest, "user.txt"), "preserve me");
@@ -328,6 +334,39 @@ test("install/update preflight rejects invalid inputs without mutating the sandb
       assert.equal(treeDigest(root), before, `${mode} changed sandbox after source failure`);
     }
   });
+});
+
+function previousRevisionSource(flowtaskDir) {
+  return async () => ({
+    sourceCommit: CONTEXT_CHECKPOINT_SHA,
+    sourceDir: path.join(flowtaskDir, "plugins", CONTEXT_CHECKPOINT_NAME),
+  });
+}
+
+test("update preflight accepts a project installed with a previous plugin revision without mutating it", async () => {
+  const { root, flowtaskDir } = createPreflightFixture({ owner: "previous-revision", config: { plugin: [] } });
+  const before = treeDigest(root);
+
+  const descriptor = await prepareInstallation(flowtaskDir, root, "update", {
+    ensureSource: previousRevisionSource(flowtaskDir),
+  });
+
+  assert.equal(descriptor.ownership.state, OWNERSHIP.MANAGED_V2);
+  assert.equal(treeDigest(root), before, "update preflight must not mutate the project");
+});
+
+test("update publishes the managed package and rewrites an older owner marker to the canonical revision", async () => {
+  const { root, flowtaskDir } = createPreflightFixture({ owner: "previous-revision", config: { plugin: [] } });
+  const manifest = readJson(path.join(flowtaskDir, "plugins", "flowtask-plugins.json"));
+  const destination = path.join(root, ".opencode", "plugins", CONTEXT_CHECKPOINT_NAME);
+
+  const descriptor = await prepareInstallation(flowtaskDir, root, "update", {
+    ensureSource: previousRevisionSource(flowtaskDir),
+  });
+  installManifestPlugins(root, manifest, flowtaskDir, descriptor);
+
+  assert.ok(fs.existsSync(path.join(destination, "index.ts")));
+  assert.deepEqual(readJson(path.join(destination, ".flowtask-plugin-owner.json")), OWNER_MARKER);
 });
 
 const canonicalRunnerPermission = [

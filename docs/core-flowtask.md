@@ -283,6 +283,14 @@ older registration that points to a file under `plugins/<name>/` is replaced.
 The package entrypoint (`dist/index.js` for the gate, `index.ts` for the
 checkpoint) belongs to the package, not to the configuration entry.
 
+**Ownership does not depend on the installed revision** (`revisión`).
+`sourceCommit` records which plugin revision was packaged; a marker written by
+an earlier FlowTask version remains valid ownership evidence. `flowtask update`
+therefore replaces the package and rewrites the marker with the canonical
+revision instead of rejecting the project as ambiguous. Markers for another
+plugin, with a foreign `managedBy`, with missing or extra keys, or with a
+malformed `source` or `sourceCommit` remain rejected.
+
 #### Active
 
 | Plugin | Kind | Function |

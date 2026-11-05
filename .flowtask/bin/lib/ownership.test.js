@@ -32,6 +32,92 @@ test("ownership classifies absent, external, symlink, and exact V2 marker determ
   }
 });
 
+test("ownership identity survives a plugin revision rollover while foreign markers stay ambiguous", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-owner-rollover-"));
+  try {
+    const plugin = path.join(root, "plugin");
+    fs.mkdirSync(plugin);
+    const markerPath = path.join(plugin, ".flowtask-plugin-owner.json");
+    const previousRevision = {
+      ...OWNER_MARKER,
+      sourceCommit: "d21ad9fe148a513d5a776ae7dfac064463f3bac7",
+    };
+
+    fs.writeFileSync(markerPath, JSON.stringify(previousRevision));
+    assert.equal(classifyOwnership(plugin).state, OWNERSHIP.MANAGED_V2);
+
+    fs.writeFileSync(markerPath, JSON.stringify({
+      ...OWNER_MARKER,
+      plugin: "flowtask-permission-gate",
+      source: "local",
+      sourceCommit: null,
+    }));
+    assert.equal(
+      classifyOwnership(plugin, { pluginName: "flowtask-permission-gate" }).state,
+      OWNERSHIP.MANAGED_V2,
+    );
+
+    fs.writeFileSync(markerPath, JSON.stringify({
+      ...OWNER_MARKER,
+      plugin: "flowtask-permission-gate",
+      source: "submodule",
+      sourceCommit: "d21ad9fe148a513d5a776ae7dfac064463f3bac7",
+    }));
+    assert.equal(
+      classifyOwnership(plugin, { pluginName: "flowtask-permission-gate" }).state,
+      OWNERSHIP.MANAGED_V2,
+    );
+
+    const missingRegistration = { ...OWNER_MARKER };
+    delete missingRegistration.registration;
+    const ambiguousMarkers = [
+      { ...OWNER_MARKER, plugin: "other-plugin" },
+      { ...OWNER_MARKER, managedBy: "someone-else" },
+      missingRegistration,
+      { ...OWNER_MARKER, extra: true },
+      { ...OWNER_MARKER, source: "mirror" },
+      { ...OWNER_MARKER, sourceCommit: "not-a-sha" },
+      { ...OWNER_MARKER, source: "local", sourceCommit: CONTEXT_CHECKPOINT_SHA },
+    ];
+    for (const marker of ambiguousMarkers) {
+      fs.writeFileSync(markerPath, JSON.stringify(marker));
+      assert.equal(classifyOwnership(plugin).state, OWNERSHIP.AMBIGUOUS, JSON.stringify(marker));
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("managed package replacement rewrites a marker from a previous revision", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-owner-rollover-stage-"));
+  try {
+    const sourceDir = path.join(root, "source");
+    const destinationDir = path.join(root, "plugins", "flowtask-context-checkpoint");
+    const configPath = path.join(root, "opencode.json");
+    fs.mkdirSync(sourceDir, { recursive: true });
+    fs.mkdirSync(destinationDir, { recursive: true });
+    fs.writeFileSync(path.join(sourceDir, "package.json"), JSON.stringify({ dependencies: { "@opencode/plugin": "^1" } }));
+    fs.writeFileSync(path.join(sourceDir, "index.ts"), "export {};\n");
+    fs.writeFileSync(path.join(destinationDir, "stale.txt"), "previous revision\n");
+    fs.writeFileSync(path.join(destinationDir, ".flowtask-plugin-owner.json"), JSON.stringify({
+      ...OWNER_MARKER,
+      sourceCommit: "d21ad9fe148a513d5a776ae7dfac064463f3bac7",
+    }));
+    fs.writeFileSync(configPath, JSON.stringify({ plugin: [] }));
+
+    const result = replaceManagedPackage({ sourceDir, destinationDir, configPath });
+
+    assert.equal(result.ownership, OWNERSHIP.MANAGED_V2);
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(path.join(destinationDir, ".flowtask-plugin-owner.json"), "utf8")),
+      OWNER_MARKER,
+    );
+    assert.equal(fs.existsSync(path.join(destinationDir, "stale.txt")), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("managed package staging validates its generated owner marker and publishes the V2 package", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-owner-stage-"));
   try {

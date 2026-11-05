@@ -40,6 +40,24 @@ function exactMarker(value, expected = OWNER_MARKER) {
   return keys.length === Object.keys(value).length && keys.every((key) => value[key] === expected[key]);
 }
 
+const SOURCE_COMMIT_SHA = /^[0-9a-f]{40}$/;
+
+/** Ownership identity, independent of the plugin revision recorded at install time. */
+function markerIdentity(value, expected = OWNER_MARKER) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const keys = Object.keys(expected);
+  if (keys.length !== Object.keys(value).length) return false;
+  if (!keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))) return false;
+  if (value.schema !== expected.schema) return false;
+  if (value.managedBy !== expected.managedBy) return false;
+  if (value.plugin !== expected.plugin) return false;
+  if (value.registration !== expected.registration) return false;
+  if (value.source !== "submodule" && value.source !== "local") return false;
+  return value.source === "submodule"
+    ? SOURCE_COMMIT_SHA.test(value.sourceCommit)
+    : value.sourceCommit === null;
+}
+
 /** Canonical marker of the management form each plugin uses. */
 function managedMarker(pluginName = CONTEXT_CHECKPOINT_NAME) {
   return pluginName === CONTEXT_CHECKPOINT_NAME
@@ -96,7 +114,7 @@ export function classifyOwnership(pluginDir, { config, pluginName = CONTEXT_CHEC
   const markerPath = path.join(pluginDir, ".flowtask-plugin-owner.json");
   const markerPresent = fs.existsSync(markerPath);
   const marker = readJson(markerPath);
-  if (exactMarker(marker, managedMarker(pluginName))) return { state: OWNERSHIP.MANAGED_V2, path: pluginDir, marker };
+  if (markerIdentity(marker, managedMarker(pluginName))) return { state: OWNERSHIP.MANAGED_V2, path: pluginDir, marker };
   if (hasLegacyV1Fingerprint(pluginDir, config, pluginName)) return { state: OWNERSHIP.MANAGED_V1, path: pluginDir };
   return markerPresent
     ? { state: OWNERSHIP.AMBIGUOUS, path: pluginDir, reason: "invalid-owner-marker" }
