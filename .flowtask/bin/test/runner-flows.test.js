@@ -12,6 +12,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -24,7 +25,7 @@ import {
   buildSessionStartContent,
   parseFrontmatter,
 } from "../lib/runner-content.js";
-import { assertRunnerCanon } from "../lib/runner-flows.js";
+import { assertRunnerCanon, compareBaselineLines } from "../lib/runner-flows.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const FLOWTASK_DIR = path.join(ROOT, ".flowtask");
@@ -66,6 +67,10 @@ function parseFlowsReport(result) {
 
 function readRunnerContent() {
   return fs.readFileSync(RUNNER_PATH, "utf8");
+}
+
+function sha256Hex(content) {
+  return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
 describe("runner flow delivery coverages", () => {
@@ -196,6 +201,39 @@ describe("runner flow delivery coverages", () => {
   });
 });
 
+describe("runner parity allowlist semantics", () => {
+  /**
+   * gap_ref: G1 (criterio C6)
+   * criterio: una huella bien formada que no coincide con la línea ausente no
+   *   la cubre; la paridad falla.
+   * defecto: el camino de huella acepta cualquier entrada bien formada aunque
+   *   no corresponda a ninguna línea faltante.
+   * why_not_detected: no hay prueba de una huella que no coincide; la allowlist
+   *   por defecto solo contiene coincidencias reales.
+   * comportamiento observable: con baseline ["alpha","beta"], compuesto
+   *   ["alpha"] y una allowlist con el sha256 de "gamma", el resultado es
+   *   missing_outside_allowlist 1 y missing[0] = { line_number: 2,
+   *   sha256: sha256("beta") }.
+   */
+  it("does not accept a well-formed fingerprint that matches no missing line", () => {
+    const comparison = compareBaselineLines({
+      baselineContent: "alpha\nbeta",
+      composedContent: "alpha",
+      allowedDeltas: [{ sha256: sha256Hex("gamma"), reason: "delta sintético" }],
+    });
+
+    assert.equal(
+      comparison.missing_outside_allowlist,
+      1,
+      "una huella que no coincide no puede cubrir la línea ausente",
+    );
+    assert.equal(comparison.allowed_matched, 0, "no se consume una huella no usada");
+    assert.deepEqual(comparison.missing, [
+      { line_number: 2, sha256: sha256Hex("beta") },
+    ]);
+  });
+});
+
 describe("runner parity CLI invocation", () => {
   /**
    * gap_ref: C4 (T4)
@@ -266,6 +304,106 @@ describe("runner parity CLI invocation", () => {
         codes.includes("runner_parity_missing_lines"),
         `failures reportados: ${codes.join(", ")}`,
       );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * gap_ref: G2 (criterio C7)
+   * criterio: una allowlist con entradas ambiguas o mal formadas falla cerrada
+   *   con runner_allowlist_invalid y no ejecuta la comparación.
+   * defecto: una entrada inválida se ignora y la paridad sigue con el resto.
+   * why_not_detected: `parseAllowlist` no tiene prueba del esquema dual.
+   * comportamiento observable: con una entrada con ambas claves, una huella
+   *   mal formada o una entrada sin clave la CLI sale 1, reporta
+   *   runner_allowlist_invalid y deja parity.baseline_ref en nulo.
+   */
+  it("rejects ambiguous or malformed allowlist entries without running the comparison", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "runner-parity-invalid-"));
+    try {
+      const zeroFingerprint = "0".repeat(64);
+      const invalidAllowlists = [
+        ["both keys", [{ line: "x", sha256: zeroFingerprint, reason: "delta sintético" }]],
+        ["malformed fingerprint", [{ sha256: "abc", reason: "delta sintético" }]],
+        ["missing key", [{ reason: "delta sintético" }]],
+      ];
+
+      for (const [label, entries] of invalidAllowlists) {
+        const allowlistPath = path.join(dir, `${label.replaceAll(" ", "-")}.json`);
+        fs.writeFileSync(allowlistPath, `${JSON.stringify(entries)}\n`, "utf8");
+
+        const result = runFlowsVerify([
+          "--baseline",
+          PARITY_BASELINE,
+          "--allow-deltas",
+          allowlistPath,
+          "--json",
+        ]);
+        const report = parseFlowsReport(result);
+        const codes = report.failures.map((failure) => failure.code);
+
+        assert.equal(result.status, 1, `${label}: la allowlist inválida debe fallar`);
+        assert.equal(report.verdict, "fail", `${label}: el veredicto debe ser fail`);
+        assert.ok(
+          codes.includes("runner_allowlist_invalid"),
+          `${label}: failures reportados: ${codes.join(", ")}`,
+        );
+        assert.equal(
+          report.parity.baseline_ref,
+          null,
+          `${label}: la comparación no debe ejecutarse`,
+        );
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * gap_ref: G3 (criterio C8)
+   * criterio: el reporte de fallo expone las diferencias no cubiertas solo como
+   *   { line_number, sha256 }, sin texto de línea.
+   * defecto: el reporte filtra el texto de una línea retirada en un detalle de
+   *   fallo.
+   * why_not_detected: el test existente de allowlist vacía solo verifica el
+   *   conteo, no la forma de las entradas.
+   * comportamiento observable: con allowlist explícita vacía, cada entrada de
+   *   report.parity.missing tiene exactamente line_number y sha256, ninguna
+   *   tiene line, y el conteo coincide con missing_outside_allowlist.
+   */
+  it("reports missing parity differences without line text", { skip: baselineSkip }, () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "runner-parity-shape-"));
+    try {
+      const allowlistPath = path.join(dir, "allowlist.json");
+      fs.writeFileSync(allowlistPath, "[]\n", "utf8");
+
+      const result = runFlowsVerify([
+        "--baseline",
+        PARITY_BASELINE,
+        "--allow-deltas",
+        allowlistPath,
+        "--json",
+      ]);
+      const report = parseFlowsReport(result);
+
+      assert.equal(result.status, 1, "un allowlist explícito vacío debe fallar");
+      assert.ok(report.parity.missing.length > 0, "debe haber diferencias no cubiertas");
+      assert.equal(
+        report.parity.missing.length,
+        report.parity.missing_outside_allowlist,
+        "cada diferencia no cubierta debe aparecer en el detalle",
+      );
+      for (const entry of report.parity.missing) {
+        assert.deepEqual(Object.keys(entry).sort(), ["line_number", "sha256"]);
+        assert.equal("line" in entry, false, "el detalle no puede incluir el texto de la línea");
+        assert.equal(
+          Number.isInteger(entry.line_number) && entry.line_number >= 1,
+          true,
+          "line_number debe ser un entero positivo",
+        );
+        assert.match(entry.sha256, /^[a-f0-9]{64}$/);
+      }
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
