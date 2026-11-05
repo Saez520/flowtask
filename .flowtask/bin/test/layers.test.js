@@ -45,7 +45,7 @@ describe("catalogos de las capas", () => {
   it("declares the allowed values of every layer", () => {
     assert.deepEqual([...PERSONA_LEVELS], ["training", "mid", "senior", "custom"]);
     assert.deepEqual([...LEGACY_PERSONA_LEVELS], ["junior"]);
-    assert.deepEqual([...AUTONOMY_PROFILES], ["assistant", "autonomous-dev", "hermes"]);
+    assert.deepEqual([...AUTONOMY_PROFILES], ["assistant", "autonomous-dev"]);
     assert.deepEqual([...PERMISSION_ENVELOPES], ["standard"]);
   });
 
@@ -198,11 +198,11 @@ describe("resolucion por capa", () => {
         permissions: { version: 1, envelope: "standard" },
       },
       project: {
-        autonomy: { version: 1, profile: "hermes" },
+        autonomy: { version: 1, profile: "autonomous-dev" },
       },
     });
 
-    assert.deepEqual(resolution.layers.autonomy.value, { version: 1, profile: "hermes" });
+    assert.deepEqual(resolution.layers.autonomy.value, { version: 1, profile: "autonomous-dev" });
     assert.deepEqual(resolution.layers.permissions.value, { version: 1, envelope: "standard" });
   });
 
@@ -281,7 +281,7 @@ describe("fallo operativo por capa", () => {
         "[FlowTask Layers] autonomy layer missing or invalid.",
         "File: unidentified",
         "Cause: unknown autonomy profile: \"root\"",
-        'Action: define "profile" as assistant, autonomous-dev, or hermes and retry; no execution starts.',
+        'Action: define "profile" as assistant or autonomous-dev and retry; no execution starts.',
       ].join("\n"),
     );
   });

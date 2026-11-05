@@ -15,8 +15,14 @@ import {
   readOperationalLayers,
 } from "../../plugins/flowtask-permission-gate/dist/layers.js";
 import {
+  AUTONOMY_PROFILES as SOURCE_AUTONOMY_PROFILES,
+  PERMISSION_ENVELOPES as SOURCE_PERMISSION_ENVELOPES,
+  parseAutonomyLayer as parseSourceAutonomyLayer,
+} from "../../plugins/flowtask-permission-gate/src/layers.js";
+import {
   AUTONOMY_PROFILES as CLI_AUTONOMY_PROFILES,
   PERMISSION_ENVELOPES as CLI_PERMISSION_ENVELOPES,
+  validateAutonomyLayer,
 } from "../lib/layers.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
@@ -291,9 +297,50 @@ describe("paridad del plugin", () => {
     assert.equal(source.equals(compiled), true, "src/layers.js and dist/layers.js must be identical");
   });
 
-  it("keeps the catalogs aligned with the layers resolver", () => {
-    assert.deepEqual([...AUTONOMY_PROFILES], [...CLI_AUTONOMY_PROFILES]);
-    assert.deepEqual([...PERMISSION_ENVELOPES], [...CLI_PERMISSION_ENVELOPES]);
+  it("keeps the three catalogs aligned on the two profiles", () => {
+    for (const catalog of [AUTONOMY_PROFILES, SOURCE_AUTONOMY_PROFILES, CLI_AUTONOMY_PROFILES]) {
+      assert.deepEqual([...catalog], ["assistant", "autonomous-dev"]);
+    }
+    for (const catalog of [PERMISSION_ENVELOPES, SOURCE_PERMISSION_ENVELOPES, CLI_PERMISSION_ENVELOPES]) {
+      assert.deepEqual([...catalog], ["standard"]);
+    }
+  });
+
+  /**
+   * gap_ref: C6
+   * criterio: la batería de autonomía y capas pasa con dos valores y dos
+   *   capas, incluida la prueba cruzada de las tres copias.
+   * defecto: una copia conserva el perfil retirado o no se compara el
+   *   comportamiento de las tres copias.
+   * why_not_detected: las pruebas vigentes afirman tres valores, la prueba del
+   *   gate no importa la fuente y no hay prueba cruzada de comportamiento.
+   * comportamiento observable: para el ejecutable, la fuente y el compilado,
+   *   los dos valores son aceptados y el valor retirado construido en runtime
+   *   es rechazado.
+   */
+  it("accepts the two profiles and rejects the retired one in the three copies", () => {
+    const RETIRED_PROFILE = ["her", "mes"].join("");
+    const copies = [
+      {
+        label: "ejecutable",
+        accepts: (profile) => validateAutonomyLayer({ version: 1, profile }).status === "valid",
+      },
+      {
+        label: "fuente",
+        accepts: (profile) => parseSourceAutonomyLayer(JSON.stringify({ version: 1, profile })).ok,
+      },
+      {
+        label: "compilado",
+        accepts: (profile) => parseAutonomyLayer(JSON.stringify({ version: 1, profile })).ok,
+      },
+    ];
+
+    for (const copy of copies) {
+      for (const profile of ["assistant", "autonomous-dev"]) {
+        assert.equal(copy.accepts(profile), true, `${copy.label} must accept ${profile}`);
+      }
+      assert.equal(copy.accepts(RETIRED_PROFILE), false, `${copy.label} must reject the retired profile`);
+    }
   });
 
   it("probes the known configuration directories in order", () => {

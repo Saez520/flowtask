@@ -814,6 +814,52 @@ test("C7 V2: sin permissions.json el hook deniega con capa, archivo, causa y acc
 });
 
 /**
+ * gap_ref: C2
+ * criterio: un destino con el perfil retirado no ejecuta; el gate deniega con
+ *   el mensaje operativo genérico.
+ * defecto: el gate acepta el perfil retirado y el Runner ejecuta con límites
+ *   ampliados.
+ * why_not_detected: no hay caso con perfil retirado desde execute.before; los
+ *   casos vigentes solo cubren capas ausentes o inválidas.
+ * comportamiento observable: con autonomy.json de perfil retirado y
+ *   permissions.json válido, execute.before rechaza una lectura del runner con
+ *   la capa, la ruta absoluta, la causa y la acción; la lectura no se ejecuta.
+ */
+test("C2 V2: un destino con el perfil retirado deniega al runner con el mensaje operativo", async () => {
+  const RETIRED_PROFILE = ["her", "mes"].join("");
+  const root = makeTemp("flowtask-gate-retired-");
+  const configDir = writeLayers(root, {
+    autonomy: { version: 1, profile: RETIRED_PROFILE },
+    permissions: { version: 1, envelope: "standard" },
+  });
+  const autonomyPath = path.join(configDir, "autonomy.json");
+  const gate = await createGate(root);
+
+  await assert.rejects(
+    gate.before({
+      tool: "read",
+      sessionID: "s-retired",
+      agent: "flowtask-runner",
+      input: { file: "package.json", limit: 5 },
+    }),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.equal(
+        error.message,
+        [
+          "[FlowTask Permission Gate] Missing or invalid autonomy layer.",
+          `File: ${autonomyPath}`,
+          `Cause: unknown autonomy profile: "${RETIRED_PROFILE}"`,
+          "Action: fix the layer or run flowtask update; the Runner does not execute tools with expanded limits.",
+        ].join("\n"),
+        "el perfil retirado debe denegar desde execute.before con capa, archivo, causa y acción",
+      );
+      return true;
+    },
+  );
+});
+
+/**
  * gap_ref: C3
  * criterio: sin ningún archivo de capa en ningún directorio candidato, el
  *   runner es denegado con el mensaje operativo (capa, archivo esperado, causa

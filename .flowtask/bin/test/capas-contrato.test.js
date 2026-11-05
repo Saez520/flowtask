@@ -55,8 +55,8 @@ describe("capas de persona, autonomia y permisos — contrato", () => {
     }
   });
 
-  it("declares the three autonomy profiles and the permission envelope", () => {
-    for (const profile of ["assistant", "autonomous-dev", "hermes"]) {
+  it("declares the two autonomy profiles and the permission envelope", () => {
+    for (const profile of ["assistant", "autonomous-dev"]) {
       assert.ok(flatPage.includes(`\`${profile}\``), `missing autonomy profile ${profile}`);
     }
     assert.ok(flatPage.includes("`standard`"), "missing the permission envelope");
@@ -108,12 +108,12 @@ describe("capas de persona, autonomia y permisos — contrato", () => {
 
   it("declares the boundary with the domain policy", () => {
     assert.ok(
-      flatPage.includes("Hermes domain permissions belong to the domain permissions phase"),
+      flatPage.includes("The capability policy and its domain permissions belong to a later phase"),
       "missing the domain policy boundary",
     );
     assert.ok(
       flatPage.includes("without the capability policy and without domain permissions it does not expand the technical envelope"),
-      "the hermes profile must not widen the envelope without the domain policy",
+      "the autonomy profile must not widen the envelope without the domain policy",
     );
   });
 
