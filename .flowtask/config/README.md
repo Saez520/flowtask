@@ -35,17 +35,46 @@ canonical runner and the baseline used by `flowtask flows verify --baseline`.
 Unlike the layer files above, this file is versioned so a clean checkout applies
 the same allowlist.
 
-- Format: a JSON array of `{ "line": string, "reason": string }` entries. Both
-  fields must be non-empty; `reason` records why the delta is intentional.
+- Format: a JSON array. Each entry declares exactly one of `line` or `sha256`,
+  plus a non-empty `reason`:
+  - `"line": string` is the exact literal text of the missing baseline line.
+  - `"sha256": string` is the lowercase 64-character hexadecimal SHA-256 of the
+    missing baseline line. It identifies the removed line without storing its
+    text.
+  - An entry with both properties, with neither, or with a malformed
+    fingerprint invalidates the whole allowlist.
+- Fingerprint input: the SHA-256 is computed over the UTF-8 bytes of the exact
+  baseline line, after splitting the baseline by `\n` and excluding blank
+  lines. The line is neither trimmed nor normalized.
+- Compatibility: literal entries remain valid as written; no migration is
+  required.
+- Matching: for each baseline line absent from the composed document, an exact
+  literal entry is consumed first and a fingerprint entry second. Each entry
+  covers one occurrence, and duplicate occurrences are counted.
 - `--baseline <ref>` applies the file automatically from
   `.flowtask/config/runner-parity-allowlist.json`.
 - `--allow-deltas <json>` replaces the default file; both allowlists are never
   merged.
-- A missing file means an empty allowlist. A present but unreadable or invalid
-  file fails closed with `runner_allowlist_invalid`, and no parity comparison is
-  run.
+- Fail-closed: a line not covered by a literal entry or a fingerprint keeps
+  parity red. A missing file means an empty allowlist. A present but unreadable,
+  invalid, or ambiguous file fails with `runner_allowlist_invalid`, and no
+  parity comparison is run.
+- Report: `parity.missing` lists each uncovered line as
+  `{ "line_number": integer, "sha256": string }`. It never includes the line
+  text. The line number is 1-based over the baseline split by `\n`.
 - The allowlist covers the recorded baseline only; it is not a general parity
   mechanism for arbitrary baselines.
+
+Audit a fingerprint against the baseline and print its line number without
+printing the line text:
+
+```bash
+git show <ref>:.flowtask/agents/runner.md \
+  | node -e 'const c=require("crypto");let d="";process.stdin.on("data",x=>d+=x).on("end",()=>{const l=d.split("\n");const i=l.findIndex(x=>c.createHash("sha256").update(x,"utf8").digest("hex")===process.argv[1]);console.log(i<0?"not found":"line "+(i+1));process.exit(i<0?1:0)})' <sha256>
+```
+
+Replace `<ref>` with the parity baseline and `<sha256>` with the entry
+fingerprint.
 
 ## Context budget (context-budget)
 
