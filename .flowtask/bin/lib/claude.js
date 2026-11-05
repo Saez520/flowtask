@@ -217,11 +217,6 @@ const CLAUDE_COMMAND_REPLACEMENTS = [
 ];
 
 function generateClaudeCommand(srcPath, destPath) {
-  if (fs.existsSync(destPath)) {
-    const existing = fs.readFileSync(destPath, "utf8");
-    if (!existing.includes(FLOWTASK_MANAGED_MARKER)) return { written: false, path: destPath };
-  }
-
   const content = fs.readFileSync(srcPath, "utf8");
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n?/);
   let description = "";
@@ -239,7 +234,15 @@ function generateClaudeCommand(srcPath, destPath) {
     adaptedBody = adaptedBody.split(from).join(to);
   }
 
+  const legacyContent = `---\ndescription: ${description}\n---\n${adaptedBody}`;
   const claudeContent = `---\ndescription: ${description}\n---\n${FLOWTASK_MANAGED_MARKER}\n${adaptedBody}`;
+
+  if (fs.existsSync(destPath)) {
+    const existing = fs.readFileSync(destPath, "utf8");
+    const owned = existing.includes(FLOWTASK_MANAGED_MARKER);
+    if (!owned && existing !== legacyContent) return { written: false, path: destPath };
+  }
+
   const dir = path.dirname(destPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(destPath, claudeContent, "utf8");
@@ -248,7 +251,9 @@ function generateClaudeCommand(srcPath, destPath) {
 
 /**
  * Generate all Claude Code command files from .flowtask/commands/.
- * A pre-existing command without the ownership marker is never overwritten.
+ * A pre-existing command without the ownership marker is adopted only when its
+ * content matches the legacy generated form exactly; any other content is
+ * preserved and reported as skipped.
  */
 export function generateClaudeCommands(flowtaskDir, projectDir) {
   const commandsDir = path.join(flowtaskDir, "commands");
