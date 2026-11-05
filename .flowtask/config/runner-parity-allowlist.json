@@ -246,5 +246,17 @@
   {
     "line": "<!-- FLOWTASK:ROUTING_END -->",
     "reason": "CA-runner-progressive-loading (#10738): delta intencional aprobado por el Validator al cortar el canon en núcleo permanente + flujos bajo demanda."
+  },
+  {
+    "sha256": "62e96f8e57d5da0e2e02a77d74ef171f093050cead4d2b6b7b0c7030fd20bdb0",
+    "reason": "La identidad del producto declara dos capas: orquestador y subagente."
+  },
+  {
+    "sha256": "df755b8c7b139f441e7119cf36ab9c2bbd647c14284775616e92f77b9b1fc2b5",
+    "reason": "La autonomía del producto declara dos valores: assistant y autonomous-dev."
+  },
+  {
+    "sha256": "a9527e5768cf929a67a082ab63ef557938d1628a9d60e1be6ee040ba1e99d1be",
+    "reason": "La regla de autonomía exige uno de los dos valores vigentes."
   }
 ]
