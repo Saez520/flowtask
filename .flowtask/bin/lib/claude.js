@@ -501,6 +501,74 @@ export function removeClaudeHook(settingsPath, { command = null, commandIncludes
   }
 }
 
+function readSettingsDocument(settingsPath) {
+  if (!fs.existsSync(settingsPath)) return { ok: true, exists: false, value: {} };
+
+  const raw = fs.readFileSync(settingsPath, "utf8");
+  if (raw.trim() === "") return { ok: true, exists: true, value: {} };
+
+  try {
+    const value = JSON.parse(raw);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { ok: false, error: `${settingsPath} is not a JSON object` };
+    }
+    return { ok: true, exists: true, value };
+  } catch (err) {
+    return { ok: false, error: `${settingsPath} is not valid JSON: ${err.message}` };
+  }
+}
+
+/**
+ * Inspect the runner agent activation in a project's local settings without
+ * modifying the document. A different agent or a malformed file is preserved.
+ */
+export function inspectClaudeAgentSetting(settingsPath, agentName) {
+  const read = readSettingsDocument(settingsPath);
+  if (!read.ok) return { ok: false, action: "invalid", error: read.error };
+  if (read.value.agent === undefined) return { ok: true, action: "set" };
+  if (read.value.agent === agentName) return { ok: true, action: "unchanged" };
+  return { ok: true, action: "preserved", existing: read.value.agent };
+}
+
+/**
+ * Add the runner agent key to the project's local settings. Every other key is
+ * preserved; a malformed document or a different agent is never overwritten.
+ */
+export function ensureClaudeAgentSetting(settingsPath, agentName) {
+  const inspection = inspectClaudeAgentSetting(settingsPath, agentName);
+  if (!inspection.ok || inspection.action !== "set") return inspection;
+
+  const read = readSettingsDocument(settingsPath);
+  if (!read.ok) return { ok: false, action: "invalid", error: read.error };
+
+  const next = { ...read.value, agent: agentName };
+  writeFileAtomic(settingsPath, JSON.stringify(next, null, 2));
+  return { ok: true, action: "set" };
+}
+
+/**
+ * Remove the runner agent key from the project's local settings. The file is
+ * deleted when no other keys remain; foreign values and malformed files are
+ * preserved.
+ */
+export function removeClaudeAgentSetting(settingsPath, agentName) {
+  const read = readSettingsDocument(settingsPath);
+  if (!read.ok) return { status: "preserved", error: read.error };
+  if (!read.exists || read.value.agent === undefined) return { status: "absent" };
+  if (read.value.agent !== agentName) {
+    return { status: "preserved", existing: read.value.agent };
+  }
+
+  const next = { ...read.value };
+  delete next.agent;
+  if (Object.keys(next).length === 0) {
+    fs.rmSync(settingsPath, { force: true });
+  } else {
+    writeFileAtomic(settingsPath, JSON.stringify(next, null, 2));
+  }
+  return { status: "removed" };
+}
+
 /** Hook tree for the user-level SessionStart handler. */
 export function buildSessionStartHook(runtimeRoot, nodePath = process.execPath) {
   return {
