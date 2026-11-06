@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import {
   FLOWTASK_MANAGED_MARKER,
@@ -37,6 +38,51 @@ function makeTempDir() {
 
 function cleanupDir(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
+}
+
+function writeStateRuleClaude(binDir) {
+  const file = path.join(binDir, "claude");
+  fs.writeFileSync(file, `#!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
+
+const args = process.argv.slice(2);
+const configDir = process.env.CLAUDE_CONFIG_DIR;
+const statePath = configDir
+  ? path.join(configDir, ".claude.json")
+  : path.join(process.env.HOME, ".claude.json");
+const readState = () => {
+  try {
+    return JSON.parse(fs.readFileSync(statePath, "utf8"));
+  } catch {
+    return {};
+  }
+};
+
+if (args[0] === "mcp" && args[1] === "get" && args[2] === "engram") {
+  if (readState().mcpServers?.engram) {
+    process.stdout.write("engram:\\n  Scope: user\\n");
+    process.exit(0);
+  }
+  process.stderr.write('No MCP server named "engram"\\n');
+  process.exit(1);
+}
+if (args[0] === "mcp" && args[1] === "add") {
+  const state = readState();
+  state.mcpServers = { ...(state.mcpServers ?? {}), engram: { command: "engram", args: ["mcp"] } };
+  fs.mkdirSync(path.dirname(statePath), { recursive: true });
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  process.exit(0);
+}
+if (args[0] === "mcp" && args[1] === "remove") {
+  const state = readState();
+  if (state.mcpServers) delete state.mcpServers.engram;
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  process.exit(0);
+}
+process.exit(1);
+`, { mode: 0o755 });
+  return file;
 }
 
 function writeSkillFixtures(rootDir, names, directoryName = "skills") {
@@ -635,6 +681,95 @@ describe("Claude user-level runtime contract", () => {
       assert.match(failed.error, /claude mcp add --scope user engram -- engram mcp/);
       assert.equal(fs.readFileSync(stateFile, "utf8"), stateBefore);
     } finally {
+      cleanupDir(root);
+    }
+  });
+
+  it("writes the ambient user-scope registration where a normal session reads it", () => {
+    const root = makeTempDir();
+    const homeDir = path.join(root, "home");
+    const claudeUserDir = path.join(homeDir, ".claude");
+    const binDir = path.join(root, "bin");
+    fs.mkdirSync(claudeUserDir, { recursive: true });
+    fs.mkdirSync(binDir, { recursive: true });
+    const claudeBin = writeStateRuleClaude(binDir);
+
+    const previous = {
+      HOME: process.env.HOME,
+      CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+    };
+    delete process.env.CLAUDE_CONFIG_DIR;
+    process.env.HOME = homeDir;
+
+    const calls = [];
+    const spawn = (bin, args, options) => {
+      calls.push({ bin, args, env: options.env });
+      return spawnSync(bin, args, options);
+    };
+
+    try {
+      const result = ensureUserEngram({ claudeUserDir, claudeBin, spawn });
+
+      assert.equal(result.ok, true);
+      assert.equal(result.action, "added");
+      assert.ok(calls.length >= 2, "the CLI must be consulted before and after adding");
+      for (const call of calls) {
+        assert.equal(
+          Object.hasOwn(call.env, "CLAUDE_CONFIG_DIR"),
+          false,
+          "the ambient user directory must not override CLAUDE_CONFIG_DIR",
+        );
+      }
+
+      const ambientState = JSON.parse(fs.readFileSync(path.join(homeDir, ".claude.json"), "utf8"));
+      assert.deepEqual(ambientState.mcpServers.engram, { command: "engram", args: ["mcp"] });
+      assert.equal(fs.existsSync(path.join(claudeUserDir, ".claude.json")), false);
+    } finally {
+      if (previous.HOME === undefined) delete process.env.HOME;
+      else process.env.HOME = previous.HOME;
+      if (previous.CLAUDE_CONFIG_DIR === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = previous.CLAUDE_CONFIG_DIR;
+      cleanupDir(root);
+    }
+  });
+
+  it("keeps CLAUDE_CONFIG_DIR for a redirected user directory", () => {
+    const root = makeTempDir();
+    const homeDir = path.join(root, "home");
+    const claudeUserDir = path.join(root, "redirected", ".claude");
+    const binDir = path.join(root, "bin");
+    fs.mkdirSync(claudeUserDir, { recursive: true });
+    fs.mkdirSync(binDir, { recursive: true });
+    const claudeBin = writeStateRuleClaude(binDir);
+
+    const previous = {
+      HOME: process.env.HOME,
+      CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+    };
+    delete process.env.CLAUDE_CONFIG_DIR;
+    process.env.HOME = homeDir;
+
+    const calls = [];
+    const spawn = (bin, args, options) => {
+      calls.push({ bin, args, env: options.env });
+      return spawnSync(bin, args, options);
+    };
+
+    try {
+      const result = ensureUserEngram({ claudeUserDir, claudeBin, spawn });
+
+      assert.equal(result.ok, true);
+      assert.ok(calls.length >= 2, "the CLI must be consulted before and after adding");
+      for (const call of calls) {
+        assert.equal(call.env.CLAUDE_CONFIG_DIR, claudeUserDir);
+      }
+      assert.ok(fs.existsSync(path.join(claudeUserDir, ".claude.json")));
+      assert.equal(fs.existsSync(path.join(homeDir, ".claude.json")), false);
+    } finally {
+      if (previous.HOME === undefined) delete process.env.HOME;
+      else process.env.HOME = previous.HOME;
+      if (previous.CLAUDE_CONFIG_DIR === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+      else process.env.CLAUDE_CONFIG_DIR = previous.CLAUDE_CONFIG_DIR;
       cleanupDir(root);
     }
   });

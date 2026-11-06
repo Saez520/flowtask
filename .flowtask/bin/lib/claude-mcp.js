@@ -7,8 +7,27 @@ const MCP_GET_TIMEOUT_MS = 15000;
 const ENGRAM_COMMAND = "engram";
 const ENGRAM_ARGS = ["mcp"];
 
+function isAmbientConfigDir(claudeUserDir) {
+  const ambient = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
+  return path.resolve(claudeUserDir) === path.resolve(ambient);
+}
+
 function cliEnv(claudeUserDir) {
-  return { ...process.env, CLAUDE_CONFIG_DIR: claudeUserDir };
+  const env = { ...process.env };
+  if (isAmbientConfigDir(claudeUserDir)) return env;
+  return { ...env, CLAUDE_CONFIG_DIR: claudeUserDir };
+}
+
+/**
+ * Resolve the state file the Claude Code CLI reads for user-scope MCP servers.
+ * Without `CLAUDE_CONFIG_DIR`, a session reads `$HOME/.claude.json`; with it,
+ * the session reads `$CLAUDE_CONFIG_DIR/.claude.json`.
+ */
+function resolveStateFile(claudeUserDir) {
+  if (process.env.CLAUDE_CONFIG_DIR !== undefined || !isAmbientConfigDir(claudeUserDir)) {
+    return path.join(claudeUserDir, ".claude.json");
+  }
+  return path.join(os.homedir(), ".claude.json");
 }
 
 function runClaude(claudeBin, args, { claudeUserDir, spawn }) {
@@ -29,27 +48,14 @@ function userScopePresent(result) {
   return /scope\s*:\s*user/i.test(String(result.stdout ?? ""));
 }
 
-function readStateFile(claudeUserDir) {
-  const candidates = [path.join(claudeUserDir, ".claude.json")];
-  const realClaudeDir = path.join(os.homedir(), ".claude");
-  if (path.resolve(claudeUserDir) === path.resolve(realClaudeDir)) {
-    candidates.push(path.join(os.homedir(), ".claude.json"));
-  }
-
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(candidate, "utf8"));
-      if (parsed && typeof parsed === "object") return parsed;
-    } catch {
-      // Try the next known state file.
-    }
-  }
-  return null;
-}
-
 function stateHasUserEngram(claudeUserDir) {
-  const state = readStateFile(claudeUserDir);
-  const entry = state?.mcpServers?.engram;
+  let state;
+  try {
+    state = JSON.parse(fs.readFileSync(resolveStateFile(claudeUserDir), "utf8"));
+  } catch {
+    return false;
+  }
+  const entry = state && typeof state === "object" ? state.mcpServers?.engram : null;
   if (!entry || entry.command !== ENGRAM_COMMAND) return false;
   const args = Array.isArray(entry.args) ? entry.args : [];
   return args.length === ENGRAM_ARGS.length && args.every((value, index) => value === ENGRAM_ARGS[index]);

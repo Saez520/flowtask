@@ -628,6 +628,29 @@ describe("Claude global lifecycle", () => {
     }
   });
 
+  it("repairs a missing user-scope Engram registration on update", () => {
+    const root = makeRoot("flowtask-update-mcp-");
+    const fake = writeFakeClaude(root);
+    const env = environment(root, fake);
+    writeUserState(path.join(root, "user"));
+    const projectDir = createGitProject(root, "update-mcp");
+    const manifestPath = path.join(root, "user", ".claude", "flowtask", "runtime.json");
+
+    try {
+      assertExit(runCli(projectDir, env, ["install", "--target", "claude", "--persona", "senior"]), "install");
+      assert.equal(readJson(manifestPath).mcp.engram.managed, true);
+      assert.equal(fs.existsSync(fake.state), true, "install must register Engram");
+
+      fs.rmSync(fake.state, { force: true });
+      assertExit(runCli(projectDir, env, ["update"]), "update");
+
+      assert.equal(fs.existsSync(fake.state), true, "update must restore the user-scope registration");
+      assert.equal(readJson(manifestPath).mcp.engram.managed, true);
+    } finally {
+      cleanupFixtures();
+    }
+  });
+
   it("migrates a legacy project and removes only FlowTask-owned state on uninstall", () => {
     const root = makeRoot("flowtask-legacy-");
     const fake = writeFakeClaude(root);
