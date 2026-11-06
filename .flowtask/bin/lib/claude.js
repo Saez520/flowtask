@@ -2,11 +2,13 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import crypto from "crypto";
-import { logSuccess, logError } from "./logger.js";
+import { logSuccess, logError, fileExists } from "./logger.js";
 import {
   assertEveryDeclaredSkillHasPath,
   assertNoSkillCalls,
+  buildRunnerPromptBody,
   buildSkillFilesSection,
+  CLAUDE_RUNNER_AGENT_NAME,
   collectDeclaredSkillNames,
   findSkillCalls,
   normalizeSkillPaths,
@@ -59,10 +61,12 @@ export function resolveClaudePaths(projectDir = process.cwd(), options = {}) {
     projectFlowtaskDir,
     registryPath: path.join(projectFlowtaskDir, "project.json"),
     projectSettingsPath: path.join(projectClaudeDir, "settings.json"),
+    projectLocalSettingsPath: path.join(projectClaudeDir, "settings.local.json"),
     projectMcpPath: path.join(projectDir, ".mcp.json"),
     projectAgentsDir: path.join(projectClaudeDir, "agents"),
     projectCommandsDir: path.join(projectClaudeDir, "commands"),
     legacySessionStartPath: path.join(projectClaudeDir, "session-start.md"),
+    claudeAgentsDir: path.join(claudeUserDir, "agents"),
   };
 }
 
@@ -205,6 +209,73 @@ export function generateClaudeAgents(flowtaskDir, projectDir, options = {}) {
   }
 
   return { generated: files.length, skipped: [], files };
+}
+
+// ─── User-level runner agent ──────────────────────────────────────────────────
+
+export const CLAUDE_RUNNER_AGENT_DESCRIPTION =
+  "Orquestador principal de FlowTask para proyectos registrados. Ejecuta el hilo principal como runner con memoria primero, identidad de capa visible y fallo declarado.";
+
+/**
+ * Compose the user-level agent that Claude Code applies to the main thread. The
+ * prompt body already carries the anchoring contract and the adapted runner.
+ */
+export function composeClaudeRunnerAgent({ promptBody }) {
+  const parts = [
+    "---",
+    `name: ${CLAUDE_RUNNER_AGENT_NAME}`,
+    `description: ${CLAUDE_RUNNER_AGENT_DESCRIPTION}`,
+    "---",
+    FLOWTASK_MANAGED_MARKER,
+    "",
+  ];
+  parts.push(promptBody.trimEnd());
+  return `${parts.join("\n")}\n`;
+}
+
+/**
+ * Generate `~/.claude/agents/flowtask-runner.md` from the active payload. A
+ * file without the ownership marker is preserved and reported, never replaced.
+ */
+export function generateClaudeRunnerAgent({ claudeUserDir, runtimeRoot, runtimeManifest, baseName }) {
+  const active = resolveActiveRuntimePaths(runtimeRoot, runtimeManifest);
+  if (!fileExists(active.runnerPath)) {
+    const error = new Error(
+      `FlowTask runner source not found at ${active.runnerPath}. Run: flowtask install`,
+    );
+    error.code = "runner_agent_source_missing";
+    error.path = active.runnerPath;
+    throw error;
+  }
+
+  const promptBody = buildRunnerPromptBody({
+    runnerBody: fs.readFileSync(active.runnerPath, "utf8"),
+    skillsDir: active.skillsDir,
+    baseName,
+  });
+  const content = composeClaudeRunnerAgent({ promptBody });
+  const destPath = path.join(claudeUserDir, "agents", `${CLAUDE_RUNNER_AGENT_NAME}.md`);
+
+  if (fileExists(destPath)) {
+    const existing = fs.readFileSync(destPath, "utf8");
+    if (!existing.includes(FLOWTASK_MANAGED_MARKER)) return { status: "preserved", path: destPath };
+    if (existing === content) return { status: "unchanged", path: destPath };
+  }
+
+  writeFileAtomic(destPath, content);
+  return { status: "written", path: destPath };
+}
+
+/** Remove the generated runner agent only when it carries the ownership marker. */
+export function removeClaudeRunnerAgent({ claudeUserDir }) {
+  const destPath = path.join(claudeUserDir, "agents", `${CLAUDE_RUNNER_AGENT_NAME}.md`);
+  if (!fileExists(destPath)) return { status: "absent", path: destPath };
+
+  const content = fs.readFileSync(destPath, "utf8");
+  if (!content.includes(FLOWTASK_MANAGED_MARKER)) return { status: "preserved", path: destPath };
+
+  fs.rmSync(destPath, { force: true });
+  return { status: "removed", path: destPath };
 }
 
 // ─── Command generator ────────────────────────────────────────────────────────
