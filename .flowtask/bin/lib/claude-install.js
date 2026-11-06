@@ -2,8 +2,11 @@ import fs from "fs";
 import path from "path";
 import {
   buildSessionStartHook,
+  generateClaudeRunnerAgent,
   mergeClaudeSettings,
+  removeClaudeAgentSetting,
   removeClaudeHook,
+  removeClaudeRunnerAgent,
   resolveClaudePaths,
   writeFileAtomic,
 } from "./claude.js";
@@ -439,6 +442,19 @@ function ensureGlobalSurfaces({ flowtaskDir, projectDir, personaChoice = null, p
 
   const config = ensureClaudeRuntimeConfig(configDir, { personaChoice });
 
+  const runnerAgent = generateClaudeRunnerAgent({
+    claudeUserDir: paths.claudeUserDir,
+    runtimeRoot: paths.runtimeRoot,
+    runtimeManifest: runtime,
+    baseName: config.identity.value.baseName,
+  });
+  if (runnerAgent.status === "preserved") {
+    logWarn(
+      `Preserved an existing runner agent without the FlowTask marker at ${runnerAgent.path}. ` +
+        "Move the file and run flowtask update to activate the FlowTask runner.",
+    );
+  }
+
   const userSettingsPath = path.join(paths.claudeUserDir, "settings.json");
   const hook = mergeClaudeSettings(userSettingsPath, {
     hooks: buildSessionStartHook(paths.runtimeRoot),
@@ -467,7 +483,7 @@ function ensureGlobalSurfaces({ flowtaskDir, projectDir, personaChoice = null, p
   }
   persistMcpState(paths.runtimeRoot, mcp);
 
-  return { paths, version, runtime, config, hook, mcp };
+  return { paths, version, runtime, config, hook, mcp, runnerAgent };
 }
 
 /**
@@ -484,7 +500,13 @@ export function installClaudeTarget({
 }) {
   const surfaces = ensureGlobalSurfaces({ flowtaskDir, projectDir, personaChoice, personaContent });
   const runtimeManifest = readClaudeRuntimeManifest(surfaces.paths.runtimeRoot);
-  const registration = registerClaudeProject({ projectDir, runtimeManifest, flowtaskDir });
+  const registration = registerClaudeProject({
+    projectDir,
+    runtimeManifest,
+    flowtaskDir,
+    baseName: surfaces.config.identity.value.baseName,
+    runnerAgentStatus: surfaces.runnerAgent.status,
+  });
   const worktreeMcp = registerWorktreeManagerMcpForClaude(surfaces.paths, worktreeManager);
 
   logSuccess(`Claude Code target ready (runtime ${surfaces.version}).`);
@@ -497,6 +519,8 @@ export function installClaudeTarget({
     mcp: surfaces.mcp,
     hook: surfaces.hook,
     worktreeMcp,
+    runnerAgent: surfaces.runnerAgent,
+    settingsAgent: registration.settingsAgent,
   };
 }
 
@@ -514,11 +538,12 @@ export function uninstallClaudeProject({ projectDir, runtimeRoot, flowtaskDir = 
     flowtaskDir,
     migrateConfig: false,
   });
+  const settingsAgent = removeClaudeAgentSetting(paths.projectLocalSettingsPath, "flowtask-runner");
   const removal = removeClaudeProject({
     projectDir,
     runtimeRoot: fileExists(effectiveRuntimeRoot) ? effectiveRuntimeRoot : null,
   });
-  return { ok: true, ...removal, legacy };
+  return { ok: true, ...removal, settingsAgent, legacy };
 }
 
 /**
@@ -591,6 +616,7 @@ export function uninstallClaudeGlobal({ runtimeRoot, claudeUserDir, flowtaskDir 
 
   const failures = [];
   const projects = [];
+  const settingsAgents = [];
   for (const entry of indexRead.index.projects) {
     if (!entry || typeof entry.path !== "string") continue;
     try {
@@ -599,7 +625,13 @@ export function uninstallClaudeGlobal({ runtimeRoot, claudeUserDir, flowtaskDir 
         runtimeRoot,
         flowtaskDir,
       });
-      projects.push({ path: entry.path, removed: result.removed.length, preserved: result.preserved });
+      projects.push({
+        path: entry.path,
+        removed: result.removed.length,
+        preserved: result.preserved,
+        settingsAgent: result.settingsAgent,
+      });
+      settingsAgents.push({ path: entry.path, ...result.settingsAgent });
     } catch (error) {
       failures.push({ path: entry.path, error: error.message });
     }
@@ -619,6 +651,25 @@ export function uninstallClaudeGlobal({ runtimeRoot, claudeUserDir, flowtaskDir 
     };
   }
 
+  const agentPath = path.join(claudeUserDir, "agents", "flowtask-runner.md");
+  let runnerAgent;
+  const agentStillReferenced = settingsAgents.some(
+    (entry) => entry.status !== "removed" && entry.status !== "absent",
+  );
+  if (agentStillReferenced) {
+    runnerAgent = { status: "preserved", path: agentPath };
+    logWarn(
+      `The FlowTask runner agent at ${agentPath} was preserved because at least one project still references it.`,
+    );
+  } else {
+    runnerAgent = removeClaudeRunnerAgent({ claudeUserDir });
+    if (runnerAgent.status === "preserved") {
+      logWarn(
+        `The FlowTask runner agent at ${runnerAgent.path} has no ownership marker and was preserved.`,
+      );
+    }
+  }
+
   const runtimeRemoval = removeClaudeRuntime(runtimeRoot);
   return {
     ok: true,
@@ -627,6 +678,8 @@ export function uninstallClaudeGlobal({ runtimeRoot, claudeUserDir, flowtaskDir 
     projects,
     failures,
     manualReview,
+    settingsAgents,
+    runnerAgent,
     ...runtimeRemoval,
   };
 }
@@ -659,11 +712,19 @@ export function updateClaudeTarget({
       runtime: surfaces.runtime,
       project: null,
       options,
+      runnerAgent: surfaces.runnerAgent,
+      settingsAgent: null,
     };
   }
 
   const runtimeManifest = readClaudeRuntimeManifest(paths.runtimeRoot);
-  const registration = registerClaudeProject({ projectDir, runtimeManifest, flowtaskDir });
+  const registration = registerClaudeProject({
+    projectDir,
+    runtimeManifest,
+    flowtaskDir,
+    baseName: surfaces.config.identity.value.baseName,
+    runnerAgentStatus: surfaces.runnerAgent.status,
+  });
   const worktreeMcp = registerWorktreeManagerMcpForClaude(paths, worktreeManager);
   logSuccess("FlowTask project registration refreshed.");
   return {
@@ -675,5 +736,7 @@ export function updateClaudeTarget({
     registration,
     options,
     worktreeMcp,
+    runnerAgent: surfaces.runnerAgent,
+    settingsAgent: registration.settingsAgent,
   };
 }
