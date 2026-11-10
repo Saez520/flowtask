@@ -335,6 +335,7 @@ function registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManag
     configPath,
     format: "opencode",
     managerDir: worktreeManager.managerDir,
+    pythonBin: worktreeManager.capabilities?.python?.executable,
   });
   reportWorktreeMcpRegistration(result, configPath);
   return result;

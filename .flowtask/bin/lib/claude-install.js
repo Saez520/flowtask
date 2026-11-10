@@ -116,6 +116,7 @@ function registerWorktreeManagerMcpForClaude(paths, worktreeManager) {
     configPath: paths.projectMcpPath,
     format: "claude",
     managerDir: worktreeManager.managerDir,
+    pythonBin: worktreeManager.capabilities?.python?.executable,
   });
   switch (result.status) {
     case "registered":
