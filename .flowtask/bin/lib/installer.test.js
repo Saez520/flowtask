@@ -14,6 +14,7 @@ import {
   removeLegacyConsumerFiles,
   prepareInstallation,
   prepareGlobalWorktreeManager,
+  prepareWorktreeManagerForRun,
   reportWorktreeManagerCapabilities,
   detectWorktreeManagerCapabilities,
   ASSETS,
@@ -1680,6 +1681,96 @@ test("an unusable Python blocks the npm publication before any copy is written",
     /Worktree Manager has no usable transport.*python is not usable/is,
   );
   assert.equal(fs.existsSync(globalDir), false);
+});
+
+/**
+ * gap_ref: G1 (AC1, AC3)
+ * defecto: Sin Python real, install y update abortaban antes de sincronizar
+ *   los targets y la causa visible era el mensaje localizado del alias de
+ *   Microsoft Store.
+ * why_not_detected: La degradación solo cubría fallos de descarga npm y las
+ *   pruebas existentes usaban un Python de fixture.
+ * comportamiento observable: El alias de Store se rechaza con una causa
+ *   estable, la publicación no ocurre, install y update continúan con dos
+ *   advertencias accionables y el update declara intacta la copia previa.
+ */
+test("an unusable Python degrades install and update without publishing a broken copy", () => {
+  const fixture = createManagerFixture();
+  const npmRoot = path.join(fixture.root, "npm");
+  fs.mkdirSync(npmRoot, { recursive: true });
+  const npm = writeNpmFixture(npmRoot, fixture.sourceDir);
+  const globalDir = path.join(fixture.root, "global", "worktree-manager");
+  const missingPython = path.join(fixture.root, "missing-python3");
+
+  const runDegraded = (mode) => {
+    const lines = [];
+    const originalLog = console.log;
+    console.log = (...args) => { lines.push(args.join(" ")); };
+    try {
+      const report = prepareWorktreeManagerForRun({
+        npmBin: npm,
+        workDir: path.join(npmRoot, `work-${mode}`),
+        globalManagerDir: globalDir,
+        pythonBin: missingPython,
+      }, { mode });
+      return { report, output: lines.join("\n") };
+    } finally {
+      console.log = originalLog;
+    }
+  };
+
+  const install = runDegraded("install");
+  assert.equal(install.report, null, "a missing Python must not abort the installation");
+  assert.match(install.output, /Worktree Manager could not be installed: .*no usable transport/is);
+  assert.match(install.output, /FlowTask continues without worktree support/);
+  assert.match(install.output, /Install Python 3\.9\+/);
+  assert.match(install.output, /run 'flowtask update' to enable worktrees/);
+
+  const update = runDegraded("update");
+  assert.equal(update.report, null, "a missing Python must not abort the update");
+  assert.match(update.output, /Worktree Manager could not be updated/);
+  assert.match(update.output, /previous copy, if any, was left unchanged/);
+
+  assert.equal(fs.existsSync(globalDir), false, "an unusable manager is never published");
+});
+
+test("a Microsoft Store alias is rejected without its localized message as the cause", { skip: process.platform === "win32" }, () => {
+  const fixture = createManagerFixture();
+  const aliasRoot = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-store-alias-"));
+  fixtures.push(aliasRoot);
+  const aliasDir = path.join(aliasRoot, "WindowsApps");
+  fs.mkdirSync(aliasDir, { recursive: true });
+  const alias = path.join(aliasDir, "python3");
+  fs.writeFileSync(
+    alias,
+    "#!/bin/sh\necho 'no se encontró Python; ejecutar sin argumentos para instalar desde el Microsoft Store' >&2\nexit 1\n",
+    { mode: 0o755 },
+  );
+
+  const report = detectWorktreeManagerCapabilities(fixture.sourceDir, { pythonBin: alias });
+  assert.equal(report.python.available, false);
+  assert.deepEqual(report.transports, []);
+  assert.match(report.python.cause, /Microsoft Store app execution alias/);
+  assert.equal(report.python.cause.includes("no se encontró"), false);
+  assert.match(report.cli.cause, /python is not usable/);
+  assert.match(report.mcp.cause, /python is not usable/);
+});
+
+test("the installation continues when the optional Worktree Manager is unavailable", async () => {
+  const fixture = createManagerFixture();
+  const projectDir = path.join(fixture.root, "project");
+  fs.mkdirSync(projectDir, { recursive: true });
+  const descriptor = await prepareInstallation(fixture.flowtaskDir, projectDir, "install", {
+    targets: [{ id: "standalone", ideDir: "", targetSubDir: ".flowtask" }],
+    worktreeManager: null,
+    ensureSource: async () => ({
+      sourceCommit: CONTEXT_CHECKPOINT_SHA,
+      sourceDir: path.join(fixture.flowtaskDir, "plugins", CONTEXT_CHECKPOINT_NAME),
+    }),
+  });
+  assert.equal(descriptor.worktreeManager, null);
+  assert.equal(descriptor.mode, "install");
+  assert.equal(descriptor.targets.length, 1);
 });
 
 test("the quiet report stays silent only when both transports are operational", () => {

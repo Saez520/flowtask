@@ -253,8 +253,10 @@ export function prepareGlobalWorktreeManager(options = {}) {
 }
 
 /**
- * Install or update the global manager without turning a download failure into
- * a failed installation. Any other failure keeps its fail-closed behavior.
+ * Install or update the global manager without turning an optional capability
+ * into a failed installation. A download failure and a machine without a usable
+ * Python degrade with a visible warning; any other failure keeps its fail-closed
+ * behavior.
  */
 export function prepareWorktreeManagerForRun(options = {}, { mode = "install" } = {}) {
   try {
@@ -262,7 +264,7 @@ export function prepareWorktreeManagerForRun(options = {}, { mode = "install" } 
     reportWorktreeManagerCapabilities(report, { quiet: mode === "update" ? !report.versionChanged : false });
     return report;
   } catch (error) {
-    if (error?.code === "WORKTREE_MANAGER_DOWNLOAD_FAILED") {
+    if (error?.code === "WORKTREE_MANAGER_DOWNLOAD_FAILED" || error?.code === "WORKTREE_MANAGER_UNUSABLE") {
       reportWorktreeManagerUnavailable(error, { mode });
       return null;
     }
@@ -270,11 +272,15 @@ export function prepareWorktreeManagerForRun(options = {}, { mode = "install" } 
   }
 }
 
-/** Publish the visible degradation when the package could not be downloaded. */
+/** Publish the visible degradation when the optional manager could not be published. */
 export function reportWorktreeManagerUnavailable(error, { mode = "install" } = {}) {
   const action = mode === "update" ? "updated" : "installed";
   logWarn(`Worktree Manager could not be ${action}: ${error.message}`);
   const intact = mode === "update" ? " The previous copy, if any, was left unchanged." : "";
+  if (error?.code === "WORKTREE_MANAGER_UNUSABLE") {
+    logWarn(`FlowTask continues without worktree support. Install Python 3.9+ and run 'flowtask update' to enable worktrees.${intact}`);
+    return;
+  }
   logWarn(`Worktrees are not available from this ${mode}. Run 'flowtask update' when the registry is reachable.${intact}`);
 }
 export function reportWorktreeManagerCapabilities(report, { quiet } = {}) {
@@ -294,7 +300,7 @@ export function reportWorktreeManagerCapabilities(report, { quiet } = {}) {
     logWarn(`Worktree Manager partially installed: only the MCP is operational (${mcp.tools.length} tools); the CLI is not: ${cli?.cause ?? "unknown cause"}`);
     return;
   }
-  logError(`Worktree Manager is not operational: ${[cli?.cause, mcp?.cause].filter(Boolean).join("; ")}`);
+  logWarn(`Worktree Manager is not operational: ${[cli?.cause, mcp?.cause].filter(Boolean).join("; ")}`);
 }
 
 function reportWorktreeMcpRegistration(result, configPath) {
