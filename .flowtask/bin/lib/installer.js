@@ -156,17 +156,20 @@ function probeManagerMcp(managerDir, python, timeoutMs) {
  * Detect what the manager checkout can really do.
  *
  * A transport is reported as available only when it answered a read-only
- * probe, never because a configuration declares it.
+ * probe, never because a configuration declares it. `pythonRuntime` accepts an
+ * already resolved runtime, which lets the caller compose the resolver contract
+ * with the probes that invoke it.
  */
 export function detectWorktreeManagerCapabilities(managerDir, options = {}) {
   const timeoutMs = options.timeoutMs ?? WORKTREE_MANAGER_PROBE_TIMEOUT_MS;
-  const python = options.pythonBin
-    ? resolvePythonRuntime({
-        candidates: [{ command: options.pythonBin, prefix: [] }],
-        resolveExecutables: () => [options.pythonBin],
-        timeoutMs,
-      })
-    : resolvePythonRuntime({ timeoutMs });
+  const python = options.pythonRuntime
+    ?? (options.pythonBin
+      ? resolvePythonRuntime({
+          candidates: [{ command: options.pythonBin, prefix: [] }],
+          resolveExecutables: () => [options.pythonBin],
+          timeoutMs,
+        })
+      : resolvePythonRuntime({ timeoutMs }));
   const report = {
     managerDir,
     python: { available: false, version: null, executable: null, command: null, prefix: [], cause: null },

@@ -54,7 +54,7 @@ test("a failing candidate is skipped and the next interpreter answers", () => {
   assert.equal(result.cause, null);
 });
 
-test("the Windows launcher is the first candidate and keeps its prefix", () => {
+test("the Windows launcher probes with -3 and drops the launcher prefix once the interpreter is resolved", () => {
   const commands = [];
   const probes = [];
   const result = resolvePythonRuntime({
@@ -83,9 +83,29 @@ test("the Windows launcher is the first candidate and keeps its prefix", () => {
     },
   });
   assert.equal(prefixed.available, true);
-  assert.deepEqual(prefixed.prefix, ["-3"]);
+  assert.deepEqual(prefixed.prefix, [], "the launcher prefix never applies to the resolved interpreter");
   assert.equal(prefixed.executable, "C:\\Python311\\python.exe");
   assert.ok(probes.every(([executable, first]) => executable === "C:\\Windows\\py.exe" && first === "-3"));
+});
+
+test("a candidate that cannot report its interpreter path is skipped", () => {
+  const result = resolvePythonRuntime({
+    platform: "win32",
+    candidates: [{ command: "py", prefix: ["-3"] }],
+    resolveExecutables: () => ["C:\\Windows\\py.exe"],
+    probe: (executable, args) => {
+      if (args.some((arg) => String(arg).includes("version_info"))) {
+        return { ok: true, stdout: "3.11.9\n" };
+      }
+      return { ok: false, cause: "the interpreter path probe failed" };
+    },
+  });
+
+  assert.equal(result.available, false);
+  assert.equal(result.executable, null);
+  assert.deepEqual(result.prefix, []);
+  assert.match(result.cause, /did not report a usable interpreter path/);
+  assert.match(result.cause, /the interpreter path probe failed/);
 });
 
 test("a Microsoft Store app execution alias is not Python and hides its localized message", () => {

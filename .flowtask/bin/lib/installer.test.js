@@ -21,6 +21,7 @@ import {
 } from "./installer.js";
 import { showInteractiveSelector } from "./ui.js";
 import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
+import { resolvePythonRuntime } from "./python-runtime.js";
 import { registerPluginArrayEntry, mergeOpencodeConfig } from "./opencode.js";
 import { generateClaudeCommands } from "./claude.js";
 import { verifyDirectoryMirror, copyDirectoryDelta, copyWithProgress, pruneDirectoryExtras } from "./copy.js";
@@ -1479,6 +1480,82 @@ test("the capability report exposes the resolved interpreter identity", () => {
   assert.ok(report.python.executable.length > 0);
   assert.ok(Array.isArray(report.python.prefix));
   assert.ok(["py", "python3", "python"].includes(report.python.command));
+});
+
+test("the manager probes invoke the resolved interpreter without the launcher arguments", { skip: process.platform === "win32" }, () => {
+  const fixture = createManagerFixture();
+  const recorder = path.join(fixture.root, "python-recorder");
+  const logPath = path.join(fixture.root, "python-invocations.jsonl");
+  fs.writeFileSync(recorder, `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+if (process.env.FLOWTASK_PYTHON_RECORDER_LOG) {
+  fs.appendFileSync(process.env.FLOWTASK_PYTHON_RECORDER_LOG, JSON.stringify(args) + "\\n");
+}
+if (args.includes("--version")) {
+  process.stdout.write("1.0.0\\n");
+  process.exit(0);
+}
+if (args.includes("worktree_manager.mcp_transport")) {
+  let buffer = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => { buffer += chunk; });
+  process.stdin.on("end", () => {
+    const names = ["worktree_create", "worktree_complete", "worktree_cleanup", "worktree_recover",
+      "worktree_list", "worktree_prune", "worktree_status"];
+    for (const line of buffer.split(/\\r?\\n/)) {
+      if (!line.trim()) continue;
+      const message = JSON.parse(line);
+      const result = message.method === "initialize"
+        ? { protocolVersion: "2024-11-05", capabilities: { tools: {} },
+            serverInfo: { name: "worktree-manager", version: "1.0.0" } }
+        : (message.method === "tools/list"
+          ? { tools: names.map((name) => ({ name, description: "Manage repository worktrees",
+              inputSchema: { type: "object", properties: {}, additionalProperties: false } })) }
+          : null);
+      if (message.id !== undefined && result) {
+        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }) + "\\n");
+      }
+    }
+    process.exit(0);
+  });
+} else {
+  process.exit(2);
+}
+`, { mode: 0o755 });
+
+  // `py -3` delegates to a real interpreter: the launcher probes use `-3`, but
+  // the resolved executable must receive the manager arguments alone.
+  const runtime = resolvePythonRuntime({
+    platform: "win32",
+    candidates: [{ command: "py", prefix: ["-3"] }],
+    resolveExecutables: () => ["C:\\Windows\\py.exe"],
+    probe: (executable, args) => {
+      if (args.some((arg) => String(arg).includes("version_info"))) return { ok: true, stdout: "3.11.9\n" };
+      if (args.some((arg) => String(arg).includes("sys.executable"))) return { ok: true, stdout: `${recorder}\n` };
+      return { ok: false, cause: "unexpected launcher probe" };
+    },
+  });
+  assert.equal(runtime.available, true);
+  assert.equal(runtime.executable, recorder);
+  assert.deepEqual(runtime.prefix, []);
+
+  process.env.FLOWTASK_PYTHON_RECORDER_LOG = logPath;
+  try {
+    const report = detectWorktreeManagerCapabilities(fixture.sourceDir, { pythonRuntime: runtime });
+    assert.deepEqual(report.transports, ["cli", "mcp"]);
+    assert.equal(report.python.executable, recorder);
+  } finally {
+    delete process.env.FLOWTASK_PYTHON_RECORDER_LOG;
+  }
+
+  const invocations = fs.readFileSync(logPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(
+    invocations.map((args) => args.join(" ")).sort(),
+    ["-m worktree_manager --version", "-m worktree_manager.mcp_transport"],
+    "the resolved interpreter receives -m alone, never the launcher -3",
+  );
+  assert.equal(invocations.some((args) => args.includes("-3")), false);
 });
 
 test("the installation continues with the CLI and reports the MCP cause when the MCP entrypoints are missing", () => {

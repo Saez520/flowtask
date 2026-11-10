@@ -108,6 +108,15 @@ function describeFailedProbe(executable, result) {
   return `${executable}: ${result?.cause ?? "the probe failed"}`;
 }
 
+/** Compare two interpreter paths with the matching rules of the platform. */
+function isSameInterpreterPath(left, right, platform) {
+  const normalize = (value) => {
+    const text = String(value ?? "");
+    return platform === "win32" ? text.replace(/\//g, "\\").toLowerCase() : text;
+  };
+  return normalize(left) === normalize(right);
+}
+
 /**
  * Resolve a real Python 3.9+ interpreter.
  *
@@ -115,6 +124,12 @@ function describeFailedProbe(executable, result) {
  * then the usual command names. Every path reported by `where`/`which` is
  * probed, so a Store alias or a broken first match never hides a usable
  * interpreter later on PATH.
+ *
+ * The returned `prefix` is the argument prefix of the returned `executable`,
+ * never the prefix of the launcher that produced it: `py -3` delegates to a
+ * real interpreter and that interpreter rejects `-3`. A candidate that accepts
+ * the version probe but cannot report its own executable is skipped, because
+ * the absolute interpreter path is the stable identity of the runtime.
  */
 export function resolvePythonRuntime(options = {}) {
   const platform = options.platform ?? process.platform;
@@ -155,15 +170,23 @@ export function resolvePythonRuntime(options = {}) {
         continue;
       }
       const executableResult = probe(executable, [...prefix, "-c", EXECUTABLE_PROBE], { timeoutMs });
-      const resolvedExecutable = executableResult?.ok
-        ? (lastLine(executableResult.stdout) || executable)
-        : executable;
+      if (!executableResult?.ok) {
+        causes.push(`${executable} did not report a usable interpreter path: ${executableResult?.cause ?? "the probe failed"}`);
+        continue;
+      }
+      const resolvedExecutable = lastLine(executableResult.stdout) || executable;
+      // The launcher prefix only applies while the executable to invoke is the
+      // launcher itself. Once the probe reported the interpreter, the prefix is
+      // dropped so later invocations never pass launcher arguments to it.
+      const invocationPrefix = isSameInterpreterPath(resolvedExecutable, executable, platform)
+        ? [...prefix]
+        : [];
       return {
         available: true,
         version,
         executable: resolvedExecutable,
         command,
-        prefix: [...prefix],
+        prefix: invocationPrefix,
         cause: null,
       };
     }
