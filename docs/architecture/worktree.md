@@ -16,7 +16,7 @@ This document describes only the integration with FlowTask.
 
 ## Direct consumption
 
-The Runner consumes the manager through the MCP server `worktree_manager`, which the installer registers per project in the destination configuration: `mcp.worktree_manager` in `.opencode/opencode.json` and `mcpServers.worktree_manager` in `.mcp.json`. The registration uses `python3 -m worktree_manager.mcp_transport` with the managed global directory on `PYTHONPATH`, so the server does not depend on the working directory: every call carries `repo`.
+The Runner consumes the manager through the MCP server `worktree_manager`, which the installer registers per project in the destination configuration: `mcp.worktree_manager` in `.opencode/opencode.json` and `mcpServers.worktree_manager` in `.mcp.json`. The registration uses the Python interpreter resolved on the machine (the absolute path of a real 3.9+ interpreter, discovered through `py -3`, `python3`, or `python`) with `-m worktree_manager.mcp_transport` and the managed global directory on `PYTHONPATH`, so the server does not depend on `PATH` or on the working directory: every call carries `repo`.
 
 The standalone publishes seven tools: `worktree_create`, `worktree_complete`, `worktree_cleanup`, `worktree_recover`, `worktree_list`, `worktree_prune` and `worktree_status`. The Runner plans a mutating operation with `dry_run: true`, reads the plan digest and the planned transaction identifier, and executes with the same fields plus `plan_hash` and, when it applies, `transaction_id`; `list` and `status` use a single call.
 

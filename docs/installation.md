@@ -4,7 +4,7 @@ FlowTask operational guide. The current version lives in `.flowtask/package.json
 
 ## Requirements
 
-Git, Node.js, npm, and an interactive terminal. OpenCode, Claude Code, or VS Code are only required for the chosen target. Engram is checked and reported by the installer, but it is not installed automatically. The worktree manager requires Python 3.9 or later.
+Git, Node.js, npm, and an interactive terminal. OpenCode, Claude Code, or VS Code are only required for the chosen target. Engram is checked and reported by the installer, but it is not installed automatically. Python 3.9 or later is optional: it enables the worktree manager, and FlowTask installs and updates without it.
 
 ## Install the CLI
 
@@ -346,10 +346,15 @@ the operation fails with a message that names the expected global path and the
 
 When the MCP probe succeeds, `install` and `update` register the server per
 project: `mcp.worktree_manager` in `.opencode/opencode.json` for OpenCode and
-`mcpServers.worktree_manager` in `.mcp.json` for Claude Code. The entry uses
-`python3 -m worktree_manager.mcp_transport` with the managed global directory
-on `PYTHONPATH`. A foreign `worktree_manager` entry is preserved with a
-warning; an unreadable or invalid document is not modified.
+`mcpServers.worktree_manager` in `.mcp.json` for Claude Code. The entry uses the
+Python interpreter resolved on the machine — `py -3`, `python3`, or `python` on
+Windows, and `python3` or `python` on macOS and Linux — with
+`-m worktree_manager.mcp_transport` and the managed global directory on
+`PYTHONPATH`. The registration writes the absolute path of the interpreter, so
+the server does not depend on `PATH` or on the working directory. A Store app
+execution alias is never accepted as Python: it is probed first, and only a
+real 3.9+ interpreter is registered. A foreign `worktree_manager` entry is
+preserved with a warning; an unreadable or invalid document is not modified.
 
 The standalone manager is published on npm as `worktree-for-agents`; it does not
 expose a bin or `npx`. Its MCP publishes the seven operations and the guide in
@@ -362,9 +367,13 @@ and warn that worktrees are not available, with the cause and the required
 action (`flowtask update` when the registry is reachable). A failed update leaves
 the previous copy untouched.
 
-If the machine does not have a compatible Python (floor 3.9), the complete
-installation is blocked with a diagnosis and a non-exit status, without leaving
-partial state.
+If the machine does not have a usable Python 3.9+ (including the case where
+only a Microsoft Store app execution alias exists), `install` and `update`
+continue with the rest of the installation and warn that worktrees are not
+available, with the cause and the required action: install Python 3.9+ and run
+`flowtask update`. No manager copy is published when the interpreter does not
+respond, so a broken copy never replaces a valid one; an update leaves the
+previous copy untouched.
 
 ### Compatibility with previous installations
 
