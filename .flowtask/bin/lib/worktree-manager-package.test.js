@@ -12,6 +12,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { prepareGlobalWorktreeManager, prepareWorktreeManagerForRun } from "./installer.js";
+import { buildWindowsCommand } from "./worktree-manager-package.js";
 import { WORKTREE_MANAGER_OWNER_FILE } from "./worktree-manager-runtime.js";
 
 const fixtures = [];
@@ -163,6 +164,59 @@ test("the npm package is verified before the global copy is published with an np
   );
   assert.equal(fs.existsSync(brokenGlobal), false, "an incomplete package is never published");
   assert.deepEqual(fs.readdirSync(brokenWorkDir), [], "the failed download is cleaned up");
+});
+
+/**
+ * gap_ref: G1 (AC5)
+ * defecto: `execFileSync(npm.cmd, args, { shell: true })` concatenaba los
+ *   argumentos sin escaparlos, emitía DEP0190 y era frágil con rutas que
+ *   contienen espacios.
+ * why_not_detected: El fixture npm vivía en una ruta temporal sin espacios y el
+ *   aviso de Node no se capturaba.
+ * comportamiento observable: La descarga funciona desde rutas con espacios, la
+ *   rama Windows construye una única cadena de comando y ningún `execFileSync`
+ *   recibe `shell: true` junto a un array de argumentos.
+ */
+test("the npm download works from paths that contain spaces", () => {
+  const root = mkTmp("flowtask wm package ");
+  const packageDir = writePackage(root);
+  const npm = writeNpmFixture(root);
+  const capture = path.join(root, "npm args.json");
+  const workDir = path.join(root, "work dir");
+  const globalDir = path.join(root, "global", "worktree manager");
+
+  const report = prepareGlobalWorktreeManager({
+    npmBin: npm,
+    workDir,
+    globalManagerDir: globalDir,
+    env: { ...process.env, FAKE_NPM_PACKAGE: packageDir, FAKE_NPM_ARGS: capture },
+  });
+
+  assert.equal(report.version, "9.9.9");
+  const args = JSON.parse(fs.readFileSync(capture, "utf8"));
+  const prefix = args[args.indexOf("--prefix") + 1];
+  assert.ok(prefix.startsWith(workDir), "the prefix keeps the directory with spaces");
+  assert.equal(fs.existsSync(path.join(globalDir, "worktree.sh")), true);
+});
+
+test("the Windows branch builds one command string instead of shelling an argument array", () => {
+  const command = buildWindowsCommand("C:\\Program Files\\nodejs\\npm.cmd", [
+    "install",
+    "--prefix", "C:\\Users\\Dev Name\\work tree",
+    "--ignore-scripts",
+  ]);
+  assert.equal(
+    command,
+    "\"C:\\Program Files\\nodejs\\npm.cmd\" install --prefix \"C:\\Users\\Dev Name\\work tree\" --ignore-scripts",
+  );
+
+  const source = fs.readFileSync(new URL("./worktree-manager-package.js", import.meta.url), "utf8");
+  const execFileCalls = [...source.matchAll(/execFileSync\([\s\S]*?\}\s*\)/g)].map((match) => match[0]);
+  assert.ok(execFileCalls.length > 0);
+  for (const call of execFileCalls) {
+    assert.equal(/shell:\s*true/.test(call), false, "execFileSync never receives shell: true");
+  }
+  assert.match(source, /execSync\(buildWindowsCommand\(executable, args\), \{ \.\.\.commandOptions, shell: true \}\)/);
 });
 
 /**
