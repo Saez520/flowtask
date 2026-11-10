@@ -6,7 +6,8 @@ export const WORKTREE_MANAGER_MCP_MODULE = "worktree_manager.mcp_transport";
 export const DEFAULT_PYTHON_BIN = "python3";
 
 const SECTION_BY_FORMAT = Object.freeze({ opencode: "mcp", claude: "mcpServers" });
-const PYTHON_BIN_PATTERN = /^python3(?:\.\d+)*$/;
+const PYTHON_COMMAND_PATTERN = /^(?:python|python3(?:\.\d+)*|py)(?:\.exe)?$/i;
+const PYTHON_PATH_BASENAME_PATTERN = /^(?:python|python3(?:\.\d+)*)(?:\.exe)?$/i;
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -14,6 +15,23 @@ function isPlainObject(value) {
 
 function sameJson(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function isAbsoluteCommand(command) {
+  return path.isAbsolute(command) || /^[a-zA-Z]:[\\/]/.test(command) || /^\\\\/.test(command);
+}
+
+/**
+ * Whether a command names a Python interpreter FlowTask may manage. Both the
+ * command names the installer historically wrote and the absolute path of a
+ * resolved interpreter are managed; any other command belongs to the user.
+ */
+function isManagedPythonCommand(command) {
+  if (typeof command !== "string" || command.length === 0) return false;
+  if (PYTHON_COMMAND_PATTERN.test(command)) return true;
+  if (!isAbsoluteCommand(command)) return false;
+  const basename = command.split(/[\\/]/).pop() ?? "";
+  return PYTHON_PATH_BASENAME_PATTERN.test(basename);
 }
 
 /** Canonical server entry for one destination configuration format. */
@@ -47,8 +65,7 @@ export function isFlowTaskWorktreeManagerEntry(entry, format) {
     return entry.type === "local"
       && Array.isArray(entry.command)
       && entry.command.length === 3
-      && typeof entry.command[0] === "string"
-      && PYTHON_BIN_PATTERN.test(entry.command[0])
+      && isManagedPythonCommand(entry.command[0])
       && entry.command[1] === "-m"
       && entry.command[2] === WORKTREE_MANAGER_MCP_MODULE
       && isPlainObject(entry.environment)
@@ -56,8 +73,7 @@ export function isFlowTaskWorktreeManagerEntry(entry, format) {
   }
   if (format === "claude") {
     return entry.type === "stdio"
-      && typeof entry.command === "string"
-      && PYTHON_BIN_PATTERN.test(entry.command)
+      && isManagedPythonCommand(entry.command)
       && Array.isArray(entry.args)
       && entry.args.length === 2
       && entry.args[0] === "-m"

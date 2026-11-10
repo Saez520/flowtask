@@ -14,12 +14,14 @@ import {
   removeLegacyConsumerFiles,
   prepareInstallation,
   prepareGlobalWorktreeManager,
+  prepareWorktreeManagerForRun,
   reportWorktreeManagerCapabilities,
   detectWorktreeManagerCapabilities,
   ASSETS,
 } from "./installer.js";
 import { showInteractiveSelector } from "./ui.js";
 import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
+import { resolvePythonRuntime } from "./python-runtime.js";
 import { registerPluginArrayEntry, mergeOpencodeConfig } from "./opencode.js";
 import { generateClaudeCommands } from "./claude.js";
 import { verifyDirectoryMirror, copyDirectoryDelta, copyWithProgress, pruneDirectoryExtras } from "./copy.js";
@@ -1470,6 +1472,92 @@ test("both transports are detected when the manager answers the CLI and MCP prob
   assert.equal(report.python.available, true);
 });
 
+test("the capability report exposes the resolved interpreter identity", () => {
+  const fixture = createManagerFixture();
+  const report = detectWorktreeManagerCapabilities(fixture.sourceDir);
+  assert.equal(report.python.available, true);
+  assert.equal(typeof report.python.executable, "string");
+  assert.ok(report.python.executable.length > 0);
+  assert.ok(Array.isArray(report.python.prefix));
+  assert.ok(["py", "python3", "python"].includes(report.python.command));
+});
+
+test("the manager probes invoke the resolved interpreter without the launcher arguments", { skip: process.platform === "win32" }, () => {
+  const fixture = createManagerFixture();
+  const recorder = path.join(fixture.root, "python-recorder");
+  const logPath = path.join(fixture.root, "python-invocations.jsonl");
+  fs.writeFileSync(recorder, `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+if (process.env.FLOWTASK_PYTHON_RECORDER_LOG) {
+  fs.appendFileSync(process.env.FLOWTASK_PYTHON_RECORDER_LOG, JSON.stringify(args) + "\\n");
+}
+if (args.includes("--version")) {
+  process.stdout.write("1.0.0\\n");
+  process.exit(0);
+}
+if (args.includes("worktree_manager.mcp_transport")) {
+  let buffer = "";
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => { buffer += chunk; });
+  process.stdin.on("end", () => {
+    const names = ["worktree_create", "worktree_complete", "worktree_cleanup", "worktree_recover",
+      "worktree_list", "worktree_prune", "worktree_status"];
+    for (const line of buffer.split(/\\r?\\n/)) {
+      if (!line.trim()) continue;
+      const message = JSON.parse(line);
+      const result = message.method === "initialize"
+        ? { protocolVersion: "2024-11-05", capabilities: { tools: {} },
+            serverInfo: { name: "worktree-manager", version: "1.0.0" } }
+        : (message.method === "tools/list"
+          ? { tools: names.map((name) => ({ name, description: "Manage repository worktrees",
+              inputSchema: { type: "object", properties: {}, additionalProperties: false } })) }
+          : null);
+      if (message.id !== undefined && result) {
+        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }) + "\\n");
+      }
+    }
+    process.exit(0);
+  });
+} else {
+  process.exit(2);
+}
+`, { mode: 0o755 });
+
+  // `py -3` delegates to a real interpreter: the launcher probes use `-3`, but
+  // the resolved executable must receive the manager arguments alone.
+  const runtime = resolvePythonRuntime({
+    platform: "win32",
+    candidates: [{ command: "py", prefix: ["-3"] }],
+    resolveExecutables: () => ["C:\\Windows\\py.exe"],
+    probe: (executable, args) => {
+      if (args.some((arg) => String(arg).includes("version_info"))) return { ok: true, stdout: "3.11.9\n" };
+      if (args.some((arg) => String(arg).includes("sys.executable"))) return { ok: true, stdout: `${recorder}\n` };
+      return { ok: false, cause: "unexpected launcher probe" };
+    },
+  });
+  assert.equal(runtime.available, true);
+  assert.equal(runtime.executable, recorder);
+  assert.deepEqual(runtime.prefix, []);
+
+  process.env.FLOWTASK_PYTHON_RECORDER_LOG = logPath;
+  try {
+    const report = detectWorktreeManagerCapabilities(fixture.sourceDir, { pythonRuntime: runtime });
+    assert.deepEqual(report.transports, ["cli", "mcp"]);
+    assert.equal(report.python.executable, recorder);
+  } finally {
+    delete process.env.FLOWTASK_PYTHON_RECORDER_LOG;
+  }
+
+  const invocations = fs.readFileSync(logPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(
+    invocations.map((args) => args.join(" ")).sort(),
+    ["-m worktree_manager --version", "-m worktree_manager.mcp_transport"],
+    "the resolved interpreter receives -m alone, never the launcher -3",
+  );
+  assert.equal(invocations.some((args) => args.includes("-3")), false);
+});
+
 test("the installation continues with the CLI and reports the MCP cause when the MCP entrypoints are missing", () => {
   const fixture = createManagerFixture({ withMcp: false });
   const report = detectWorktreeManagerCapabilities(fixture.sourceDir);
@@ -1670,6 +1758,96 @@ test("an unusable Python blocks the npm publication before any copy is written",
     /Worktree Manager has no usable transport.*python is not usable/is,
   );
   assert.equal(fs.existsSync(globalDir), false);
+});
+
+/**
+ * gap_ref: G1 (AC1, AC3)
+ * defecto: Sin Python real, install y update abortaban antes de sincronizar
+ *   los targets y la causa visible era el mensaje localizado del alias de
+ *   Microsoft Store.
+ * why_not_detected: La degradación solo cubría fallos de descarga npm y las
+ *   pruebas existentes usaban un Python de fixture.
+ * comportamiento observable: El alias de Store se rechaza con una causa
+ *   estable, la publicación no ocurre, install y update continúan con dos
+ *   advertencias accionables y el update declara intacta la copia previa.
+ */
+test("an unusable Python degrades install and update without publishing a broken copy", () => {
+  const fixture = createManagerFixture();
+  const npmRoot = path.join(fixture.root, "npm");
+  fs.mkdirSync(npmRoot, { recursive: true });
+  const npm = writeNpmFixture(npmRoot, fixture.sourceDir);
+  const globalDir = path.join(fixture.root, "global", "worktree-manager");
+  const missingPython = path.join(fixture.root, "missing-python3");
+
+  const runDegraded = (mode) => {
+    const lines = [];
+    const originalLog = console.log;
+    console.log = (...args) => { lines.push(args.join(" ")); };
+    try {
+      const report = prepareWorktreeManagerForRun({
+        npmBin: npm,
+        workDir: path.join(npmRoot, `work-${mode}`),
+        globalManagerDir: globalDir,
+        pythonBin: missingPython,
+      }, { mode });
+      return { report, output: lines.join("\n") };
+    } finally {
+      console.log = originalLog;
+    }
+  };
+
+  const install = runDegraded("install");
+  assert.equal(install.report, null, "a missing Python must not abort the installation");
+  assert.match(install.output, /Worktree Manager could not be installed: .*no usable transport/is);
+  assert.match(install.output, /FlowTask continues without worktree support/);
+  assert.match(install.output, /Install Python 3\.9\+/);
+  assert.match(install.output, /run 'flowtask update' to enable worktrees/);
+
+  const update = runDegraded("update");
+  assert.equal(update.report, null, "a missing Python must not abort the update");
+  assert.match(update.output, /Worktree Manager could not be updated/);
+  assert.match(update.output, /previous copy, if any, was left unchanged/);
+
+  assert.equal(fs.existsSync(globalDir), false, "an unusable manager is never published");
+});
+
+test("a Microsoft Store alias is rejected without its localized message as the cause", { skip: process.platform === "win32" }, () => {
+  const fixture = createManagerFixture();
+  const aliasRoot = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-store-alias-"));
+  fixtures.push(aliasRoot);
+  const aliasDir = path.join(aliasRoot, "WindowsApps");
+  fs.mkdirSync(aliasDir, { recursive: true });
+  const alias = path.join(aliasDir, "python3");
+  fs.writeFileSync(
+    alias,
+    "#!/bin/sh\necho 'no se encontró Python; ejecutar sin argumentos para instalar desde el Microsoft Store' >&2\nexit 1\n",
+    { mode: 0o755 },
+  );
+
+  const report = detectWorktreeManagerCapabilities(fixture.sourceDir, { pythonBin: alias });
+  assert.equal(report.python.available, false);
+  assert.deepEqual(report.transports, []);
+  assert.match(report.python.cause, /Microsoft Store app execution alias/);
+  assert.equal(report.python.cause.includes("no se encontró"), false);
+  assert.match(report.cli.cause, /python is not usable/);
+  assert.match(report.mcp.cause, /python is not usable/);
+});
+
+test("the installation continues when the optional Worktree Manager is unavailable", async () => {
+  const fixture = createManagerFixture();
+  const projectDir = path.join(fixture.root, "project");
+  fs.mkdirSync(projectDir, { recursive: true });
+  const descriptor = await prepareInstallation(fixture.flowtaskDir, projectDir, "install", {
+    targets: [{ id: "standalone", ideDir: "", targetSubDir: ".flowtask" }],
+    worktreeManager: null,
+    ensureSource: async () => ({
+      sourceCommit: CONTEXT_CHECKPOINT_SHA,
+      sourceDir: path.join(fixture.flowtaskDir, "plugins", CONTEXT_CHECKPOINT_NAME),
+    }),
+  });
+  assert.equal(descriptor.worktreeManager, null);
+  assert.equal(descriptor.mode, "install");
+  assert.equal(descriptor.targets.length, 1);
 });
 
 test("the quiet report stays silent only when both transports are operational", () => {

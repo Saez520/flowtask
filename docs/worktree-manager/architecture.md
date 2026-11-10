@@ -92,9 +92,12 @@ persisted descriptor identity with the arguments of the command.
 ## Installation boundary
 
 The installer downloads the published package and publishes a managed global
-copy. The target does not receive the manager. If the package cannot be
-acquired or has no usable transport, the manager is not published and the
-installer reports the outcome according to its download and transport rules.
+copy. The target does not receive the manager. The interpreter is resolved
+before publication: `py -3`, `python3`, and `python` are probed, a Microsoft
+Store app execution alias is rejected, and the version floor is 3.9. If the
+package cannot be acquired, or no real interpreter answers, the manager is not
+published; the installer reports the outcome and continues without worktree
+support, so a broken copy never replaces a valid one.
 
 ## Direct consumption boundary
 

@@ -35,6 +35,7 @@ import { globalWorktreeManagerDir } from "./global-paths.js";
 import { assertRunnerCanon } from "./runner-flows.js";
 import { ensureGlobalWorktreeManager, formatWorktreeManagerVersionNotice } from "./worktree-manager-runtime.js";
 import { downloadWorktreeManagerPackage } from "./worktree-manager-package.js";
+import { resolvePythonRuntime } from "./python-runtime.js";
 import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
 import { ensureCanonicalSubmodule } from "./submodule-publication.js";
 import {
@@ -64,7 +65,6 @@ export const INSTALLER_WRITERS = Object.freeze([
 // configuration claims.
 
 const WORKTREE_MANAGER_PROBE_TIMEOUT_MS = 5000;
-const WORKTREE_MANAGER_MIN_PYTHON = "3.9";
 const WORKTREE_MANAGER_MCP_ENTRYPOINTS = Object.freeze([
   "worktree_manager/mcp_transport.py",
   "worktree_manager/mcp_server.py",
@@ -75,17 +75,6 @@ const WORKTREE_MANAGER_MCP_TOOLS = Object.freeze([
   "worktree_create", "worktree_complete", "worktree_cleanup",
   "worktree_recover", "worktree_list", "worktree_prune", "worktree_status",
 ]);
-
-function comparePythonVersions(left, right) {
-  const parse = (value) => String(value).split(".").map((part) => Number.parseInt(part, 10) || 0);
-  const a = parse(left);
-  const b = parse(right);
-  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
-    const difference = (a[index] ?? 0) - (b[index] ?? 0);
-    if (difference !== 0) return difference;
-  }
-  return 0;
-}
 
 /** Run one read-only python probe. The probe never writes and never installs anything. */
 function runPythonProbe(pythonBin, args, { managerDir, timeoutMs, input = "" }) {
@@ -105,6 +94,8 @@ function runPythonProbe(pythonBin, args, { managerDir, timeoutMs, input = "" }) 
       maxBuffer: 4 * 1024 * 1024,
       cwd: managerDir || undefined,
       env,
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
     });
     return { ok: true, stdout };
   } catch (error) {
@@ -117,19 +108,9 @@ function runPythonProbe(pythonBin, args, { managerDir, timeoutMs, input = "" }) 
   }
 }
 
-function probePythonVersion(pythonBin, timeoutMs) {
-  const result = runPythonProbe(pythonBin, ["-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"], {
-    managerDir: "", timeoutMs,
-  });
-  if (!result.ok) return { ok: false, cause: result.cause };
-  const version = result.stdout.trim().split("\n").filter(Boolean).pop()?.trim();
-  if (!version) return { ok: false, cause: "python did not report a version" };
-  return { ok: true, version };
-}
-
-/** Probe the CLI entrypoint: `python3 -m worktree_manager --version`. */
-function probeManagerCli(managerDir, pythonBin, timeoutMs) {
-  const result = runPythonProbe(pythonBin, ["-m", "worktree_manager", "--version"], { managerDir, timeoutMs });
+/** Probe the CLI entrypoint: `python -m worktree_manager --version`. */
+function probeManagerCli(managerDir, python, timeoutMs) {
+  const result = runPythonProbe(python.executable, [...python.prefix, "-m", "worktree_manager", "--version"], { managerDir, timeoutMs });
   if (!result.ok) return { ok: false, cause: result.cause };
   const version = result.stdout.trim().split("\n").filter(Boolean).pop()?.trim();
   if (!version) return { ok: false, cause: "the CLI entrypoint reported no version" };
@@ -140,7 +121,7 @@ function probeManagerCli(managerDir, pythonBin, timeoutMs) {
  * Probe the MCP entrypoint over stdio: initialize handshake plus tools/list.
  * The probe closes the transport as soon as both answers are read.
  */
-function probeManagerMcp(managerDir, pythonBin, timeoutMs) {
+function probeManagerMcp(managerDir, python, timeoutMs) {
   const requests = [
     {
       jsonrpc: "2.0", id: 1, method: "initialize",
@@ -148,7 +129,7 @@ function probeManagerMcp(managerDir, pythonBin, timeoutMs) {
     },
     { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
   ];
-  const result = runPythonProbe(pythonBin, ["-m", "worktree_manager.mcp_transport"], {
+  const result = runPythonProbe(python.executable, [...python.prefix, "-m", "worktree_manager.mcp_transport"], {
     managerDir, timeoutMs, input: `${requests.map((request) => JSON.stringify(request)).join("\n")}\n`,
   });
   if (!result.ok) return { ok: false, cause: result.cause };
@@ -175,35 +156,50 @@ function probeManagerMcp(managerDir, pythonBin, timeoutMs) {
  * Detect what the manager checkout can really do.
  *
  * A transport is reported as available only when it answered a read-only
- * probe, never because a configuration declares it.
+ * probe, never because a configuration declares it. `pythonRuntime` accepts an
+ * already resolved runtime, which lets the caller compose the resolver contract
+ * with the probes that invoke it.
  */
 export function detectWorktreeManagerCapabilities(managerDir, options = {}) {
   const timeoutMs = options.timeoutMs ?? WORKTREE_MANAGER_PROBE_TIMEOUT_MS;
-  const pythonBin = options.pythonBin ?? "python3";
+  const python = options.pythonRuntime
+    ?? (options.pythonBin
+      ? resolvePythonRuntime({
+          candidates: [{ command: options.pythonBin, prefix: [] }],
+          resolveExecutables: () => [options.pythonBin],
+          timeoutMs,
+        })
+      : resolvePythonRuntime({ timeoutMs }));
   const report = {
     managerDir,
-    python: { available: false, version: null, cause: null },
+    python: { available: false, version: null, executable: null, command: null, prefix: [], cause: null },
     cli: { available: false, version: null, cause: null },
     mcp: { available: false, version: null, tools: [], cause: null },
     transports: [],
   };
 
-  const python = probePythonVersion(pythonBin, timeoutMs);
-  if (!python.ok) {
+  if (!python.available) {
     const cause = `python is not usable: ${python.cause}`;
-    report.python = { available: false, version: null, cause };
+    report.python = {
+      available: false,
+      version: python.version,
+      executable: python.executable,
+      command: python.command,
+      prefix: python.prefix,
+      cause,
+    };
     report.cli = { available: false, version: null, cause };
     report.mcp = { available: false, version: null, tools: [], cause };
     return report;
   }
-  report.python = { available: true, version: python.version, cause: null };
-  if (comparePythonVersions(python.version, WORKTREE_MANAGER_MIN_PYTHON) < 0) {
-    const cause = `python ${python.version} is older than the required ${WORKTREE_MANAGER_MIN_PYTHON}`;
-    report.python = { available: false, version: python.version, cause };
-    report.cli = { available: false, version: null, cause };
-    report.mcp = { available: false, version: null, tools: [], cause };
-    return report;
-  }
+  report.python = {
+    available: true,
+    version: python.version,
+    executable: python.executable,
+    command: python.command,
+    prefix: python.prefix,
+    cause: null,
+  };
 
   const missingMcpEntrypoints = WORKTREE_MANAGER_MCP_ENTRYPOINTS
     .filter((entry) => !fs.existsSync(path.join(managerDir, entry)));
@@ -213,13 +209,13 @@ export function detectWorktreeManagerCapabilities(managerDir, options = {}) {
       cause: `missing MCP entrypoints: ${missingMcpEntrypoints.join(", ")}`,
     };
   } else {
-    const mcp = probeManagerMcp(managerDir, pythonBin, timeoutMs);
+    const mcp = probeManagerMcp(managerDir, python, timeoutMs);
     report.mcp = mcp.ok
       ? { available: true, version: mcp.version, tools: mcp.tools, cause: null }
       : { available: false, version: null, tools: [], cause: mcp.cause };
   }
 
-  const cli = probeManagerCli(managerDir, pythonBin, timeoutMs);
+  const cli = probeManagerCli(managerDir, python, timeoutMs);
   report.cli = cli.ok
     ? { available: true, version: cli.version, cause: null }
     : { available: false, version: null, cause: cli.cause };
@@ -260,8 +256,10 @@ export function prepareGlobalWorktreeManager(options = {}) {
 }
 
 /**
- * Install or update the global manager without turning a download failure into
- * a failed installation. Any other failure keeps its fail-closed behavior.
+ * Install or update the global manager without turning an optional capability
+ * into a failed installation. A download failure and a machine without a usable
+ * Python degrade with a visible warning; any other failure keeps its fail-closed
+ * behavior.
  */
 export function prepareWorktreeManagerForRun(options = {}, { mode = "install" } = {}) {
   try {
@@ -269,7 +267,7 @@ export function prepareWorktreeManagerForRun(options = {}, { mode = "install" } 
     reportWorktreeManagerCapabilities(report, { quiet: mode === "update" ? !report.versionChanged : false });
     return report;
   } catch (error) {
-    if (error?.code === "WORKTREE_MANAGER_DOWNLOAD_FAILED") {
+    if (error?.code === "WORKTREE_MANAGER_DOWNLOAD_FAILED" || error?.code === "WORKTREE_MANAGER_UNUSABLE") {
       reportWorktreeManagerUnavailable(error, { mode });
       return null;
     }
@@ -277,11 +275,15 @@ export function prepareWorktreeManagerForRun(options = {}, { mode = "install" } 
   }
 }
 
-/** Publish the visible degradation when the package could not be downloaded. */
+/** Publish the visible degradation when the optional manager could not be published. */
 export function reportWorktreeManagerUnavailable(error, { mode = "install" } = {}) {
   const action = mode === "update" ? "updated" : "installed";
   logWarn(`Worktree Manager could not be ${action}: ${error.message}`);
   const intact = mode === "update" ? " The previous copy, if any, was left unchanged." : "";
+  if (error?.code === "WORKTREE_MANAGER_UNUSABLE") {
+    logWarn(`FlowTask continues without worktree support. Install Python 3.9+ and run 'flowtask update' to enable worktrees.${intact}`);
+    return;
+  }
   logWarn(`Worktrees are not available from this ${mode}. Run 'flowtask update' when the registry is reachable.${intact}`);
 }
 export function reportWorktreeManagerCapabilities(report, { quiet } = {}) {
@@ -301,7 +303,7 @@ export function reportWorktreeManagerCapabilities(report, { quiet } = {}) {
     logWarn(`Worktree Manager partially installed: only the MCP is operational (${mcp.tools.length} tools); the CLI is not: ${cli?.cause ?? "unknown cause"}`);
     return;
   }
-  logError(`Worktree Manager is not operational: ${[cli?.cause, mcp?.cause].filter(Boolean).join("; ")}`);
+  logWarn(`Worktree Manager is not operational: ${[cli?.cause, mcp?.cause].filter(Boolean).join("; ")}`);
 }
 
 function reportWorktreeMcpRegistration(result, configPath) {
@@ -336,6 +338,7 @@ function registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManag
     configPath,
     format: "opencode",
     managerDir: worktreeManager.managerDir,
+    pythonBin: worktreeManager.capabilities?.python?.executable,
   });
   reportWorktreeMcpRegistration(result, configPath);
   return result;

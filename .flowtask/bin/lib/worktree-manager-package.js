@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { execFileSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 
 export const WORKTREE_MANAGER_PACKAGE = "worktree-for-agents";
 export const WORKTREE_MANAGER_PACKAGE_TAG = "latest";
@@ -28,6 +28,24 @@ function summarizeCommandFailure(error, timeoutMs) {
   const lastLine = lines.pop();
   return lastLine || String(error?.message ?? "npm failed").trim();
 }
+
+/**
+ * Quote one argument for the Windows command line. A single command string
+ * avoids passing an argument array together with `shell: true`, which Node
+ * reports as DEP0190 because the arguments are only concatenated.
+ */
+function quoteWindowsArgument(value) {
+  const text = String(value);
+  if (text.length > 0 && !/[\s"]/.test(text)) return text;
+  const escaped = text.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, "$1$1");
+  return `"${escaped}"`;
+}
+
+function buildWindowsCommand(executable, args) {
+  return [executable, ...args].map(quoteWindowsArgument).join(" ");
+}
+
+export { buildWindowsCommand };
 
 function readPackageManifest(packageDir) {
   const manifestPath = path.join(packageDir, "package.json");
@@ -86,14 +104,21 @@ export function downloadWorktreeManagerPackage({ npmBin, timeoutMs, workDir, env
       `${WORKTREE_MANAGER_PACKAGE}@${WORKTREE_MANAGER_PACKAGE_TAG}`,
     ];
     try {
-      execFileSync(executable, args, {
+      const commandOptions = {
         encoding: "utf8",
         timeout,
         maxBuffer: 4 * 1024 * 1024,
         stdio: ["ignore", "pipe", "pipe"],
-        shell: process.platform === "win32",
+        windowsHide: true,
         env: env ?? process.env,
-      });
+      };
+      if (process.platform === "win32") {
+        // `cmd.exe` receives one already-quoted command string. The argument
+        // array is not passed to a shell, so Node never concatenates it.
+        execSync(buildWindowsCommand(executable, args), { ...commandOptions, shell: true });
+      } else {
+        execFileSync(executable, args, { ...commandOptions, shell: false });
+      }
     } catch (error) {
       throw downloadError(summarizeCommandFailure(error, timeout));
     }
