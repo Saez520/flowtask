@@ -1470,6 +1470,16 @@ test("both transports are detected when the manager answers the CLI and MCP prob
   assert.equal(report.python.available, true);
 });
 
+test("the capability report exposes the resolved interpreter identity", () => {
+  const fixture = createManagerFixture();
+  const report = detectWorktreeManagerCapabilities(fixture.sourceDir);
+  assert.equal(report.python.available, true);
+  assert.equal(typeof report.python.executable, "string");
+  assert.ok(report.python.executable.length > 0);
+  assert.ok(Array.isArray(report.python.prefix));
+  assert.ok(["py", "python3", "python"].includes(report.python.command));
+});
+
 test("the installation continues with the CLI and reports the MCP cause when the MCP entrypoints are missing", () => {
   const fixture = createManagerFixture({ withMcp: false });
   const report = detectWorktreeManagerCapabilities(fixture.sourceDir);
