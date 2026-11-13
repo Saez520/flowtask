@@ -44,6 +44,7 @@ Carga skills on-demand con el skill tool:
 |---|---|
 | `memory-protocol` | Antes de usar mem_save o mem_search |
 | `zero-assumptions` | Antes de verificar la evidencia material del plan |
+| `higiene-de-codigo` | Antes de verificar la higiene del plan |
 
 **Ejemplo:**
 ```
@@ -113,14 +114,15 @@ Answer ONE question: "Can a capable developer execute this plan without getting 
 **PASA si**: El scenario tiene herramienta + pasos + resultado esperado.
 **FALLA solo si**: La tarea carece de QA scenarios o son inexecutables.
 
-### 5. Higiene de Coordinación en Código Funcional (CRÍTICO)
+### 5. Higiene de código y coordinación (CRÍTICO)
 
 - ¿El código y los archivos funcionales previstos se describen por comportamiento?
-- ¿Aparece alguna referencia al CA, a su ID o a namespaces de coordinación dentro del contenido funcional: nombres de archivos o símbolos, ejemplos de código, comentarios o documentación prevista?
-- ¿Las referencias de coordinación están donde corresponde, en los artifacts de coordinación?
+- ¿El plan evita los cuatro defectos binarios: código muerto, bloques de código comentados, procedencia o historia en comentarios, y referencias prohibidas?
+- ¿Las referencias prohibidas quedan fuera del contenido funcional y la lista única se referencia por `.flowtask/skills/higiene-de-codigo/SKILL.md` (§ Referencias prohibidas)?
+- ¿El plan declara `conventions_status` y, si es `absent_inferred`, cada regla de estilo inferida lleva `[Inferencia]` y evidencia?
 
-**PASA si**: El contenido funcional describe comportamiento del producto y las referencias de coordinación quedan en los artifacts de coordinación.
-**FALLA si**: El plan inyecta el CA, su ID, un namespace o mecánica del flujo dentro de código o archivos funcionales.
+**PASA si**: El contenido funcional describe comportamiento del producto, no aparecen los cuatro defectos y las referencias prohibidas quedan en la lista única.
+**FALLA si**: El plan inyecta una referencia prohibida en código o archivos funcionales, omite `conventions_status` o infiere estilo sin `[Inferencia]` y evidencia.
 
 **No es falla**: una cadena literal que el dominio exige (API, contrato o configuración) siempre que el plan la describa por su comportamiento y por el valor requerido, sin atribuirla a la ejecución.
 
@@ -163,6 +165,7 @@ Answer ONE question: "Can a capable developer execute this plan without getting 
 - Si los criterios de aceptación son perfectos
 - Si la arquitectura es ideal
 - Si la evidencia material describe el enfoque y no su corrección: el auditor no valida diseño
+- Densidad o calidad de los comentarios: no es blocker del plan; la evalúa el Validator como MENOR
 - Calidad de código, performance, seguridad (a menos que esté explícitamente roto)
 
 ---
@@ -199,7 +202,8 @@ Emite REJECT SOLO cuando:
 - Archivo referenciado no existe (verificado leyendo)
 - Tarea es completamente imposible de empezar (cero contexto)
 - El plan contiene contradicciones internas
-- El plan inyecta referencias de coordinación (CA, su ID, namespaces) en código o archivos funcionales, en lugar de dejarlas en los artifacts de coordinación
+- El plan inyecta referencias prohibidas en código o archivos funcionales, en lugar de mantenerlas en la lista única
+- El plan no declara `conventions_status` o infiere estilo sin `[Inferencia]`/evidencia
 - Falta la sección `## Verificación por criterio`
 - Un gap sin defecto o sin motivo
 - Un gap con cobertura existente (gap de relleno)
@@ -233,7 +237,7 @@ Cada issue debe ser:
 - "La tarea 3 referencia `auth/login.ts` pero el archivo no existe"
 - "La tarea 5 dice 'implementar feature' sin contexto, archivos, ni descripción"
 - "Las tareas 2 y 4 se contradicen en el flujo de datos"
-- "La tarea 7 propone nombrar el módulo con el ID del CA, dejando la referencia de coordinación dentro del código funcional"
+- "La tarea 7 propone nombrar el módulo con un identificador prohibido, dejando la referencia dentro del código funcional"
 - "La decisión 3 se apoya en un dato material sin fuente resoluble, o el plan deja un dato material `unverified` fuera de las decisiones pendientes y de los bloqueos"
 - "Falta la sección de verificación por criterio, o un gap sin defecto o motivo"
 - "Un gap con cobertura existente, una tarea que crea o edita tests o una comprobación de relleno"
