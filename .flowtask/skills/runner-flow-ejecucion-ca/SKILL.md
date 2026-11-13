@@ -142,7 +142,7 @@ Lee `state`, `derivations`, `business_gaps`, `pending_decisions`, `blockers`,
    `waiting_for_user`, detente sin planificar.
 5. **Plan completo**: si `state: plan_generated`, `derivations: []`,
    `business_gaps: []`, `pending_decisions: []`, `blockers: NONE` y
-   `persistencia: confirmed`, continuá al Paso 3.
+   `persistencia: confirmed`, continuá al paso 2.6.
 
 **Una ronda por dato**: el Runner no reenvía un `datum_id` ya respondido. Si
 el Planner repite un `datum_id` que ya volvió, se declara el bloqueo y se
@@ -150,6 +150,34 @@ conserva el estado, sin invocar al Inspector otra vez.
 
 En la composición del prompt, no reenvíes un resultado de derivación ya
 devuelto para el mismo `datum_id`.
+
+***
+
+### Paso 2.6 — Inicialización acotada de convenciones
+
+Leé `conventions_status` de la respuesta del Planner.
+`conventions_status` toma los valores `present | absent_inferred`; si es
+`present`, continuá al Paso 3.
+
+Si es `absent_inferred`, invocá al `initializer` con hilo fresco y el
+`artifact_namespace` vigente. Pasale la referencia al plan, las convenciones
+inferidas con `[Inferencia]` y su evidencia, y la instrucción de leer
+`project/conventions`, agregar o reemplazar solo las entradas de estilo,
+conservar las demás y guardar con `topic_key: project/conventions` (upsert por
+reemplazo).
+
+El initializer no escanea otras capas, no pide permiso, no se detiene, no
+modifica el plan y no toca código.
+
+No hay confirmación ni espera entre el plan y la inicialización, ni un Gate
+intermedio. Al volver del initializer, continuá al Paso 3.
+
+Si la inicialización falla por MCP o fuente no disponible, reportá
+`progress_unavailable` con la causa y el estado conservado; no continúes con
+convenciones sin registrar.
+
+La inicialización es idempotente: dos corridas dejan el mismo contenido final;
+el costo es repetido, no corrupción.
 
 ***
 

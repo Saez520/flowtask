@@ -73,6 +73,7 @@ Carga skills on-demand con el skill tool:
 | `memory-protocol` | Antes de usar mem_save, mem_search o mem_context |
 | `zero-assumptions` | Antes de asumir estado de cualquier entidad del proyecto |
 | `validation-contract` | Antes de ejecutar o interpretar comprobaciones y antes de emitir el veredicto |
+| `higiene-de-codigo` | Antes de validar higiene de código |
 | context-degradation | Antes de iniciar el momento validar y al cambiar de momento |
 
 Al iniciar el momento `validate`, mostrá solo el pack `validate`: qué se espera, qué está prohibido y qué avisa. No repitas el manual completo. Las reglas ya resueltas y la evidencia verificada se heredan por referencia y no se re-verifican: verificá solo lo nuevo material.
@@ -267,26 +268,35 @@ fuente del alcance, no la lista exhaustiva de lo que debe cumplirse.
 
 ---
 
-### Paso 5.1 — Higiene de coordinación en el código funcional
+### Paso 5.1 — Higiene de código y coordinación
 
-El código funcional describe comportamiento del producto. Las referencias de coordinación —el CA, su ID, el `execution_id`, el `artifact_namespace` y los topic_keys— pertenecen a los artifacts de coordinación del flujo.
+El código funcional describe comportamiento del producto. La lista única de referencias prohibidas y su alcance viven en `.flowtask/skills/higiene-de-codigo/SKILL.md` (§ Referencias prohibidas); no se enumeran en este archivo.
 
-**Verifica**, sobre los archivos funcionales que el plan declara como artefactos:
+**Criterios binarios** — verificar sobre los archivos funcionales que el plan declara como artefactos:
 
-- [ ] El código, los comentarios y la documentación inline describen comportamiento funcional
-- [ ] No hay menciones al CA, a su ID ni a la mecánica de coordinación en nombres de archivos, símbolos, constantes, strings, comentarios o documentación inline
+- [ ] No hay código muerto: código inalcanzable, ramas sin consumidor, funciones o constantes sin uso, parámetros que nadie pasa
+- [ ] No hay bloques de código comentados
+- [ ] No hay procedencia o historia en comentarios
+- [ ] No hay referencias prohibidas por la lista única en nombres de archivos, símbolos, constantes, strings, comentarios o documentación inline
+
+Un criterio binario presente es **BLOQUEANTE** en el Paso 6.
+
+**No bloquean** — se reportan como MENOR:
+
+- densidad o calidad de comentarios;
+- orden de imports;
+- naming preferente o preferencias de estilo no binarias.
 
 **Alcance de la verificación**: solo archivos funcionales.
 
 El escáner del contrato se ejecuta automáticamente sobre los archivos
 funcionales del alcance. Una referencia de coordinación concreta detectada en un
-archivo funcional es un hallazgo **BLOQUEANTE**.
+archivo funcional es un hallazgo **BLOQUEANTE**. El escáner no se extiende: los
+cuatro criterios binarios son inspección del Validator.
 
 **No son hallazgos**: artifacts de Engram, checkpoints y flow state, mensajes de commit, y `docs/project-history.md`, cuyo propósito explícito es registrar la coordinación del proyecto. Tampoco los archivos de coordinación de `.flowtask/` (agentes, comandos y skills), donde las referencias de coordinación son parte de su contenido: los registros, los reportes, los mensajes de coordinación, la configuración de `.flowtask/` y `docs/roadmap/` no son hallazgos. Un archivo funcional explícito dentro de `.flowtask/` sí se escanea cuando el alcance lo declara.
 
 **Excepción**: una cadena literal que el dominio exige (API, contrato, configuración o valor persistido) no es hallazgo cuando aparece por el valor funcional que aporta y no como atribución a la ejecución.
-
-Un hallazgo en un archivo funcional se reporta como **BLOQUEANTE** en el Paso 6.
 
 ---
 
@@ -318,13 +328,18 @@ La estrategia aplicada debe coincidir con la propuesta del Constructor.
 - Violación de una restricción del plan
 - Modificación de archivo protegido sin autorización
 - Decisión de diseño tomada sin documentar
-- Referencia al CA, a su ID o a la mecánica de coordinación presente en un archivo funcional
+- Código muerto en un archivo funcional
+- Bloque de código comentado en un archivo funcional
+- Procedencia o historia en comentarios de un archivo funcional
+- Referencia prohibida por la lista única de higiene en un archivo funcional
 - Test `failed` heredado del reporte de pruebas: incumplimiento funcional del comportamiento esperado
 
 **MENOR** — mejora deseable pero no bloqueante:
 - Naming ligeramente diferente
 - Comentarios faltantes
+- Densidad o calidad de comentarios
 - Orden de imports no ideal
+- Preferencias de estilo no binarias
 
 Un reporte de pruebas requerido y ausente, ilegible o incompleto deja el alcance `unverified` y no habilita un veredicto favorable: se clasifica como fallo operativo con causa `tests_report_missing`, no como incumplimiento del trabajo.
 
@@ -495,7 +510,7 @@ produce `needs_recovery_or_pause`.
 - **SIEMPRE justifica** cada error encontrado
 - **NUNCA inventes errores** que no puedas verificar con evidencia del código
 - **SIEMPRE verifica** que las decisiones de diseño estén documentadas
-- **SIEMPRE verifica** que el código funcional esté libre de referencias al CA, su ID y la mecánica de coordinación, distinguiéndolas de los artifacts de Engram, los checkpoints, los mensajes de commit y `docs/project-history.md`
+- **SIEMPRE verifica** que el código funcional esté libre de las referencias prohibidas por `.flowtask/skills/higiene-de-codigo/SKILL.md` (§ Referencias prohibidas), distinguiéndolas de los artifacts de Engram, los checkpoints, los mensajes de commit y `docs/project-history.md`
 - **NUNCA reportes** una referencia de coordinación en artifacts de coordinación como hallazgo de código funcional
 - **NUNCA re-verifiques por rutina** la evidencia heredada ni repitas comprobaciones ya veredictadas
 - **NUNCA re-ejecutes** las pruebas ya cubiertas por el reporte heredado

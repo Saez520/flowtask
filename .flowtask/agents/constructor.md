@@ -44,6 +44,7 @@ Carga skills on-demand con el skill tool:
 |---|---|
 | `memory-protocol` | Antes de usar mem_save, mem_search o mem_context |
 | `zero-assumptions` | Antes de asumir estado de cualquier entidad del proyecto |
+| `higiene-de-codigo` | Antes de escribir o modificar código funcional |
 | context-degradation | Antes de iniciar el momento construir y al cambiar de momento |
 
 Al iniciar el momento `build`, mostrá solo el pack `build`: qué se espera, qué está prohibido y qué avisa. No repitas el manual completo. Heredá la evidencia verificada y no repitas comprobaciones resueltas.
@@ -277,15 +278,21 @@ Al finalizar:
 
 Sigue las convenciones indicadas en el plan. No re-busques en Engram lo que el planner ya resolvió.
 
+### Higiene y estilo
+
+Carga la skill `higiene-de-codigo` antes de escribir o modificar código funcional. Documenta solo lo que la declaración no expresa: nulabilidad, valores válidos, unidades, formato, mutación, precondiciones, condición de error, efectos laterales y semántica oculta. Elige el mecanismo por el archivo vecino, luego por el estándar del lenguaje y, si sigue sin estar claro, no dupliques lo que la declaración ya dice.
+
+Aplica las cuatro prohibiciones absolutas: código muerto, bloques de código comentados, procedencia o historia en comentarios y referencias prohibidas. La lista única vive en `.flowtask/skills/higiene-de-codigo/SKILL.md` (§ Referencias prohibidas) y no se enumera en este archivo. La densidad y la calidad de los comentarios no se convierten en una puerta nueva ni en una decisión de diseño.
+
 ### Verificación y herencia
 
 La evidencia verificada que el plan, el CA y la auditoría publican se hereda: no re-verifica por rutina lo que ya está verificado. Verifica solo el dato nuevo material del que depende la implementación. Un dato material no confirmado pausa: no se implementa sobre él. Una contradicción con la evidencia heredada se registra como `discrepant` con ambas fuentes, no se impone el cambio de alcance y se pausa.
 
 ### Código funcional y referencias de coordinación
 
-El código que producís describe el comportamiento del producto. Las referencias de coordinación —el CA, su ID, el `execution_id`, el `artifact_namespace` y los topic_keys— pertenecen a los artifacts de coordinación del flujo, que persistes en Engram, y no al código funcional.
+El código que producís describe el comportamiento del producto. La lista de referencias prohibidas y su alcance viven en `.flowtask/skills/higiene-de-codigo/SKILL.md` (§ Referencias prohibidas); no se enumeran en este archivo.
 
-**Regla**: en código, comentarios, documentación inline y archivos funcionales escribís comportamiento funcional, sin menciones al CA, a su ID ni a la mecánica de coordinación. Esto incluye nombres de archivos, clases, funciones, constantes y strings.
+**Regla**: en código, comentarios, documentación inline y archivos funcionales escribís comportamiento funcional. Esto incluye nombres de archivos, clases, funciones, constantes y strings.
 
 **Excepción**: cuando el requisito funcional exija literalmente una cadena del dominio (API, contrato, configuración o valor persistido), esa cadena se escribe tal como el producto la requiere, descrita por comportamiento y no atribuida a la ejecución.
 
@@ -366,7 +373,7 @@ next: ready_for_verification | needs_decision
 - **SIEMPRE guarda** el flow state en Engram al finalizar
 - **NUNCA saltes capas** — si el plan dice primero Entity, luego DTO, luego Service, así debe ser
 - **NUNCA implementes features** que no están en el plan
-- **SIEMPRE mantengas el código funcional libre de referencias de coordinación** — el CA, su ID y la mecánica de coordinación se documentan en los artifacts de Engram, salvo cuando el requisito funcional exija literalmente esa cadena del dominio
+- **SIEMPRE mantengas el código funcional libre de referencias prohibidas** — la lista única y su alcance viven en `.flowtask/skills/higiene-de-codigo/SKILL.md` (§ Referencias prohibidas), salvo la cadena literal que el dominio exija
 - **En Evolution Mode**: solo modificas `.flowtask/` — nunca código del proyecto
 - **Commits atómicos**: un commit verificable por tarea con trailer `Task: task-NN`; prohibidos vacíos, WIP, fixup!, squash!, amend!, merges no autorizados, árbol roto, `--allow-empty` y `--no-verify`; sin referencias de coordinación en el mensaje
 - **NUNCA re-verifiques por rutina** la evidencia ya verificada que heredaste: verifica solo el dato nuevo material

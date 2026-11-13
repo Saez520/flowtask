@@ -81,15 +81,11 @@ El presupuesto es fijo y no varía por entorno:
 
 ## Requisitos de cada prueba
 
-Cada prueba escrita declara en su encabezado:
+Cada prueba se anuncia en el cuerpo del cambio con una sola línea: `// gap: G1 — <defecto que cubre>` (o el marcador del lenguaje, conservando `gap: G<n> —`).
 
-| Campo | Contenido |
-|-------|-----------|
-| `gap_ref` | Referencia al hueco del plan que cubre. |
-| `criterio` | Criterio de aceptación asociado. |
-| `defecto` | Incumplimiento que la prueba detecta. |
-| `why_not_detected` | Por qué la vía declarada en el plan no lo detectaba. |
-| Comportamiento observable | Resultado del sistema ante una condición, con el esperado y el obtenido. |
+Los otros cuatro datos viven en el reporte: `criterio`, `defecto`, `why_not_detected` y `comportamiento observable`; el anuncio no los reemplaza.
+
+No agregues metadatos por prueba en el cuerpo del cambio.
 
 Reglas:
 
@@ -153,7 +149,7 @@ El reporte se registra en `ca/CA-{ID}/artifact/tests-report`:
 | `gaps_declared` | Huecos declarados por el plan o por pedido válido. |
 | `gaps_covered` | Huecos cubiertos por una prueba generada. |
 | `gaps_not_covered` | Huecos sin prueba, cada uno con su motivo (`budget_limit`, `missing_verification_path`, `already_covered` o `invalid_gap`). |
-| `generated` | Pruebas generadas: archivo, caso, `gap_ref` y criterio que cubre. |
+| `generated` | Pruebas generadas: archivo, caso, `gap_ref`, `criterio`, `defecto`, `why_not_detected` y `comportamiento observable`. |
 | `coverage` | Criterios cubiertos, con su estado. |
 | `commands` | Comandos ejecutados y su resultado. |
 | `limits` | Limitaciones observadas: herramienta ausente, alcance no verificable. |
@@ -239,7 +235,7 @@ Antes de emitir un dato no confirmado como parte de tu respuesta:
 2. Reuní los huecos declarados y el pedido válido; descartá gaps inválidos o ya cubiertos.
 3. Aplicá el presupuesto y seleccioná hasta el techo.
 4. Consultá las convenciones de testing y la estructura de tests del proyecto.
-5. Escribí una prueba por hueco seleccionado, con encabezado completo y comportamiento observable.
+5. Escribí una prueba por hueco con el anuncio de una línea `gap: G<n> — <defecto>` y los datos completos en el reporte.
 6. Ejecutá las pruebas y clasificá pruebas y criterios.
 7. Guardá el reporte y el flow state, y confirmá la persistencia por lectura.
 8. Respondé `tests_generated`, `no_gaps`, `needs_decision` o `blocked`.
@@ -256,6 +252,7 @@ Antes de emitir un dato no confirmado como parte de tu respuesta:
 - Declarar la cobertura real: lo no cubierto se declara con su motivo
 - Usar el framework y las librerías ya instaladas
 - Escribir solo una prueba por hueco declarado
+- Anunciar cada prueba con `gap: G<n> — <defecto>`; los datos completos van en el reporte
 
 ### NUNCA
 - Testear código que no existe
@@ -289,6 +286,7 @@ next: ready_for_validation | needs_decision | needs_recovery_or_pause
 - **NUNCA generes pruebas fuera de huecos declarados o de un pedido válido**
 - **NUNCA superes** una prueba por hueco ni el techo de tres por entrega
 - **NUNCA escribas** una prueba que no pueda nombrar el defecto, el comportamiento observable y por qué la vía del plan no lo detecta
+- **NUNCA agregues** metadatos por prueba en el cuerpo del cambio; el detalle vive en el reporte
 - **NUNCA inventes comportamiento ni decidas diseño** — si falta la definición, pedila o escalá
 - **NUNCA ocules cobertura** — lo no cubierto se declara con su motivo
 - **NUNCA conviertas un fallo de herramienta en incumplimiento funcional**

@@ -115,6 +115,11 @@ The constructor follows these — does not re-search.
 - Transactions: [if applicable]
 - Error handling: [pattern]
 - Logging: [prefix/convention]
+- Style: [regla de estilo y mecanismo; si no hay convención, la inferencia marcada]
+- conventions_status: present | absent_inferred
+
+Cuando `conventions_status` sea `absent_inferred`, cada convención de estilo inferida
+lleva `[Inferencia]` y evidencia; cuando sea `present`, no se agregan marcas de estilo.
 
 ---
 
@@ -201,5 +206,6 @@ If applicable:
   another component, and no duplicate coverage.
 - **Only verified files**: Do not reference files that have not been found via Engram or scan.
 - **Conventions resolved**: The planner resolves all conventions. The constructor follows them, does not re-search.
+- **Conventions status is declared**: `present` or `absent_inferred`; inferred style conventions carry `[Inferencia]` and evidence.
 - **Material data cites its record**: Every material datum behind a decision cites its VR record, with source and state.
 - **No unverified material datum in a decision**: A material record with state `unverified` or `discrepant` is listed as a `pending_decision` or a `blocker`, never used as the basis of a decision or a task.
