@@ -30,7 +30,7 @@ test("canonical child agent frontmatter remains selectable in the materialized V
   const agentsDir = fileURLToPath(new URL("../../agents/", import.meta.url));
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   const childAgents = Object.entries(manifest.agents)
-    .filter(([name]) => name !== "flowtask-runner");
+    .filter(([name]) => name.startsWith("flowtask-") && name !== "flowtask-runner");
 
   assert.ok(childAgents.length > 0);
   for (const [name, declaration] of childAgents) {
@@ -45,12 +45,8 @@ test("canonical child agent frontmatter remains selectable in the materialized V
 
   assert.equal(manifest.agents["flowtask-runner"].mode, "primary");
   assert.equal(manifest.agents["flowtask-runner"].hidden, false);
-  assert.ok(manifest.agents["flowtask-runner"].permissions.some(
-    ({ action, resource, effect }) => action === "subagent" && resource === "flowtask-*" && effect === "allow",
-  ));
-  assert.ok(manifest.agents["flowtask-runner"].permissions.some(
-    ({ action, resource, effect }) => action === "subagent" && resource === "flowtask-runner" && effect === "deny",
-  ));
+  assert.equal(manifest.agents["flowtask-runner"].system, "{file:.flowtask/agents/runner.md}");
+  assert.equal(Object.hasOwn(manifest.agents["flowtask-runner"], "permissions"), false);
 });
 
 test("merge removes legacy Runner permission while preserving unrelated config", () => {
@@ -145,6 +141,122 @@ test("merge preserves manual values and repairs duplicate plugins idempotently",
   assert.equal(first.plugins.filter((entry) => entry.includes("flowtask-plugin")).length, 1);
   assert.ok(first.plugins.some((entry) => entry.includes("external")));
   assert.equal(Object.hasOwn(first, "plugin"), false);
+});
+
+test("merge repairs stale FlowTask-owned agent fields while preserving consumer keys", () => {
+  const { root, flowtaskDir } = fixture();
+  const canonicalPermissions = [
+    { action: "task", resource: "flowtask-*", effect: "allow" },
+  ];
+  writeJson(path.join(flowtaskDir, "opencode.json"), {
+    agents: {
+      "flowtask-inspector": {
+        description: "canonical inspector",
+        mode: "subagent",
+        hidden: false,
+        system: "{file:flowtask/agents/inspector.md}",
+        permissions: canonicalPermissions,
+      },
+      "flowtask-runner": {
+        description: "canonical runner",
+        mode: "primary",
+        hidden: false,
+        system: "{file:flowtask/agents/runner.md}",
+      },
+      unrelated: { description: "canonical unrelated" },
+    },
+  });
+  const configPath = path.join(root, ".opencode", "opencode.json");
+  writeJson(configPath, {
+    agents: {
+      "flowtask-inspector": {
+        description: "stale inspector",
+        mode: "primary",
+        hidden: true,
+        system: "{file:flowtask/agents/old-inspector.md}",
+        permissions: [{ action: "bash", resource: "*", effect: "deny" }],
+        model: "consumer-model",
+      },
+      "flowtask-runner": {
+        description: "stale runner",
+        mode: "subagent",
+        hidden: true,
+        permission: { bash: "allow" },
+        permissions: [{ action: "bash", resource: "*", effect: "deny" }],
+        model: "runner-model",
+      },
+      "flowtask-legacy": {
+        description: "legacy",
+        hidden: true,
+        permission: { bash: "allow" },
+        model: "legacy-model",
+      },
+      unrelated: { description: "manual unrelated", model: "manual-model" },
+    },
+  });
+
+  mergeOpencodeConfig(configPath, flowtaskDir, ".opencode");
+  const merged = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const inspector = merged.agents["flowtask-inspector"];
+  const runner = merged.agents["flowtask-runner"];
+
+  assert.equal(inspector.description, "canonical inspector");
+  assert.equal(inspector.mode, "subagent");
+  assert.equal(inspector.hidden, false);
+  assert.equal(inspector.system, "{file:flowtask/agents/inspector.md}");
+  assert.deepEqual(inspector.permissions, canonicalPermissions);
+  assert.equal(inspector.model, "consumer-model");
+  assert.equal(Object.hasOwn(inspector, "permission"), false);
+
+  assert.equal(runner.description, "canonical runner");
+  assert.equal(runner.mode, "primary");
+  assert.equal(runner.hidden, false);
+  assert.equal(runner.model, "runner-model");
+  // The canonical runner declares no permissions, so the consumer value survives.
+  assert.deepEqual(runner.permissions, [{ action: "bash", resource: "*", effect: "deny" }]);
+  assert.equal(Object.hasOwn(runner, "permission"), false);
+
+  // Legacy entries absent from the canonical section lose only the retired field.
+  assert.equal(Object.hasOwn(merged.agents["flowtask-legacy"], "permission"), false);
+  assert.equal(merged.agents["flowtask-legacy"].hidden, true);
+  assert.equal(merged.agents["flowtask-legacy"].model, "legacy-model");
+
+  // Agent entries not owned by FlowTask are never rewritten.
+  assert.deepEqual(merged.agents.unrelated, { description: "manual unrelated", model: "manual-model" });
+});
+
+test("repairing stale FlowTask agent fields is idempotent", () => {
+  const { root, flowtaskDir } = fixture();
+  writeJson(path.join(flowtaskDir, "opencode.json"), {
+    agents: {
+      "flowtask-inspector": {
+        description: "canonical",
+        mode: "subagent",
+        hidden: false,
+        system: "{file:flowtask/agents/inspector.md}",
+      },
+    },
+  });
+  const configPath = path.join(root, ".opencode", "opencode.json");
+  writeJson(configPath, {
+    agents: {
+      "flowtask-inspector": {
+        description: "stale",
+        hidden: true,
+        permission: { bash: "allow" },
+        model: "consumer-model",
+      },
+    },
+  });
+
+  const first = mergeOpencodeConfig(configPath, flowtaskDir, ".opencode");
+  const firstBytes = fs.readFileSync(configPath);
+  const second = mergeOpencodeConfig(configPath, flowtaskDir, ".opencode");
+
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.deepEqual(fs.readFileSync(configPath), firstBytes);
+  assert.equal(JSON.parse(firstBytes).agents["flowtask-inspector"].hidden, false);
 });
 
 test("register replaces FlowTask objects without disturbing third-party entries", () => {

@@ -113,6 +113,56 @@ function mergeMissingObjects(target, source) {
   return result;
 }
 
+const FLOWTASK_AGENT_PREFIX = "flowtask-";
+
+// Fields defined by FlowTask for its own agents. The canonical declaration is
+// authoritative for them, so a stale value in the target never survives an
+// update. Consumer-owned keys such as `model` are preserved.
+const FLOWTASK_OWNED_AGENT_FIELDS = [
+  "description",
+  "mode",
+  "hidden",
+  "system",
+  "prompt",
+  "permissions",
+];
+
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFlowTaskAgent(name) {
+  return typeof name === "string" && name.startsWith(FLOWTASK_AGENT_PREFIX);
+}
+
+function mergeAgentEntries(target, source) {
+  const result = { ...target };
+  for (const [name, sourceEntry] of Object.entries(source)) {
+    if (!isFlowTaskAgent(name) || !isPlainObject(sourceEntry)) {
+      if (!Object.prototype.hasOwnProperty.call(result, name)) {
+        result[name] = sourceEntry;
+      }
+      continue;
+    }
+    const existing = isPlainObject(result[name]) ? result[name] : { ...sourceEntry };
+    const merged = { ...existing };
+    for (const field of FLOWTASK_OWNED_AGENT_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(sourceEntry, field) && sourceEntry[field] !== undefined) {
+        merged[field] = sourceEntry[field];
+      }
+    }
+    result[name] = merged;
+  }
+  return result;
+}
+
+function removeLegacyAgentPermission(agents) {
+  if (!isPlainObject(agents)) return;
+  for (const [name, entry] of Object.entries(agents)) {
+    if (isFlowTaskAgent(name) && isPlainObject(entry)) delete entry.permission;
+  }
+}
+
 function normalizePluginEntries(existing, incoming) {
   const result = [];
   const indexes = new Map();
@@ -296,6 +346,11 @@ export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir, options 
           Array.isArray(legacyExisting) ? legacyExisting : Array.isArray(canonicalExisting) ? canonicalExisting : [],
           Array.isArray(adjusted) ? adjusted : [],
         );
+      } else if (canonical === "agents") {
+        ideConfig[canonical] = mergeAgentEntries(
+          mergeMissingObjects(legacyExisting, canonicalExisting),
+          isPlainObject(adjusted) ? adjusted : {},
+        );
       } else {
         ideConfig[canonical] = mergeMissingObjects(
           mergeMissingObjects(legacyExisting, canonicalExisting),
@@ -305,11 +360,11 @@ export function mergeOpencodeConfig(ideConfigPath, flowtaskDir, ideDir, options 
       if (legacy) delete ideConfig[legacy];
     }
 
-    // The permission gate remains the runtime enforcement. Remove only the
-    // legacy nested permission block from existing targets; keep V2 permissions.
-    if (ideConfig.agents?.["flowtask-runner"]) {
-      delete ideConfig.agents["flowtask-runner"].permission;
-    }
+    // The permission gate remains the runtime enforcement. Remove the legacy
+    // nested permission block from every FlowTask agent entry; keep V2
+    // permissions. The removal covers targets whose canonical section no
+    // longer declares the agent.
+    removeLegacyAgentPermission(ideConfig.agents);
 
     // The web search MCP lives once per user. Install and update remove any
     // project-local copy, even when the canonical declaration still carries it.

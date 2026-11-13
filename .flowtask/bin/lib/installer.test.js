@@ -910,18 +910,14 @@ test("update integrates config and cleans legacy scripts into an installed targe
   assert.equal(updatedConfig.agents["flowtask-validator"].system, "{file:flowtask/agents/validator.md}");
   assert.equal(updatedConfig.default_agent, "flowtask-runner");
   assert.deepEqual(updatedConfig.agents.existing, { description: "manual" });
-  assert.equal(Object.hasOwn(updatedConfig.agents["flowtask-runner"], "permission"), false);
   assert.equal(Object.hasOwn(updatedConfig, "plugin"), false);
   assert.ok(updatedConfig.agents["flowtask-runner"]);
-  // The V2 runner permissions remain enforced in the installed target.
-  const permission = canonicalRunnerPermission;
-  assert.equal(updatedConfig.agents["flowtask-runner"].permissions[0].action, permission[0].action);
-  assert.ok(updatedConfig.agents["flowtask-runner"].permissions.some(
-    ({ action, resource, effect }) => action === "subagent" && resource === "flowtask-runner" && effect === "deny",
-  ));
-  assert.ok(updatedConfig.agents["flowtask-runner"].permissions.some(
-    ({ action, resource, effect }) => action === "shell" && resource.startsWith("git status") && effect === "allow",
-  ));
+  // The canonical runner is installed as a visible primary agent; agent-level
+  // permissions are retired in favor of the permission gate.
+  assert.equal(updatedConfig.agents["flowtask-runner"].mode, "primary");
+  assert.equal(updatedConfig.agents["flowtask-runner"].hidden, false);
+  assert.equal(updatedConfig.agents["flowtask-runner"].system, "{file:flowtask/agents/runner.md}");
+  assert.equal(Object.hasOwn(updatedConfig.agents["flowtask-runner"], "permissions"), false);
   assert.equal(Object.hasOwn(updatedConfig.agents["flowtask-runner"], "permission"), false);
   const installedScript = path.join(root, ".opencode", "flowtask", "scripts", "worktree.sh");
   assert.ok(fs.existsSync(installedScript));
