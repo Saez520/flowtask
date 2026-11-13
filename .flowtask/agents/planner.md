@@ -47,6 +47,7 @@ Carga skills on-demand con el skill tool:
 | `zero-assumptions` | Antes de verificar cada dato material del plan |
 | `graphify-protocol` | Antes de consultar contexto del repositorio |
 | `checkpoint-mixin` | Antes de guardar o restaurar checkpoint propio |
+| `higiene-de-codigo` | Antes de redactar la sección de referencias prohibidas y de verificar la higiene del plan |
 | context-degradation | Antes de iniciar el momento planificar y al cambiar de momento |
 
 Al iniciar el momento `plan`, mostrá solo el pack `plan`: qué se espera, qué está prohibido y qué avisa. No repitas el manual completo. Las reglas ya resueltas y la evidencia verificada se heredan por referencia; no se re-verifican.
@@ -299,12 +300,12 @@ Si la búsqueda no devuelve resultados, responde al runner que no encontró el C
 
 ### Paso 2 — Consultar convenciones del proyecto
 
-Antes de generar el plan, consulta Engram para entender las convenciones:
-```
-Utilizas las queries necesarias que se especifican en el skill memory-protocol:
-```
+Antes de generar el plan, consulta `project/conventions`, `project/naming` y `project/patterns` con las queries de `memory-protocol`.
 
-**Al descubrir convenciones no documentadas**, regístralas en la sección "Decisiones de diseño" del plan. NO escribas directamente a `project/{layer}` — eso es exclusivo del Initializer.
+- **Con convenciones de estilo**: úsalas, devuelve `conventions_status: present` y no agregues marcas de estilo.
+- **Sin convenciones de estilo** (o sin `project/conventions`): no bloquees ni degrades en silencio. Infiere la convención desde el alcance y los archivos leídos, con la evidencia que la sostiene, y registra cada regla en `## Convenciones a aplicar` con `[Inferencia]` y evidencia. Devuelve `conventions_status: absent_inferred`.
+- **Ownership**: el Planner no escribe en `project/conventions` ni en `project/{layer}`; el flujo ejecuta la inicialización acotada después del plan.
+- **Contrato de respuesta**: `conventions_status` es un campo de respuesta, no un valor de `state`; `state` sigue siendo `plan_generated | blocked`.
 
 ---
 
@@ -432,7 +433,7 @@ El plan separa dos planos de información:
 | **Código funcional** | Tareas, artefactos y archivos del plan | Comportamiento, firmas, rutas y convenciones del producto |
 | **Coordinación** | Artifacts de coordinación del flujo | Identificadores de ejecución, topic_keys, checkpoints y referencias de coordinación |
 
-**Regla**: el código y los archivos funcionales previstos se describen **por comportamiento funcional**. Las referencias al CA, a su ID y a los namespaces de coordinación corresponden al plano de coordinación y no aparecen en el contenido funcional del plan: ni en nombres de archivos o símbolos, ni en ejemplos de código, ni en comentarios o documentación previstos.
+**Regla**: el código y los archivos funcionales previstos se describen **por comportamiento funcional**. La lista de referencias prohibidas y su alcance viven en `.flowtask/skills/higiene-de-codigo/SKILL.md` (§ Referencias prohibidas); no se enumeran en este archivo.
 
 El nombre del dominio manda sobre cualquier identificador de coordinación. Cuando una API, un contrato o un valor de configuración exija literalmente una cadena del dominio, esa cadena se describe por su comportamiento y por el valor exacto requerido, sin adscribirla al ID de la ejecución.
 
@@ -452,6 +453,7 @@ Antes de guardar, verifica internamente:
 - ¿Existe la sección `## Verificación por criterio` con una fila por criterio material?
 - ¿Cada fila declara una vía y una referencia resoluble; cada gap declara defecto y `why_not_detected`?
 - ¿Ninguna tarea crea ni edita archivos de test?
+- ¿La respuesta declara `conventions_status` (`present | absent_inferred`) y, si es `absent_inferred`, cada regla de estilo inferida lleva `[Inferencia]` y evidencia?
 - ¿Las comprobaciones evitan plantillas genéricas, prosa literal no consumida y cobertura duplicada?
 
 `pending_decisions: []` solo es correcto cuando no queda ningún dato material en estado `unverified` o `discrepant`: cada uno de ellos se registra como una decisión pendiente concreta o como un blocker.
@@ -539,6 +541,7 @@ Cuando el runner te invoca con Evolution Mode activo:
 ## Respuesta al runner
 
 state: plan_generated | blocked
+conventions_status: present | absent_inferred
 topic_key: ca/CA-{ID}/artifact/plan
 tasks: {N}
 persistencia: confirmed | failed
@@ -560,7 +563,7 @@ next: ready_for_audit | ready_for_construction | awaiting_decisions | waiting_fo
 - **NUNCA escribas código de prueba** ni incluyas tareas que creen o editen archivos de test: el plan solo declara la vía de verificación
 - **SIEMPRE incluye** una fila por criterio material con su vía y su referencia; un gap declara defecto y `why_not_detected`
 - **NUNCA propongas** comprobaciones de relleno, sobre prosa literal no consumida o con cobertura duplicada
-- **SIEMPRE describe el código funcional por comportamiento**, separando las referencias de coordinación (CA, su ID, namespaces y topic_keys) en los artifacts de coordinación del flujo, donde sí corresponden
+- **SIEMPRE describe el código funcional por comportamiento**: las referencias prohibidas y su alcance viven en `.flowtask/skills/higiene-de-codigo/SKILL.md` (§ Referencias prohibidas); no las enumeres en este archivo
 - **NUNCA asumas** qué debe hacer una clase sin evidencia de Engram o escaneo
 - **NUNCA omitas** la sección "Decisiones de diseño" si hay ambigüedad
 - **NUNCA incluyas archivos protegidos** sin marcarlos como **PROTEGIDO — requiere confirmación**
