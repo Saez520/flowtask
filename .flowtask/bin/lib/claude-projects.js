@@ -5,6 +5,7 @@ import {
   FLOWTASK_MANAGED_MARKER,
   PROJECT_REGISTRY_SCHEMA,
   PROJECTS_INDEX_SCHEMA,
+  ensureClaudeAgentSetting,
   resolveActiveRuntimePaths,
   resolveClaudePaths,
   writeFileAtomic,
@@ -397,13 +398,20 @@ export function reconcileProjectsIndex(runtimeRoot, { current = null, mode = "in
  * Register one project: materialize owned artifacts, write the ignored
  * registration, update the Git exclude, and refresh the user-level index.
  */
-export function registerClaudeProject({ projectDir, runtimeManifest, flowtaskDir }) {
+export function registerClaudeProject({
+  projectDir,
+  runtimeManifest,
+  flowtaskDir,
+  baseName = null,
+  runnerAgentStatus = null,
+}) {
   const existing = readProjectRegistry(projectDir);
   const realPath = realProjectPath(projectDir);
   if (existing && !pathsEqual(existing.projectPath, realPath)) {
     logWarn(`Replacing a FlowTask registration that points to another project: ${existing.projectPath}`);
   }
 
+  const paths = resolveClaudePaths(projectDir);
   const version = runtimeManifest.version;
   const materialized = materializeClaudeProject({
     projectDir,
@@ -415,6 +423,27 @@ export function registerClaudeProject({ projectDir, runtimeManifest, flowtaskDir
 
   writeProjectGitignore(projectDir);
 
+  let settingsAgent = { status: "skipped" };
+  if (runnerAgentStatus === "written" || runnerAgentStatus === "unchanged") {
+    settingsAgent = ensureClaudeAgentSetting(paths.projectLocalSettingsPath, "flowtask-runner");
+    if (!settingsAgent.ok) {
+      const error = new Error(
+        `Could not activate the FlowTask runner in ${paths.projectLocalSettingsPath}: ${settingsAgent.error}. ` +
+          "The project was not registered.",
+      );
+      error.code = "agent_setting_invalid";
+      error.path = paths.projectLocalSettingsPath;
+      error.cause = settingsAgent.error;
+      throw error;
+    }
+  } else {
+    logWarn(
+      `The FlowTask runner agent was not activated for ${projectDir} because it is ` +
+        `${runnerAgentStatus ?? "unavailable"}. Move ${path.join(paths.claudeAgentsDir, "flowtask-runner.md")} ` +
+        "and run flowtask update.",
+    );
+  }
+
   const registry = {
     schema: PROJECT_REGISTRY_SCHEMA,
     projectPath: realPath,
@@ -425,14 +454,18 @@ export function registerClaudeProject({ projectDir, runtimeManifest, flowtaskDir
       commands: version,
     },
   };
-  const { registryPath } = resolveClaudePaths(projectDir);
+  const { registryPath } = paths;
   const registryContent = JSON.stringify(registry, null, 2);
   if (!fileExists(registryPath) || fs.readFileSync(registryPath, "utf8") !== registryContent) {
     writeFileAtomic(registryPath, registryContent);
   }
 
   const exclude = updateProjectExclude(projectDir, {
-    files: [...materialized.agents.files, ...materialized.commands.files],
+    files: [
+      ...materialized.agents.files,
+      ...materialized.commands.files,
+      paths.projectLocalSettingsPath,
+    ],
   });
   if (!exclude.ok) {
     logWarn(`Could not update .git/info/exclude: ${exclude.reason}. The registration continues.`);
@@ -448,7 +481,14 @@ export function registerClaudeProject({ projectDir, runtimeManifest, flowtaskDir
   }
 
   logSuccess(`FlowTask project registered at ${registryPath}.`);
-  return { ok: true, registry, materialized, exclude, index: reconcile.index ?? null };
+  return {
+    ok: true,
+    registry,
+    materialized,
+    exclude,
+    index: reconcile.index ?? null,
+    settingsAgent,
+  };
 }
 
 // ─── Project removal ──────────────────────────────────────────────────────────

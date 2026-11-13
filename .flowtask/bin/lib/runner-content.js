@@ -466,6 +466,8 @@ export function buildStartupBlock({ skillsDir, runnerPath }) {
     ...STARTUP_SKILLS.map((name) => `   - \`${skillRead(name)}\``),
     `5. Read the runner definition with **Read**: \`${runnerPath}\``,
     "6. Show your identity at the start of every response: `[capa: orquestador] {base_name}`. Replace `{base_name}` with the BaseName assigned in the handshake; if no name is assigned, say the identity is unavailable instead of inventing one.",
+    "7. Si esta sesión corre como el agente flowtask-runner, el cuerpo vigente ya está en el system prompt y el Read del paso 5 no es necesario.",
+    "8. El nombre vigente es el que declara el system prompt del agente; el placeholder {base_name} se usa solo cuando no hay agente.",
   ].join("\n");
 }
 
@@ -610,6 +612,109 @@ export function adaptFlowBodyForClaude(flowBody, { skillsDir, context = null } =
   assertNoSkillCalls(translated, context);
   assertEveryDeclaredSkillHasPath(translated, declared, { skillsDir, context });
   return translated;
+}
+
+// ─── Runner agent prompt ──────────────────────────────────────────────────────
+
+/** Name of the user-level agent that runs the main thread as the FlowTask runner. */
+export const CLAUDE_RUNNER_AGENT_NAME = "flowtask-runner";
+
+/**
+ * Remove the platform metadata block at the top of the canonical runner. The
+ * block opens with a `***` line and closes with a line of at least eleven
+ * dashes; neither belongs to the generated system prompt.
+ */
+export function stripRunnerMetadata(content) {
+  const opening = content.match(/^\*\*\*[ \t]*\r?\n/);
+  if (!opening) return content;
+
+  const rest = content.slice(opening[0].length);
+  const closing = rest.match(/^-{11,}[ \t]*$/m);
+  if (!closing) {
+    const error = new Error("The runner metadata block is missing its closing dash line.");
+    error.code = "runner_metadata_unclosed";
+    throw error;
+  }
+
+  const end = opening[0].length + closing.index + closing[0].length;
+  return content.slice(end).replace(/^\r?\n/, "");
+}
+
+/**
+ * Compose the anchoring contract that turns the runner body into the system
+ * prompt of the main thread. Paths resolve against the active payload.
+ */
+export function buildRunnerAnchorBlock({ baseName, skillsDir }) {
+  const skillRead = (name) => path.join(skillsDir, name, "SKILL.md");
+
+  return [
+    "## Contrato de anclaje",
+    "",
+    "Sos el runner de FlowTask en este proyecto. Este system prompt es el cuerpo vigente del runner: el rol está asumido desde este turno, sin lectura previa y sin pedido del desarrollador.",
+    "",
+    "Esta sección prevalece sobre cualquier regla de este prompt que permita continuar sin la memoria del proyecto.",
+    "",
+    "### Arranque obligatorio",
+    "",
+    "Antes de clasificar el pedido, ejecutar comandos, leer documentación o consultar el repositorio:",
+    "",
+    "1. Cargá las herramientas de Engram con ToolSearch (mcp__engram__*).",
+    "2. Ejecutá mem_context.",
+    '3. Cargá las heurísticas con mem_search(query: "heuristic", scope: "project") y mem_search(query: "heuristic", scope: "personal"); si la misma key existe en ambos scopes, prevalece la de project.',
+    "4. Leé con Read, si no están cargadas, las skills de arranque:",
+    `   - ${skillRead("investigacion")}`,
+    `   - ${skillRead("memory-protocol")}`,
+    `   - ${skillRead("zero-assumptions")}`,
+    `5. Mostrá la identidad al inicio de cada respuesta: [capa: orquestador] ${baseName}.`,
+    "",
+    `El bloque de SessionStart repite el índice de skills. El placeholder {base_name} de ese bloque no se usa: el nombre vigente es ${baseName}. Si un handshake posterior asigna un BaseName al trabajo activo, ese nombre pasa a ser el vigente desde esa respuesta.`,
+    "",
+    "### Memoria primero",
+    "",
+    "La memoria del proyecto se consulta antes que el repositorio y la documentación. No ejecutes git, no leas archivos del proyecto y no busques documentación antes de que mem_context haya respondido.",
+    "",
+    "### Fallo declarado",
+    "",
+    "Si Engram no responde o mem_context falla, detené la respuesta con esta línea y no continúes con otra fuente:",
+    "",
+    "⛔ Fuente no disponible: memoria del proyecto (Engram). No continúo sin ella. Para reanudar: verificá el registro MCP de Engram y volvé a intentar.",
+    "",
+    "Si una skill de arranque no se puede leer, declarás la ruta faltante con el mismo formato y detenés el paso que la requería.",
+    "",
+    "No presentes inferencias como hechos. Marcá todo dato no verificado como no verificado.",
+    "",
+    "Este contrato rige en proyectos con .claude/flowtask/project.json. Si el archivo no existe, no asumas el rol de runner.",
+  ].join("\n");
+}
+
+/**
+ * Build the runner prompt for the user-level agent: strip platform metadata,
+ * translate every skill declaration to a payload read, and prepend the anchor.
+ */
+export function buildRunnerPromptBody({ runnerBody, skillsDir, baseName }) {
+  const stripped = stripRunnerMetadata(runnerBody);
+  const declared = collectDeclaredSkillNames(stripped, { skillsDir });
+  const callNames = new Set(findSkillCalls(stripped).map((call) => call.name));
+  const extras = declared.filter((name) => !callNames.has(name));
+
+  let composed = translateSkillCalls(
+    normalizeSkillPaths(stripped, { skillsDir, context: CLAUDE_RUNNER_AGENT_NAME }),
+    { skillsDir },
+  );
+  // The canonical runner uses an illustrative placeholder next to the real
+  // calls. It is not a skill call, but the generated prompt must not keep a
+  // syntax that Claude Code cannot resolve.
+  composed = composed.replace(
+    '`skill({ name: "..." })`',
+    "**Read** sobre la ruta absoluta de la skill",
+  );
+  assertNoSkillCalls(composed, CLAUDE_RUNNER_AGENT_NAME);
+  if (extras.length > 0) {
+    composed = `${composed}\n\n---\n\n${buildSkillFilesSection(extras, { skillsDir })}`;
+  }
+  assertEveryDeclaredSkillHasPath(composed, declared, { skillsDir, context: CLAUDE_RUNNER_AGENT_NAME });
+
+  return `${buildRunnerAnchorBlock({ baseName, skillsDir })}\n\n${composed}\n`;
 }
 
 // ─── Runner adaptation ────────────────────────────────────────────────────────

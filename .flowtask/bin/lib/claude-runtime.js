@@ -33,7 +33,13 @@ const KNOWN_CONFIG_FILES = Object.freeze([
   LAYER_FILES.persona,
   LAYER_FILES.autonomy,
   LAYER_FILES.permissions,
+  "identity.json",
 ]);
+
+/** Identity configuration file and its installation default. */
+export const IDENTITY_FILE = "identity.json";
+export const DEFAULT_BASE_NAME = "Aitana";
+export const BASE_NAME_PATTERN = /^[\p{L}][\p{L}\p{M}' -]{0,39}$/u;
 
 function compareJson(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -128,9 +134,50 @@ function adaptStagingFlows({ stagingDir, runnerBody, finalPaths }) {
 
 // ─── Global configuration ─────────────────────────────────────────────────────
 
+function invalidIdentity(identityPath, reason) {
+  return { status: "invalid", value: null, path: identityPath, reason };
+}
+
 /**
- * Ensure the three user-level layers. A missing operational layer receives the
- * installation default; an existing invalid layer is never overwritten.
+ * Read the installation identity. A missing file is a creation opportunity; an
+ * invalid file is never replaced with a default.
+ */
+export function readIdentityProfile(configDir) {
+  const identityPath = path.join(configDir, IDENTITY_FILE);
+  if (!fileExists(identityPath)) {
+    return { status: "missing", value: null, path: identityPath, reason: null };
+  }
+
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(identityPath, "utf8"));
+  } catch (error) {
+    return invalidIdentity(identityPath, `${IDENTITY_FILE} is not valid JSON: ${error.message}`);
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return invalidIdentity(identityPath, "the identity profile is not a JSON object");
+  }
+  if (raw.version !== 1) {
+    return invalidIdentity(identityPath, `invalid identity version: ${JSON.stringify(raw.version)}`);
+  }
+  if (typeof raw.baseName !== "string") {
+    return invalidIdentity(identityPath, "the identity profile does not declare a baseName value");
+  }
+  const baseName = raw.baseName.trim();
+  if (!baseName) return invalidIdentity(identityPath, "the base name is empty");
+  if (!BASE_NAME_PATTERN.test(baseName)) {
+    return invalidIdentity(identityPath, `invalid base name: ${JSON.stringify(raw.baseName)}`);
+  }
+  if (baseName.toLowerCase() === "hermes") {
+    return invalidIdentity(identityPath, "the base name Hermes is reserved");
+  }
+  return { status: "present", value: { version: 1, baseName }, path: identityPath, reason: null };
+}
+
+/**
+ * Ensure the three user-level layers and the installation identity. A missing
+ * operational layer receives the installation default; an existing invalid
+ * layer or identity is never overwritten.
  */
 export function ensureClaudeRuntimeConfig(configDir, { personaChoice = null } = {}) {
   fs.mkdirSync(configDir, { recursive: true });
@@ -196,7 +243,30 @@ export function ensureClaudeRuntimeConfig(configDir, { personaChoice = null } = 
     operational[name] = validated;
   }
 
-  return { profile, autonomy: operational.autonomy, permissions: operational.permissions };
+  let identity = readIdentityProfile(configDir);
+  if (identity.status === "missing") {
+    writeJsonIfChanged(path.join(configDir, IDENTITY_FILE), {
+      version: 1,
+      baseName: DEFAULT_BASE_NAME,
+    });
+    identity = readIdentityProfile(configDir);
+  }
+  if (identity.status === "invalid") {
+    const error = new Error(
+      `Invalid identity profile at ${identity.path}: ${identity.reason}. Fix or move the file and retry.`,
+    );
+    error.code = "identity_invalid";
+    error.path = identity.path;
+    error.reason = identity.reason;
+    throw error;
+  }
+
+  return {
+    profile,
+    autonomy: operational.autonomy,
+    permissions: operational.permissions,
+    identity,
+  };
 }
 
 // ─── Runtime manifest ─────────────────────────────────────────────────────────

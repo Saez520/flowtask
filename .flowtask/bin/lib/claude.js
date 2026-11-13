@@ -2,11 +2,13 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import crypto from "crypto";
-import { logSuccess, logError } from "./logger.js";
+import { logSuccess, logError, fileExists } from "./logger.js";
 import {
   assertEveryDeclaredSkillHasPath,
   assertNoSkillCalls,
+  buildRunnerPromptBody,
   buildSkillFilesSection,
+  CLAUDE_RUNNER_AGENT_NAME,
   collectDeclaredSkillNames,
   findSkillCalls,
   normalizeSkillPaths,
@@ -59,10 +61,12 @@ export function resolveClaudePaths(projectDir = process.cwd(), options = {}) {
     projectFlowtaskDir,
     registryPath: path.join(projectFlowtaskDir, "project.json"),
     projectSettingsPath: path.join(projectClaudeDir, "settings.json"),
+    projectLocalSettingsPath: path.join(projectClaudeDir, "settings.local.json"),
     projectMcpPath: path.join(projectDir, ".mcp.json"),
     projectAgentsDir: path.join(projectClaudeDir, "agents"),
     projectCommandsDir: path.join(projectClaudeDir, "commands"),
     legacySessionStartPath: path.join(projectClaudeDir, "session-start.md"),
+    claudeAgentsDir: path.join(claudeUserDir, "agents"),
   };
 }
 
@@ -205,6 +209,73 @@ export function generateClaudeAgents(flowtaskDir, projectDir, options = {}) {
   }
 
   return { generated: files.length, skipped: [], files };
+}
+
+// ─── User-level runner agent ──────────────────────────────────────────────────
+
+export const CLAUDE_RUNNER_AGENT_DESCRIPTION =
+  "Orquestador principal de FlowTask para proyectos registrados. Ejecuta el hilo principal como runner con memoria primero, identidad de capa visible y fallo declarado.";
+
+/**
+ * Compose the user-level agent that Claude Code applies to the main thread. The
+ * prompt body already carries the anchoring contract and the adapted runner.
+ */
+export function composeClaudeRunnerAgent({ promptBody }) {
+  const parts = [
+    "---",
+    `name: ${CLAUDE_RUNNER_AGENT_NAME}`,
+    `description: ${CLAUDE_RUNNER_AGENT_DESCRIPTION}`,
+    "---",
+    FLOWTASK_MANAGED_MARKER,
+    "",
+  ];
+  parts.push(promptBody.trimEnd());
+  return `${parts.join("\n")}\n`;
+}
+
+/**
+ * Generate `~/.claude/agents/flowtask-runner.md` from the active payload. A
+ * file without the ownership marker is preserved and reported, never replaced.
+ */
+export function generateClaudeRunnerAgent({ claudeUserDir, runtimeRoot, runtimeManifest, baseName }) {
+  const active = resolveActiveRuntimePaths(runtimeRoot, runtimeManifest);
+  if (!fileExists(active.runnerPath)) {
+    const error = new Error(
+      `FlowTask runner source not found at ${active.runnerPath}. Run: flowtask install`,
+    );
+    error.code = "runner_agent_source_missing";
+    error.path = active.runnerPath;
+    throw error;
+  }
+
+  const promptBody = buildRunnerPromptBody({
+    runnerBody: fs.readFileSync(active.runnerPath, "utf8"),
+    skillsDir: active.skillsDir,
+    baseName,
+  });
+  const content = composeClaudeRunnerAgent({ promptBody });
+  const destPath = path.join(claudeUserDir, "agents", `${CLAUDE_RUNNER_AGENT_NAME}.md`);
+
+  if (fileExists(destPath)) {
+    const existing = fs.readFileSync(destPath, "utf8");
+    if (!existing.includes(FLOWTASK_MANAGED_MARKER)) return { status: "preserved", path: destPath };
+    if (existing === content) return { status: "unchanged", path: destPath };
+  }
+
+  writeFileAtomic(destPath, content);
+  return { status: "written", path: destPath };
+}
+
+/** Remove the generated runner agent only when it carries the ownership marker. */
+export function removeClaudeRunnerAgent({ claudeUserDir }) {
+  const destPath = path.join(claudeUserDir, "agents", `${CLAUDE_RUNNER_AGENT_NAME}.md`);
+  if (!fileExists(destPath)) return { status: "absent", path: destPath };
+
+  const content = fs.readFileSync(destPath, "utf8");
+  if (!content.includes(FLOWTASK_MANAGED_MARKER)) return { status: "preserved", path: destPath };
+
+  fs.rmSync(destPath, { force: true });
+  return { status: "removed", path: destPath };
 }
 
 // ─── Command generator ────────────────────────────────────────────────────────
@@ -428,6 +499,74 @@ export function removeClaudeHook(settingsPath, { command = null, commandIncludes
     logError(`Failed to remove the Claude hook: ${err.message}`);
     return { ok: false, error: err.message, changed: false };
   }
+}
+
+function readSettingsDocument(settingsPath) {
+  if (!fs.existsSync(settingsPath)) return { ok: true, exists: false, value: {} };
+
+  const raw = fs.readFileSync(settingsPath, "utf8");
+  if (raw.trim() === "") return { ok: true, exists: true, value: {} };
+
+  try {
+    const value = JSON.parse(raw);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { ok: false, error: `${settingsPath} is not a JSON object` };
+    }
+    return { ok: true, exists: true, value };
+  } catch (err) {
+    return { ok: false, error: `${settingsPath} is not valid JSON: ${err.message}` };
+  }
+}
+
+/**
+ * Inspect the runner agent activation in a project's local settings without
+ * modifying the document. A different agent or a malformed file is preserved.
+ */
+export function inspectClaudeAgentSetting(settingsPath, agentName) {
+  const read = readSettingsDocument(settingsPath);
+  if (!read.ok) return { ok: false, action: "invalid", error: read.error };
+  if (read.value.agent === undefined) return { ok: true, action: "set" };
+  if (read.value.agent === agentName) return { ok: true, action: "unchanged" };
+  return { ok: true, action: "preserved", existing: read.value.agent };
+}
+
+/**
+ * Add the runner agent key to the project's local settings. Every other key is
+ * preserved; a malformed document or a different agent is never overwritten.
+ */
+export function ensureClaudeAgentSetting(settingsPath, agentName) {
+  const inspection = inspectClaudeAgentSetting(settingsPath, agentName);
+  if (!inspection.ok || inspection.action !== "set") return inspection;
+
+  const read = readSettingsDocument(settingsPath);
+  if (!read.ok) return { ok: false, action: "invalid", error: read.error };
+
+  const next = { ...read.value, agent: agentName };
+  writeFileAtomic(settingsPath, JSON.stringify(next, null, 2));
+  return { ok: true, action: "set" };
+}
+
+/**
+ * Remove the runner agent key from the project's local settings. The file is
+ * deleted when no other keys remain; foreign values and malformed files are
+ * preserved.
+ */
+export function removeClaudeAgentSetting(settingsPath, agentName) {
+  const read = readSettingsDocument(settingsPath);
+  if (!read.ok) return { status: "preserved", error: read.error };
+  if (!read.exists || read.value.agent === undefined) return { status: "absent" };
+  if (read.value.agent !== agentName) {
+    return { status: "preserved", existing: read.value.agent };
+  }
+
+  const next = { ...read.value };
+  delete next.agent;
+  if (Object.keys(next).length === 0) {
+    fs.rmSync(settingsPath, { force: true });
+  } else {
+    writeFileAtomic(settingsPath, JSON.stringify(next, null, 2));
+  }
+  return { status: "removed" };
 }
 
 /** Hook tree for the user-level SessionStart handler. */
