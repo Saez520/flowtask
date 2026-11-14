@@ -6,8 +6,10 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { afterEach, test } from "node:test";
 import {
+  AUTONOMY_PROMPT,
   installManifestPlugins,
   migrateProfileLocation,
+  renderAutonomyPromptLines,
   syncTargetConfig,
   regenerateCanonicalTui,
   regenerateCanonicalCli,
@@ -209,6 +211,37 @@ function createFixture() {
   fs.mkdirSync(path.join(flowtaskDir, "plugins"), { recursive: true });
   fixtures.push(root);
   return { root, flowtaskDir };
+}
+
+/** Temporary project and isolated user state for a CLI installation run. */
+function createCliFixture(prefix = "flowtask-cli-") {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  fixtures.push(root);
+  const projectDir = path.join(root, "project");
+  const home = path.join(root, "home");
+  const xdg = path.join(root, "xdg");
+  fs.mkdirSync(projectDir, { recursive: true });
+  fs.mkdirSync(home, { recursive: true });
+  fs.mkdirSync(xdg, { recursive: true });
+  const { CLAUDE_PROJECT_DIR, CLAUDE_CONFIG_DIR, ...inherited } = process.env;
+  return {
+    root,
+    projectDir,
+    env: { ...inherited, HOME: home, XDG_CONFIG_HOME: xdg },
+  };
+}
+
+function findTransactionBackups(directory) {
+  const matches = [];
+  const walk = (current) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const absolute = path.join(current, entry.name);
+      if (entry.name.includes("flowtask-tx-")) matches.push(absolute);
+      else if (entry.isDirectory()) walk(absolute);
+    }
+  };
+  if (fs.existsSync(directory)) walk(directory);
+  return matches;
 }
 
 function writeJson(filePath, value) {
@@ -1036,7 +1069,7 @@ test("migrates the absent layers of a target with the installation defaults", ()
   assert.equal(result.autonomy.status, "valid");
   assert.equal(result.permissions.status, "valid");
   assert.deepEqual(readJson(path.join(targetDir, "config", "autonomy.json")), {
-    version: 1, profile: "autonomous-dev",
+    version: 1, profile: "assistant",
   });
   assert.deepEqual(readJson(path.join(targetDir, "config", "permissions.json")), {
     version: 1, envelope: "standard",
@@ -1068,6 +1101,7 @@ test("fails the target when a layer is invalid and keeps the file untouched", ()
   assert.deepEqual(readJson(path.join(targetDir, "config", "autonomy.json")), {
     version: 1, profile: "root",
   });
+  assert.equal(fs.existsSync(path.join(targetDir, "config", "review.json")), false);
 });
 
 test("does not overwrite an invalid persona profile and keeps the layers intact", () => {
@@ -1095,6 +1129,111 @@ test("does not overwrite an invalid persona profile and keeps the layers intact"
   });
 });
 
+// gap: G1 — el default vuelve a autonomous-dev, --autonomy se ignora o la pregunta expone términos internos.
+test("installs the minimum autonomy without asking and publishes the initiative question", () => {
+  const promptLines = renderAutonomyPromptLines(0);
+  const promptText = [AUTONOMY_PROMPT.title, ...promptLines].join("\n");
+
+  assert.deepEqual(AUTONOMY_PROMPT.options.map((option) => option.value), ["assistant", "autonomous-dev"]);
+  assert.equal(AUTONOMY_PROMPT.options[0].recommended, true);
+  assert.equal(AUTONOMY_PROMPT.options[1].recommended, false);
+  assert.match(promptText, /^How much initiative should FlowTask take on this machine\?$/m);
+  assert.match(promptText, /^> Wait for my explicit go-ahead for every job \(recommended\)/m);
+  assert.match(promptText, /FlowTask prepares the work and waits for your order before starting anything\./);
+  assert.match(promptText, /^ {2}Start work on its own without asking first/m);
+  assert.match(promptText, /FlowTask can run the full loop on its own\./);
+  assert.match(promptText, /↑\/↓: navigate, Enter: confirm, Ctrl\+C: cancel/);
+  const loweredPrompt = promptText.toLowerCase();
+  for (const internal of ["autonomy", "assistant", "autonomous-dev", "profile", "layer", "permissions", "persona", ".flowtask"]) {
+    assert.equal(loweredPrompt.includes(internal), false, `internal term "${internal}" leaked into the question`);
+  }
+  assert.match(renderAutonomyPromptLines(1)[1], /^> Start work on its own/);
+
+  const { projectDir, env } = createCliFixture("flowtask-gap1-");
+  const result = spawnSync(process.execPath, [FLOWTASK_CLI, "install", "--target", "standalone"], {
+    cwd: projectDir,
+    env,
+    input: "n\n",
+    encoding: "utf8",
+    timeout: 180000,
+  });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /Initiative on this machine: wait for an explicit go-ahead \(installation default\)\./);
+  assert.doesNotMatch(result.stdout, /How much initiative should FlowTask take/);
+  assert.doesNotMatch(result.stdout, /Agent Personality|experience level/);
+  assert.deepEqual(readJson(path.join(projectDir, ".flowtask", "config", "autonomy.json")), {
+    version: 1, profile: "assistant",
+  });
+  assert.match(
+    fs.readFileSync(path.join(projectDir, ".flowtask", "agents", "runner.md"), "utf8"),
+    /Current autonomy: assistant \(source: project\)\./,
+  );
+});
+
+// gap: G2 — un fallo a mitad de escritura deja configuración/marcador y sale 0.
+test("rolls back an installation that fails after writing layers and exits non-zero", () => {
+  const { projectDir, env } = createCliFixture("flowtask-gap2-");
+  const configDir = path.join(projectDir, ".flowtask", "config");
+  writeJson(path.join(configDir, "profile.json"), { level: "senior", persona: "tutor-senior", onboarded: true });
+  const failingSurface = path.join(configDir, "review.json");
+  fs.mkdirSync(failingSurface, { recursive: true });
+  fs.writeFileSync(path.join(failingSurface, "sentinel"), "keep", "utf8");
+  const configBefore = treeDigest(configDir);
+
+  const result = spawnSync(process.execPath, [FLOWTASK_CLI, "install", "--target", "standalone"], {
+    cwd: projectDir,
+    env,
+    input: "n\n",
+    encoding: "utf8",
+    timeout: 180000,
+  });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /Installation failed: could not verify .*review\.json/);
+  assert.match(result.stdout, /retry with flowtask install/);
+  assert.doesNotMatch(result.stdout, /completed successfully/);
+  assert.equal(treeDigest(configDir), configBefore);
+  assert.equal(fs.existsSync(path.join(configDir, "autonomy.json")), false);
+  assert.equal(fs.existsSync(path.join(configDir, "permissions.json")), false);
+  assert.equal(fs.existsSync(path.join(projectDir, ".flowtask", ".installation-method")), false);
+  assert.equal(fs.existsSync(path.join(projectDir, ".claude", "flowtask", "project.json")), false);
+  assert.deepEqual(findTransactionBackups(projectDir), []);
+});
+
+// gap: G3 — una capa inválida se sobrescribe o el proyecto queda registrado tras el fallo.
+test("rejects an invalid autonomy layer before writing and exits non-zero", () => {
+  const { projectDir, env } = createCliFixture("flowtask-gap3-");
+  const configDir = path.join(projectDir, ".flowtask", "config");
+  const autonomyPath = path.join(configDir, "autonomy.json");
+  const invalidBytes = Buffer.from('{"version":1,"profile":"root"}\n', "utf8");
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.writeFileSync(autonomyPath, invalidBytes);
+
+  const result = spawnSync(process.execPath, [FLOWTASK_CLI, "install", "--target", "standalone"], {
+    cwd: projectDir,
+    env,
+    input: "n\n",
+    encoding: "utf8",
+    timeout: 180000,
+  });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /\[FlowTask Layers\] autonomy layer missing or invalid\./);
+  assert.match(result.stdout, /Cause: unknown autonomy profile: "root"/);
+  assert.match(result.stdout, /retry with flowtask install/);
+  assert.doesNotMatch(result.stdout, /completed successfully/);
+  assert.deepEqual(fs.readFileSync(autonomyPath), invalidBytes);
+  assert.equal(fs.existsSync(path.join(configDir, "permissions.json")), false);
+  assert.equal(fs.existsSync(path.join(configDir, "review.json")), false);
+  assert.equal(fs.existsSync(path.join(projectDir, ".flowtask", ".installation-method")), false);
+  assert.equal(fs.existsSync(path.join(projectDir, ".claude", "flowtask", "project.json")), false);
+  assert.deepEqual(findTransactionBackups(projectDir), []);
+});
+
 test("fans out legacy profile and preserves it when one target fails", () => {
   const { root } = createFixture();
   const legacy = path.join(root, ".flowtask", "profile.json");
@@ -1112,10 +1251,8 @@ test("fans out legacy profile and preserves it when one target fails", () => {
   assert.deepEqual(readJson(path.join(targets[1], "config", "profile.json")), profile);
 });
 
-test("update preserves divergent valid profiles independently across two project-level targets", () => {
-  const { root, flowtaskDir } = createFixture();
-  fs.mkdirSync(path.join(flowtaskDir, "scripts"), { recursive: true });
-  fs.writeFileSync(path.join(flowtaskDir, "scripts", "worktree.sh"), "#!/bin/sh\n", "utf8");
+test("update rolls back divergent valid profiles when a project-level target fails", () => {
+  const { root } = createFixture();
   const targets = [
     ["opencode", ".opencode/flowtask", { level: "senior", persona: "tutor-senior", onboarded: true }],
     ["vscode", ".vscode/flowtask", { level: "training", persona: "tutor-training", onboarded: true }],
@@ -1126,6 +1263,17 @@ test("update preserves divergent valid profiles independently across two project
     fs.writeFileSync(path.join(targetDir, ".installation-method"), JSON.stringify({ target: id }));
     writeJson(path.join(targetDir, "config", "profile.json"), profile);
   }
+  // A managed surface that cannot be replaced makes the second target fail
+  // after the first one has already written its layers.
+  const failingSurface = path.join(root, ".vscode", "flowtask", "config", "review.json");
+  fs.mkdirSync(failingSurface, { recursive: true });
+  fs.writeFileSync(path.join(failingSurface, "sentinel"), "keep", "utf8");
+
+  const markerBefore = targets.map(([, subDir]) =>
+    fs.readFileSync(path.join(root, subDir, ".installation-method"), "utf8"));
+  const opencodeConfigBefore = treeDigest(path.join(root, ".opencode", "flowtask", "config"));
+  const vscodeConfigBefore = treeDigest(path.join(root, ".vscode", "flowtask", "config"));
+
   const result = spawnSync(process.execPath, [FLOWTASK_CLI, "update"], {
     cwd: root,
     env: { ...process.env, XDG_CONFIG_HOME: path.join(root, "xdg-config") },
@@ -1133,12 +1281,22 @@ test("update preserves divergent valid profiles independently across two project
     encoding: "utf8",
     timeout: 120000,
   });
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+
+  assert.equal(result.status, 1, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /Installation failed/);
+  assert.match(result.stdout, /retry with flowtask update/);
   assert.deepEqual(readJson(path.join(root, ".opencode/flowtask/config/profile.json")), targets[0][2]);
   assert.deepEqual(readJson(path.join(root, ".vscode/flowtask/config/profile.json")), targets[1][2]);
+  assert.deepEqual(
+    targets.map(([, subDir]) => fs.readFileSync(path.join(root, subDir, ".installation-method"), "utf8")),
+    markerBefore,
+  );
+  assert.equal(treeDigest(path.join(root, ".opencode", "flowtask", "config")), opencodeConfigBefore);
+  assert.equal(treeDigest(path.join(root, ".vscode", "flowtask", "config")), vscodeConfigBefore);
+  assert.equal(fs.existsSync(path.join(root, ".opencode/flowtask/config/autonomy.json")), false);
+  assert.equal(fs.existsSync(path.join(root, ".vscode/flowtask/config/autonomy.json")), false);
   const installedScript = path.join(root, ".opencode", "flowtask", "scripts", "worktree.sh");
-  assert.ok(fs.existsSync(installedScript));
-  assert.equal(fs.statSync(installedScript).mode & 0o111, 0o111);
+  assert.equal(fs.existsSync(installedScript), false);
 });
 
 test("does not accept a TUI write failure as a successful registration", () => {

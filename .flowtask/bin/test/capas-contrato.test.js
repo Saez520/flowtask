@@ -94,10 +94,10 @@ describe("capas de persona, autonomia y permisos — contrato", () => {
   });
 
   it("publishes the migration defaults and their boundary", () => {
-    assert.ok(flatPage.includes('"profile": "autonomous-dev"'), "missing the autonomy migration default");
+    assert.ok(flatPage.includes('"profile": "assistant"'), "missing the autonomy migration default");
     assert.ok(flatPage.includes('"envelope": "standard"'), "missing the permissions migration default");
     assert.ok(
-      flatPage.includes("They are a migration, **not** a runtime fallback"),
+      flatPage.includes("is a migration, **not** a runtime fallback"),
       "the migration default must be declared as not a runtime fallback",
     );
     assert.ok(
@@ -199,7 +199,7 @@ describe("configuracion local y documentacion de migracion", () => {
     const installation = flat(read("docs/installation.md"));
     assert.ok(installation.includes("autonomy.json"), "docs/installation.md must document autonomy.json");
     assert.ok(installation.includes("permissions.json"), "docs/installation.md must document permissions.json");
-    assert.ok(installation.includes("autonomous-dev"), "docs/installation.md must document the autonomy migration default");
+    assert.ok(installation.includes("assistant"), "docs/installation.md must document the autonomy migration default");
     assert.ok(installation.includes("standard"), "docs/installation.md must document the permissions migration default");
     assert.match(installation, /not a runtime fallback/, "docs/installation.md must state that the default is not a runtime fallback");
     assert.match(installation, /An invalid layer is never repaired with a default/, "docs/installation.md must forbid repairing an invalid layer");
@@ -207,7 +207,7 @@ describe("configuracion local y documentacion de migracion", () => {
     const configReadme = flat(read(".flowtask/config/README.md"));
     assert.ok(configReadme.includes("autonomy.json"), ".flowtask/config/README.md must document autonomy.json");
     assert.ok(configReadme.includes("permissions.json"), ".flowtask/config/README.md must document permissions.json");
-    assert.ok(configReadme.includes("autonomous-dev"), ".flowtask/config/README.md must document the autonomy migration default");
+    assert.ok(configReadme.includes("assistant"), ".flowtask/config/README.md must document the autonomy migration default");
     assert.ok(configReadme.includes("standard"), ".flowtask/config/README.md must document the permissions migration default");
     assert.match(configReadme, /not a runtime fallback/, ".flowtask/config/README.md must state that the default is not a runtime fallback");
     assert.match(configReadme, /An invalid layer is never repaired with a default/, ".flowtask/config/README.md must forbid repairing an invalid layer");
