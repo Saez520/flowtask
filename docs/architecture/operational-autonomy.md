@@ -51,6 +51,7 @@ consent is missing, it advances.
 | Operational situation | Pause reason |
 |--------------------|-----------------|
 | Lack of authority, scope or requirement change, or missing risk consent. | `authority_block` |
+| Missing or invalid authority configuration. | `authority_block` — single action to restore the safe configuration; resumable after the operator confirms. |
 | Explicit work limit reached with a pause effect. | `explicit_limit` |
 | Absence of hypotheses or verifiable progress. | `no_verifiable_progress` |
 | Invariant violated. | `invariant_violation` |
@@ -85,6 +86,11 @@ Resuming requires, together:
 Resumption reuses the evidence from the last round and the policy decisions: it does not
 repeat already verified checks or reset counters. Non-idempotent actions whose
 previous effect is uncertain are not repeated: they stop and escalate.
+
+For a lack of authority, the operator's confirmation plus the verified repair is the
+`authority_decision`: the `PolicyDecision` records `kind: "resume"`, `policy:
+"resume_gate"`, `reason: "authority_block"`, the command, and the result with `restored`
+and `preserved`. The execution keeps the same round and evidence.
 
 ## Automatic decision record
 

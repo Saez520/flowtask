@@ -94,6 +94,21 @@ Cause: <cause>
 Action: fix the layer or run flowtask update; the Runner does not execute tools with expanded limits.
 ```
 
+**Authority pause and repair.** A missing or invalid autonomy or permissions
+layer is a lack of authority, not an external failure: the runner pauses with
+`authority_block` and preserves the current execution, its round and its
+evidence. The operator sees a single action — restore the safe configuration —
+from a deterministic catalog that contains no codes, paths, or internal names;
+the technical denial message is the agent channel. Only after the operator's
+explicit confirmation does the runner execute `flowtask repair` from the
+project root: the command backs up an invalid file, writes the lowest-authority
+defaults (`assistant` and `standard`), preserves valid layers, verifies the
+result, and resumes the same execution. `--auto` does not replace that
+confirmation. If the repair fails or there is no installed target, the runner
+does not resume: it escalates to reinstall or generate a diagnosis. The
+diagnosis (`flowtask authority status --json`) exposes the structured codes,
+paths, and causes only when the operator asks for it.
+
 **Scope.** The check applies only to the runner's tools. The universal commit
 gate keeps its behavior, and subagent permissions do not change. The bash
 allowlist and the list of authorized subagents are not expanded.
@@ -107,6 +122,14 @@ expected file, the cause of absence, and the action; restore both files, restart
 OpenCode, and verify that the allowed operation works again. The actual denial
 depends on OpenCode reloading the installed package: fixture tests verify the
 parser, the message, and parity, not the load cycle.
+
+To exercise the actionable pause, corrupt `permissions.json` in an installed
+target and restart OpenCode. The operator sees the single restore action without
+internal details; confirm it, verify the backup, the `standard` default, and a
+healthy diagnosis, and verify that the same round and evidence resume. Then force
+a repair failure (a directory in place of the file, or a non-writable
+configuration): the original stays intact, the runner does not resume, and it
+escalates to reinstall or diagnose.
 
 ## Context budget
 
@@ -361,3 +384,13 @@ fixture tests only verify the script and do not replace this test.
    denied with `[FlowTask Permission Gate] Missing or invalid permissions layer.`,
    the expected file, the cause of absence, and the recommended action. Restore
    both files, restart OpenCode, and repeat: the allowed operation works again.
+10. Test the authority pause and repair: corrupt
+    `.opencode/flowtask/config/permissions.json` and restart OpenCode. The runner
+    must report `authority_block` with a single restore action and no internal
+    details, and `flowtask authority status --json` must be allowed while every
+    other runner tool is denied. Confirm the restore; `flowtask repair` must back
+    up the invalid file, write `standard`, preserve the autonomy layer, verify the
+    result, and let the same execution resume without resetting its round or
+    evidence. Force a repair failure (a directory in place of the file, or a
+    non-writable configuration): the original stays intact, the runner does not
+    resume, and it escalates to reinstall or diagnose.

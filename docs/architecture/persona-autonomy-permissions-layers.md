@@ -101,6 +101,19 @@ The operational failure of permissions or autonomy has no default value: it does
 continue with an invented value or expanded limits. Persona failure
 does not repair anything either: it does not invent a tone and does not alter the other layers.
 
+A missing or invalid permissions or autonomy layer is classified as a lack of authority
+(`authority_block`): it pauses the current execution and is resumable after the operator
+confirms the restoration. The gate keeps its technical message.
+
+## Runtime repair
+
+`install` and `update` do not repair an invalid layer. The explicit runtime repair
+(`flowtask repair`) is the only path that replaces it: it backs up the invalid file,
+writes the lowest-authority default, preserves valid layers, verifies the result, and lets
+the same execution resume. If the repair fails or there is no installed target, the
+execution does not resume and escalates to reinstall or generate a diagnosis. The agent
+never writes the files; the installer command does.
+
 ## Enforcement points
 
 | Point | What it verifies | Scope |
@@ -129,8 +142,8 @@ waits for an explicit order per job. An explicit choice, given with
 `assistant` or `autonomous-dev`. The migration default is a migration, **not** a
 runtime fallback: at runtime, a missing or invalid layer is a failure.
 
-An invalid layer is never repaired with a default: the operation fails and the
-file is preserved as it was. A valid layer is preserved, and `--autonomy`
+An invalid layer is never repaired with a default during install and update: the operation
+fails and the file is preserved as it was. The explicit runtime repair is the only exception. A valid layer is preserved, and `--autonomy`
 overwrites it only when the developer chooses a different value. The interactive
 answer applies to absent layers only. A persona change preserves its file and
 does not touch the autonomy and permissions layers.
