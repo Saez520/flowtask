@@ -57,7 +57,7 @@ describe("catalogos de las capas", () => {
   });
 
   it("declares the migration defaults as valid layer contents", () => {
-    assert.deepEqual(MIGRATION_DEFAULTS.autonomy, { version: 1, profile: "autonomous-dev" });
+    assert.deepEqual(MIGRATION_DEFAULTS.autonomy, { version: 1, profile: "assistant" });
     assert.deepEqual(MIGRATION_DEFAULTS.permissions, { version: 1, envelope: "standard" });
     assert.equal(validateAutonomyLayer(MIGRATION_DEFAULTS.autonomy).status, "valid");
     assert.equal(validatePermissionsLayer(MIGRATION_DEFAULTS.permissions).status, "valid");

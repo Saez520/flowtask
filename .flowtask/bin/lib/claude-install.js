@@ -40,28 +40,6 @@ function readVersion(flowtaskDir) {
   return JSON.parse(fs.readFileSync(packagePath, "utf8")).version;
 }
 
-function readProfile(configDir) {
-  const filePath = path.join(configDir, LAYER_FILES.persona);
-  if (!fileExists(filePath)) return null;
-  try {
-    const value = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    return value && typeof value === "object" ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function readAutonomyProfile(configDir) {
-  const filePath = path.join(configDir, LAYER_FILES.autonomy);
-  if (!fileExists(filePath)) return "autonomous-dev";
-  try {
-    const value = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    return typeof value?.profile === "string" ? value.profile : "autonomous-dev";
-  } catch {
-    return "autonomous-dev";
-  }
-}
-
 function personaContentFromProfile(flowtaskDir, profile) {
   if (!profile) return null;
   if (profile.persona === "custom" || profile.level === "custom") return CUSTOM_PERSONA_TEXT;
@@ -71,19 +49,17 @@ function personaContentFromProfile(flowtaskDir, profile) {
   return fileExists(source) ? fs.readFileSync(source, "utf8") : null;
 }
 
-function runnerBodyFor(flowtaskDir, runtimeRoot, { personaContent, profile, configDir }) {
+function runnerBodyFor(flowtaskDir, runtimeRoot, { personaContent, profile, autonomy }) {
+  const profileValue = profile && Object.hasOwn(profile, "status") ? profile.value : profile;
   const content = personaContent === undefined
-    ? personaContentFromProfile(flowtaskDir, profile ?? readProfile(configDir))
+    ? personaContentFromProfile(flowtaskDir, profileValue)
     : personaContent;
   const runnerContent = fs.readFileSync(path.join(flowtaskDir, "agents", "runner.md"), "utf8");
   return buildRuntimeRunnerBody({
     runnerContent,
     runtimeRoot,
     personaContent: content ?? null,
-    autonomyDescriptor: {
-      profile: readAutonomyProfile(configDir),
-      source: "project",
-    },
+    autonomyDescriptor: autonomy,
   });
 }
 
@@ -415,7 +391,14 @@ export function migrateLegacyClaudeProject({
   return { removed, preserved, manualReview, migrated: true };
 }
 
-function ensureGlobalSurfaces({ flowtaskDir, projectDir, personaChoice = null, personaContent = undefined }) {
+function ensureGlobalSurfaces({
+  flowtaskDir,
+  projectDir,
+  personaChoice = null,
+  personaContent = undefined,
+  autonomyProfile = null,
+  replaceAutonomy = false,
+}) {
   const paths = resolveClaudePaths(projectDir);
   const version = readVersion(flowtaskDir);
 
@@ -426,12 +409,19 @@ function ensureGlobalSurfaces({ flowtaskDir, projectDir, personaChoice = null, p
   });
 
   const configDir = paths.runtimeConfigDir;
-  const profile = readProfile(configDir);
+  const config = ensureClaudeRuntimeConfig(configDir, {
+    personaChoice,
+    autonomyProfile,
+    replaceAutonomy,
+  });
 
   const runnerBody = runnerBodyFor(flowtaskDir, paths.runtimeRoot, {
     personaContent,
-    profile,
-    configDir,
+    profile: config.profile,
+    autonomy: {
+      profile: config.autonomy.value.profile,
+      source: "project",
+    },
   });
 
   const runtime = ensureClaudeRuntime(flowtaskDir, {
@@ -439,8 +429,6 @@ function ensureGlobalSurfaces({ flowtaskDir, projectDir, personaChoice = null, p
     runnerBody,
     version,
   });
-
-  const config = ensureClaudeRuntimeConfig(configDir, { personaChoice });
 
   const runnerAgent = generateClaudeRunnerAgent({
     claudeUserDir: paths.claudeUserDir,
@@ -497,8 +485,17 @@ export function installClaudeTarget({
   personaContent = undefined,
   options = {},
   worktreeManager = null,
+  autonomyProfile = null,
+  replaceAutonomy = false,
 }) {
-  const surfaces = ensureGlobalSurfaces({ flowtaskDir, projectDir, personaChoice, personaContent });
+  const surfaces = ensureGlobalSurfaces({
+    flowtaskDir,
+    projectDir,
+    personaChoice,
+    personaContent,
+    autonomyProfile,
+    replaceAutonomy,
+  });
   const runtimeManifest = readClaudeRuntimeManifest(surfaces.paths.runtimeRoot);
   const registration = registerClaudeProject({
     projectDir,
@@ -691,13 +688,22 @@ export function updateClaudeTarget({
   personaContent = undefined,
   options = {},
   worktreeManager = null,
+  autonomyProfile = null,
+  replaceAutonomy = false,
 }) {
   const beforePaths = resolveClaudePaths(projectDir);
   const legacyBefore =
     fileExists(path.join(beforePaths.projectFlowtaskDir, ".installation-method")) ||
     hasLegacyClaudeInstallation(beforePaths);
 
-  const surfaces = ensureGlobalSurfaces({ flowtaskDir, projectDir, personaChoice, personaContent });
+  const surfaces = ensureGlobalSurfaces({
+    flowtaskDir,
+    projectDir,
+    personaChoice,
+    personaContent,
+    autonomyProfile,
+    replaceAutonomy,
+  });
   const paths = surfaces.paths;
   const registered = fileExists(paths.registryPath);
 

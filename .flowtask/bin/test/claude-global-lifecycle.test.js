@@ -463,6 +463,49 @@ describe("Claude global lifecycle", () => {
     }
   });
 
+  it("installs a fresh runtime with the minimum autonomy and honors an explicit choice", () => {
+    const root = makeRoot("flowtask-autonomy-");
+    const fake = writeFakeClaude(root);
+    const env = environment(root, fake);
+    writeUserState(path.join(root, "user"));
+    const projectDefault = createGitProject(root, "default-autonomy");
+    const projectExplicit = createGitProject(root, "explicit-autonomy");
+
+    try {
+      assertExit(
+        runCli(projectDefault, env, ["install", "--target", "claude", "--persona", "senior"]),
+        "install default autonomy",
+      );
+
+      const runtimeRoot = path.join(root, "user", ".claude", "flowtask");
+      const configPath = path.join(runtimeRoot, "config", "autonomy.json");
+      assert.deepEqual(readJson(configPath), { version: 1, profile: "assistant" });
+      let manifest = readClaudeRuntimeManifest(runtimeRoot);
+      let active = resolveActiveRuntimePaths(runtimeRoot, manifest);
+      assert.match(
+        fs.readFileSync(active.runnerPath, "utf8"),
+        /Current autonomy: assistant \(source: project\)\./,
+      );
+
+      assertExit(
+        runCli(projectExplicit, env, [
+          "install", "--target", "claude", "--persona", "senior", "--autonomy", "autonomous-dev",
+        ]),
+        "install explicit autonomy",
+      );
+
+      assert.deepEqual(readJson(configPath), { version: 1, profile: "autonomous-dev" });
+      manifest = readClaudeRuntimeManifest(runtimeRoot);
+      active = resolveActiveRuntimePaths(runtimeRoot, manifest);
+      assert.match(
+        fs.readFileSync(active.runnerPath, "utf8"),
+        /Current autonomy: autonomous-dev \(source: project\)\./,
+      );
+    } finally {
+      cleanupFixtures();
+    }
+  });
+
   it("updates one runtime version idempotently and keeps every project on it", () => {
     const root = makeRoot();
     const fake = writeFakeClaude(root);

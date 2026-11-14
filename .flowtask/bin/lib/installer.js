@@ -6,9 +6,11 @@ import {
   isBinaryInstalled, getVersion, fileExists,
 } from "./logger.js";
 import { copyWithProgress, copyDirectoryDelta, pruneDirectoryExtras, verifyDirectoryMirror } from "./copy.js";
+import { captureInstallSurfaces, createInstallTransaction, migrateLegacyRootTransactional } from "./install-transaction.js";
 import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
 import { ensureGlobalFerrisSearch, isFerrisSearchSupported } from "./ferris-search.js";
 import { installClaudeTarget, updateClaudeTarget } from "./claude-install.js";
+import { preflightClaudeRuntimeConfig } from "./claude-runtime.js";
 import { resolveClaudePaths } from "./claude.js";
 import {
   CUSTOM_PERSONA_TEXT,
@@ -41,7 +43,6 @@ import { ensureCanonicalSubmodule } from "./submodule-publication.js";
 import {
   AUTONOMY_PROFILES,
   LAYER_FILES,
-  LAYER_SOURCES,
   MIGRATION_DEFAULTS,
   describeOperationalFailure,
   readLayerSources,
@@ -467,7 +468,7 @@ export const ASSETS = {
   ],
 };
 
-const CLASSIFIER_PLUGIN_NAMES = [
+export const CLASSIFIER_PLUGIN_NAMES = [
   "flowtask-classifier-hook",
   "flowtask-classifier-tui",
 ];
@@ -516,23 +517,47 @@ const mapping = {
   4: { level: "custom", persona: "custom", file: null, onboarded: false },
 };
 
-async function promptPersonaSeleccion(readline, currentLevel = null) {
+export const AUTONOMY_PROMPT = Object.freeze({
+  title: "How much initiative should FlowTask take on this machine?",
+  options: Object.freeze([
+    Object.freeze({
+      value: "assistant",
+      label: "Wait for my explicit go-ahead for every job",
+      description: "FlowTask prepares the work and waits for your order before starting anything.",
+      recommended: true,
+    }),
+    Object.freeze({
+      value: "autonomous-dev",
+      label: "Start work on its own without asking first",
+      description: "FlowTask can run the full loop on its own.",
+      recommended: false,
+    }),
+  ]),
+});
+
+/** Plain text lines of the initiative question for a given cursor position. */
+export function renderAutonomyPromptLines(cursor) {
+  return [
+    ...AUTONOMY_PROMPT.options.map((option, index) => {
+      const cursorMark = index === cursor ? ">" : " ";
+      const recommended = option.recommended ? " (recommended)" : "";
+      return `${cursorMark} ${option.label}${recommended}    ${option.description}`;
+    }),
+    "",
+    "↑/↓: navigate, Enter: confirm, Ctrl+C: cancel",
+  ];
+}
+
+async function promptAutonomySelection(readline) {
   if (!process.stdin.isTTY) {
-    throw new Error("No TTY available to select a personality. Pass --persona <training|mid|senior|custom> or create/fix TARGET_DIR/config/profile.json.");
+    throw new Error("No TTY available to answer the initiative question. Pass --autonomy <assistant|autonomous-dev> or run in an interactive terminal.");
   }
 
-  logStep("P", "Agent Personality");
-  logInfo("Define how the assistant will communicate with you according to your experience level.");
+  logStep("P", "Initiative");
+  logInfo(AUTONOMY_PROMPT.title);
 
-  const options = [
-    { label: "1. I am learning / Entry-level",    desc: "If you are taking your first steps in software development" },
-    { label: "2. Mid-level",                          desc: "If you are comfortable in your stack and make technical decisions" },
-    { label: "3. Senior",                             desc: "If you design architectures, mentor others, and think long-term" },
-    { label: "4. Custom ✦ (recommended)",       desc: "Let the assistant learn your style through a short guided audit" },
-  ];
-
-  const initialChoice = currentLevel && levelToChoice[currentLevel] ? levelToChoice[currentLevel] : 1;
-  let cursor = initialChoice - 1;
+  const options = AUTONOMY_PROMPT.options;
+  let cursor = 0;
   let lastRenderLines = 0;
 
   process.stdin.setRawMode(true);
@@ -544,14 +569,7 @@ async function promptPersonaSeleccion(readline, currentLevel = null) {
       readline.moveCursor(process.stdout, 0, -lastRenderLines);
       readline.clearScreenDown(process.stdout);
     }
-    const lines = [
-      ...options.map((opt, i) => {
-        const cursorStr = i === cursor ? COLORS.cyan + "> " + COLORS.reset : "  ";
-        return `${cursorStr}${opt.label}    ${COLORS.dim}${opt.desc}${COLORS.reset}`;
-      }),
-      `\n${COLORS.dim}↑/↓: navigate, Enter: confirm, Ctrl+C: cancel${COLORS.reset}`,
-    ];
-    const output = lines.join("\n");
+    const output = renderAutonomyPromptLines(cursor).join("\n");
     process.stdout.write(output + "\n");
     lastRenderLines = output.split("\n").length;
   };
@@ -582,8 +600,7 @@ async function promptPersonaSeleccion(readline, currentLevel = null) {
           readline.moveCursor(process.stdout, 0, -lastRenderLines);
           readline.clearScreenDown(process.stdout);
         }
-        const num = cursor + 1;
-        resolve(mapping[num]);
+        resolve(options[cursor].value);
       }
     };
 
@@ -687,6 +704,20 @@ function readProfileLevel(targetDir) {
   return level && levelToChoice[level] ? level : null;
 }
 
+/**
+ * Normalizes an explicit autonomy choice. Returns `null` when no choice was
+ * given and rejects any value outside the two stored profiles.
+ */
+export function normalizeAutonomyChoice(value) {
+  if (value === null || value === undefined) return null;
+  if (AUTONOMY_PROFILES.includes(value)) return value;
+  const error = new Error(
+    `[FlowTask Layers] Invalid autonomy choice: ${JSON.stringify(value)}. Use assistant or autonomous-dev.`,
+  );
+  error.code = "autonomy_choice_invalid";
+  throw error;
+}
+
 const OPERATIONAL_LAYERS = Object.freeze(["autonomy", "permissions"]);
 
 function layerLabel(name) {
@@ -710,11 +741,37 @@ function layerOperationalError(name, layer) {
   return error;
 }
 
-function writeLayerDefault(configDir, name) {
+/** Atomic write for a layer value: temp file, parse, equality and rename. */
+function writeLayerValueAtomic(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  if (!writeJsonVerified(filePath, value)) throw new Error(`could not verify ${filePath}`);
+}
+
+function writeLayerValue(configDir, name, value, message) {
   const filePath = path.join(configDir, LAYER_FILES[name]);
-  fs.mkdirSync(configDir, { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(MIGRATION_DEFAULTS[name], null, 2), "utf8");
-  logSuccess(`${layerLabel(name)} layer migrated at ${filePath} with the installation default value.`);
+  writeLayerValueAtomic(filePath, value);
+  logSuccess(message ?? `${layerLabel(name)} layer migrated at ${filePath} with the installation default value.`);
+}
+
+function resolveTargetLayers(targetDir, teamConfigDir) {
+  const project = readLayerSources(targetConfigDir(targetDir));
+  const team = teamConfigDir ? readLayerSources(teamConfigDir) : null;
+  return resolveLayers({ team, project });
+}
+
+/**
+ * Read-only layer check for an installation target. An invalid operational
+ * layer fails with its operational message; a missing one is reported so the
+ * caller can decide which value to write. Nothing is written.
+ */
+export function preflightTargetLayers(targetDir, { teamConfigDir = null } = {}) {
+  const resolution = resolveTargetLayers(targetDir, teamConfigDir);
+  for (const name of OPERATIONAL_LAYERS) {
+    const layer = resolution.layers[name];
+    if (layer.status === "invalid") throw layerOperationalError(name, layer);
+  }
+  const missing = OPERATIONAL_LAYERS.filter((name) => resolution.layers[name].status === "missing");
+  return { resolution, missing };
 }
 
 /**
@@ -722,32 +779,65 @@ function writeLayerDefault(configDir, name) {
  *
  * Resolution is per layer with full replacement: a valid layer is
  * preserved, and an invalid layer fails the target without overwriting the file.
- * The migration default is written only when the layer does not exist in any
- * source: the default is a migration, not a runtime fallback.
+ * A missing layer receives the explicit choice when there is one and the
+ * migration default otherwise. Writes are reversible: if a later write fails,
+ * the previous files are restored byte for byte.
  */
-export function ensureTargetLayers(targetDir, { teamConfigDir = null } = {}) {
+export function ensureTargetLayers(targetDir, { teamConfigDir = null, autonomyProfile = null, replaceAutonomy = false } = {}) {
+  const choice = normalizeAutonomyChoice(autonomyProfile);
   const configDir = targetConfigDir(targetDir);
-  const project = readLayerSources(configDir);
-  const team = teamConfigDir ? readLayerSources(teamConfigDir) : null;
-
-  const resolution = resolveLayers({ team, project });
+  const { resolution } = preflightTargetLayers(targetDir, { teamConfigDir });
   const created = [];
+  const updated = [];
+  const writes = [];
 
-  // An invalid layer fails the target before writing anything: the file is
-  // preserved and is not repaired with a default.
-  for (const name of OPERATIONAL_LAYERS) {
-    const layer = resolution.layers[name];
-    if (layer.status === "invalid") throw layerOperationalError(name, layer);
+  const autonomy = resolution.layers.autonomy;
+  if (autonomy.status === "missing") {
+    writes.push({
+      name: "autonomy",
+      value: choice ? { version: 1, profile: choice } : MIGRATION_DEFAULTS.autonomy,
+      message: choice
+        ? `${layerLabel("autonomy")} layer written at ${path.join(configDir, LAYER_FILES.autonomy)} with the selected value.`
+        : undefined,
+      outcome: "created",
+    });
+  } else if (replaceAutonomy && choice && autonomy.value.profile !== choice) {
+    writes.push({
+      name: "autonomy",
+      value: { version: 1, profile: choice },
+      message: `${layerLabel("autonomy")} layer updated at ${path.join(configDir, LAYER_FILES.autonomy)} with the selected value.`,
+      outcome: "updated",
+    });
   }
 
-  for (const name of OPERATIONAL_LAYERS) {
-    if (resolution.layers[name].status !== "missing") continue;
-    writeLayerDefault(configDir, name);
-    created.push(name);
+  if (resolution.layers.permissions.status === "missing") {
+    writes.push({ name: "permissions", value: MIGRATION_DEFAULTS.permissions, outcome: "created" });
   }
 
-  const finalResolution = resolveLayers({ team, project: readLayerSources(configDir) });
-  return { resolution: finalResolution, created };
+  const backups = [];
+  try {
+    for (const write of writes) {
+      const filePath = path.join(configDir, LAYER_FILES[write.name]);
+      const original = fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
+      writeLayerValue(configDir, write.name, write.value, write.message);
+      backups.push({ filePath, original });
+      (write.outcome === "created" ? created : updated).push(write.name);
+    }
+  } catch (error) {
+    for (const { filePath, original } of backups.reverse()) {
+      try {
+        if (original === null) fs.rmSync(filePath, { force: true });
+        else fs.writeFileSync(filePath, original);
+      } catch {
+        // The original write error is the actionable failure; a partial
+        // restore is reported by the caller's transaction.
+      }
+    }
+    throw error;
+  }
+
+  const finalResolution = resolveTargetLayers(targetDir, teamConfigDir);
+  return { resolution: finalResolution, created, updated };
 }
 
 export function materializeReviewConfig(flowtaskDir, targetDir) {
@@ -773,9 +863,16 @@ export function materializeReviewConfig(flowtaskDir, targetDir) {
  *
  * Persona is written only with an explicit choice; a valid profile is
  * preserved, and an invalid one without an explicit choice is not overwritten. The
- * operational layers are resolved separately and are never repaired with a default.
+ * operational layers are resolved first and are never repaired with a default:
+ * an invalid layer fails before any managed configuration is materialized.
  */
-export function syncTargetConfig(flowtaskDir, targetDir, personaChoice, { preserveProfile = false, explicitPersona = false } = {}) {
+export function syncTargetConfig(
+  flowtaskDir,
+  targetDir,
+  personaChoice,
+  { preserveProfile = false, explicitPersona = false, autonomyProfile = null, replaceAutonomy = false } = {},
+) {
+  const { resolution } = ensureTargetLayers(targetDir, { autonomyProfile, replaceAutonomy });
   materializeReviewConfig(flowtaskDir, targetDir);
 
   const existing = readProfile(targetDir);
@@ -798,24 +895,11 @@ export function syncTargetConfig(flowtaskDir, targetDir, personaChoice, { preser
     logWarn(`No persona profile was found in ${targetConfigDir(targetDir)}: continuing without persona.`);
   }
 
-  const { resolution } = ensureTargetLayers(targetDir);
-
   return {
     persona: personaStatus,
     autonomy: resolution.layers.autonomy,
     permissions: resolution.layers.permissions,
   };
-}
-
-export async function resolvePersonaSelection(projectDir, readline, options = {}) {
-  const profileLevel = readProfileLevel(path.join(projectDir, ".flowtask"));
-  if (options.persona && levelToChoice[options.persona]) {
-    return mapping[levelToChoice[options.persona]];
-  }
-  if (profileLevel) {
-    return mapping[levelToChoice[profileLevel]];
-  }
-  return promptPersonaSeleccion(readline);
 }
 
 // ─── Plugin Manifest Functions ────────────────────────────────────────────────
@@ -1410,201 +1494,264 @@ function reportFerrisSearch(globalResult, localResult) {
 // ─── Install ──────────────────────────────────────────────────────────────────
 
 export async function install(flowtaskDir, options = {}) {
-  assertRunnerCanon({ flowtaskDir });
-  const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "install" });
-  console.log(`
+  let transaction = null;
+  try {
+    assertRunnerCanon({ flowtaskDir });
+    const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "install" });
+    console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
 ║        FlowTask Installation Wizard       ║
 ╚═══════════════════════════════════════════╝${COLORS.reset}
   `);
 
-  const readline = await import("readline");
+    const readline = await import("readline");
 
-  // ── Step 0: IDE Selection ────────────────────────────────────────────────
-  logStep(0, "Select Target Environment");
-  const selectedOptions = Array.isArray(options.target) && options.target.length > 0
-    ? options.target
-    : await showInteractiveSelector(readline);
+    // ── Step 0: IDE Selection ────────────────────────────────────────────────
+    logStep(0, "Select Target Environment");
+    const selectedOptions = Array.isArray(options.target) && options.target.length > 0
+      ? options.target
+      : await showInteractiveSelector(readline);
 
-  const targets = [];
-  if (selectedOptions.length === 0) {
-    targets.push({ id: "standalone", ideDir: "", targetSubDir: ".flowtask" });
-  } else {
+    const targets = [];
+    if (selectedOptions.length === 0 || selectedOptions.includes("standalone")) {
+      targets.push({ id: "standalone", ideDir: "", targetSubDir: ".flowtask" });
+    }
     if (selectedOptions.includes("opencode")) targets.push({ id: "opencode", ideDir: ".opencode", targetSubDir: path.join(".opencode", "flowtask") });
     if (selectedOptions.includes("vscode"))   targets.push({ id: "vscode",   ideDir: ".vscode",   targetSubDir: path.join(".vscode",   "flowtask") });
     if (selectedOptions.includes("claude"))   targets.push({ id: "claude",   ideDir: ".claude",   targetSubDir: path.join(".claude",   "flowtask") });
-  }
-  const nonClaudeTargets = targets.filter(({ id }) => id !== "claude");
-  const claudeSelected = targets.some(({ id }) => id === "claude");
+    if (targets.length === 0) throw new Error("No installation target was selected.");
+    const nonClaudeTargets = targets.filter(({ id }) => id !== "claude");
+    const claudeSelected = targets.some(({ id }) => id === "claude");
 
-  // ── Step P: Agent Personality ─────────────────────────────────
-  const personaChoice = options.persona
-    ? mapping[levelToChoice[options.persona]]
-    : await promptPersonaSeleccion(readline);
-  const personaContent = resolvePersonaContent(flowtaskDir, personaChoice);
+    // ── Step P: Agent Personality ─────────────────────────────────
+    const personaChoice = options.persona ? mapping[levelToChoice[options.persona]] : null;
+    const personaContent = personaChoice ? resolvePersonaContent(flowtaskDir, personaChoice) : null;
 
-  const projectDir = process.cwd();
-  const preflight = nonClaudeTargets.some(({ id }) => id === "opencode")
-    ? await prepareInstallation(flowtaskDir, projectDir, "install", { targets: nonClaudeTargets, worktreeManager }) : null;
-  const targetDirs = nonClaudeTargets.map(({ targetSubDir }) => path.join(projectDir, targetSubDir));
-  if (targetDirs.length > 0 && !migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
-    throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
-  }
-  let ferrisSearchResult = null;
-  if (targets.some(({ id }) => id === "opencode")) {
-    try {
-      ferrisSearchResult = await ensureGlobalFerrisSearch({ flowtaskDir, readline, isTTY: Boolean(process.stdin.isTTY) });
-    } catch (err) {
-      ferrisSearchResult = failedFerrisSearchResult(err);
+    const projectDir = process.cwd();
+    const preflight = nonClaudeTargets.some(({ id }) => id === "opencode")
+      ? await prepareInstallation(flowtaskDir, projectDir, "install", { targets: nonClaudeTargets, worktreeManager }) : null;
+
+    const rootFlowtask = path.join(projectDir, ".flowtask");
+    const isSourceDir = path.resolve(rootFlowtask) === path.resolve(flowtaskDir);
+    const rootMigrationApplies = !isSourceDir && fileExists(rootFlowtask);
+    const migrationTargetId = nonClaudeTargets.find(({ id }) => id !== "standalone")?.id ?? null;
+
+    const targetLayerPreflights = nonClaudeTargets.map((target) => {
+      const layerSourceDir = rootMigrationApplies && migrationTargetId === target.id
+        ? rootFlowtask
+        : path.join(projectDir, target.targetSubDir);
+      return preflightTargetLayers(layerSourceDir);
+    });
+
+    const claudePaths = resolveClaudePaths(projectDir);
+    let claudeLayerPreflight = null;
+    let claudeLegacyPreflight = null;
+    if (claudeSelected) {
+      claudeLayerPreflight = preflightClaudeRuntimeConfig(claudePaths.runtimeConfigDir);
+      const legacyConfigDir = path.join(claudePaths.projectFlowtaskDir, "config");
+      if (fileExists(legacyConfigDir)) claudeLegacyPreflight = preflightClaudeRuntimeConfig(legacyConfigDir);
     }
-  }
-  const results = [];
-  let localFerrisSearch = null;
 
-  for (const { id, ideDir, targetSubDir } of nonClaudeTargets) {
-    const TARGET_DIR = path.join(projectDir, targetSubDir);
-    logInfo(`\nProcessing target: ${id.toUpperCase()} (${targetSubDir})...`);
+    const requestedAutonomy = normalizeAutonomyChoice(options.autonomy);
+    const missingOperationalLayers = targetLayerPreflights.some(({ missing }) => missing.length > 0)
+      || (claudeLayerPreflight?.missing.length ?? 0) > 0
+      || (claudeLegacyPreflight?.missing.length ?? 0) > 0;
+    const selectedAutonomy = !requestedAutonomy && process.stdin.isTTY && missingOperationalLayers
+      ? await promptAutonomySelection(readline)
+      : null;
+    const autonomyProfile = requestedAutonomy ?? selectedAutonomy;
+    const replaceAutonomy = Boolean(options.autonomy);
 
-    try {
-      // ── Step 1: IDE check ────────────────────────────────────────────────
-      logStep(1, `Checking ${id}...`);
-      if (id === "opencode" && !checkOpenCode()) throw new Error("OpenCode is required for this target.");
+    const autonomyWillBeWritten = targetLayerPreflights.some(
+      ({ resolution }) => resolution.layers.autonomy.status === "missing",
+    )
+      || (claudeLayerPreflight?.missing.includes("autonomy") ?? false)
+      || replaceAutonomy;
+    if (autonomyWillBeWritten) {
+      const effective = autonomyProfile ?? MIGRATION_DEFAULTS.autonomy.profile;
+      const initiative = effective === "assistant"
+        ? "wait for an explicit go-ahead"
+        : "start work without asking";
+      logInfo(`Initiative on this machine: ${initiative} (${autonomyProfile ? "selected" : "installation default"}).`);
+    }
 
-      // ── Step 2: Engram ───────────────────────────────────────────────────
-      logStep(2, "Checking Engram...");
-      checkEngram();
+    transaction = createInstallTransaction();
+    captureInstallSurfaces(transaction, {
+      projectDir,
+      targets,
+      manifest: preflight?.manifest ?? loadPluginManifest(flowtaskDir),
+      flowtaskDir,
+    });
 
-      // ── Step 3: Migrate legacy root .flowtask/ if present ────────────────
-      logStep(3, "Checking existing installation...");
-      const rootFlowtask = path.join(projectDir, ".flowtask");
-      const isSourceDir = path.resolve(rootFlowtask) === path.resolve(flowtaskDir);
-      if (id !== "standalone" && !isSourceDir && fileExists(rootFlowtask)) {
-        logWarn(`Found root .flowtask/ — moving contents to ${targetSubDir}...`);
+    const targetDirs = nonClaudeTargets.map(({ targetSubDir }) => path.join(projectDir, targetSubDir));
+    if (targetDirs.length > 0 && !migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
+      throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
+    }
+
+    let ferrisSearchResult = null;
+    if (targets.some(({ id }) => id === "opencode")) {
+      try {
+        ferrisSearchResult = await ensureGlobalFerrisSearch({ flowtaskDir, readline, isTTY: Boolean(process.stdin.isTTY) });
+      } catch (err) {
+        ferrisSearchResult = failedFerrisSearchResult(err);
+      }
+    }
+    const results = [];
+    let localFerrisSearch = null;
+
+    for (const target of nonClaudeTargets) {
+      const { id, ideDir, targetSubDir } = target;
+      const TARGET_DIR = path.join(projectDir, targetSubDir);
+      logInfo(`\nProcessing target: ${id.toUpperCase()} (${targetSubDir})...`);
+
+      try {
+        // ── Step 1: IDE check ────────────────────────────────────────────────
+        logStep(1, `Checking ${id}...`);
+        if (id === "opencode" && !checkOpenCode()) throw new Error("OpenCode is required for this target.");
+
+        // ── Step 2: Engram ───────────────────────────────────────────────────
+        logStep(2, "Checking Engram...");
+        checkEngram();
+
+        // ── Step 3: Migrate legacy root .flowtask/ if present ────────────────
+        logStep(3, "Checking existing installation...");
+        if (id !== "standalone" && !isSourceDir && fileExists(rootFlowtask)) {
+          logWarn(`Found root .flowtask/ — moving contents to ${targetSubDir}...`);
+          transaction.addJournal(migrateLegacyRootTransactional({ projectDir, targetDir: TARGET_DIR, flowtaskDir }));
+        }
+
+        // ── Step 4: Copy only the required assets ────────────────────────────
+        logStep(4, `Installing assets into ${targetSubDir}...`);
         if (!fs.existsSync(TARGET_DIR)) fs.mkdirSync(TARGET_DIR, { recursive: true });
-        fs.readdirSync(rootFlowtask).forEach((file) => {
-          const src = path.join(rootFlowtask, file);
-          const dst = path.join(TARGET_DIR, file);
-          if (fs.existsSync(dst)) fs.rmSync(dst, { recursive: true, force: true });
-          fs.renameSync(src, dst);
+
+        for (const { src, dest } of ASSETS[id] ?? []) {
+          const srcDir = path.join(flowtaskDir, src);
+          if (!fileExists(srcDir)) { logWarn(`Source not found, skipping: ${src}`); continue; }
+          const destDir = path.join(TARGET_DIR, dest);
+          const pruned = pruneDirectoryExtras(srcDir, destDir);
+          copyWithProgress(srcDir, destDir, src, readline);
+          if (!verifyDirectoryMirror(srcDir, destDir, { ignorePaths: pruned.preserved })) throw new Error(`Mirror verification failed for ${src}`);
+        }
+
+        // ── Target config: persona and autonomy/permissions layers ──
+        // Layers are resolved and written before installing the plugin and before
+        // injecting persona and autonomy.
+        configureRunnerScripts(TARGET_DIR, targetSubDir);
+        const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
+          explicitPersona: Boolean(personaChoice),
+          autonomyProfile,
+          replaceAutonomy,
         });
-      }
+        const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
 
-      // ── Step 4: Copy only the required assets ────────────────────────────
-      logStep(4, `Installing assets into ${targetSubDir}...`);
-      if (!fs.existsSync(TARGET_DIR)) fs.mkdirSync(TARGET_DIR, { recursive: true });
+        // OpenCode: skills go to .opencode/skills/ (outside flowtask subdir)
+        if (id === "opencode") {
+          const srcSkills = path.join(flowtaskDir, "skills");
+          if (fileExists(srcSkills)) copyWithProgress(srcSkills, path.join(projectDir, ".opencode", "skills"), "skills (opencode)", readline);
+          localFerrisSearch = mergeOpencodeConfig(
+            path.join(projectDir, ideDir, "opencode.json"),
+            flowtaskDir,
+            ideDir,
+            { removeFerrisSearch: isFerrisSearchSupported() },
+          );
+          registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
+        }
 
-      for (const { src, dest } of ASSETS[id] ?? []) {
-        const srcDir = path.join(flowtaskDir, src);
-        if (!fileExists(srcDir)) { logWarn(`Source not found, skipping: ${src}`); continue; }
-        const destDir = path.join(TARGET_DIR, dest);
-        const pruned = pruneDirectoryExtras(srcDir, destDir);
-        copyWithProgress(srcDir, destDir, src, readline);
-        if (!verifyDirectoryMirror(srcDir, destDir, { ignorePaths: pruned.preserved })) throw new Error(`Mirror verification failed for ${src}`);
-      }
+        // ── Step 5: Install plugins from manifest (OpenCode only) ────────────
+        // Copies each manifest entry (filtered by destinations) into
+        // .opencode/plugins/<name>/ and registers it in tui.json (kind tui)
+        // or .opencode/opencode.json (kind server).
+        if (id === "opencode") {
+          logStep(5, "Installing plugins from manifest...");
+          const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
+          installManifestPlugins(projectDir, preflight?.manifest ?? manifest, flowtaskDir, preflight);
+        }
 
-      // ── Target config: persona and autonomy/permissions layers ──
-      // Layers are resolved and written before installing the plugin and before
-      // injecting persona and autonomy.
-      configureRunnerScripts(TARGET_DIR, targetSubDir);
-      const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, { explicitPersona: true });
-      const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
+        // ── Inject persona and autonomy into runner.md ───────────────────
+        injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
+        if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
 
-      // OpenCode: skills go to .opencode/skills/ (outside flowtask subdir)
-      if (id === "opencode") {
-        const srcSkills = path.join(flowtaskDir, "skills");
-        if (fileExists(srcSkills)) copyWithProgress(srcSkills, path.join(projectDir, ".opencode", "skills"), "skills (opencode)", readline);
-        localFerrisSearch = mergeOpencodeConfig(
-          path.join(projectDir, ideDir, "opencode.json"),
-          flowtaskDir,
-          ideDir,
-          { removeFerrisSearch: isFerrisSearchSupported() },
+        // ── Step 6: Write installation marker ───────────────────────────────
+        fs.writeFileSync(
+          path.join(TARGET_DIR, ".installation-method"),
+          JSON.stringify({ method: "unified-installation-v2", target: id, timestamp: new Date().toISOString() }, null, 2)
         );
-        registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
+
+        results.push({ target: id, status: "Success" });
+      } catch (err) {
+        results.push({ target: id, status: "Error", message: err.message });
+        throw err;
       }
+    }
 
-      // ── Step 5: Install plugins from manifest (OpenCode only) ────────────
-      // Copies each manifest entry (filtered by destinations) into
-      // .opencode/plugins/<name>/ and registers it in tui.json (kind tui)
-      // or .opencode/opencode.json (kind server).
-      if (id === "opencode") {
-        logStep(5, "Installing plugins from manifest...");
-        const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
-        installManifestPlugins(projectDir, preflight?.manifest ?? manifest, flowtaskDir, preflight);
+    if (claudeSelected) {
+      logInfo("\nProcessing target: CLAUDE (user-level runtime)...");
+      try {
+        logStep(1, "Checking claude...");
+        checkClaudeCode();
+        logStep(2, "Checking Engram...");
+        checkEngram();
+        const claudeResult = installClaudeTarget({
+          flowtaskDir,
+          projectDir,
+          personaChoice,
+          personaContent,
+          worktreeManager,
+          autonomyProfile,
+          replaceAutonomy,
+        });
+        results.push({
+          target: "claude",
+          status: "Success",
+          stats: { payloadId: claudeResult.runtime.payloadId },
+        });
+      } catch (err) {
+        results.push({ target: "claude", status: "Error", message: err.message });
+        throw err;
       }
-
-      // ── Inject persona and autonomy into runner.md ───────────────────
-      injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
-      if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
-
-      // ── Step 6: Write installation marker ───────────────────────────────
-      fs.writeFileSync(
-        path.join(TARGET_DIR, ".installation-method"),
-        JSON.stringify({ method: "unified-installation-v2", target: id, timestamp: new Date().toISOString() }, null, 2)
-      );
-
-      results.push({ target: id, status: "Success" });
-    } catch (err) {
-      logError(`Failed to install in ${id}: ${err.message}`);
-      results.push({ target: id, status: "Error", message: err.message });
     }
-  }
 
-  if (claudeSelected) {
-    logInfo("\nProcessing target: CLAUDE (user-level runtime)...");
-    try {
-      logStep(1, "Checking claude...");
-      checkClaudeCode();
-      logStep(2, "Checking Engram...");
-      checkEngram();
-      const claudeResult = installClaudeTarget({
-        flowtaskDir,
-        projectDir,
-        personaChoice,
-        personaContent,
-        worktreeManager,
-      });
-      results.push({
-        target: "claude",
-        status: "Success",
-        stats: { payloadId: claudeResult.runtime.payloadId },
-      });
-    } catch (err) {
-      logError(`Failed to install in claude: ${err.message}`);
-      results.push({ target: "claude", status: "Error", message: err.message });
+    const committed = transaction.commit();
+    transaction = null;
+    if (!committed.ok) {
+      logWarn(`Installation finished but some transaction backups could not be removed: ${committed.failures.map(({ path: failedPath }) => failedPath).join(", ")}.`);
     }
-  }
 
-  for (const { id, targetSubDir } of nonClaudeTargets) {
-    try {
-      await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, targetSubDir), flowtaskDir, selectedClis: [id], readline });
-    } catch (err) {
-      logWarn(`Graphify (${id}): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
+    for (const { id, targetSubDir } of nonClaudeTargets) {
+      try {
+        await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, targetSubDir), flowtaskDir, selectedClis: [id], readline });
+      } catch (err) {
+        logWarn(`Graphify (${id}): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
+      }
     }
-  }
 
-  if (claudeSelected) {
-    try {
-      await coordinateGraphify({
-        projectDir,
-        targetDir: path.join(projectDir, ".claude", "flowtask"),
-        flowtaskDir,
-        selectedClis: ["claude"],
-        readline,
-      });
-    } catch (err) {
-      logWarn(`Graphify (claude): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
+    if (claudeSelected) {
+      try {
+        await coordinateGraphify({
+          projectDir,
+          targetDir: path.join(projectDir, ".claude", "flowtask"),
+          flowtaskDir,
+          selectedClis: ["claude"],
+          readline,
+        });
+      } catch (err) {
+        logWarn(`Graphify (claude): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
+      }
     }
-  }
 
-  // Cleanup empty root .flowtask if it was migrated (skip if it's the source dir)
-  const rootFT = path.join(projectDir, ".flowtask");
-  const isSrcDir = path.resolve(rootFT) === path.resolve(flowtaskDir);
-  if (!isSrcDir && fileExists(rootFT) && targets.some((t) => t.id !== "standalone")) {
-    try { if (fs.readdirSync(rootFT).length === 0) fs.rmdirSync(rootFT); } catch (_) {}
-  }
+    // Cleanup empty root .flowtask if it was migrated (skip if it's the source dir)
+    if (!isSourceDir && fileExists(rootFlowtask) && targets.some((t) => t.id !== "standalone")) {
+      try { if (fs.readdirSync(rootFlowtask).length === 0) fs.rmdirSync(rootFlowtask); } catch (_) {}
+    }
 
-  reportFerrisSearch(ferrisSearchResult, localFerrisSearch);
-  printSummary("Installation Summary", results);
+    reportFerrisSearch(ferrisSearchResult, localFerrisSearch);
+    printSummary("Installation Summary", results);
+    return { ok: true };
+  } catch (error) {
+    const rolled = transaction ? transaction.rollback() : { ok: true, failures: [] };
+    logError(formatInstallFailure(error, { command: "install", verbose: options.verbose === true, rollback: rolled }));
+    return { ok: false };
+  }
 }
 
 // ─── Update ───────────────────────────────────────────────────────────────────
@@ -1615,15 +1762,22 @@ export async function update(flowtaskDir, options = {}) {
     verbose: options.verbose === true,
   });
   report.begin();
+  let result = { ok: false };
   try {
-    await runUpdate(flowtaskDir, options, report);
+    result = await runUpdate(flowtaskDir, options, report);
   } catch (error) {
-    report.fail(error?.message ?? String(error));
-    throw error;
+    const failure = formatUpdateFailure(error, {
+      verbose: options.verbose === true,
+      rollback: error?.rollback ?? null,
+    });
+    if (options.verbose === true) console.error(failure);
+    else report.fail(failure.replace(/\s*\n\s*/g, " · "));
+    result = { ok: false };
   } finally {
     report.finish();
     report.dispose();
   }
+  return result;
 }
 
 async function runUpdate(flowtaskDir, options, report) {
@@ -1679,181 +1833,207 @@ async function runUpdate(flowtaskDir, options, report) {
     logError("No FlowTask installation found. Run 'flowtask install' first.");
     report.markFailure();
     report.finish();
-    return;
+    return { ok: false };
   }
 
   const preflight = nonClaudeTargets.some(({ id }) => id === "opencode")
     ? await prepareInstallation(flowtaskDir, projectDir, "update", { targets: nonClaudeTargets, worktreeManager }) : null;
-  if (!claudeActive) {
-    const legacyCleanupOk = removeLegacyConsumerFiles(projectDir, ["CLAUDE.md"]);
-    if (!legacyCleanupOk) logWarn("CLAUDE.md cleanup was not complete; the result must be reviewed.");
+
+  for (const target of nonClaudeTargets) {
+    preflightTargetLayers(path.join(projectDir, target.subDir));
+  }
+  if (claudeActive) {
+    preflightClaudeRuntimeConfig(claudePaths.runtimeConfigDir);
+    const legacyConfigDir = path.join(claudePaths.projectFlowtaskDir, "config");
+    if (fileExists(legacyConfigDir)) preflightClaudeRuntimeConfig(legacyConfigDir);
   }
 
-  const targetDirs = nonClaudeTargets.map(({ subDir }) => path.join(projectDir, subDir));
-  if (targetDirs.length > 0 && !migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
-    throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
+  const autonomyProfile = normalizeAutonomyChoice(options.autonomy);
+  const replaceAutonomy = Boolean(options.autonomy);
+  if (autonomyProfile) {
+    const initiative = autonomyProfile === "assistant"
+      ? "wait for an explicit go-ahead"
+      : "start work without asking";
+    logInfo(`Initiative on this machine: ${initiative} (selected).`);
   }
 
-  let ferrisSearchResult = null;
-  if (nonClaudeTargets.some(({ id }) => id === "opencode")) {
-    try {
-      ferrisSearchResult = await ensureGlobalFerrisSearch({ flowtaskDir, readline, isTTY: Boolean(process.stdin.isTTY) });
-    } catch (err) {
-      ferrisSearchResult = failedFerrisSearchResult(err);
-    }
-  }
-
-  // ── Step 1.5: Agent Personality ──────────────────────────────
-  let currentLevel = null;
-  for (const targetDir of targetDirs) {
-    currentLevel = readProfileLevel(targetDir);
-    if (currentLevel) break;
-  }
-
-  let personaChoice = null;
-  if (options.persona && levelToChoice[options.persona]) {
-    personaChoice = mapping[levelToChoice[options.persona]];
-  } else if (currentLevel && levelToChoice[currentLevel]) {
-    personaChoice = mapping[levelToChoice[currentLevel]];
-    logInfo(`Preserving existing personality: ${personaChoice.persona}`);
-  } else {
-    // Without a valid personality and without an explicit choice, the prompt is not opened:
-    // the flow continues without persona and without altering autonomy or permissions.
-    logWarn("No valid personality was found and --persona was not provided. Continuing without injecting a personality.");
-  }
-  const personaContent = personaChoice ? resolvePersonaContent(flowtaskDir, personaChoice) : null;
-
-  // ── Step 2: Delta sync each target ──────────────────────────────────────
-  const preservePaths = ["CA-", "workspace", ".workspace", ".installation-method"];
-  const results = [];
-  let localFerrisSearch = null;
-  let pluginsRegistered = null;
-  let pluginsDurationMs = null;
-  const graphifyStates = [];
   const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
+  const transaction = createInstallTransaction();
+  try {
+    captureInstallSurfaces(transaction, { projectDir, targets, manifest, flowtaskDir });
 
-  for (const { id, subDir, ideDir, previousMethod } of nonClaudeTargets) {
-    const TARGET_DIR = path.join(projectDir, subDir);
-    logStep(2, `Updating ${id}...`);
-    const syncStartedAt = Date.now();
+    if (!claudeActive) {
+      const legacyCleanupOk = removeLegacyConsumerFiles(projectDir, ["CLAUDE.md"]);
+      if (!legacyCleanupOk) logWarn("CLAUDE.md cleanup was not complete; the result must be reviewed.");
+    }
 
-    try {
-      if (!fs.existsSync(TARGET_DIR)) throw new Error(`Target directory not found: ${subDir}`);
+    const targetDirs = nonClaudeTargets.map(({ subDir }) => path.join(projectDir, subDir));
+    if (targetDirs.length > 0 && !migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
+      throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
+    }
 
-      let totalCopied = 0;
-      let totalSkipped = 0;
-
-      // Delta sync only the relevant assets
-      for (const { src, dest } of ASSETS[id] ?? []) {
-        const srcDir = path.join(flowtaskDir, src);
-        if (!fileExists(srcDir)) continue;
-        const destDir = path.join(TARGET_DIR, dest);
-        const stats = copyDirectoryDelta(srcDir, destDir, preservePaths);
-        const pruned = pruneDirectoryExtras(srcDir, destDir, { preservePaths });
-        totalCopied += stats.copied;
-        totalSkipped += stats.skipped;
-        if (!verifyDirectoryMirror(srcDir, destDir, { ignorePaths: pruned.preserved })) throw new Error(`Mirror verification failed for ${src}`);
+    let ferrisSearchResult = null;
+    if (nonClaudeTargets.some(({ id }) => id === "opencode")) {
+      try {
+        ferrisSearchResult = await ensureGlobalFerrisSearch({ flowtaskDir, readline, isTTY: Boolean(process.stdin.isTTY) });
+      } catch (err) {
+        ferrisSearchResult = failedFerrisSearchResult(err);
       }
+    }
 
-      if (id !== "standalone") cleanupLegacyScripts(projectDir, TARGET_DIR, flowtaskDir);
+    // ── Step 1.5: Agent Personality ──────────────────────────────
+    let currentLevel = null;
+    for (const targetDir of targetDirs) {
+      currentLevel = readProfileLevel(targetDir);
+      if (currentLevel) break;
+    }
 
-      // OpenCode: skills delta
-      if (id === "opencode") {
-        const srcSkills = path.join(flowtaskDir, "skills");
-        if (fileExists(srcSkills)) {
-          const stats = copyDirectoryDelta(srcSkills, path.join(projectDir, ".opencode", "skills"), preservePaths);
+    let personaChoice = null;
+    if (options.persona && levelToChoice[options.persona]) {
+      personaChoice = mapping[levelToChoice[options.persona]];
+    } else if (currentLevel && levelToChoice[currentLevel]) {
+      personaChoice = mapping[levelToChoice[currentLevel]];
+      logInfo(`Preserving existing personality: ${personaChoice.persona}`);
+    } else {
+      // Without a valid personality and without an explicit choice, the prompt is not opened:
+      // the flow continues without persona and without altering autonomy or permissions.
+      logWarn("No valid personality was found and --persona was not provided. Continuing without injecting a personality.");
+    }
+    const personaContent = personaChoice ? resolvePersonaContent(flowtaskDir, personaChoice) : null;
+
+    // ── Step 2: Delta sync each target ──────────────────────────────────────
+    const preservePaths = ["CA-", "workspace", ".workspace", ".installation-method"];
+    const results = [];
+    let localFerrisSearch = null;
+    let pluginsRegistered = null;
+    let pluginsDurationMs = null;
+    const graphifyStates = [];
+
+    for (const { id, subDir, ideDir, previousMethod } of nonClaudeTargets) {
+      const TARGET_DIR = path.join(projectDir, subDir);
+      logStep(2, `Updating ${id}...`);
+      const syncStartedAt = Date.now();
+
+      try {
+        if (!fs.existsSync(TARGET_DIR)) throw new Error(`Target directory not found: ${subDir}`);
+
+        let totalCopied = 0;
+        let totalSkipped = 0;
+
+        // Delta sync only the relevant assets
+        for (const { src, dest } of ASSETS[id] ?? []) {
+          const srcDir = path.join(flowtaskDir, src);
+          if (!fileExists(srcDir)) continue;
+          const destDir = path.join(TARGET_DIR, dest);
+          const stats = copyDirectoryDelta(srcDir, destDir, preservePaths);
+          const pruned = pruneDirectoryExtras(srcDir, destDir, { preservePaths });
           totalCopied += stats.copied;
           totalSkipped += stats.skipped;
+          if (!verifyDirectoryMirror(srcDir, destDir, { ignorePaths: pruned.preserved })) throw new Error(`Mirror verification failed for ${src}`);
         }
-        localFerrisSearch = mergeOpencodeConfig(
-          path.join(projectDir, ideDir, "opencode.json"),
-          flowtaskDir,
-          ideDir,
-          { removeFerrisSearch: isFerrisSearchSupported() },
+
+        if (id !== "standalone") cleanupLegacyScripts(projectDir, TARGET_DIR, flowtaskDir);
+
+        // OpenCode: skills delta
+        if (id === "opencode") {
+          const srcSkills = path.join(flowtaskDir, "skills");
+          if (fileExists(srcSkills)) {
+            const stats = copyDirectoryDelta(srcSkills, path.join(projectDir, ".opencode", "skills"), preservePaths);
+            totalCopied += stats.copied;
+            totalSkipped += stats.skipped;
+          }
+          localFerrisSearch = mergeOpencodeConfig(
+            path.join(projectDir, ideDir, "opencode.json"),
+            flowtaskDir,
+            ideDir,
+            { removeFerrisSearch: isFerrisSearchSupported() },
+          );
+          registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
+        }
+
+        logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
+
+        // ── Target config: persona and autonomy/permissions layers ──
+        // Layers are resolved and written before installing the plugin and before
+        // injecting persona and autonomy.
+        configureRunnerScripts(TARGET_DIR, subDir);
+        const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
+          preserveProfile: !options.persona,
+          explicitPersona: Boolean(options.persona),
+          autonomyProfile,
+          replaceAutonomy,
+        });
+        const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
+
+        // ── Re-install plugins from manifest (OpenCode only) ─────────────────
+        if (id === "opencode") {
+          const pluginsStartedAt = Date.now();
+          pluginsRegistered = installManifestPlugins(projectDir, manifest, flowtaskDir, preflight).registered;
+          pluginsDurationMs = Date.now() - pluginsStartedAt;
+        }
+
+        // ── Inject persona and autonomy into runner.md ───────────────────
+        injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
+        if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
+
+        fs.writeFileSync(
+          path.join(TARGET_DIR, ".installation-method"),
+          JSON.stringify({
+            method: "unified-installation-v2",
+            target: id,
+            updatedAt: new Date().toISOString(),
+            previousUpdate: previousMethod?.updatedAt || previousMethod?.timestamp || null,
+            filesUpdated: totalCopied,
+            filesSkipped: totalSkipped,
+          }, null, 2)
         );
-        registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
+
+        results.push({ target: id, status: "Success", stats: { copied: totalCopied, skipped: totalSkipped } });
+        report.syncRow(id, `${totalCopied} updated · ${totalSkipped} unchanged`, {
+          durationMs: Date.now() - syncStartedAt,
+        });
+      } catch (err) {
+        results.push({ target: id, status: "Error", message: err.message });
+        report.syncRow(id, err.message, { failed: true, durationMs: Date.now() - syncStartedAt });
+        throw err;
       }
+    }
 
-      logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
-
-      // ── Target config: persona and autonomy/permissions layers ──
-      // Layers are resolved and written before installing the plugin and before
-      // injecting persona and autonomy.
-      configureRunnerScripts(TARGET_DIR, subDir);
-      const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
-        preserveProfile: !options.persona,
-        explicitPersona: Boolean(options.persona),
-      });
-      const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
-
-      // ── Re-install plugins from manifest (OpenCode only) ─────────────────
-      if (id === "opencode") {
-        const pluginsStartedAt = Date.now();
-        pluginsRegistered = installManifestPlugins(projectDir, manifest, flowtaskDir, preflight).registered;
-        pluginsDurationMs = Date.now() - pluginsStartedAt;
+    if (claudeActive) {
+      logStep(2, "Updating claude...");
+      const claudeStartedAt = Date.now();
+      try {
+        const explicitPersona = Boolean(options.persona);
+        const claudeResult = updateClaudeTarget({
+          flowtaskDir,
+          projectDir,
+          personaChoice: explicitPersona ? personaChoice : null,
+          personaContent: explicitPersona ? personaContent : undefined,
+          worktreeManager,
+          autonomyProfile,
+          replaceAutonomy,
+        });
+        results.push({
+          target: "claude",
+          status: "Success",
+          stats: { registered: claudeResult.registered },
+        });
+        report.syncRow("claude", claudeResult.registered === false ? "runtime refreshed · not registered" : "runtime refreshed", {
+          durationMs: Date.now() - claudeStartedAt,
+        });
+      } catch (err) {
+        results.push({ target: "claude", status: "Error", message: err.message });
+        report.syncRow("claude", err.message, { failed: true, durationMs: Date.now() - claudeStartedAt });
+        throw err;
       }
-
-      // ── Inject persona and autonomy into runner.md ───────────────────
-      injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
-      if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
-
-      fs.writeFileSync(
-        path.join(TARGET_DIR, ".installation-method"),
-        JSON.stringify({
-          method: "unified-installation-v2",
-          target: id,
-          updatedAt: new Date().toISOString(),
-          previousUpdate: previousMethod?.updatedAt || previousMethod?.timestamp || null,
-          filesUpdated: totalCopied,
-          filesSkipped: totalSkipped,
-        }, null, 2)
-      );
-
-      results.push({ target: id, status: "Success", stats: { copied: totalCopied, skipped: totalSkipped } });
-      report.syncRow(id, `${totalCopied} updated · ${totalSkipped} unchanged`, {
-        durationMs: Date.now() - syncStartedAt,
-      });
-    } catch (err) {
-      logError(`Failed to update ${id}: ${err.message}`);
-      results.push({ target: id, status: "Error", message: err.message });
-      report.syncRow(id, err.message, { failed: true, durationMs: Date.now() - syncStartedAt });
     }
-  }
 
-  if (claudeActive) {
-    logStep(2, "Updating claude...");
-    const claudeStartedAt = Date.now();
-    try {
-      const explicitPersona = Boolean(options.persona);
-      const claudeResult = updateClaudeTarget({
-        flowtaskDir,
-        projectDir,
-        personaChoice: explicitPersona ? personaChoice : null,
-        personaContent: explicitPersona ? personaContent : undefined,
-        worktreeManager,
-      });
-      results.push({
-        target: "claude",
-        status: "Success",
-        stats: { registered: claudeResult.registered },
-      });
-      report.syncRow("claude", claudeResult.registered === false ? "runtime refreshed · not registered" : "runtime refreshed", {
-        durationMs: Date.now() - claudeStartedAt,
-      });
-    } catch (err) {
-      logError(`Failed to update claude: ${err.message}`);
-      results.push({ target: "claude", status: "Error", message: err.message });
-      report.syncRow("claude", err.message, { failed: true, durationMs: Date.now() - claudeStartedAt });
+    report.endSync();
+    if (pluginsRegistered !== null) {
+      report.phase("plugins", `${pluginsRegistered} registered`, { durationMs: pluginsDurationMs });
     }
-  }
 
-  report.endSync();
-  if (pluginsRegistered !== null) {
-    report.phase("plugins", `${pluginsRegistered} registered`, { durationMs: pluginsDurationMs });
-  }
-
-  if (nonClaudeTargets.length > 0) {
-    try {
+    if (nonClaudeTargets.length > 0) {
       regenerateCanonicalCli(projectDir, flowtaskDir, manifest);
       logSuccess("Canonical CLI declaration regenerated");
       regenerateCanonicalTui(projectDir, flowtaskDir, manifest);
@@ -1863,62 +2043,101 @@ async function runUpdate(flowtaskDir, options, report) {
       if (!removeLegacyConsumerFiles(projectDir, legacyNames)) {
         logWarn("flowtask update finished with legacy residue that could not be removed.");
       }
-    } catch (err) {
-      logError(`Could not regenerate the canonical TUI declaration: ${err.message}`);
     }
-  }
 
-  const graphifyStartedAt = Date.now();
-  for (const { id, subDir } of nonClaudeTargets) {
-    try {
-      graphifyStates.push(await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, subDir), flowtaskDir, selectedClis: [id], readline }));
-    } catch (err) {
-      logWarn(`Graphify (${id}): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
-      graphifyStates.push(null);
+    const committed = transaction.commit();
+    if (!committed.ok) {
+      logWarn(`Update finished but some transaction backups could not be removed: ${committed.failures.map(({ path: failedPath }) => failedPath).join(", ")}.`);
     }
-  }
 
-  if (claudeActive) {
-    try {
-      graphifyStates.push(await coordinateGraphify({
-        projectDir,
-        targetDir: path.join(projectDir, ".claude", "flowtask"),
-        flowtaskDir,
-        selectedClis: ["claude"],
-        readline,
-      }));
-    } catch (err) {
-      logWarn(`Graphify (claude): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
-      graphifyStates.push(null);
-    }
-  }
-
-  const graphifyDurationMs = Date.now() - graphifyStartedAt;
-  const graphifyText = describeGraphifyPhase(graphifyStates);
-  if (graphifyText) report.phase("graphify", graphifyText, { durationMs: graphifyDurationMs });
-
-  const searchStartedAt = Date.now();
-  reportFerrisSearch(ferrisSearchResult, localFerrisSearch);
-  const searchDurationMs = Date.now() - searchStartedAt;
-  const searchText = describeSearchPhase(ferrisSearchResult);
-  if (searchText) report.phase("search", searchText, { durationMs: searchDurationMs });
-
-  if (report.verbose) {
-    printSummary("Update Summary", results, (res) => {
-      if (res.stats?.copied !== undefined) {
-        return ` (${res.stats.copied} updated, ${res.stats.skipped} preserved)`;
+    const graphifyStartedAt = Date.now();
+    for (const { id, subDir } of nonClaudeTargets) {
+      try {
+        graphifyStates.push(await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, subDir), flowtaskDir, selectedClis: [id], readline }));
+      } catch (err) {
+        logWarn(`Graphify (${id}): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
+        graphifyStates.push(null);
       }
-      if (res.target === "claude" && res.stats) {
-        return res.stats.registered === false ? " (not registered)" : " (registered)";
+    }
+
+    if (claudeActive) {
+      try {
+        graphifyStates.push(await coordinateGraphify({
+          projectDir,
+          targetDir: path.join(projectDir, ".claude", "flowtask"),
+          flowtaskDir,
+          selectedClis: ["claude"],
+          readline,
+        }));
+      } catch (err) {
+        logWarn(`Graphify (claude): coordination failed (${err.message}). Retry with flowtask update or contact an administrator.`);
+        graphifyStates.push(null);
       }
-      return "";
-    });
-  } else {
-    report.finish();
+    }
+
+    const graphifyDurationMs = Date.now() - graphifyStartedAt;
+    const graphifyText = describeGraphifyPhase(graphifyStates);
+    if (graphifyText) report.phase("graphify", graphifyText, { durationMs: graphifyDurationMs });
+
+    const searchStartedAt = Date.now();
+    reportFerrisSearch(ferrisSearchResult, localFerrisSearch);
+    const searchDurationMs = Date.now() - searchStartedAt;
+    const searchText = describeSearchPhase(ferrisSearchResult);
+    if (searchText) report.phase("search", searchText, { durationMs: searchDurationMs });
+
+    if (report.verbose) {
+      printSummary("Update Summary", results, (res) => {
+        if (res.stats?.copied !== undefined) {
+          return ` (${res.stats.copied} updated, ${res.stats.skipped} preserved)`;
+        }
+        if (res.target === "claude" && res.stats) {
+          return res.stats.registered === false ? " (not registered)" : " (registered)";
+        }
+        return "";
+      });
+    } else {
+      report.finish();
+    }
+    return { ok: true };
+  } catch (error) {
+    const rolled = transaction.rollback();
+    if (error && typeof error === "object") error.rollback = rolled;
+    throw error;
   }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function describeFailureCause(error) {
+  const message = String(error?.message ?? error ?? "unknown failure").trim();
+  return message.replace(/\s*\n\s*/g, " · ");
+}
+
+function formatFailure(error, { command, verbose = false, rollback = null } = {}) {
+  const lines = [
+    `[FlowTask] Installation failed: ${describeFailureCause(error)}`,
+    `Action: retry with flowtask ${command}${verbose ? "" : "; add --verbose for diagnostics"}.`,
+  ];
+  if (rollback && rollback.ok === false) {
+    const failedPaths = (rollback.failures ?? [])
+      .map(({ path: failedPath, reason }) => failedPath ?? reason)
+      .filter(Boolean);
+    lines.push(
+      `Rollback could not restore: ${failedPaths.join(", ") || "unknown paths"}. ` +
+        `Inspect these paths before retrying with flowtask ${command}.`,
+    );
+  }
+  if (verbose && error?.stack) lines.push(error.stack);
+  return lines.join("\n");
+}
+
+function formatInstallFailure(error, options = {}) {
+  return formatFailure(error, { command: "install", ...options });
+}
+
+function formatUpdateFailure(error, options = {}) {
+  return formatFailure(error, { command: "update", ...options });
+}
 
 function printSummary(title, results, extraFn = () => "") {
   console.log(`\n${COLORS.blue}╔═══════════════════════════════════════════╗
@@ -1928,7 +2147,8 @@ function printSummary(title, results, extraFn = () => "") {
     const color = res.status === "Success" ? COLORS.green : COLORS.red;
     console.log(`  - ${res.target.toUpperCase()}: ${color}${res.status}${COLORS.reset}${extraFn(res)}${res.message ? ` (${res.message})` : ""}`);
   });
-  if (results.some((r) => r.status === "Success")) {
+  const succeeded = results.length > 0 && results.every((result) => result.status === "Success");
+  if (succeeded) {
     logSuccess(`\nFlowTask ${title.toLowerCase()} completed successfully!`);
   } else {
     logError(`\nFlowTask ${title.toLowerCase()} failed.`);

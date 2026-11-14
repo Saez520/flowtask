@@ -15,9 +15,15 @@ Each installed target has its own layer configuration in
   neither authorizes nor restricts, and autonomy does not widen the permissions
   envelope.
 - `install` and `update` create `autonomy.json` and `permissions.json` **only when
-  the layer does not exist**, with `autonomous-dev` and `standard` as the
-  installation values. That default is a migration, not a runtime fallback: at
-  runtime, a missing or invalid layer is a failure with an operational message.
+  the layer does not exist**, with `assistant` and `standard` as the
+  installation values. `assistant` is the lowest authority: the system waits for
+  an explicit order per job. That default is a migration, not a runtime
+  fallback: at runtime, a missing or invalid layer is a failure with an
+  operational message.
+- An interactive installation asks a single initiative question and recommends
+  the minimum. `--autonomy <assistant|autonomous-dev>` selects the value without
+  the question; the flag overwrites a valid layer, while the interactive answer
+  applies only to absent layers. A valid layer is preserved without a choice.
 - An invalid layer is never repaired with a default: the operation fails and the
   file is preserved.
 - A missing or invalid persona leaves a warning and execution continues without a

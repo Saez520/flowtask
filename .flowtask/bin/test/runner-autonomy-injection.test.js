@@ -233,7 +233,7 @@ describe("migracion y sincronizacion de capas", () => {
     assert.deepEqual(created, ["autonomy", "permissions"]);
     assert.deepEqual(
       JSON.parse(fs.readFileSync(path.join(targetDir, "config", "autonomy.json"), "utf8")),
-      { version: 1, profile: "autonomous-dev" },
+      { version: 1, profile: "assistant" },
     );
     assert.deepEqual(
       JSON.parse(fs.readFileSync(path.join(targetDir, "config", "permissions.json"), "utf8")),
@@ -276,6 +276,33 @@ describe("migracion y sincronizacion de capas", () => {
       JSON.parse(fs.readFileSync(path.join(targetDir, "config", "autonomy.json"), "utf8")),
       { version: 1, profile: "assistant" },
     );
+  });
+
+  it("applies an explicit autonomy choice over a valid layer only when replacing", () => {
+    const { targetDir } = createTarget({
+      "autonomy.json": { version: 1, profile: "assistant" },
+      "permissions.json": { version: 1, envelope: "standard" },
+    });
+
+    const preserved = ensureTargetLayers(targetDir, { autonomyProfile: "autonomous-dev" });
+
+    assert.deepEqual(preserved.updated, []);
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(targetDir, "config", "autonomy.json"), "utf8")).profile,
+      "assistant",
+    );
+
+    const replaced = ensureTargetLayers(targetDir, {
+      autonomyProfile: "autonomous-dev",
+      replaceAutonomy: true,
+    });
+
+    assert.deepEqual(replaced.updated, ["autonomy"]);
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(targetDir, "config", "autonomy.json"), "utf8")).profile,
+      "autonomous-dev",
+    );
+    assert.equal(replaced.resolution.layers.autonomy.value.profile, "autonomous-dev");
   });
 
   it("keeps three targets independent", () => {

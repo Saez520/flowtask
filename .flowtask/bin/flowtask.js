@@ -18,6 +18,7 @@ import {
   verifyRunnerCanon,
 } from "./lib/runner-flows.js";
 import {
+  AUTONOMY_PROFILES,
   PERSONA_LEVELS,
   describeOperationalFailure,
   readLayerSources,
@@ -63,6 +64,25 @@ function parseOptions(commandArgs) {
       }
       options.persona = value;
       index += 1;
+      continue;
+    }
+
+    if (argument === "--autonomy") {
+      const value = commandArgs[index + 1];
+      if (!AUTONOMY_PROFILES.includes(value)) {
+        throw new Error(`--autonomy must be one of: ${AUTONOMY_PROFILES.join(", ")}`);
+      }
+      options.autonomy = value;
+      index += 1;
+      continue;
+    }
+
+    if (argument.startsWith("--autonomy=")) {
+      const value = argument.slice("--autonomy=".length);
+      if (!AUTONOMY_PROFILES.includes(value)) {
+        throw new Error(`--autonomy must be one of: ${AUTONOMY_PROFILES.join(", ")}`);
+      }
+      options.autonomy = value;
       continue;
     }
 
@@ -549,13 +569,19 @@ try {
 }
 
 switch (command) {
-  case "install":
-    await runCliAction(async () => { await install(FLOWTASK_DIR, options); });
+  case "install": {
+    let result = null;
+    await runCliAction(async () => { result = await install(FLOWTASK_DIR, options); });
+    if (result?.ok === false) process.exitCode = 1;
     break;
+  }
 
-  case "update":
-    await runCliAction(async () => { await update(FLOWTASK_DIR, options); });
+  case "update": {
+    let result = null;
+    await runCliAction(async () => { result = await update(FLOWTASK_DIR, options); });
+    if (result?.ok === false) process.exitCode = 1;
     break;
+  }
 
   case "uninstall": {
     await runCliAction(async () => {
@@ -657,8 +683,11 @@ Usage:
                       Select targets explicitly; repeat the flag or use commas
   flowtask install --persona <training|mid|senior|custom>
                       Select the agent personality explicitly
+  flowtask install --autonomy <assistant|autonomous-dev>
+                      Select how much initiative FlowTask takes on this machine
   flowtask update     Update FlowTask files (delta-only sync)
   flowtask update --persona <training|mid|senior|custom>
+  flowtask update --autonomy <assistant|autonomous-dev>
   flowtask update --verbose
                       Show the per-step diagnostic output
   flowtask uninstall  Remove the user-level runtime and registered projects
@@ -684,8 +713,8 @@ Usage:
 
 Examples:
   flowtask install --target claude --persona senior
-  flowtask install --target opencode,claude
-  flowtask update
+  flowtask install --target opencode,claude --autonomy autonomous-dev
+  flowtask update --autonomy assistant
   flowtask uninstall --project --yes
   flowtask layers resolve --target claude
   flowtask graphify query --query UserService  Deprecated; use Graphify MCP

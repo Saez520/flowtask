@@ -24,15 +24,50 @@ project. From the consumer project:
 
 ```bash
 flowtask install --target claude --persona senior
+flowtask install --target claude --autonomy autonomous-dev
 ```
 
 `--target` selects the target explicitly and accepts a repeated flag or a
 comma-separated list. Without a TTY, `install` fails unless `--target` is
-provided. `--persona` accepts `training`, `mid`, `senior`, or `custom`.
+provided. `--persona` accepts `training`, `mid`, `senior`, or `custom`; it is
+optional and there is no tone question.
+
+`--autonomy` accepts `assistant` or `autonomous-dev`. It is the only explicit
+choice that raises the installation default; without the flag, a valid layer is
+preserved and an absent one receives `assistant`. The same flag is available for
+`flowtask update`.
 
 The first installation in the account creates the user-level runtime and
 registers the current project. Running the same command in another project
 reuses the existing runtime and only adds the new registration.
+
+### The single installation question
+
+When a target has no autonomy layer, an interactive installation asks one
+question: `How much initiative should FlowTask take on this machine?`. The first
+option, recommended and selected by default, is to wait for an explicit
+go-ahead for every job; the second lets FlowTask start work on its own. The
+prompt uses product language only and never shows internal values, layer names,
+or paths. The answer applies only to layers that are absent.
+
+The question is skipped for a valid layer, when `--autonomy` is provided, or
+when no interactive terminal is available. In those cases a valid layer is
+preserved and an absent layer receives `assistant`. `--autonomy` overwrites a
+valid choice; it never repairs an invalid layer.
+
+### Preflight and rollback
+
+Before writing, `install` and `update` validate every selected target's
+operational layers. An invalid autonomy or permissions layer fails the
+operation with the operational message, preserves the file byte for byte, and
+does not write an installation marker or register the project.
+
+Managed surfaces are captured before they are written. A failure in any target
+aborts the whole operation, restores the captured configuration and files, and
+removes the transaction backups. The command exits non-zero, reports the cause,
+and asks the developer to retry with `flowtask install` (or `flowtask update`)
+and to add `--verbose` for diagnostics. Optional web search and Graphify
+coordination keep their non-fatal behavior and stay outside the transaction.
 
 ### User-level runtime
 
@@ -361,13 +396,16 @@ For Claude Code the layers live once per user in
 For the other targets they live in `<target>/config/`.
 
 `install` and `update` create `autonomy.json` and `permissions.json` only when the
-layer does not exist, with `autonomous-dev` and `standard` as installation values,
-so that the installed system keeps working. That default is a migration, not a
-runtime fallback: at runtime, a missing or invalid layer is a failure with an
+layer does not exist, with `assistant` and `standard` as installation values.
+`assistant` is the lowest authority: the installed system waits for an explicit
+order per job. A valid layer is preserved; an explicit `--autonomy` choice
+overwrites a valid layer with the selected value, and the interactive answer
+applies only to absent layers. That default is a migration, not a runtime
+fallback: at runtime, a missing or invalid layer is a failure with an
 operational message. An invalid layer is never repaired with a default — the
-operation fails and the file is preserved. `profile.json` keeps its current shape,
-and a missing or invalid persona leaves a warning without altering autonomy or
-permissions.
+operation fails and the file is preserved. `profile.json` keeps its current
+shape, and a missing or invalid persona leaves a warning without altering
+autonomy or permissions.
 
 Layer precedence is `permissions > autonomy > persona`. To inspect the resolved
 layers of a target:

@@ -23,6 +23,7 @@ permissions:
 <!-- FLOWTASK:PERSONA_START -->
 <!-- FLOWTASK:PERSONA_END -->
 <!-- FLOWTASK:AUTONOMY_START -->
+Current autonomy: assistant (source: project).
 <!-- FLOWTASK:AUTONOMY_END -->
 
 # FlowTask Runner — Investigator and Orchestrator

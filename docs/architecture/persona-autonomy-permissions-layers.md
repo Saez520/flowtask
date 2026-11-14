@@ -120,16 +120,20 @@ layers **only when the layer does not exist**:
 
 | Missing layer | File created | Content |
 |--------------|----------------|---------|
-| Autonomy | `autonomy.json` | `{ "version": 1, "profile": "autonomous-dev" }` |
+| Autonomy | `autonomy.json` | `{ "version": 1, "profile": "assistant" }` |
 | Permissions | `permissions.json` | `{ "version": 1, "envelope": "standard" }` |
 
-Migration defaults preserve installed behavior. They are a
-migration, **not** a runtime fallback: at runtime, a missing or
-invalid layer is a failure.
+The autonomy migration default is the lowest initiative: the installed system
+waits for an explicit order per job. An explicit choice, given with
+`--autonomy` or through the single interactive question, is stored as
+`assistant` or `autonomous-dev`. The migration default is a migration, **not** a
+runtime fallback: at runtime, a missing or invalid layer is a failure.
 
 An invalid layer is never repaired with a default: the operation fails and the
-file is preserved as it was. A valid layer is preserved. A persona change
-preserves its file and does not touch the autonomy and permissions layers.
+file is preserved as it was. A valid layer is preserved, and `--autonomy`
+overwrites it only when the developer chooses a different value. The interactive
+answer applies to absent layers only. A persona change preserves its file and
+does not touch the autonomy and permissions layers.
 
 Layer files live next to `profile.json` in the target's configuration
 directory and are ignored in git: they are local state, not versioned content.
