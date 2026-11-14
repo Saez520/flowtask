@@ -10,6 +10,7 @@ import {
   readClaudeRuntimeManifest,
   ensureClaudeRuntime,
   removeClaudeRuntime,
+  hasLayerFiles,
 } from "../lib/claude-runtime.js";
 import { migrateLegacyClaudeProject } from "../lib/claude-install.js";
 import { resolveActiveRuntimePaths } from "../lib/claude.js";
@@ -826,7 +827,27 @@ describe("Claude global lifecycle", () => {
         path.join(legacyFlowtask, "config", "graphify.json"),
       ];
       const firstHashes = idempotencyPaths.map((file) => sha256File(file));
-      assertExit(runCli(legacy, env, ["update"]), "second legacy update");
+      // gap: C1 — a legacy config directory that only keeps graphify.json must not emit a persona warning.
+      const secondUpdateConfigDir = path.join(legacyFlowtask, "config");
+      assert.deepEqual(
+        fs.readdirSync(secondUpdateConfigDir).sort(),
+        ["graphify.json"],
+        "the second update must run with a legacy config directory that only keeps graphify.json",
+      );
+      const secondUpdate = runCli(legacy, env, ["update"]);
+      assertExit(secondUpdate, "second legacy update");
+      for (const [stream, output] of [["stdout", secondUpdate.stdout], ["stderr", secondUpdate.stderr]]) {
+        assert.equal(
+          output.includes("No persona profile was found"),
+          false,
+          `${stream} must not report a missing persona for a legacy directory without layer files`,
+        );
+        assert.equal(
+          output.includes("continuing without persona"),
+          false,
+          `${stream} must not continue without persona for a legacy directory without layer files`,
+        );
+      }
       const changedAfterMigrationUpdate = idempotencyPaths.filter(
         (file, index) => sha256File(file) !== firstHashes[index],
       );
@@ -911,6 +932,27 @@ describe("Claude global lifecycle", () => {
         [],
         `a repeated update must not change anything; changed: ${changedAfterMigrationUpdate.join(", ")}`,
       );
+    } finally {
+      cleanupFixtures();
+    }
+  });
+
+  it("detects layer files only when the config directory holds a user-level layer", () => {
+    // gap: C3 — a directory with unrelated files must not be treated as a layer source.
+    const root = makeRoot("flowtask-layer-files-");
+    const missing = path.join(root, "missing");
+    const graphifyOnly = path.join(root, "graphify-only");
+    fs.mkdirSync(graphifyOnly, { recursive: true });
+    writeJson(path.join(graphifyOnly, "graphify.json"), { schema: 1, enabled: false, initialized: false });
+
+    try {
+      assert.equal(hasLayerFiles(missing), false, "a non-existent directory holds no layer files");
+      assert.equal(hasLayerFiles(graphifyOnly), false, "graphify.json is not a user-level layer");
+      for (const file of ["profile.json", "autonomy.json", "permissions.json"]) {
+        const configDir = path.join(root, `with-${path.basename(file, ".json")}`);
+        writeJson(path.join(configDir, file), {});
+        assert.equal(hasLayerFiles(configDir), true, `the presence of ${file} must make the directory a layer source`);
+      }
     } finally {
       cleanupFixtures();
     }

@@ -198,6 +198,15 @@ function invalidOperationalLayerError(name, filePath, reason) {
 }
 
 /**
+ * Report whether a config directory holds at least one user-level layer file.
+ * Unrelated files alone do not make the directory a layer source.
+ */
+export function hasLayerFiles(configDir) {
+  return [LAYER_FILES.persona, LAYER_FILES.autonomy, LAYER_FILES.permissions]
+    .some((fileName) => fileExists(path.join(configDir, fileName)));
+}
+
+/**
  * Read-only check of the user-level layers. An invalid operational layer fails
  * before anything is written; a missing layer is reported so the caller can
  * decide which value to write. An invalid or missing persona only warns and

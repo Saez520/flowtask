@@ -10,7 +10,7 @@ import { captureInstallSurfaces, createInstallTransaction, migrateLegacyRootTran
 import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
 import { ensureGlobalFerrisSearch, isFerrisSearchSupported } from "./ferris-search.js";
 import { installClaudeTarget, updateClaudeTarget } from "./claude-install.js";
-import { preflightClaudeRuntimeConfig } from "./claude-runtime.js";
+import { hasLayerFiles, preflightClaudeRuntimeConfig } from "./claude-runtime.js";
 import { resolveClaudePaths } from "./claude.js";
 import {
   CUSTOM_PERSONA_TEXT,
@@ -1578,7 +1578,7 @@ ${COLORS.blue}╔═════════════════════
     if (claudeSelected) {
       claudeLayerPreflight = preflightClaudeRuntimeConfig(claudePaths.runtimeConfigDir);
       const legacyConfigDir = path.join(claudePaths.projectFlowtaskDir, "config");
-      if (fileExists(legacyConfigDir)) claudeLegacyPreflight = preflightClaudeRuntimeConfig(legacyConfigDir);
+      if (hasLayerFiles(legacyConfigDir)) claudeLegacyPreflight = preflightClaudeRuntimeConfig(legacyConfigDir);
     }
 
     const requestedAutonomy = normalizeAutonomyChoice(options.autonomy);
@@ -1875,7 +1875,7 @@ async function runUpdate(flowtaskDir, options, report) {
   if (claudeActive) {
     preflightClaudeRuntimeConfig(claudePaths.runtimeConfigDir);
     const legacyConfigDir = path.join(claudePaths.projectFlowtaskDir, "config");
-    if (fileExists(legacyConfigDir)) preflightClaudeRuntimeConfig(legacyConfigDir);
+    if (hasLayerFiles(legacyConfigDir)) preflightClaudeRuntimeConfig(legacyConfigDir);
   }
 
   const autonomyProfile = normalizeAutonomyChoice(options.autonomy);
