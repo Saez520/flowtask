@@ -10,9 +10,13 @@ import {
   writeFileAtomic,
 } from "./claude.js";
 import {
+  AUTONOMY_PROFILES,
   LAYER_FILES,
   MIGRATION_DEFAULTS,
+  describeOperationalFailure,
   readLayerFile,
+  readLayerSources,
+  resolveLayers,
   validateAutonomyLayer,
   validatePermissionsLayer,
   validatePersonaLayer,
@@ -174,12 +178,61 @@ export function readIdentityProfile(configDir) {
   return { status: "present", value: { version: 1, baseName }, path: identityPath, reason: null };
 }
 
+function invalidPersonaError(profilePath, reason) {
+  const error = new Error(
+    `Invalid persona profile at ${profilePath}: ${reason}. Fix or move the file and retry.`,
+  );
+  error.code = "profile_invalid";
+  error.path = profilePath;
+  error.reason = reason;
+  return error;
+}
+
+function invalidOperationalLayerError(name, filePath, reason) {
+  const error = new Error(describeOperationalFailure({ layer: name, path: filePath, reason }));
+  error.code = `${name}_invalid`;
+  error.layer = name;
+  error.path = filePath;
+  error.reason = reason;
+  return error;
+}
+
+/**
+ * Read-only check of the user-level layers. An invalid persona or operational
+ * layer fails before anything is written; a missing layer is reported so the
+ * caller can decide which value to write. Persona missing only warns.
+ */
+export function preflightClaudeRuntimeConfig(configDir) {
+  const resolution = resolveLayers({ project: readLayerSources(configDir) });
+  const profilePath = path.join(configDir, LAYER_FILES.persona);
+
+  if (resolution.layers.persona.status === "invalid") {
+    throw invalidPersonaError(profilePath, resolution.layers.persona.reason ?? "invalid layer");
+  }
+  if (resolution.layers.persona.status === "missing") {
+    logWarn(`No persona profile was found at ${profilePath}; continuing without persona.`);
+  }
+
+  const missing = [];
+  for (const name of ["autonomy", "permissions"]) {
+    const layer = resolution.layers[name];
+    if (layer.status === "invalid") {
+      throw invalidOperationalLayerError(name, path.join(configDir, LAYER_FILES[name]), layer.reason ?? "invalid layer");
+    }
+    if (layer.status === "missing") missing.push(name);
+  }
+  return { resolution, missing };
+}
+
 /**
  * Ensure the three user-level layers and the installation identity. A missing
- * operational layer receives the installation default; an existing invalid
- * layer or identity is never overwritten.
+ * operational layer receives the explicit choice or the installation default;
+ * an existing invalid layer or identity is never overwritten.
  */
-export function ensureClaudeRuntimeConfig(configDir, { personaChoice = null } = {}) {
+export function ensureClaudeRuntimeConfig(
+  configDir,
+  { personaChoice = null, autonomyProfile = null, replaceAutonomy = false } = {},
+) {
   fs.mkdirSync(configDir, { recursive: true });
 
   const profilePath = path.join(configDir, LAYER_FILES.persona);
@@ -205,14 +258,15 @@ export function ensureClaudeRuntimeConfig(configDir, { personaChoice = null } = 
       ? { status: "invalid", value: null, reason: existing.reason }
       : validatePersonaLayer(existing.value);
     if (validated.status === "invalid") {
-      const error = new Error(
-        `Invalid persona profile at ${profilePath}: ${validated.reason}. Fix or move the file and retry.`,
-      );
-      error.code = "profile_invalid";
-      throw error;
+      throw invalidPersonaError(profilePath, validated.reason ?? "invalid layer");
     }
     profile = validated;
-    if (profile.status === "missing") logWarn(`No persona profile was found at ${profilePath}; continuing without persona.`);
+  }
+
+  if (autonomyProfile !== null && !AUTONOMY_PROFILES.includes(autonomyProfile)) {
+    const error = new Error(`[FlowTask Layers] Invalid autonomy choice: ${JSON.stringify(autonomyProfile)}.`);
+    error.code = "autonomy_choice_invalid";
+    throw error;
   }
 
   const operational = {};
@@ -221,9 +275,20 @@ export function ensureClaudeRuntimeConfig(configDir, { personaChoice = null } = 
     const validator = name === "autonomy" ? validateAutonomyLayer : validatePermissionsLayer;
 
     if (!fileExists(filePath)) {
-      writeFileAtomic(filePath, JSON.stringify(MIGRATION_DEFAULTS[name], null, 2));
-      logSuccess(`${name} layer written to ${filePath} with the installation default value.`);
-      operational[name] = validator(MIGRATION_DEFAULTS[name]);
+      const value = name === "autonomy" && autonomyProfile
+        ? { version: 1, profile: autonomyProfile }
+        : MIGRATION_DEFAULTS[name];
+      const validatedValue = validator(value);
+      if (validatedValue.status !== "valid") {
+        throw invalidOperationalLayerError(name, filePath, validatedValue.reason ?? "invalid layer");
+      }
+      writeFileAtomic(filePath, JSON.stringify(value, null, 2));
+      logSuccess(
+        name === "autonomy" && autonomyProfile
+          ? `autonomy layer written to ${filePath} with the selected value.`
+          : `${name} layer written to ${filePath} with the installation default value.`,
+      );
+      operational[name] = validatedValue;
       continue;
     }
 
@@ -232,13 +297,14 @@ export function ensureClaudeRuntimeConfig(configDir, { personaChoice = null } = 
       ? { status: "invalid", value: null, reason: existing.reason }
       : validator(existing.value);
     if (validated.status === "invalid") {
-      const error = new Error(
-        `Invalid ${name} layer at ${filePath}: ${validated.reason}. Fix or move the file and retry.`,
-      );
-      error.code = `${name}_invalid`;
-      error.path = filePath;
-      error.reason = validated.reason;
-      throw error;
+      throw invalidOperationalLayerError(name, filePath, validated.reason ?? "invalid layer");
+    }
+    if (name === "autonomy" && replaceAutonomy && autonomyProfile && validated.value.profile !== autonomyProfile) {
+      const value = { version: 1, profile: autonomyProfile };
+      writeFileAtomic(filePath, JSON.stringify(value, null, 2));
+      logSuccess(`autonomy layer written to ${filePath} with the selected value.`);
+      operational[name] = validator(value);
+      continue;
     }
     operational[name] = validated;
   }
