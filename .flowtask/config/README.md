@@ -7,7 +7,7 @@ Each installed target has its own layer configuration in
 
 | File | Layer | Values |
 |------|-------|--------|
-| `profile.json` | Persona (tone) | `level`: `training`, `mid`, `senior`, `custom`. `persona`: tone identity. `onboarded`: onboarding state. |
+| `profile.json` | Persona (tone) | `level`: `training`, `mid`, `senior`, `custom`. `persona`: `tutor-training`, `tutor-mid`, `tutor-senior`, `custom`. `onboarded`: onboarding state. `quiz_completed_at`: ISO-8601 date or `null`. `stack_snapshot`: stack object or `null`. `quiz_answers`: quiz history array. |
 | `autonomy.json` | Autonomy (initiative) | `version`: `1`. `profile`: `assistant` or `autonomous-dev`. |
 | `permissions.json` | Permissions (technical envelope) | `version`: `1`. `envelope`: `standard`. |
 
@@ -24,7 +24,7 @@ Each installed target has its own layer configuration in
   the minimum. `--autonomy <assistant|autonomous-dev>` selects the value without
   the question; the flag overwrites a valid layer, while the interactive answer
   applies only to absent layers. A valid layer is preserved without a choice.
-- During `install` and `update`, an invalid layer is never repaired with a default:
+- An invalid layer is never repaired with a default during `install` and `update`:
   the operation fails and the file is preserved.
 - The explicit `flowtask repair` is the only exception: it backs up the invalid
   file, writes the safe default, verifies the result, and preserves valid layers.

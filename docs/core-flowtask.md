@@ -54,7 +54,9 @@ A layer that gives the runner its own voice. There is no single registry: FlowTa
 defines three personalities — didactic tutor, peer mentor, and technical peer who
 debates as an equal — and the runner adopts one according to the developer's
 profile. Personality changes the tone and depth of the conversation, not the
-orchestration rules.
+orchestration rules. The work rules — domain attention, one question at a time,
+reality filter, quick mode, and commit rules — live in the base runner and apply
+with any persona.
 
 Personality only defines tone and depth; it does not authorize or restrict actions.
 Technical authorization lives in the permissions layer and initiative in the
