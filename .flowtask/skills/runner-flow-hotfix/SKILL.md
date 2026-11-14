@@ -47,7 +47,7 @@ Despacha el Validator con el mismo contexto. El Validator persiste
 `hotfix/{id}/artifact/validacion` y su flow-state separado. Los rechazos siguen el
 Loop de validación común, incluidos el diagnóstico posterior, la pausa por sus
 condiciones y cualquier límite expreso propio de la ejecución. Con APPROVED hacé el commit antes de
-`${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch} [--init-submodules] [--title TEXTO] [--body TEXTO]`.
+`${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch} [--init-submodules] [--merge-strategy {estrategia}] [--title TEXTO] [--body TEXTO]`.
 Un conflicto conserva worktree y branch y se escala sin limpiar; un rechazo por
 destino con cambios sin commitear también conserva todo intacto, se escala al
 desarrollador y solo procede con `--preserve-dirty` si hay consentimiento
@@ -55,7 +55,17 @@ humano explícito. `list`,
 `prune` y la reconciliación cruzan los worktrees hotfix con
 `flow-state/hotfix/{id}/instances` y reportan huérfanos.
 
+#### Estrategia de cierre dual
+
+El Constructor propone la estrategia y el Runner la ejecuta sin re-evaluarla.
+
+- Leé `commit_strategy`, `commit_strategy_rationale`, `commit_count` y `commits` del reporte del Constructor.
+- Propuesta faltante → squash; propuesta inválida → pausa con `authority_block`; nunca re-evalúes la estrategia. El default del manager solo aplica cuando falta la propuesta.
+- Pasá `merge_strategy` a `worktree_complete` con la misma identidad y base registradas; en la vía alternativa `.sh`, `--merge-strategy`.
+- Registrá `merge_strategy`, `merge_commit`, `commit_count` y el fundamento en `flow-state/hotfix/{id}/instances` y en el reporte final.
+- La transacción del gestor es la fuente autoritativa de lo aplicado.
+
 El flujo hotfix mantiene aislamiento, checkpoints, reintentos y cierre con la
-estrategia vigente (squash por defecto), sin alterar los namespaces históricos de CA.
+estrategia propuesta, sin alterar los namespaces históricos de CA.
 
 ***
