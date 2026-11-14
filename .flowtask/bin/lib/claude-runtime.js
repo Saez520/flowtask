@@ -85,7 +85,16 @@ function buildPayloadFiles(payloadDir) {
     .sort((left, right) => left.path.localeCompare(right.path));
 }
 
-function buildPayloadId(version, files) {
+/** Placeholder payload id used to render the startup document before the real id exists. */
+const STARTUP_PAYLOAD_PLACEHOLDER = "__flowtask_payload__";
+
+/**
+ * Synthetic runtime root for that provisional render. It keeps the payload id
+ * independent of the installation location.
+ */
+const STARTUP_PLACEHOLDER_ROOT = "__flowtask_runtime__";
+
+export function buildPayloadId(version, files) {
   const digest = crypto
     .createHash("sha256")
     .update(files.map((file) => `${file.path}\0${file.sha256}`).join("\n"))
@@ -452,9 +461,20 @@ export function ensureClaudeRuntime(flowtaskDir, options = {}) {
 
     writeFileAtomic(path.join(stagingDir, "runner.md"), runnerBody);
 
-    // The payload id is derived from the runtime files that do not embed the
-    // payload path. The startup document is generated afterwards against the
-    // final path and its hash is added to the manifest.
+    // The startup document embeds the payload path, so the id is computed from
+    // a provisional copy resolved against a placeholder id. The final copy is
+    // regenerated once the id is known and the manifest records its hash.
+    const placeholderPaths = resolveActiveRuntimePaths(STARTUP_PLACEHOLDER_ROOT, {
+      payloadId: STARTUP_PAYLOAD_PLACEHOLDER,
+    });
+    generateClaudeSessionStart({
+      skillsDir: placeholderPaths.skillsDir,
+      runnerPath: placeholderPaths.runnerPath,
+      sessionStartPath: path.join(stagingDir, "session-start.md"),
+      runnerContent: runnerBody,
+      verificationSkillsDir: path.join(stagingDir, "skills"),
+    });
+
     const payloadId = buildPayloadId(version, buildPayloadFiles(stagingDir));
     const payloadDir = path.join(runtimeVersionsDir, payloadId);
     const finalPaths = resolveActiveRuntimePaths(runtimeRoot, { payloadId });
