@@ -5,6 +5,7 @@ import { copyDirectoryDelta, verifyDirectoryMirror } from "./copy.js";
 
 export const CONTEXT_CHECKPOINT_NAME = "flowtask-context-checkpoint";
 export const CONTEXT_CHECKPOINT_SHA = "a863ee144a088428b8078583f13bf48ce13d7631";
+const OWNER_MARKER_FILE = ".flowtask-plugin-owner.json";
 export function ownerMarkerFor(pluginName, { source = "submodule", sourceCommit = CONTEXT_CHECKPOINT_SHA } = {}) {
   return {
     schema: 1,
@@ -224,6 +225,38 @@ function restoreSnapshot(file, snapshot) {
   }
 }
 
+/**
+ * Paths of the managed package that existed before the replacement and whose
+ * content, type or link target differs in the staged tree. New files are
+ * installs, not restorations; the owner marker is metadata and is never listed.
+ */
+function collectRestoredPaths(original, stagedPath, relative, restored) {
+  if (!original?.exists) return;
+  const stagedStat = fs.lstatSync(stagedPath, { throwIfNoEntry: false });
+  if (!stagedStat) return;
+  if (original.type === "directory") {
+    if (!stagedStat.isDirectory() || stagedStat.isSymbolicLink()) {
+      if (relative) restored.add(relative);
+      return;
+    }
+    for (const entry of fs.readdirSync(stagedPath, { withFileTypes: true })) {
+      const childRelative = relative ? `${relative}/${entry.name}` : entry.name;
+      if (childRelative === OWNER_MARKER_FILE) continue;
+      collectRestoredPaths(original.tree?.[entry.name], path.join(stagedPath, entry.name), childRelative, restored);
+    }
+    return;
+  }
+  if (original.type === "symlink") {
+    if (!stagedStat.isSymbolicLink() || fs.readlinkSync(stagedPath) !== original.target) {
+      if (relative) restored.add(relative);
+    }
+    return;
+  }
+  if (!stagedStat.isFile() || !Buffer.from(original.data, "base64").equals(fs.readFileSync(stagedPath))) {
+    if (relative) restored.add(relative);
+  }
+}
+
 export function replaceManagedPackage({
   sourceDir,
   destinationDir,
@@ -266,6 +299,8 @@ export function replaceManagedPackage({
     fs.mkdirSync(stage, { recursive: true });
     copyDirectoryDelta(sourceDir, stage);
     writeMarker(stage, marker);
+    const restoredPaths = new Set();
+    collectRestoredPaths(originalDestination, stage, "", restoredPaths);
     const markerContents = `${JSON.stringify(marker, null, 2)}\n`;
     if (!verifyDirectoryMirror(sourceDir, stage, { expectedExtraFiles: { ".flowtask-plugin-owner.json": markerContents } })) throw new Error("staged source mirror verification failed");
     if (faultInjector) faultInjector("STAGE-PUBLISH");
@@ -275,7 +310,7 @@ export function replaceManagedPackage({
     if (!registerPluginPackageEntry(configPath, pluginName, `./plugins/${pluginName}`)) throw new Error("package registration failed");
     if (fs.existsSync(backup)) fs.rmSync(backup, { recursive: true, force: true });
     if (fs.existsSync(stage) || fs.existsSync(backup)) throw new Error("transaction cleanup failed");
-    return { ownership: ownership.state, destinationDir, configPath, marker };
+    return { ownership: ownership.state, destinationDir, configPath, marker, restoredPaths: [...restoredPaths] };
   } catch (error) {
     try {
       fs.rmSync(stage, { recursive: true, force: true });
