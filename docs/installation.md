@@ -304,13 +304,33 @@ it never registers a project on its own. Repeated updates do not duplicate the
 hook, the MCP entry, the agents, or the registration. The registration keeps its
 original `registeredAt` value.
 
+`update` compares every managed copy by content, not by size or modification
+time. A managed file edited by hand is restored to its canonical copy and its
+path is reported; a file that already matches is counted as unchanged. The
+comparison covers the target assets, the OpenCode skills, the managed plugin
+packages, `review.json`, the versioned Claude Code runtime payload and its stable
+launcher, and the generated Claude agents and commands. The persona and autonomy
+blocks injected into `runner.md` are expected content, not drift; a difference
+outside those blocks restores the file and reports it.
+
+These surfaces are preserved and never reported as restored: `CA-*` workspaces,
+`workspace/`, `.workspace/`, `.installation-method`, valid persona, autonomy and
+permissions layers, and the injected blocks of `runner.md`. The Claude Code
+runtime lives outside the project, so its restored paths are reported as
+absolute paths. An absent, unreadable or incompatible runtime manifest fails
+closed: FlowTask does not overwrite a runtime without ownership evidence.
+
 By default the command prints a framed dashboard of fixed width: one row per
-phase with its elapsed time and state, one row per environment under `sync`,
-warnings and errors grouped inside the frame, and a footer with the environment
-and warning counts, the total time, and a final status badge. Without an
-interactive terminal, with `NO_COLOR` or with `TERM=dumb`, the same dashboard is
-printed without color or ANSI escape sequences. `--verbose` prints the per-step
-detail for every target instead.
+phase with its elapsed time and state, one row per environment under `sync` with
+the restored, updated and unchanged counts, each restored path below the rows
+with the `↺` glyph and the `<target>: <path>` prefix, warnings and errors
+grouped inside the frame, and a footer with the environment and warning counts,
+the total time, and a final status badge. A managed mirror that cannot be
+verified ends the update as a failed result to review; it is never reported as
+`COMPLETE`. Without an interactive terminal, with `NO_COLOR` or with `TERM=dumb`,
+the same dashboard is printed without color or ANSI escape sequences. `--verbose`
+prints the per-step detail for every target instead, including the restored
+files.
 
 ### Uninstall
 
