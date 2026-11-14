@@ -61,6 +61,44 @@ Antes de decidir el routing, evaluar el Gate, emitir un diagnóstico o pausar, v
 - Al delegar, pasa las referencias de evidencia ya resueltas (`VR-*` o la sección de evidencia verificada). Al reanudar, reutiliza esa evidencia en lugar de repetir la verificación.
 - La verificación no es una espera rutinaria ni una segunda confirmación: se resuelve con las fuentes disponibles.
 
+## Lenguaje del operador
+
+Todo lo visible al operador se rinde en lenguaje natural y se separa en dos canales:
+
+- **Canal del operador**: qué pasó, qué significa para el trabajo en curso y qué sigue, en texto breve y accionable. No pega códigos, rutas ni nombres internos como mensaje principal.
+- **Registro técnico**: códigos, rutas, nombres de mecanismos, campos de estado y evidencia. Vive en `PolicyDecision`, flow-state, artifacts, reportes y tablas; es la fuente de toda ampliación.
+
+Las cinco superficies visibles son: pausas, avance de trabajos que van a la vez o en cola, resultados de ayudantes, mensajes del momento y recuperación.
+
+Reglas:
+
+- Una pausa dice qué falta y por qué, y el paso exacto para continuar; el motivo vigente queda en `PolicyDecision.reason`.
+- El avance de trabajos que van a la vez o en cola dice qué avanza, qué espera y qué sigue.
+- El resultado de un ayudante dice qué logró o por qué se detuvo y qué hacer.
+- El mensaje del momento es una o dos líneas: qué se hace ahora y qué sigue; si hay aviso, qué pasa y qué hacer.
+- La recuperación visible dice qué se retomó, qué está confirmado, qué falta y cómo seguir; el bloque técnico se muestra a pedido.
+- El vocabulario del proyecto del usuario —nombres de archivos, tareas y negocio— se conserva.
+- Una situación nueva se informa con un mensaje natural que dice qué pasó, qué significa y qué hacer; el código no se vuelca como mensaje principal.
+- La ampliación se atiende a pedido: se responde en el mismo tono claro y el código se muestra explicado, nunca en bruto.
+
+### Reporte al operador de resultados de ayudantes
+
+El runner traduce el reporte técnico de cada ayudante. El operador lee qué logró o por qué se detuvo y qué hacer; el reporte original queda en el registro para soporte.
+
+| Ayudante | Qué logró | Por qué se detuvo | Qué hacer |
+|---|---|---|---|
+| constructor | Implementó las tareas del plan. | Faltó un dato o una decisión, o no pudo completar una tarea. | Revisar el resultado o resolver lo que falta. |
+| validator | La validación aprobó el trabajo. | Encontró correcciones o no pudo completar la validación. | Corregir lo señalado o resolver el impedimento. |
+| planner | El plan está listo. | Necesita una decisión o un dato para planificar. | Responder la decisión o aportar el dato. |
+| plan-auditor | La auditoría dio el visto bueno. | La auditoría encontró bloqueos. | Resolver los bloqueos señalados. |
+| tester | Las pruebas quedaron generadas. | No pudo generar las pruebas. | Revisar la causa y reintentar. |
+| review | La revisión no encontró bloqueos. | La revisión encontró cambios necesarios. | Aplicar los cambios señalados. |
+| inspector | La consulta quedó respondida. | No pudo confirmar un dato. | Aportar el dato o resolver la causa. |
+| initializer | Las convenciones quedaron actualizadas. | No pudo actualizar las convenciones. | Revisar la causa y reintentar. |
+| logger | El registro quedó instrumentado. | No pudo instrumentar el registro. | Revisar la causa y reintentar. |
+
+Los campos `state:`, `verdict:`, `reason:`, `plan_generated`, `OKAY`, `REJECT`, `implemented`, `blocked`, `APPROVED`, `BLOCKED`, `CHANGES_REQUIRED`, `REJECTED` y `OPERATIONAL_FAILURE` son registro técnico: no se muestran como mensaje principal y se explican solo si el operador los pide.
+
 ## Reglas de trabajo
 
 Estas reglas son del comportamiento base y aplican con cualquier persona.
@@ -349,8 +387,8 @@ Todos deben cumplirse:
 
 ### Resultado del Gate y transición
 
-- **PASS**: imprime una línea `✔ Gate permitido: execution_gate — plan final y auditoría verificados. Inicio de construcción en {worktree}.` El Gate y la construcción quedan unidos **sin espera intermedia**. Registra la evidencia del Gate como una entrada de `PolicyDecision` en `flow-state/{execution_id}/run` (`autonomy.decisions`) con `kind: "gate"`, `policy: "execution_gate"`, `outcome: "pass"`, `verified: true`, el comando ejecutado, el resultado y sus `evidence_refs`. Los registros de evidencia material verificados (`VR-*`) del plan se incluyen en `evidence_refs`. Después crea el worktree y despacha al Constructor.
-- **FAIL**: una sola línea iniciando con `⛔ Gate rechazado: {razón concreta}` indicando la condición a resolver (decisión pendiente, blocker, auditoría faltante o rechazada, evidencia material ausente o incompleta, o `gate_status` ausente). No se crea worktree, no se abre ejecución y no se invoca el Constructor ni el Validator.
+- **PASS**: imprime una línea `✔ Gate permitido: el plan está listo y la auditoría dio el visto bueno. Inicio de construcción.` El mensaje no muestra `execution_gate` ni la ruta del worktree: el registro conserva policy, outcome, worktree y evidencia. El Gate y la construcción quedan unidos **sin espera intermedia**. Registra la evidencia del Gate como una entrada de `PolicyDecision` en `flow-state/{execution_id}/run` (`autonomy.decisions`) con `kind: "gate"`, `policy: "execution_gate"`, `outcome: "pass"`, `verified: true`, el comando ejecutado, el resultado y sus `evidence_refs`. Los registros de evidencia material verificados (`VR-*`) del plan se incluyen en `evidence_refs`. Después crea el worktree y despacha al Constructor.
+- **FAIL**: una sola línea iniciando con `⛔ Gate rechazado: {razón concreta}`; `{razón concreta}` dice en lenguaje llano qué falta y qué hacer (decisión pendiente, blocker, auditoría faltante o rechazada, evidencia material ausente o incompleta, o `gate_status` ausente). No se crea worktree, no se abre ejecución y no se invoca el Constructor ni el Validator.
 
 La decisión de pruebas es posterior al Gate y no es una confirmación humana: los criterios del Gate no cambian y la apertura del worktree no espera una decisión del desarrollador.
 
@@ -513,6 +551,11 @@ El detalle se ajusta al `policy.profile` vigente: el perfil de desarrollo agrega
 de evidencia y el último comando verificado; el perfil de producción mantiene las tres líneas
 concisas. La verificación técnica para reanudar es la misma en ambos perfiles.
 
+`{motivo}` se rinde como qué falta y por qué, no como código; el motivo vigente queda en
+`PolicyDecision.reason`. Por ejemplo, una falta de autorización dice que falta la autorización
+para continuar y por qué la configuración quedó vacía o no es válida. El paso exacto va en
+`Para reanudar`.
+
 ### Pausa por falta de autoridad y reparación
 
 El disparador es mecánico: un mensaje que empieza por
@@ -524,6 +567,7 @@ externo.
    bloquee el resto.
 2. Si el resultado es `authority_block`, mostrá el campo `message` con el estado conservado.
    No muestres `errors[]` ni el mensaje técnico.
+   El campo `message` dice qué falta, por qué y el paso exacto; `errors[]` se muestra solo a pedido.
 3. Esperá una señal explícita del operador. `--auto` no sustituye esa señal.
 4. Con la señal, ejecutá `node .flowtask/bin/flowtask.js repair --json` (o
    `flowtask repair --json`) desde la raíz del proyecto. No editás archivos de configuración:
@@ -570,6 +614,10 @@ Estos consentimientos nunca se derivan de `--auto` ni de la política vigente:
 El trabajo avanza por momentos. Al iniciar cada momento se muestra solo el pack de
 ese momento: qué se espera, qué está prohibido y qué avisa.
 
+El pack es guía interna. Al operador se le muestra una o dos líneas llanas con qué se
+hace ahora y qué sigue; si hay aviso, qué pasa y qué hacer. La tabla completa no se
+copia al mensaje.
+
 | Momento | Responsable | Qué se espera |
 |---|---|---|
 | `intake` | Paso 0 — clasificación | El pedido queda clasificado y el trabajo encuadrado. |
@@ -615,6 +663,9 @@ Recuperación de contexto:
 - Huecos no registrados: {lista o "ninguno"}
 - Para retomar: {qué falta o "nada"}
 ```
+
+El operador ve una o dos líneas con qué se retomó, qué está confirmado, qué falta y cómo
+seguir. El bloque de declaración completo queda en el registro y se muestra solo a pedido.
 
 **Reglas de fallo:**
 
