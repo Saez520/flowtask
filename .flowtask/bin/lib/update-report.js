@@ -284,6 +284,7 @@ export function createUpdateReport({ version, verbose = false, color } = {}) {
   const seenWarnings = new Set();
   const seenErrors = new Set();
   const syncRows = [];
+  const restoredRows = [];
   let failures = 0;
   let finished = false;
   let disposed = false;
@@ -514,13 +515,24 @@ export function createUpdateReport({ version, verbose = false, color } = {}) {
       if (failed) failures += 1;
     },
     endSync() {
-      if (verbose || syncRows.length === 0) return;
+      if (verbose) return;
       syncRows.forEach((row, index) => {
         const label = index === 0 ? "sync" : "";
         const detail = `${padRight(truncateTo(row.target, SYNC_TARGET_WIDTH), SYNC_TARGET_WIDTH)} ${row.detail}`;
         const timeText = row.durationMs == null ? "" : formatPhaseDuration(row.durationMs);
         emitRow(label, detail, timeText, row.status);
       });
+      for (const row of restoredRows) {
+        for (const restoredPath of row.paths) {
+          printNotice("↺", `${row.target}: ${restoredPath}`, STATUS_COLORS.warn);
+        }
+      }
+    },
+    restored(target, paths) {
+      if (verbose) return;
+      const list = Array.isArray(paths) ? paths.filter((item) => typeof item === "string" && item.length > 0) : [];
+      if (list.length === 0) return;
+      restoredRows.push({ target, paths: list });
     },
     markFailure() {
       failures += 1;
