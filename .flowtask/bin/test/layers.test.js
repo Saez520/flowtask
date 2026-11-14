@@ -72,10 +72,17 @@ describe("validacion por capa", () => {
     assert.equal(normalizePersonaLevel(undefined), null);
   });
 
-  it("validates the persona layer without changing its shape", () => {
+  it("validates the persona layer and returns its normalized six-field shape", () => {
     const valid = validatePersonaLayer({ level: "senior", persona: "tutor-senior", onboarded: true });
     assert.equal(valid.status, "valid");
-    assert.deepEqual(valid.value, { level: "senior", persona: "tutor-senior", onboarded: true });
+    assert.deepEqual(valid.value, {
+      level: "senior",
+      persona: "tutor-senior",
+      onboarded: true,
+      quiz_completed_at: null,
+      stack_snapshot: null,
+      quiz_answers: [],
+    });
 
     const legacy = validatePersonaLayer({ level: "junior", persona: "tutor-training", onboarded: true });
     assert.equal(legacy.status, "valid");

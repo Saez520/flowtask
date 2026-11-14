@@ -1042,7 +1042,12 @@ test("materializes managed config and profile independently for the project-leve
     const configDir = path.join(targetDir, "config");
     assert.ok(fs.existsSync(path.join(configDir, "review.json")));
     assert.deepEqual(readJson(path.join(configDir, "profile.json")), {
-      level, persona: `tutor-${level}`, onboarded: true,
+      level,
+      persona: `tutor-${level}`,
+      onboarded: true,
+      quiz_completed_at: null,
+      stack_snapshot: null,
+      quiz_answers: [],
     });
     assert.equal(readJson(path.join(configDir, "review.json")).stampPath,
       path.relative(root, path.join(configDir, ".review-stamp")));
@@ -1056,6 +1061,8 @@ test("migrates the absent layers of a target with the installation defaults", ()
     enabled: true,
     stampPath: ".flowtask/config/.review-stamp",
   });
+  fs.mkdirSync(path.join(flowtaskDir, "personas"), { recursive: true });
+  fs.writeFileSync(path.join(flowtaskDir, "personas", "tutor-senior.md"), "# tutor-senior\n", "utf8");
   const targetDir = path.join(root, ".opencode", "flowtask");
   writeJson(path.join(targetDir, "config", "profile.json"), {
     level: "senior", persona: "tutor-senior", onboarded: true,
