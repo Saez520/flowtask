@@ -13,6 +13,7 @@ import {
   AUTONOMY_PROFILES,
   LAYER_FILES,
   MIGRATION_DEFAULTS,
+  buildProfileForWrite,
   describeOperationalFailure,
   readLayerFile,
   readLayerSources,
@@ -187,16 +188,6 @@ export function readIdentityProfile(configDir) {
   return { status: "present", value: { version: 1, baseName }, path: identityPath, reason: null };
 }
 
-function invalidPersonaError(profilePath, reason) {
-  const error = new Error(
-    `Invalid persona profile at ${profilePath}: ${reason}. Fix or move the file and retry.`,
-  );
-  error.code = "profile_invalid";
-  error.path = profilePath;
-  error.reason = reason;
-  return error;
-}
-
 function invalidOperationalLayerError(name, filePath, reason) {
   const error = new Error(describeOperationalFailure({ layer: name, path: filePath, reason }));
   error.code = `${name}_invalid`;
@@ -207,18 +198,18 @@ function invalidOperationalLayerError(name, filePath, reason) {
 }
 
 /**
- * Read-only check of the user-level layers. An invalid persona or operational
- * layer fails before anything is written; a missing layer is reported so the
- * caller can decide which value to write. Persona missing only warns.
+ * Read-only check of the user-level layers. An invalid operational layer fails
+ * before anything is written; a missing layer is reported so the caller can
+ * decide which value to write. An invalid or missing persona only warns and
+ * continues without persona.
  */
 export function preflightClaudeRuntimeConfig(configDir) {
   const resolution = resolveLayers({ project: readLayerSources(configDir) });
   const profilePath = path.join(configDir, LAYER_FILES.persona);
 
   if (resolution.layers.persona.status === "invalid") {
-    throw invalidPersonaError(profilePath, resolution.layers.persona.reason ?? "invalid layer");
-  }
-  if (resolution.layers.persona.status === "missing") {
+    logWarn(`Invalid persona profile at ${profilePath}: ${resolution.layers.persona.reason ?? "invalid layer"}. Continuing without persona.`);
+  } else if (resolution.layers.persona.status === "missing") {
     logWarn(`No persona profile was found at ${profilePath}; continuing without persona.`);
   }
 
@@ -255,19 +246,21 @@ export function ensureClaudeRuntimeConfig(
     };
     const validated = validatePersonaLayer(value);
     if (validated.status !== "valid") {
-      const error = new Error(`Invalid persona choice for the FlowTask runtime: ${validated.reason}.`);
-      error.code = "profile_invalid";
-      throw error;
+      logWarn(`Invalid persona choice for the FlowTask runtime: ${validated.reason}. Continuing without persona.`);
+      profile = { status: "invalid", value: null, reason: validated.reason };
+    } else {
+      const existingFile = fileExists(profilePath) ? readLayerFile(profilePath) : null;
+      const existingRaw = existingFile && existingFile.status === "present" ? existingFile.value : null;
+      writeJsonIfChanged(profilePath, buildProfileForWrite(existingRaw, validated.value));
+      profile = validated;
     }
-    writeJsonIfChanged(profilePath, validated.value);
-    profile = validated;
   } else if (fileExists(profilePath)) {
     const existing = readLayerFile(profilePath);
     const validated = existing.status === "invalid"
       ? { status: "invalid", value: null, reason: existing.reason }
       : validatePersonaLayer(existing.value);
     if (validated.status === "invalid") {
-      throw invalidPersonaError(profilePath, validated.reason ?? "invalid layer");
+      logWarn(`Invalid persona profile at ${profilePath}: ${validated.reason ?? "invalid layer"}. Continuing without persona.`);
     }
     profile = validated;
   }

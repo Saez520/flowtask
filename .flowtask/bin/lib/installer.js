@@ -17,6 +17,7 @@ import {
   configureRunnerScriptsContent,
   injectAutonomyIntoRunnerContent,
   injectPersonaIntoRunnerContent,
+  readPersonaBlock,
 } from "./runner-content.js";
 export {
   configureRunnerScriptsContent,
@@ -44,9 +45,12 @@ import {
   AUTONOMY_PROFILES,
   LAYER_FILES,
   MIGRATION_DEFAULTS,
+  PERSONA_FILES,
+  buildProfileForWrite,
   describeOperationalFailure,
   readLayerSources,
   resolveLayers,
+  validatePersonaLayer,
 } from "./layers.js";
 
 export const INSTALLER_WRITERS = Object.freeze([
@@ -609,11 +613,23 @@ async function promptAutonomySelection(readline) {
 }
 
 function resolvePersonaContent(flowtaskDir, personaChoice) {
-  if (personaChoice.file === null) return CUSTOM_PERSONA_TEXT;
+  if (personaChoice.persona === "custom") {
+    if (!CUSTOM_PERSONA_TEXT.trim()) {
+      logWarn("The custom personality has no text. Installation will continue without a personality.");
+      return null;
+    }
+    return CUSTOM_PERSONA_TEXT;
+  }
 
-  const personaPath = path.join(flowtaskDir, "personas", personaChoice.file);
+  const fileName = PERSONA_FILES[personaChoice.persona] ?? personaChoice.file;
+  if (!fileName) {
+    logWarn(`Unknown personality: ${personaChoice.persona}. Installation will continue without a personality.`);
+    return null;
+  }
+
+  const personaPath = path.join(flowtaskDir, "personas", fileName);
   if (!fileExists(personaPath)) {
-    logError(`Personality file not found: ${personaPath}. Installation will continue without a personality.`);
+    logWarn(`Personality file not found: ${personaPath}. Installation will continue without a personality.`);
     return null;
   }
   return fs.readFileSync(personaPath, "utf8");
@@ -686,11 +702,18 @@ export function targetConfigDir(targetDir) {
 
 function writeProfile(targetDir, level, persona, onboarded) {
   const configDir = targetConfigDir(targetDir);
-  const profile = { level, persona, onboarded };
+  const existing = readProfile(targetDir);
+  const profile = buildProfileForWrite(existing, { level, persona, onboarded });
   fs.mkdirSync(configDir, { recursive: true });
   const profilePath = path.join(configDir, "profile.json");
-  fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), "utf8");
+  if (!writeJsonVerified(profilePath, profile)) throw new Error(`could not verify ${profilePath}`);
   logSuccess(`Profile saved to ${profilePath}`);
+}
+
+function readTargetPersonaBlock(targetDir) {
+  const runnerPath = path.join(targetDir, "agents", "runner.md");
+  if (!fileExists(runnerPath)) return null;
+  return readPersonaBlock(fs.readFileSync(runnerPath, "utf8"));
 }
 
 function readProfile(targetDir) {
@@ -876,7 +899,13 @@ export function syncTargetConfig(
   materializeReviewConfig(flowtaskDir, targetDir);
 
   const existing = readProfile(targetDir);
-  const valid = Boolean(existing && levelToChoice[existing.level] && typeof existing.persona === "string");
+  const existingValidation = existing
+    ? validatePersonaLayer(existing, {
+        personaDir: path.join(flowtaskDir, "personas"),
+        customText: existing.persona === "custom" ? readTargetPersonaBlock(targetDir) : undefined,
+      })
+    : null;
+  const valid = existingValidation?.status === "valid";
 
   let personaStatus;
   if (explicitPersona && personaChoice) {
@@ -886,7 +915,7 @@ export function syncTargetConfig(
     personaStatus = "valid";
   } else if (existing) {
     personaStatus = "invalid";
-    logWarn(`Invalid persona profile in ${targetConfigDir(targetDir)}: it is not overwritten and the flow continues without persona.`);
+    logWarn(`Invalid persona profile in ${targetConfigDir(targetDir)}: ${existingValidation?.reason ?? "invalid layer"}. It is not overwritten and the flow continues without persona.`);
   } else if (!preserveProfile && personaChoice) {
     writeProfile(targetDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
     personaStatus = "valid";
