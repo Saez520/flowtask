@@ -46,7 +46,9 @@ base branch.
 Despacha el Validator con el mismo contexto. El Validator persiste
 `hotfix/{id}/artifact/validacion` y su flow-state separado. Los rechazos siguen el
 Loop de validación común, incluidos el diagnóstico posterior, la pausa por sus
-condiciones y cualquier límite expreso propio de la ejecución. Con APPROVED hacé el commit antes de
+condiciones y cualquier límite expreso propio de la ejecución. El veredicto `APPROVED`
+es registro técnico: el runner informa en llano qué se verificó y qué sigue, y con la
+aprobación hace el commit antes de
 `${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch} [--init-submodules] [--merge-strategy {estrategia}] [--title TEXTO] [--body TEXTO]`.
 Un conflicto conserva worktree y branch y se escala sin limpiar; un rechazo por
 destino con cambios sin commitear también conserva todo intacto, se escala al

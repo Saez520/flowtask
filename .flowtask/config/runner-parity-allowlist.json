@@ -310,5 +310,13 @@
   {
     "sha256": "9aad4493340786050702ab0af8ef13073704a585a5788ff3e6a989f285f4d157",
     "reason": "El motivo del rechazo del Gate se explica en lenguaje llano y el código queda en el registro."
+  },
+  {
+    "sha256": "0f05fbddc399734821ba681c720c66fee94a0cb8e361aca0b6b538bdcc9e6ed3",
+    "reason": "La aprobación de la validación se informa en lenguaje llano y el veredicto queda en el registro técnico."
+  },
+  {
+    "sha256": "8fd6873ead35fc22b58b51c18cfa57823963c59d4b8a97528252dd38b9f8cf07",
+    "reason": "El estado y la severidad de la revisión son registro técnico y se informan en lenguaje llano."
   }
 ]
