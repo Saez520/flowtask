@@ -294,5 +294,21 @@
   {
     "sha256": "591dc4f561f9814c147a208e0d63101669dba44443401d6e0457eb028875ef7f",
     "reason": "El motivo del rechazo del Gate se explica en lenguaje llano y el código queda en el registro."
+  },
+  {
+    "sha256": "7d6164917929fa984d6002b4b2464786314ecf372acab6678b6f150b29258a20",
+    "reason": "El aviso de relevo dice que la instancia se quedó sin espacio y siguió en una nueva; el porcentaje y el identificador quedan en el mapa."
+  },
+  {
+    "sha256": "74f734cdd9b78182ca8272585a4820d7d6bb865e867f088d166a3a0e0633423f",
+    "reason": "El aviso de tres reinicios pregunta si dividir la tarea sin exponer el identificador interno."
+  },
+  {
+    "sha256": "3e5cce123e8ab06ecba859d5e3c4c2ef718e9dadf12f09b5342fb46a7831394e",
+    "reason": "La línea visible del lote dice qué avanza, qué espera y qué sigue; los códigos quedan en la decisión."
+  },
+  {
+    "sha256": "9aad4493340786050702ab0af8ef13073704a585a5788ff3e6a989f285f4d157",
+    "reason": "El motivo del rechazo del Gate se explica en lenguaje llano y el código queda en el registro."
   }
 ]

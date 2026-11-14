@@ -21,7 +21,7 @@ metadata:
    Topic Validation. Prompt: el texto original del usuario.
 5. Invoca planner con el artifact del CA generado.
 6. **SIEMPRE** invoca plan-auditor.
-6a. **Gate de Ejecución**: invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/evolve-{agente}-{timestamp}/artifact/plan`. Si FAIL: imprime `⛔ Gate rechazado: {razón}` y termina. Si PASS: registra la evidencia del Gate en `autonomy.decisions` y continúa directamente al Constructor.
+6a. **Gate de Ejecución**: invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/evolve-{agente}-{timestamp}/artifact/plan`. Si FAIL: imprime `⛔ Gate rechazado: {razón}` con la razón en llano —qué falta y qué hacer— y termina. Si PASS: registra la evidencia del Gate en `autonomy.decisions` y continúa directamente al Constructor.
 7. Invoca constructor.
 8. Confirma al usuario que la evolución fue completada.
 

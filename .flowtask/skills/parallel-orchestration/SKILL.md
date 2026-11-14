@@ -268,10 +268,14 @@ técnica para reanudar es la misma en ambos perfiles.
 **Líneas visibles.**
 
 ```
-🔀 Lote paralelo: {work_ids} (capacidad {N}); cola: {work_ids}. Evidencia: {dimensiones}.
-🔁 Lote secuencial: {work_ids}; causa: {causa}. Reevaluar: {condición}.
-⏳ Cola: {work_id} posición {N}; capacidad {M}.
+🔀 Avanzan a la vez: {nombres}. En espera: {nombres o nadie}.
+⏳ En espera: {nombre}, primero de la fila. Avanzan {N} a la vez.
 ```
+
+La línea visible dice qué avanza, qué espera y qué sigue. La decisión de lote y las
+tablas conservan `parallel`, `sequential_*`, `capacity`, `queue_position`,
+`resource_locked`, `concurrent_write_suspected` y la evidencia; el mensaje visible no
+pega esos códigos.
 
 No se exponen cifras internas de cerrojos ni de registros.
 

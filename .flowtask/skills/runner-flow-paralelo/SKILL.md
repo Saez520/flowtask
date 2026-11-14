@@ -36,7 +36,8 @@ en segundo plano ya disponible y deja el ciclo de vida en manos del gestor de wo
 4. Producir `parallel` o `sequential` con su causa y su evidencia.
 5. Persistir la decisión en el campo `parallel_batch` del mapa de instancias de cada
    trabajo, por upsert y conservando todos los campos previos.
-6. Mostrar la línea visible de la decisión.
+6. Mostrar la línea visible de la decisión: qué avanza, qué espera y qué sigue. La
+   decisión y las tablas conservan los códigos y la evidencia.
 7. Si falta la evidencia de independencia, el lote es secuencial por `independencia no
    verificable` y la decisión declara la condición exacta de reevaluación.
 
