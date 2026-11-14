@@ -329,11 +329,17 @@ malformed `source` or `sourceCommit` remain rejected.
 - installs from the submodule `.flowtask/plugins/agent-model-selector/packages/claude-code`
 - the manifest declares `kind: "mod"`, `destinations: ["claude-code"]` and the hooks entrypoint `hooks/dist/register.js`; the OpenCode installer discards entries without the `opencode` destination before copying or registering anything, so this entry is inert for OpenCode
 - the Claude Code runtime consumes the payload (`files`: `.claude-plugin`, `hooks/dist`, `hooks/hooks.json`, `package.json`, `README.md`); loading it with `claude --plugin-dir <path>` is the development path
-- exposes `/flowtask-model` with `list`, `set`, `clear`, `clear --all`, `export` and `import`; the pane shows one row per agent with a `Select` and a Clear button where the surface has those elements
+- exposes `/flowtask-model` with `list`, `set`, `clear`, `clear --all`, `export` and `import`; the pane shows one row per agent with one selector per provider section and a Clear button where the surface has those elements
+- reads the live model offer from the gateway configured for the session (`GET {ANTHROPIC_BASE_URL}/v1/models`) on every pane open and retry; it keeps no fixed model list, cache, or stored catalog
+- groups the offer by provider and shows only models whose target matches a tier the engine preserves in subagents (`sonnet`/`haiku`); `opus` and models without a preserved target are hidden
+- stores a supported choice as the short `sonnet`/`haiku` alias the router resolves to the profile provider and model; `provider/model` references resolve to that alias and unsupported references are rejected without writing
+- when the gateway is unreachable, the credential fails, or the response is invalid, shows the Claude route with a warning and a retry action; `list` prepends the warning
+- without an override, writes no model and the subagent inherits the current conversation (Claude route); clearing an override returns to that state
 - persists one store key per project and agent: `flowtask-model:v1:<encoded-root>:<agent-key>`; it does not write frontmatter or settings
 - applies the override in the `agent.spawn` hook; forks and resumes ignore the model and the Mod logs that it did
-- requires Claude Code `2.1.287`; `2.1.299` is recommended and `2.1.304` adds `availableModels` from settings
+- requires Claude Code `2.1.287`; `2.1.309` is recommended and verified
 - in `-p`, Agent SDK or any surface without a pane the command keeps working; the listing goes to the log and the answer text
+- discovery shape, support rule and limits: [`packages/claude-code/COMPATIBILITY.md`](../.flowtask/plugins/agent-model-selector/packages/claude-code/COMPATIBILITY.md) and [`packages/claude-code/README.md`](../.flowtask/plugins/agent-model-selector/packages/claude-code/README.md)
 
 #### Claude Code Mod rollback
 
