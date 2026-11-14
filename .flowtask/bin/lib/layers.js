@@ -28,10 +28,11 @@ export const LAYER_FILES = Object.freeze({
 /**
  * Migration defaults. They are written only when the layer does not exist: they are a
  * migration, not a runtime fallback. An invalid layer is never repaired with
- * a default.
+ * a default. The autonomy default is the lowest authority, so an installation
+ * that does not receive an explicit choice never grants initiative.
  */
 export const MIGRATION_DEFAULTS = Object.freeze({
-  autonomy: Object.freeze({ version: 1, profile: "autonomous-dev" }),
+  autonomy: Object.freeze({ version: 1, profile: "assistant" }),
   permissions: Object.freeze({ version: 1, envelope: "standard" }),
 });
 

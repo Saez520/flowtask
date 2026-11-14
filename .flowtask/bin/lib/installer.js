@@ -41,7 +41,6 @@ import { ensureCanonicalSubmodule } from "./submodule-publication.js";
 import {
   AUTONOMY_PROFILES,
   LAYER_FILES,
-  LAYER_SOURCES,
   MIGRATION_DEFAULTS,
   describeOperationalFailure,
   readLayerSources,
@@ -687,6 +686,20 @@ function readProfileLevel(targetDir) {
   return level && levelToChoice[level] ? level : null;
 }
 
+/**
+ * Normalizes an explicit autonomy choice. Returns `null` when no choice was
+ * given and rejects any value outside the two stored profiles.
+ */
+export function normalizeAutonomyChoice(value) {
+  if (value === null || value === undefined) return null;
+  if (AUTONOMY_PROFILES.includes(value)) return value;
+  const error = new Error(
+    `[FlowTask Layers] Invalid autonomy choice: ${JSON.stringify(value)}. Use assistant or autonomous-dev.`,
+  );
+  error.code = "autonomy_choice_invalid";
+  throw error;
+}
+
 const OPERATIONAL_LAYERS = Object.freeze(["autonomy", "permissions"]);
 
 function layerLabel(name) {
@@ -710,11 +723,37 @@ function layerOperationalError(name, layer) {
   return error;
 }
 
-function writeLayerDefault(configDir, name) {
+/** Atomic write for a layer value: temp file, parse, equality and rename. */
+function writeLayerValueAtomic(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  if (!writeJsonVerified(filePath, value)) throw new Error(`could not verify ${filePath}`);
+}
+
+function writeLayerValue(configDir, name, value, message) {
   const filePath = path.join(configDir, LAYER_FILES[name]);
-  fs.mkdirSync(configDir, { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(MIGRATION_DEFAULTS[name], null, 2), "utf8");
-  logSuccess(`${layerLabel(name)} layer migrated at ${filePath} with the installation default value.`);
+  writeLayerValueAtomic(filePath, value);
+  logSuccess(message ?? `${layerLabel(name)} layer migrated at ${filePath} with the installation default value.`);
+}
+
+function resolveTargetLayers(targetDir, teamConfigDir) {
+  const project = readLayerSources(targetConfigDir(targetDir));
+  const team = teamConfigDir ? readLayerSources(teamConfigDir) : null;
+  return resolveLayers({ team, project });
+}
+
+/**
+ * Read-only layer check for an installation target. An invalid operational
+ * layer fails with its operational message; a missing one is reported so the
+ * caller can decide which value to write. Nothing is written.
+ */
+export function preflightTargetLayers(targetDir, { teamConfigDir = null } = {}) {
+  const resolution = resolveTargetLayers(targetDir, teamConfigDir);
+  for (const name of OPERATIONAL_LAYERS) {
+    const layer = resolution.layers[name];
+    if (layer.status === "invalid") throw layerOperationalError(name, layer);
+  }
+  const missing = OPERATIONAL_LAYERS.filter((name) => resolution.layers[name].status === "missing");
+  return { resolution, missing };
 }
 
 /**
@@ -722,32 +761,65 @@ function writeLayerDefault(configDir, name) {
  *
  * Resolution is per layer with full replacement: a valid layer is
  * preserved, and an invalid layer fails the target without overwriting the file.
- * The migration default is written only when the layer does not exist in any
- * source: the default is a migration, not a runtime fallback.
+ * A missing layer receives the explicit choice when there is one and the
+ * migration default otherwise. Writes are reversible: if a later write fails,
+ * the previous files are restored byte for byte.
  */
-export function ensureTargetLayers(targetDir, { teamConfigDir = null } = {}) {
+export function ensureTargetLayers(targetDir, { teamConfigDir = null, autonomyProfile = null, replaceAutonomy = false } = {}) {
+  const choice = normalizeAutonomyChoice(autonomyProfile);
   const configDir = targetConfigDir(targetDir);
-  const project = readLayerSources(configDir);
-  const team = teamConfigDir ? readLayerSources(teamConfigDir) : null;
-
-  const resolution = resolveLayers({ team, project });
+  const { resolution } = preflightTargetLayers(targetDir, { teamConfigDir });
   const created = [];
+  const updated = [];
+  const writes = [];
 
-  // An invalid layer fails the target before writing anything: the file is
-  // preserved and is not repaired with a default.
-  for (const name of OPERATIONAL_LAYERS) {
-    const layer = resolution.layers[name];
-    if (layer.status === "invalid") throw layerOperationalError(name, layer);
+  const autonomy = resolution.layers.autonomy;
+  if (autonomy.status === "missing") {
+    writes.push({
+      name: "autonomy",
+      value: choice ? { version: 1, profile: choice } : MIGRATION_DEFAULTS.autonomy,
+      message: choice
+        ? `${layerLabel("autonomy")} layer written at ${path.join(configDir, LAYER_FILES.autonomy)} with the selected value.`
+        : undefined,
+      outcome: "created",
+    });
+  } else if (replaceAutonomy && choice && autonomy.value.profile !== choice) {
+    writes.push({
+      name: "autonomy",
+      value: { version: 1, profile: choice },
+      message: `${layerLabel("autonomy")} layer updated at ${path.join(configDir, LAYER_FILES.autonomy)} with the selected value.`,
+      outcome: "updated",
+    });
   }
 
-  for (const name of OPERATIONAL_LAYERS) {
-    if (resolution.layers[name].status !== "missing") continue;
-    writeLayerDefault(configDir, name);
-    created.push(name);
+  if (resolution.layers.permissions.status === "missing") {
+    writes.push({ name: "permissions", value: MIGRATION_DEFAULTS.permissions, outcome: "created" });
   }
 
-  const finalResolution = resolveLayers({ team, project: readLayerSources(configDir) });
-  return { resolution: finalResolution, created };
+  const backups = [];
+  try {
+    for (const write of writes) {
+      const filePath = path.join(configDir, LAYER_FILES[write.name]);
+      const original = fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
+      writeLayerValue(configDir, write.name, write.value, write.message);
+      backups.push({ filePath, original });
+      (write.outcome === "created" ? created : updated).push(write.name);
+    }
+  } catch (error) {
+    for (const { filePath, original } of backups.reverse()) {
+      try {
+        if (original === null) fs.rmSync(filePath, { force: true });
+        else fs.writeFileSync(filePath, original);
+      } catch {
+        // The original write error is the actionable failure; a partial
+        // restore is reported by the caller's transaction.
+      }
+    }
+    throw error;
+  }
+
+  const finalResolution = resolveTargetLayers(targetDir, teamConfigDir);
+  return { resolution: finalResolution, created, updated };
 }
 
 export function materializeReviewConfig(flowtaskDir, targetDir) {
@@ -773,9 +845,16 @@ export function materializeReviewConfig(flowtaskDir, targetDir) {
  *
  * Persona is written only with an explicit choice; a valid profile is
  * preserved, and an invalid one without an explicit choice is not overwritten. The
- * operational layers are resolved separately and are never repaired with a default.
+ * operational layers are resolved first and are never repaired with a default:
+ * an invalid layer fails before any managed configuration is materialized.
  */
-export function syncTargetConfig(flowtaskDir, targetDir, personaChoice, { preserveProfile = false, explicitPersona = false } = {}) {
+export function syncTargetConfig(
+  flowtaskDir,
+  targetDir,
+  personaChoice,
+  { preserveProfile = false, explicitPersona = false, autonomyProfile = null, replaceAutonomy = false } = {},
+) {
+  const { resolution } = ensureTargetLayers(targetDir, { autonomyProfile, replaceAutonomy });
   materializeReviewConfig(flowtaskDir, targetDir);
 
   const existing = readProfile(targetDir);
@@ -797,8 +876,6 @@ export function syncTargetConfig(flowtaskDir, targetDir, personaChoice, { preser
     personaStatus = "missing";
     logWarn(`No persona profile was found in ${targetConfigDir(targetDir)}: continuing without persona.`);
   }
-
-  const { resolution } = ensureTargetLayers(targetDir);
 
   return {
     persona: personaStatus,
