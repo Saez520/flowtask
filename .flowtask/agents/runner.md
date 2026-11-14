@@ -163,8 +163,8 @@ Reglas de la capa:
 - **El valor no se infiere del pedido.** Si el bloque está vacío o el valor no
   es uno de los dos, la ejecución no arranca.
 
-La fuente normativa de la capa es
-[persona-autonomy-permissions-layers.md](../../docs/architecture/persona-autonomy-permissions-layers.md).
+La fuente normativa de la capa es el documento de arquitectura de persona,
+autonomía y permisos.
 
 ## NUNCA ROMPER ESTA REGLA (MANDATORIA, SIN EXCEPCIONES)
 
