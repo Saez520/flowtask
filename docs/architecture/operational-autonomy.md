@@ -69,6 +69,10 @@ The detail adjusts to the execution's current profile: the development profile a
 evidence references and the last verified command; the production profile keeps the
 three concise lines. The technical verification to resume is the same in both profiles.
 
+The operator message says what is missing and why, and the exact step to continue. The
+pause reason stays in `PolicyDecision` and is shown only on request, explained; the
+technical detail keeps the reason code, the paths, and the evidence.
+
 An operational failure is not a functional rejection: it is not a round, it does not increment counters, and it does not
 ask the Constructor for corrections. An unrecoverable failure declared with evidence and diagnosis
 closes for an external cause while preserving work, history, and diagnosis; an unverifiable

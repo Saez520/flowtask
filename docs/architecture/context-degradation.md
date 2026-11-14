@@ -85,6 +85,24 @@ Cross-cutting rules:
   treated as confirmation.
 - The pack describes behavior, not figures: thresholds are not shown.
 
+## Operator channel
+
+The visible message is separate from the technical record. The moment pack is an internal
+guide: the operator sees one or two plain lines with what is happening now and what comes
+next. If there is a warning, it says what happened and what to do.
+
+The operator channel follows these rules:
+
+- Pauses say what is missing and why, and the exact step to continue. The reason code stays
+  in the technical record.
+- Batch and queue updates say what advances, what waits, and what comes next.
+- Helper results say what was achieved or why the helper stopped, and what to do.
+- A new situation is reported with a natural message and a next step; the internal code is
+  not poured out as the main message.
+- The project's own vocabulary — file names, tasks, and business terms — is preserved.
+- If the operator asks for more detail, the answer stays in the same plain tone and any
+  code shown is explained, never raw.
+
 ## Verifiable recovery
 
 Recovery runs before acting when the thread lost context due to

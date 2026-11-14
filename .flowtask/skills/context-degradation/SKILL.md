@@ -54,6 +54,28 @@ continuidad: gobierna qué se muestra, qué se omite y qué se declara.
 | Hueco material | Dato necesario para continuar que no se pudo recuperar. |
 | Dato periférico | Dato no necesario para continuar, recuperable más tarde o irrelevante para el resultado. |
 
+## Canal del operador
+
+Lo visible al operador se rinde en lenguaje natural y se separa en dos canales:
+
+| Canal | Qué contiene | Dónde vive |
+|---|---|---|
+| Canal del operador | Qué pasó, qué significa para el trabajo en curso y qué sigue, en texto breve y accionable. | Respuestas visibles: pausas, avance de trabajos que van a la vez o en cola, resultados de ayudantes, mensajes del momento y recuperación. |
+| Registro técnico | Códigos, rutas, nombres de mecanismos, campos de estado y evidencia. | Registros durables, artifacts, decisiones y tablas internas. |
+
+Reglas del canal:
+
+- El canal del operador no pega códigos, rutas ni nombres internos como mensaje principal.
+- El registro técnico conserva el detalle completo y es la fuente de toda ampliación.
+- Una pausa dice qué falta y por qué, y el paso exacto para continuar. El motivo interno queda en el registro.
+- El avance de trabajos que van a la vez o en cola dice qué avanza, qué espera y qué sigue, sin jerga interna.
+- El resultado de un ayudante dice qué logró o por qué se detuvo y qué hacer; el estado interno queda en el registro.
+- El mensaje del momento muestra una o dos líneas útiles: qué se hace ahora y qué sigue. Si hay aviso, dice qué pasa y qué hacer.
+- La recuperación visible dice qué se retomó, qué está confirmado, qué falta y cómo seguir; el bloque técnico queda en el registro.
+- El vocabulario del proyecto del usuario —nombres de archivos, tareas y negocio— se conserva tal como el trabajo lo requiere.
+- Una situación nueva se informa con un mensaje natural que dice qué pasó, qué significa y qué hacer; no se bloquea por falta de texto previo ni se vuelca el código como mensaje principal.
+- La ampliación se atiende a pedido: si el operador pide explicación o más detalle, se responde en el mismo tono claro y el código se muestra explicado, nunca en bruto.
+
 ## Degradación por niveles
 
 La degradación ocurre en tres niveles y en ese orden. Nunca se salta un nivel para
@@ -103,10 +125,14 @@ vigentes: qué se espera, qué está prohibido, qué avisa y qué se amplía.
 | `validate` | Evidencia ejecutada y veredicto. | Repetir comprobaciones ya resueltas. | Criterio no evaluable. | Lo nuevo material. |
 | `close` | Consolidación, cierre y registro. | Declarar cerrado lo no verificado. | Registro ausente o ilegible. | El resumen de cierre. |
 
+El pack de la tabla es guía interna del momento. Al operador se le muestra una o
+dos líneas llanas con qué se hace ahora y qué sigue; si hay aviso, qué pasa y qué
+hacer. La tabla completa no se copia al mensaje.
+
 Reglas:
 
-- Se muestra solo el pack del momento. El manual completo no se repite en cada
-  mensaje.
+- Se muestra solo el pack del momento como guía interna; el mensaje visible es
+  llano y breve. El manual completo no se repite en cada mensaje.
 - Al cambiar de momento se carga el pack nuevo y lo ya resuelto se hereda por
   referencia.
 - La evidencia verificada se hereda y no se re-verifica por rutina: solo se verifica
@@ -190,6 +216,9 @@ Cada aviso declara:
 - qué se omitió,
 - a quién delegar lo omitido o cómo acotar para retomarlo.
 
+Todo aviso sigue el canal del operador: dice qué pasó, qué significa y qué hacer;
+el detalle técnico queda en el registro y se amplía a pedido.
+
 Reglas:
 
 - Nada omitido se presenta como completo.
@@ -241,6 +270,11 @@ Reglas:
 | AC-12 | Una ejecución ambigua responde `no disponible` y pausa. | No se elige por conveniencia. | Recuperación verificable |
 | AC-13 | Una discrepancia entre lo heredado y lo observado se declara y pausa antes de cambiar alcance. | No se resuelve suponiendo. | Herencia de evidencia y discrepancia |
 | AC-14 | Un aviso siempre dice qué pasó, cuánto pesaba, qué se omitió y a quién delegar. | Nada omitido se presenta como completo. | Avisos observables |
+| AC-15 | Toda pausa dice qué falta y por qué, y el paso exacto para continuar. | El motivo interno queda en el registro. | Canal del operador |
+| AC-16 | El avance de trabajos que van a la vez o en cola dice qué avanza, qué espera y qué sigue. | La jerga interna no aparece en el mensaje. | Canal del operador |
+| AC-17 | El resultado de un ayudante dice qué logró o por qué se detuvo y qué hacer. | El estado interno queda en el registro. | Canal del operador |
+| AC-18 | El mensaje del momento muestra una o dos líneas útiles; la ampliación se atiende a pedido y el código se explica. | El pack completo es guía interna. | Canal del operador |
+| AC-19 | Una situación nueva se informa con un mensaje natural y un paso siguiente; el vocabulario del proyecto se conserva. | El código no se vuelca como mensaje principal. | Canal del operador |
 
 ## Ejemplos canónicos
 
@@ -256,3 +290,8 @@ Reglas:
 | E-08 | Cambia el momento con decisiones ya verificadas. | Se carga el pack nuevo y lo resuelto se hereda; no se re-verifica. | No se repiten comprobaciones ya resueltas. |
 | E-09 | El hilo se resume por compactación y hay registros durables. | Bloque de recuperación con decisiones, progreso, gasto y última ronda, con fuente y momento de observación. | El hilo nuevo continúa desde lo confirmado y declara lo que falta. |
 | E-10 | Un registro material es ilegible al reanudar. | Pausa con motivo, última confirmación conservada y condición de reanudación. | Nadie avanza sobre un hecho no verificado. |
+| E-11 | Falta la autorización para continuar. | La pausa dice qué falta y por qué, y el paso exacto para restaurarla; el código queda en el registro. | El operador sabe qué hacer sin conocer el mecanismo. |
+| E-12 | Dos trabajos avanzan y un tercero espera. | Línea llana con qué avanza, qué espera y qué sigue. | El operador entiende el avance sin jerga interna. |
+| E-13 | Un ayudante se detiene. | Mensaje con qué logró o por qué se detuvo y qué hacer. | El estado interno no se pega en bruto. |
+| E-14 | El operador pide más detalle tras un mensaje corto. | Ampliación en el mismo tono, con el código explicado si se muestra. | La ampliación no se niega ni se responde solo con el código. |
+| E-15 | Aparece una situación sin ejemplo previo. | Mensaje natural con qué pasó, qué significa y qué hacer; el vocabulario del proyecto se conserva. | No se bloquea ni se vuelca el código como mensaje principal. |

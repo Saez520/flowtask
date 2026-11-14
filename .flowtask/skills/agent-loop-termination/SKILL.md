@@ -410,7 +410,7 @@ La pausa es **reversible** y pertenece a la misma ejecución.
 Toda pausa informa al operador. El informe describe el motivo, el estado conservado y la
 condición de reanudación, y esos tres datos son obligatorios:
 
-1. **Motivo** — el motivo de pausa vigente.
+1. **Motivo** — qué falta y por qué, en lenguaje llano. El motivo vigente queda en el registro.
 2. **Estado conservado** — la última instantánea confirmada, la numeración de rondas, los
    contadores, la evidencia y el trabajo preservado.
 3. **Condición de reanudación** — la causa que habilita la reanudación, conforme a la fila que

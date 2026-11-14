@@ -45,7 +45,7 @@ de sesión anterior. El prompt delegado debe contener únicamente:
 - `base_branch`: branch base;
 - `error`: mensaje del error de bloqueo, solo si existe.
 
-Para las variantes `files` y `pr-mr`, incluir además únicamente la lista de rutas o el identificador PR/MR que permite al review-orchestrator recuperar el scope. Nunca adjuntar ni serializar el diff, ni prescribir lentes, skills o marcos de revisión. Conservar el contrato de findings con estado `APPROVED | BLOCKED | CHANGES_REQUIRED`, severidad, archivo/línea, evidencia, justificación y recomendación.
+Para las variantes `files` y `pr-mr`, incluir además únicamente la lista de rutas o el identificador PR/MR que permite al review-orchestrator recuperar el scope. Nunca adjuntar ni serializar el diff, ni prescribir lentes, skills o marcos de revisión. Conservar el contrato de findings con estado `APPROVED | BLOCKED | CHANGES_REQUIRED`, severidad, archivo/línea, evidencia, justificación y recomendación. El estado y la severidad son registro técnico: el runner informa en llano qué encontró y qué hacer.
 
 ### Flujo commit
 

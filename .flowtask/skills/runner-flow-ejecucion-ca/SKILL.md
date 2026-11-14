@@ -122,6 +122,9 @@ Lee `state`, `derivations`, `business_gaps`, `pending_decisions`, `blockers`,
    Para reanudar: {condición exacta}
    ```
 
+   `{motivo}` dice qué falta y por qué; el motivo vigente queda en el registro y el
+   paso exacto va en `Para reanudar`.
+
 3. **Derivaciones**: si `derivations` viene con contenido, por cada item
    invoca al Inspector con `datum_id`, `kind`, `question`, `scope`,
    `evidence_refs` y `gaps`, y devuelve el resultado al Planner con el mismo
@@ -186,7 +189,7 @@ el costo es repetido, no corrupción.
 Invoca el Gate definido en la sección `## Gate de Ejecución` sobre `ca/CA-{ID}/artifact/plan`.
 
 - Si el Planner respondió `state: blocked` o `next: waiting_for_derivation`, no se invoca el Gate: la rama del Paso 2.5 sigue vigente.
-- Si FAIL: imprime `⛔ Gate rechazado: {razón}` y termina el flujo (sin worktree, sin Constructor, sin Validator). NO continúa aunque haya confirmación humana o `--auto`.
+- Si FAIL: imprime `⛔ Gate rechazado: {razón}` con la razón en llano —qué falta y qué hacer— y termina el flujo (sin worktree, sin Constructor, sin Validator). NO continúa aunque haya confirmación humana o `--auto`.
 - Si PASS: registra la evidencia del Gate en `flow-state/{execution_id}/run` (`autonomy.decisions`) y continúa directamente al Paso 4. La orden original del desarrollador y el resultado PASS del Gate son la señal de inicio: no hay sub-paso de confirmación humana.
 
 ***
@@ -411,6 +414,8 @@ El Runner puede despachar rondas intermedias con alcance declarado: no exigen el
 La replanificación autónoma solo puede reorganizar la implementación dentro de la finalidad, alcance, criterios de aceptación, permisos y restricciones ya aprobados. No altera requisitos ni autoriza un cambio de alcance: si hace falta, pausa y solicita decisión humana. El cambio de Inspector no reinicia contadores ni habilita repetir enfoques descartados sin evidencia nueva.
 
 Solo `APPROVED` explícito del Validator cierra la validación y habilita el cierre normal. El Runner informa por ronda el incumplimiento, la novedad y el resultado; al pausar informa motivo y condición de reanudación. El trabajo y su historial se conservan durante pausas.
+
+El reporte por ronda es llano: qué se corrigió, qué cambió y si el trabajo avanzó. Los estados y veredictos quedan en el registro y se explican solo a pedido.
 
 ***
 

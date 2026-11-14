@@ -189,11 +189,14 @@ los agentes completos rigen sus reglas de continuidad.
         ```
         [Nueva instancia por relevo de capacidad ({X}%). Hay checkpoint previo en Engram.]
         ```
-     c. Mostrar: `🔄 {agente} relanzado ({X}% contexto → nueva instancia)`.
+     c. Mostrar: `🔄 {nombre} se quedó sin espacio y siguió en una instancia nueva.`
    - **3 relanzamientos previos** (4to intento):
      a. NO relanzar.
-     b. Mostrar: `⚠️ {agente} alcanzó 3 relanzamientos en {CA-ID}. ¿Dividir la tarea?`
+     b. Mostrar: `⚠️ {nombre} ya se reinició tres veces. ¿Dividimos la tarea?`
      c. Detener el flujo hasta que el desarrollador responda.
+
+El contador de relanzamientos, el `task_id` y el `sessionID` quedan en el mapa de
+instancias; el aviso visible no los pega.
 
 ### Recuperación ante Fallos (Self-Healing)
 

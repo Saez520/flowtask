@@ -266,5 +266,57 @@
   {
     "line": "  iniciás ninguna ejecución. No hay valor por defecto.",
     "reason": "La falta o invalidez de la capa operativa se clasifica como falta de autoridad y se repara con una sola acción confirmada."
+  },
+  {
+    "sha256": "88bea60ceb119576fc3fd6d70ea316853daabbc6d2a7b93bb621a54e9a9d2a1d",
+    "reason": "El canal del operador reemplaza el código interno por una explicación en lenguaje llano; el registro técnico conserva el código."
+  },
+  {
+    "sha256": "b41a54166cb0bb40c54533d0616a2626ffd6afc9870159f744829361b4a22b78",
+    "reason": "El canal del operador reemplaza el código interno por una explicación en lenguaje llano; el registro técnico conserva el código."
+  },
+  {
+    "sha256": "eb18f19f7e69f37be2f69bd68e785ce672f04eb64c65ba9dc4cd0af2face94bc",
+    "reason": "El cierre de hotfix declara la estrategia de integración propuesta por el Constructor; el registro del cierre conserva la decisión."
+  },
+  {
+    "sha256": "590db35c15b15247cd02c24b7bddde832fef95293c60071c5d9f0317c844ff0a",
+    "reason": "El cierre usa la estrategia propuesta por el Constructor en lugar de un valor fijo por defecto."
+  },
+  {
+    "sha256": "f9d149d84f0a6c692f0c25485710c614bdb4ff6d36db84d14fa7731ad402d6be",
+    "reason": "El flujo de planificación incorpora la inicialización de convenciones antes del Gate."
+  },
+  {
+    "sha256": "cfe70640e3f76071b344b00f2e7a595c126be8b0826c9d0180231a05a78b575d",
+    "reason": "El prompt de delegación nombra el perfil de política vigente en lugar del campo genérico anterior."
+  },
+  {
+    "sha256": "591dc4f561f9814c147a208e0d63101669dba44443401d6e0457eb028875ef7f",
+    "reason": "El motivo del rechazo del Gate se explica en lenguaje llano y el código queda en el registro."
+  },
+  {
+    "sha256": "7d6164917929fa984d6002b4b2464786314ecf372acab6678b6f150b29258a20",
+    "reason": "El aviso de relevo dice que la instancia se quedó sin espacio y siguió en una nueva; el porcentaje y el identificador quedan en el mapa."
+  },
+  {
+    "sha256": "74f734cdd9b78182ca8272585a4820d7d6bb865e867f088d166a3a0e0633423f",
+    "reason": "El aviso de tres reinicios pregunta si dividir la tarea sin exponer el identificador interno."
+  },
+  {
+    "sha256": "3e5cce123e8ab06ecba859d5e3c4c2ef718e9dadf12f09b5342fb46a7831394e",
+    "reason": "La línea visible del lote dice qué avanza, qué espera y qué sigue; los códigos quedan en la decisión."
+  },
+  {
+    "sha256": "9aad4493340786050702ab0af8ef13073704a585a5788ff3e6a989f285f4d157",
+    "reason": "El motivo del rechazo del Gate se explica en lenguaje llano y el código queda en el registro."
+  },
+  {
+    "sha256": "0f05fbddc399734821ba681c720c66fee94a0cb8e361aca0b6b538bdcc9e6ed3",
+    "reason": "La aprobación de la validación se informa en lenguaje llano y el veredicto queda en el registro técnico."
+  },
+  {
+    "sha256": "8fd6873ead35fc22b58b51c18cfa57823963c59d4b8a97528252dd38b9f8cf07",
+    "reason": "El estado y la severidad de la revisión son registro técnico y se informan en lenguaje llano."
   }
 ]
