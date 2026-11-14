@@ -90,7 +90,7 @@ flowchart TB
     R -- "skill()" --> S["SKILLS<br/>on-demand"]
     R -- "mem_* (Engram)" --> E["ENGRAM<br/>persistent memory"]
 
-    A -- "edit code in isolation" --> W["PHYSICAL WORKSPACE<br/>.worktrees/&lt;ID&gt;/ · branch worktree/&lt;ID&gt;<br/>commit → squash-merge → base branch (development → main → trunk; fallback main)"]
+    A -- "edit code in isolation" --> W["PHYSICAL WORKSPACE<br/>.worktrees/&lt;ID&gt;/ · branch worktree/&lt;ID&gt;<br/>commit → complete (squash or preserve-history) → base branch (development → main → trunk; fallback main)"]
 
     P["PLUGINS — runtime hooks that watch the runner (block E)<br/>permission-gate · context-checkpoint · model-selector"]
     R -.-> P
@@ -187,7 +187,7 @@ RUNNER classifies ── does the CA exist in Engram?
               │                          operational recovery or pause
               │
               ▼ APPROVED with final=true
-        [10] CLOSE ── commit → worktree.sh complete (squash-merge to the base, with meaningful --title/--body)
+        [10] CLOSE ── commit → worktree.sh complete (Constructor-proposed strategy: squash only without a proposal, with meaningful --title/--body)
               → ca_status: closed + purge of orphan task_ids + session summary
 ```
 
@@ -200,7 +200,7 @@ the keys documented in the README. `create` does not install dependencies or
 run tests by detection: `--prepare` and `--verify` are opt-in, require declared
 commands, and run in that order.
 
-The close preserves the squash, but its cleanup uses an internal ephemeral and
+The close applies the strategy proposed by the Constructor, but its cleanup uses an internal ephemeral and
 verified capability: after validating identity, state, de-initialization, and
 journal, `complete` runs `git worktree remove --force` on the closed worktree
 and deletes the branch with an update conditioned on the expected SHA.
@@ -242,7 +242,7 @@ opening the full CA cycle.
 planning (`planner`), and audit (`plan-auditor`): that adds latency and
 separates the diagnostic conversation from the decision to act. The HF
 preserves the essentials —persisted research, a minimal plan, an isolated
-worktree, validation, and close by squash-merge— but does NOT create a CA or
+worktree, validation, and close with the Constructor's proposed strategy— but does NOT create a CA or
 invoke `ca-writer`/`planner`/`plan-auditor`.
 
 > **Origin:** hotfix flow, introduced as a second bounded path in August 2026.
@@ -262,7 +262,7 @@ invoke `ca-writer`/`planner`/`plan-auditor`.
 [5] VALIDATOR ── → hotfix/{id}/artifact/validacion (does not go through plan-auditor)
     REJECTED → returns to [4] with the rejection evidence
               second rejection → Inspector → returns to [4]
-[6] CLOSE ── commit → worktree.sh complete (squash-merge to the base)
+[6] CLOSE ── commit → worktree.sh complete (Constructor-proposed strategy; squash only without a proposal)
 ```
 
 **Real example:** a diagrams hotfix (Sep 23, 2026) converted the 14
