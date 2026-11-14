@@ -2,7 +2,7 @@ import { Plugin } from "@opencode/plugin";
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, isWorktreeManagerMcpTool, } from "./authorizer.js";
+import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, isAuthorityCommand, isWorktreeManagerMcpTool, } from "./authorizer.js";
 import { buildLayerBlockMessage, readOperationalLayers } from "./layers.js";
 import { applyReducedDelivery, buildAttachmentDelivery, buildDegradationMetadata, buildNarrowingNotice, buildReducedDelivery, isImageOrPdfOutput, loadContextBudgetConfig, readDeliveredText, registerNarrowingNotice, resetNarrowingNotices, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
 /**
@@ -297,7 +297,9 @@ export default Plugin.define({
                 const layerWorkdir = readWorkdir(input, sessionDir);
                 const operationalLayers = readOperationalLayers([layerWorkdir, sessionDir]);
                 if (!operationalLayers.ok) {
-                    throw new Error(buildLayerBlockMessage(operationalLayers));
+                    const authorityBypass = event.tool === "bash" && isAuthorityCommand(command);
+                    if (!authorityBypass)
+                        throw new Error(buildLayerBlockMessage(operationalLayers));
                 }
                 if (!runnerToolAllowed(event.tool, input))
                     runnerBlocked();

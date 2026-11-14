@@ -258,5 +258,13 @@
   {
     "sha256": "a9527e5768cf929a67a082ab63ef557938d1628a9d60e1be6ee040ba1e99d1be",
     "reason": "La regla de autonomía exige uno de los dos valores vigentes."
+  },
+  {
+    "line": "- **Valor inválido o bloque vacío** → pausa con `progress_unavailable` y no",
+    "reason": "La falta o invalidez de la capa operativa se clasifica como falta de autoridad y se repara con una sola acción confirmada."
+  },
+  {
+    "line": "  iniciás ninguna ejecución. No hay valor por defecto.",
+    "reason": "La falta o invalidez de la capa operativa se clasifica como falta de autoridad y se repara con una sola acción confirmada."
   }
 ]

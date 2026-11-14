@@ -97,8 +97,9 @@ Reglas de la capa:
 - **La autonomía solo restringe.** Nunca amplía el sobre de permisos ni
   autoriza una acción fuera de él.
 - **La persona no autoriza ni restringe.** Solo define cómo hablás.
-- **Valor inválido o bloque vacío** → pausa con `progress_unavailable` y no
-  iniciás ninguna ejecución. No hay valor por defecto.
+- **Valor inválido o bloque vacío** → pausa con `authority_block` y no
+  iniciás ninguna ejecución. La falta de autoridad se repara con una sola
+  acción confirmada por el operador; no hay valor por defecto.
 - **El valor no se infiere del pedido.** Si el bloque está vacío o el valor no
   es uno de los dos, la ejecución no arranca.
 
@@ -471,6 +472,9 @@ no falta un consentimiento, se avanza.
 | Invariante violado. | `invariant_violation` |
 | Fallo externo no verificable o registro ilegible. | `progress_unavailable` |
 
+La capa operativa ausente o inválida es falta de autoridad: usa `authority_block` y nunca
+`progress_unavailable`. Este último queda reservado a fallos externos y registros ilegibles.
+
 ### Mensaje canónico
 
 Cada pausa deja una entrada de `PolicyDecision` en `autonomy.decisions` con `kind: "pause"`,
@@ -486,6 +490,35 @@ Para reanudar: {condición exacta}
 El detalle se ajusta al `policy.profile` vigente: el perfil de desarrollo agrega referencias
 de evidencia y el último comando verificado; el perfil de producción mantiene las tres líneas
 concisas. La verificación técnica para reanudar es la misma en ambos perfiles.
+
+### Pausa por falta de autoridad y reparación
+
+El disparador es mecánico: un mensaje que empieza por
+`[FlowTask Permission Gate] Missing or invalid` significa falta de autoridad, no un fallo
+externo.
+
+1. Ejecutá `node .flowtask/bin/flowtask.js authority status --json` (o
+   `flowtask authority status --json`). Es de solo lectura y está permitido aunque el gate
+   bloquee el resto.
+2. Si el resultado es `authority_block`, mostrá el campo `message` con el estado conservado.
+   No muestres `errors[]` ni el mensaje técnico.
+3. Esperá una señal explícita del operador. `--auto` no sustituye esa señal.
+4. Con la señal, ejecutá `node .flowtask/bin/flowtask.js repair --json` (o
+   `flowtask repair --json`) desde la raíz del proyecto. No editás archivos de configuración:
+   la reparación la escribe el comando.
+5. Si el resultado es `repaired` o `healthy`, verificá que `authority status` devuelva `ok`
+   y, si el disparador fue el bloque de autonomía, que el bloque ya no esté vacío o inválido.
+   Si la verificación falla, continuá con el paso 6.
+6. Si el resultado es `failed` o `not_installed`, no reanudes: mostrá el campo `message` y
+   conservá la pausa y el estado.
+7. Registrá una `PolicyDecision` con `kind: "resume"`, `policy: "resume_gate"`,
+   `outcome: "resume"`, `verified: true`, `reason: "authority_block"`, `command` y `result`
+   con `restored` y `preserved`; usá `evidence_refs` a `flow-state/{execution_id}/run` y
+   `flow-state/{execution_id}/progress`. Reanudá sin reiniciar la ronda ni repetir
+   comprobaciones ya verificadas.
+
+El detalle técnico (`errors[]`) se muestra solo si el operador lo pide. El mensaje de
+operador sale del catálogo y no incluye códigos, rutas ni nombres internos.
 
 ### Reanudación
 
@@ -504,6 +537,7 @@ Estos consentimientos nunca se derivan de `--auto` ni de la política vigente:
 - Publicar o mover trabajo a remoto.
 - Eliminar trabajo ajeno o pendiente-manual.
 - Modificar archivos protegidos.
+- Restaurar la configuración de autoridad — consentimiento explícito; `--auto` no lo sustituye.
 
 ***
 

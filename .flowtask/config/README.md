@@ -24,8 +24,10 @@ Each installed target has its own layer configuration in
   the minimum. `--autonomy <assistant|autonomous-dev>` selects the value without
   the question; the flag overwrites a valid layer, while the interactive answer
   applies only to absent layers. A valid layer is preserved without a choice.
-- An invalid layer is never repaired with a default: the operation fails and the
-  file is preserved.
+- During `install` and `update`, an invalid layer is never repaired with a default:
+  the operation fails and the file is preserved.
+- The explicit `flowtask repair` is the only exception: it backs up the invalid
+  file, writes the safe default, verifies the result, and preserves valid layers.
 - A missing or invalid persona leaves a warning and execution continues without a
   persona, without touching autonomy or permissions.
 - `flowtask layers resolve` shows the resolved layers of a target and the
