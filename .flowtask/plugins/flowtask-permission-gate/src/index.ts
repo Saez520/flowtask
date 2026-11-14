@@ -6,6 +6,7 @@ import {
   RUNNER_DELEGATION_MESSAGE,
   isAuthorizedRunnerCommand,
   isAuthorizedRunnerSubagent,
+  isAuthorityCommand,
   isWorktreeManagerMcpTool,
 } from "./authorizer.js";
 import { buildLayerBlockMessage, readOperationalLayers } from "./layers.js";
@@ -367,7 +368,8 @@ export default Plugin.define({
         const layerWorkdir = readWorkdir(input, sessionDir);
         const operationalLayers = readOperationalLayers([layerWorkdir, sessionDir]);
         if (!operationalLayers.ok) {
-          throw new Error(buildLayerBlockMessage(operationalLayers));
+          const authorityBypass = event.tool === "bash" && isAuthorityCommand(command);
+          if (!authorityBypass) throw new Error(buildLayerBlockMessage(operationalLayers));
         }
         if (!runnerToolAllowed(event.tool, input)) runnerBlocked();
       }

@@ -322,6 +322,42 @@ function isAuthorizedGitLog(args) {
     }
     return hasLimit;
 }
+/**
+ * Exactly the authority commands that may cross the layer denial:
+ * `flowtask authority status [--json]`, `flowtask repair [--json]`, and their
+ * `node .flowtask/bin/flowtask.js ...` forms. Nothing is composed or widened.
+ */
+function authorityTokens(tokens) {
+    const base = tokens[0] === "node" && tokens[1] === ".flowtask/bin/flowtask.js"
+        ? tokens.slice(2)
+        : tokens[0] === "flowtask"
+            ? tokens.slice(1)
+            : null;
+    if (!base)
+        return false;
+    if (base[0] === "authority") {
+        return base.length >= 2
+            && base[1] === "status"
+            && (base.length === 2 || (base.length === 3 && base[2] === "--json"));
+    }
+    if (base[0] === "repair") {
+        return base.length === 1 || (base.length === 2 && base[1] === "--json");
+    }
+    return false;
+}
+/**
+ * True only for a single, exact authority command. Any compound, redirect, or
+ * unknown token makes the command ineligible for the layer bypass.
+ */
+export function isAuthorityCommand(command) {
+    const segments = splitCommandSegments(command);
+    if (!segments || segments.length !== 1)
+        return false;
+    if (hasUnsafeQuoteContext(segments[0]))
+        return false;
+    const tokens = tokenizeCommand(segments[0]);
+    return Boolean(tokens?.length && authorityTokens(tokens));
+}
 export function isAuthorizedRunnerCommand(command) {
     const segments = splitCommandSegments(command);
     if (!segments)
@@ -332,6 +368,8 @@ export function isAuthorizedRunnerCommand(command) {
         const tokens = tokenizeCommand(segment);
         if (!tokens?.length)
             return false;
+        if (authorityTokens(tokens))
+            return true;
         if (tokens[0] === "node" && tokens[1] === ".flowtask/bin/flowtask.js" && tokens[2] === "graphify")
             return tokens.length > 3;
         const worktreeScript = tokens[0].replaceAll("\\", "/");

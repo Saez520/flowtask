@@ -8,4 +8,9 @@ export declare const FLOWTASK_SUBAGENTS: Set<string>;
 export declare function isAuthorizedRunnerSubagent(agent: unknown): boolean;
 /** Tokenize the small shell grammar used by FlowTask commands. */
 export declare function tokenizeCommand(command: string): string[] | null;
+/**
+ * True only for a single, exact authority command. Any compound, redirect, or
+ * unknown token makes the command ineligible for the layer bypass.
+ */
+export declare function isAuthorityCommand(command: string): boolean;
 export declare function isAuthorizedRunnerCommand(command: string): boolean;
