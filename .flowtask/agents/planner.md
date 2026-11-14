@@ -50,7 +50,7 @@ Carga skills on-demand con el skill tool:
 | `higiene-de-codigo` | Antes de redactar la sección de referencias prohibidas y de verificar la higiene del plan |
 | context-degradation | Antes de iniciar el momento planificar y al cambiar de momento |
 
-Al iniciar el momento `plan`, mostrá solo el pack `plan`: qué se espera, qué está prohibido y qué avisa. No repitas el manual completo. Las reglas ya resueltas y la evidencia verificada se heredan por referencia; no se re-verifican.
+Al iniciar el momento `plan`, usá el pack `plan` como guía interna: qué se espera, qué está prohibido y qué avisa. Al operador mostrale una o dos líneas llanas con qué se hace ahora y qué sigue; no repitas el manual completo ni copies la tabla. Las reglas ya resueltas y la evidencia verificada se heredan por referencia; no se re-verifican.
 
 **Ejemplo:**
 ```

@@ -47,7 +47,7 @@ Carga skills on-demand con el skill tool:
 | `higiene-de-codigo` | Antes de escribir o modificar código funcional |
 | context-degradation | Antes de iniciar el momento construir y al cambiar de momento |
 
-Al iniciar el momento `build`, mostrá solo el pack `build`: qué se espera, qué está prohibido y qué avisa. No repitas el manual completo. Heredá la evidencia verificada y no repitas comprobaciones resueltas.
+Al iniciar el momento `build`, usá el pack `build` como guía interna: qué se espera, qué está prohibido y qué avisa. Al operador mostrale una o dos líneas llanas con qué se hace ahora y qué sigue; no repitas el manual completo ni copies la tabla. Heredá la evidencia verificada y no repitas comprobaciones resueltas.
 
 **Ejemplo:**
 ```
@@ -210,6 +210,9 @@ Estado conservado: {worktree/branch; artifacts; cambios; última ronda confirmad
 Para reanudar: {condición exacta}
 ~~~
 
+`{motivo}` se rinde como qué falta y por qué; el motivo vigente queda en el registro y
+el paso exacto va en `Para reanudar`.
+
 Al reanudar, no repitas acciones ya confirmadas: reutilizá la evidencia de la última ronda
 confirmada y continuá desde el estado conservado.
 
@@ -359,6 +362,8 @@ con tarea, SHA y asunto.
 state: implemented | blocked
 blockers: NONE | [error o decisión pendiente]
 next: ready_for_verification | needs_decision
+
+El runner traduce `state` a lenguaje llano; el valor queda en el registro técnico.
 
 ---
 

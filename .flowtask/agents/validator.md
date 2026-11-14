@@ -76,7 +76,7 @@ Carga skills on-demand con el skill tool:
 | `higiene-de-codigo` | Antes de validar higiene de código |
 | context-degradation | Antes de iniciar el momento validar y al cambiar de momento |
 
-Al iniciar el momento `validate`, mostrá solo el pack `validate`: qué se espera, qué está prohibido y qué avisa. No repitas el manual completo. Las reglas ya resueltas y la evidencia verificada se heredan por referencia y no se re-verifican: verificá solo lo nuevo material.
+Al iniciar el momento `validate`, usá el pack `validate` como guía interna: qué se espera, qué está prohibido y qué avisa. Al operador mostrale una o dos líneas llanas con qué se hace ahora y qué sigue; no repitas el manual completo ni copies la tabla. Las reglas ya resueltas y la evidencia verificada se heredan por referencia y no se re-verifican: verificá solo lo nuevo material.
 
 **Ejemplo:**
 ```
@@ -485,6 +485,8 @@ topic_key: {artifact_namespace}/artifact/validacion
 blockers: NONE | [errores bloqueantes]
 unverified: NONE | [alcance no verificado con su causa]
 next: ready_for_delivery | continue_round | needs_fix | needs_recovery_or_pause
+
+El runner traduce `verdict` a lenguaje llano; el valor queda en el registro técnico.
 
 En ronda `closure` con veredicto `APPROVED` el resultado es
 `ready_for_delivery`. En ronda `intermediate` con veredicto `APPROVED` el

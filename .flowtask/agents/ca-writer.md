@@ -36,7 +36,7 @@ skill({ name: "graphify-protocol" }) ← cargar para consulta de grafo con degra
 skill({ name: "context-degradation" }) ← cargar al iniciar el momento definir
 ```
 
-Al iniciar el momento `define`, mostrá solo el pack `define`: qué se espera, qué está prohibido y qué avisa. No repitas el manual completo. Las reglas ya resueltas y la evidencia verificada se heredan por referencia.
+Al iniciar el momento `define`, usá el pack `define` como guía interna: qué se espera, qué está prohibido y qué avisa. Al operador mostrale una o dos líneas llanas con qué se hace ahora y qué sigue; no repitas el manual completo ni copies la tabla. Las reglas ya resueltas y la evidencia verificada se heredan por referencia.
 
 ## Identidad de capa
 
