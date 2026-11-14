@@ -203,12 +203,20 @@ export function generateClaudeAgents(flowtaskDir, projectDir, options = {}) {
   }));
 
   const files = [];
+  const restored = [];
+  const unchanged = [];
   for (const item of composed) {
-    writeFileAtomic(item.destPath, item.content);
+    const existing = fileExists(item.destPath) ? fs.readFileSync(item.destPath, "utf8") : null;
+    if (existing !== null && existing === item.content) {
+      unchanged.push(item.destPath);
+    } else {
+      if (existing !== null) restored.push(item.destPath);
+      writeFileAtomic(item.destPath, item.content);
+    }
     files.push(item.destPath);
   }
 
-  return { generated: files.length, skipped: [], files };
+  return { generated: files.length, skipped: [], files, restored, unchanged };
 }
 
 // ─── User-level runner agent ──────────────────────────────────────────────────
@@ -260,10 +268,12 @@ export function generateClaudeRunnerAgent({ claudeUserDir, runtimeRoot, runtimeM
     const existing = fs.readFileSync(destPath, "utf8");
     if (!existing.includes(FLOWTASK_MANAGED_MARKER)) return { status: "preserved", path: destPath };
     if (existing === content) return { status: "unchanged", path: destPath };
+    writeFileAtomic(destPath, content);
+    return { status: "written", path: destPath, restored: true };
   }
 
   writeFileAtomic(destPath, content);
-  return { status: "written", path: destPath };
+  return { status: "written", path: destPath, restored: false };
 }
 
 /** Remove the generated runner agent only when it carries the ownership marker. */
@@ -308,16 +318,18 @@ function generateClaudeCommand(srcPath, destPath) {
   const legacyContent = `---\ndescription: ${description}\n---\n${adaptedBody}`;
   const claudeContent = `---\ndescription: ${description}\n---\n${FLOWTASK_MANAGED_MARKER}\n${adaptedBody}`;
 
+  let restored = false;
   if (fs.existsSync(destPath)) {
     const existing = fs.readFileSync(destPath, "utf8");
     const owned = existing.includes(FLOWTASK_MANAGED_MARKER);
-    if (!owned && existing !== legacyContent) return { written: false, path: destPath };
+    if (!owned && existing !== legacyContent) return { written: false, path: destPath, restored: false };
+    restored = owned && existing !== claudeContent;
   }
 
   const dir = path.dirname(destPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(destPath, claudeContent, "utf8");
-  return { written: true, path: destPath };
+  return { written: true, path: destPath, restored };
 }
 
 /**
@@ -333,15 +345,17 @@ export function generateClaudeCommands(flowtaskDir, projectDir) {
   const destDir = path.join(projectDir, ".claude", "commands");
   const files = [];
   const skipped = [];
+  const restored = [];
 
   for (const file of fs.readdirSync(commandsDir)) {
     if (!file.endsWith(".md")) continue;
     const result = generateClaudeCommand(path.join(commandsDir, file), path.join(destDir, file));
     if (result.written) files.push(result.path);
     else skipped.push(result.path);
+    if (result.restored) restored.push(result.path);
   }
 
-  return { generated: files.length, skipped, files };
+  return { generated: files.length, skipped, files, restored };
 }
 
 // ─── Settings merger ──────────────────────────────────────────────────────────

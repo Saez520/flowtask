@@ -484,6 +484,15 @@ function ensureGlobalSurfaces({
   return { paths, version, runtime, config, hook: settings, mcp, runnerAgent };
 }
 
+function collectRestoredPaths({ runtime, runnerAgent, materialized }) {
+  const paths = [];
+  if (Array.isArray(runtime?.restoredPaths)) paths.push(...runtime.restoredPaths);
+  if (runnerAgent?.restored === true && runnerAgent.path) paths.push(runnerAgent.path);
+  for (const file of materialized?.agents?.restored ?? []) paths.push(file);
+  for (const file of materialized?.commands?.restored ?? []) paths.push(file);
+  return [...new Set(paths)];
+}
+
 /**
  * Install or refresh the user-level runtime, the SessionStart hook, the user
  * MCP registration, and the current project registration.
@@ -529,6 +538,11 @@ export function installClaudeTarget({
     worktreeMcp,
     runnerAgent: surfaces.runnerAgent,
     settingsAgent: registration.settingsAgent,
+    restoredPaths: collectRestoredPaths({
+      runtime: surfaces.runtime,
+      runnerAgent: surfaces.runnerAgent,
+      materialized: registration.materialized,
+    }),
   };
 }
 
@@ -732,6 +746,10 @@ export function updateClaudeTarget({
       options,
       runnerAgent: surfaces.runnerAgent,
       settingsAgent: null,
+      restoredPaths: collectRestoredPaths({
+        runtime: surfaces.runtime,
+        runnerAgent: surfaces.runnerAgent,
+      }),
     };
   }
 
@@ -756,5 +774,10 @@ export function updateClaudeTarget({
     worktreeMcp,
     runnerAgent: surfaces.runnerAgent,
     settingsAgent: registration.settingsAgent,
+    restoredPaths: collectRestoredPaths({
+      runtime: surfaces.runtime,
+      runnerAgent: surfaces.runnerAgent,
+      materialized: registration.materialized,
+    }),
   };
 }

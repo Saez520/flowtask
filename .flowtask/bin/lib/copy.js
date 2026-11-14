@@ -75,41 +75,55 @@ export function copyWithProgress(src, dest, label, readline) {
 }
 
 /**
- * Check if a source file differs from its destination (by size or mtime).
+ * Check if a source file differs from its destination by content. Metadata
+ * alone never decides: a same-size edit with a preserved mtime is still drift,
+ * and a destination that is not a regular file is always replaced.
  */
 export function isFileChanged(srcPath, destPath) {
-  if (!fs.existsSync(destPath)) return true;
+  const destStat = fs.lstatSync(destPath, { throwIfNoEntry: false });
+  if (!destStat || !destStat.isFile()) return true;
   const srcStat = fs.statSync(srcPath);
-  const destStat = fs.statSync(destPath);
   if (srcStat.size !== destStat.size) return true;
-  if (Math.abs(srcStat.mtimeMs - destStat.mtimeMs) > 1000) return true;
-  return false;
+  return !fs.readFileSync(srcPath).equals(fs.readFileSync(destPath));
 }
 
 /**
  * Copy directory with delta detection (only changed files), skipping node_modules/.git.
+ *
+ * `copied` and `skipped` keep their historical meaning. `installed` counts files
+ * and symlinks written where no destination existed; `restoredPaths` lists the
+ * destinations that already existed and were rewritten because their content,
+ * type or link target differed from the source.
+ *
  * @param {string} src
  * @param {string} dest
  * @param {string[]} preservePaths - Dest path fragments to skip (never overwrite)
  * @param {Set<string>} visited
  * @param {string|null} rootSrc
  * @param {string[]|null} includePaths - Top-level entry names to copy; null copies everything
- * @returns {{ copied: number, skipped: number }}
+ * @returns {{ copied: number, skipped: number, installed: number, restored: number, restoredPaths: string[] }}
  */
 export function copyDirectoryDelta(src, dest, preservePaths = [], visited = new Set(), rootSrc = null, includePaths = null) {
+  return copyDirectoryDeltaInternal(src, dest, preservePaths, visited, rootSrc ?? src, dest, includePaths);
+}
+
+function copyDirectoryDeltaInternal(src, dest, preservePaths, visited, rootSrc, rootDest, includePaths) {
+  const emptyStats = () => ({ copied: 0, skipped: 0, installed: 0, restored: 0, restoredPaths: [] });
   const destStat = fs.lstatSync(dest, { throwIfNoEntry: false });
   if (destStat && (!destStat.isDirectory() || destStat.isSymbolicLink())) {
-    if (!removeEntryPreserving(dest, path.basename(dest), preservePaths)) return { copied: 0, skipped: 1 };
+    if (!removeEntryPreserving(dest, path.basename(dest), preservePaths)) return { ...emptyStats(), skipped: 1 };
   }
   if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-  if (!rootSrc) rootSrc = src;
 
   const realSrc = fs.realpathSync(src);
-  if (visited.has(realSrc)) return { copied: 0, skipped: 0 };
+  if (visited.has(realSrc)) return emptyStats();
   visited.add(realSrc);
 
   let copied = 0;
   let skipped = 0;
+  let installed = 0;
+  const restoredPaths = new Set();
+  const relativePath = (target) => path.relative(rootDest, target).split(path.sep).join("/");
 
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
     if (src === rootSrc && Array.isArray(includePaths) && !includePaths.includes(entry.name)) { skipped++; continue; }
@@ -126,6 +140,7 @@ export function copyDirectoryDelta(src, dest, preservePaths = [], visited = new 
     const destinationIsDirectory = destinationStat?.isDirectory() && !destinationStat.isSymbolicLink();
     if (destinationStat && sourceIsDirectory !== destinationIsDirectory) {
       if (!removeEntryPreserving(destPath, path.relative(rootSrc, srcPath), preservePaths)) { skipped++; continue; }
+      restoredPaths.add(relativePath(destPath));
     }
 
     // Security: skip symlinks that escape source tree
@@ -138,26 +153,38 @@ export function copyDirectoryDelta(src, dest, preservePaths = [], visited = new 
       const target = fs.realpathSync(srcPath);
       const root = fs.realpathSync(rootSrc);
       if (!target.startsWith(`${root}${path.sep}`) && target !== root) { skipped++; continue; }
-      if (fs.existsSync(destPath) && !fs.lstatSync(destPath).isSymbolicLink()) fs.rmSync(destPath, { recursive: true, force: true });
-      if (!fs.existsSync(destPath) || fs.readlinkSync(destPath) !== fs.readlinkSync(srcPath)) {
+      const destinationExists = Boolean(destinationStat);
+      const destinationIsLink = destinationStat?.isSymbolicLink() === true;
+      const linkDiffers = destinationIsLink && fs.readlinkSync(destPath) !== fs.readlinkSync(srcPath);
+      if (destinationStat && !destinationIsLink) fs.rmSync(destPath, { recursive: true, force: true });
+      if (!destinationIsLink || linkDiffers) {
         fs.symlinkSync(fs.readlinkSync(srcPath), destPath); copied++;
+        if (destinationExists) restoredPaths.add(relativePath(destPath));
+        else installed++;
       } else skipped++;
     } else if (entry.isDirectory()) {
       {
-        const result = copyDirectoryDelta(srcPath, destPath, preservePaths, visited, rootSrc);
+        const result = copyDirectoryDeltaInternal(srcPath, destPath, preservePaths, visited, rootSrc, rootDest);
         copied += result.copied;
         skipped += result.skipped;
+        installed += result.installed;
+        for (const restored of result.restoredPaths) restoredPaths.add(restored);
       }
     } else if (entry.isFile()) {
-      if (isFileChanged(srcPath, destPath)) { fs.copyFileSync(srcPath, destPath); copied++; }
-      else skipped++;
+      const destinationExists = Boolean(destinationStat);
+      if (destinationStat && !destinationStat.isFile()) fs.rmSync(destPath, { recursive: true, force: true });
+      if (!destinationExists || isFileChanged(srcPath, destPath)) {
+        fs.copyFileSync(srcPath, destPath); copied++;
+        if (destinationExists) restoredPaths.add(relativePath(destPath));
+        else installed++;
+      } else skipped++;
     } else {
       // Sockets, devices and FIFOs are not portable installer payloads.
       skipped++;
     }
   }
 
-  return { copied, skipped };
+  return { copied, skipped, installed, restored: restoredPaths.size, restoredPaths: [...restoredPaths] };
 }
 
 /** Remove an entry only when doing so cannot remove skipped or preserved data. */

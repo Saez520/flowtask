@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { execFileSync } from "child_process";
+import { isDeepStrictEqual } from "util";
 import {
   COLORS, log, logStep, logSuccess, logError, logWarn, logInfo,
   isBinaryInstalled, getVersion, fileExists,
@@ -13,7 +15,11 @@ import { installClaudeTarget, updateClaudeTarget } from "./claude-install.js";
 import { hasLayerFiles, preflightClaudeRuntimeConfig } from "./claude-runtime.js";
 import { resolveClaudePaths } from "./claude.js";
 import {
+  AUTONOMY_END_MARKER,
+  AUTONOMY_START_MARKER,
   CUSTOM_PERSONA_TEXT,
+  PERSONA_END_MARKER,
+  PERSONA_START_MARKER,
   configureRunnerScriptsContent,
   injectAutonomyIntoRunnerContent,
   injectPersonaIntoRunnerContent,
@@ -680,6 +686,110 @@ function configureRunnerScripts(targetDir, targetSubDir) {
   fs.writeFileSync(runnerPath, configureRunnerScriptsContent(content, targetSubDir), "utf8");
 }
 
+function readOptionalText(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** Blank the injected persona and autonomy blocks while keeping their markers. */
+function stripRunnerInjectedBlocks(content) {
+  let result = content;
+  for (const [start, end] of [
+    [PERSONA_START_MARKER, PERSONA_END_MARKER],
+    [AUTONOMY_START_MARKER, AUTONOMY_END_MARKER],
+  ]) {
+    const startIndex = result.indexOf(start);
+    const endIndex = result.indexOf(end);
+    if (startIndex === -1 || endIndex < startIndex + start.length) continue;
+    result = result.slice(0, startIndex + start.length) + result.slice(endIndex);
+  }
+  return result;
+}
+
+/** A runner differs from the canonical one only outside its injected blocks. */
+function runnerContentDrifted(before, canonical, targetSubDir) {
+  if (typeof before !== "string" || typeof canonical !== "string") return false;
+  return stripRunnerInjectedBlocks(before) !== stripRunnerInjectedBlocks(configureRunnerScriptsContent(canonical, targetSubDir));
+}
+
+function toProjectPath(projectDir, absolutePath) {
+  return path.relative(projectDir, absolutePath).split(path.sep).join("/");
+}
+
+const MANAGED_SKIP_DIRS = new Set(["node_modules", ".git", "worktree-manager"]);
+const MANAGED_SKIP_FILES = new Set(["worktree-manager-core.sh", "worktree-manager-target-direct.sh"]);
+const OWNER_MARKER_FILE = ".flowtask-plugin-owner.json";
+
+function managedTreeEntry(targetPath) {
+  const stat = fs.lstatSync(targetPath, { throwIfNoEntry: false });
+  if (!stat) return { exists: false };
+  if (stat.isSymbolicLink()) return { exists: true, type: "symlink", target: fs.readlinkSync(targetPath) };
+  if (stat.isDirectory()) return { exists: true, type: "directory" };
+  return {
+    exists: true,
+    type: "file",
+    sha256: crypto.createHash("sha256").update(fs.readFileSync(targetPath)).digest("hex"),
+  };
+}
+
+/**
+ * Read-only snapshot of a managed tree keyed by project-relative path. It must
+ * run before the install transaction moves the tree so update can tell an
+ * untouched file from a restored one.
+ */
+function snapshotManagedTree(root, projectDir, snapshot) {
+  const stat = fs.lstatSync(root, { throwIfNoEntry: false });
+  if (!stat || !stat.isDirectory() || stat.isSymbolicLink()) return;
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (MANAGED_SKIP_DIRS.has(entry.name) || MANAGED_SKIP_FILES.has(entry.name)) continue;
+      const fullPath = path.join(dir, entry.name);
+      snapshot.set(toProjectPath(projectDir, fullPath), managedTreeEntry(fullPath));
+      if (entry.isDirectory() && !entry.isSymbolicLink()) walk(fullPath);
+    }
+  };
+  walk(root);
+}
+
+/** Compare a managed tree rebuilt by update against its pre-transaction snapshot. */
+function classifyManagedTree(root, projectDir, snapshot, { preservePaths = [], exclude = [] } = {}) {
+  const updated = [];
+  const unchanged = [];
+  const restoredPaths = [];
+  const excluded = new Set(exclude);
+  const stat = fs.lstatSync(root, { throwIfNoEntry: false });
+  if (!stat || !stat.isDirectory() || stat.isSymbolicLink()) {
+    return { updated: 0, unchanged: 0, restoredPaths };
+  }
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (MANAGED_SKIP_DIRS.has(entry.name) || MANAGED_SKIP_FILES.has(entry.name)) continue;
+      const fullPath = path.join(dir, entry.name);
+      if (preservePaths.some((fragment) => fullPath.includes(fragment))) continue;
+      const relative = toProjectPath(projectDir, fullPath);
+      if (entry.isDirectory() && !entry.isSymbolicLink()) {
+        const before = snapshot.get(relative);
+        if (before?.exists && before.type !== "directory") restoredPaths.push(relative);
+        walk(fullPath);
+        continue;
+      }
+      if (entry.name === OWNER_MARKER_FILE || excluded.has(relative)) continue;
+      const before = snapshot.get(relative);
+      const current = managedTreeEntry(fullPath);
+      if (!before?.exists) { updated.push(relative); continue; }
+      if (before.type !== current.type) { restoredPaths.push(relative); continue; }
+      if (current.type === "symlink" && before.target !== current.target) { restoredPaths.push(relative); continue; }
+      if (current.type === "file" && before.sha256 !== current.sha256) { restoredPaths.push(relative); continue; }
+      unchanged.push(relative);
+    }
+  };
+  walk(root);
+  return { updated: updated.length, unchanged: unchanged.length, restoredPaths };
+}
+
 function cleanupLegacyScripts(projectDir, targetDir, flowtaskDir) {
   if (flowtaskDir && path.resolve(path.join(projectDir, ".flowtask")) === path.resolve(flowtaskDir)) return;
   const legacyScripts = path.join(projectDir, ".flowtask", "scripts");
@@ -876,8 +986,14 @@ export function materializeReviewConfig(flowtaskDir, targetDir) {
   };
   const destination = path.join(configDir, "review.json");
   fs.mkdirSync(configDir, { recursive: true });
+  let restored = false;
+  const existingStat = fs.lstatSync(destination, { throwIfNoEntry: false });
+  if (existingStat?.isFile()) {
+    const existing = JSON.parse(fs.readFileSync(destination, "utf8"));
+    restored = !isDeepStrictEqual(existing, materialized);
+  }
   if (!writeJsonVerified(destination, materialized)) throw new Error(`could not verify ${destination}`);
-  return destination;
+  return { path: destination, restored };
 }
 
 /**
@@ -896,7 +1012,7 @@ export function syncTargetConfig(
   { preserveProfile = false, explicitPersona = false, autonomyProfile = null, replaceAutonomy = false } = {},
 ) {
   const { resolution } = ensureTargetLayers(targetDir, { autonomyProfile, replaceAutonomy });
-  materializeReviewConfig(flowtaskDir, targetDir);
+  const review = materializeReviewConfig(flowtaskDir, targetDir);
 
   const existing = readProfile(targetDir);
   const existingValidation = existing
@@ -928,6 +1044,7 @@ export function syncTargetConfig(
     persona: personaStatus,
     autonomy: resolution.layers.autonomy,
     permissions: resolution.layers.permissions,
+    review,
   };
 }
 
@@ -1252,7 +1369,7 @@ function cleanupDisabledClassifier(projectDir, manifest, preparedDecisions = nul
 export function installManifestPlugins(projectDir, manifest, flowtaskDir, preflight = null) {
   if (!Array.isArray(manifest) || manifest.length === 0) {
     logInfo("No plugins to install from manifest");
-    return { registered: 0 };
+    return { registered: 0, restoredPaths: [] };
   }
 
   const opencodePluginsDir = path.join(projectDir, ".opencode", "plugins");
@@ -1271,6 +1388,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
     }
   }
   const migratedLegacyIndexes = new Set();
+  const restoredPaths = new Set();
   let installedAgentModelSelector = false;
   let registeredCount = 0;
 
@@ -1291,19 +1409,25 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
       const isCheckpoint = entry.name === CONTEXT_CHECKPOINT_NAME;
       const preparedOwnership = (preflight?.managedOwnership ?? []).find((decision) => decision.path === destDir)
         ?? (preflight?.ownership?.path === destDir ? preflight.ownership : undefined);
-      replaceManagedPackage({ sourceDir, destinationDir: destDir,
+      const replaced = replaceManagedPackage({ sourceDir, destinationDir: destDir,
         configPath: path.join(projectDir, ".opencode", "opencode.json"),
         pluginName: entry.name,
         entrypoint: entry.entrypoint,
         source: isCheckpoint ? "submodule" : "local",
         sourceCommit: isCheckpoint ? CONTEXT_CHECKPOINT_SHA : null,
         ownershipDecision: preparedOwnership });
+      for (const relative of replaced.restoredPaths ?? []) {
+        restoredPaths.add(toProjectPath(projectDir, path.join(destDir, relative)));
+      }
       continue;
     }
 
     const allowlist = Array.isArray(entry.files) && entry.files.length > 0 ? entry.files : null;
     try {
-      copyDirectoryDelta(srcDir, destDir, [], new Set(), null, allowlist);
+      const stats = copyDirectoryDelta(srcDir, destDir, [], new Set(), null, allowlist);
+      for (const relative of stats.restoredPaths ?? []) {
+        restoredPaths.add(toProjectPath(projectDir, path.join(destDir, relative)));
+      }
       if (allowlist) pruneAllowlistedDestination(destDir, allowlist);
       logSuccess(`Plugin ${entry.name} copied to .opencode/plugins/${entry.name}`);
     } catch (err) {
@@ -1379,7 +1503,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
   cleanupDisabledClassifier(projectDir, manifest, preflight?.classifierOwnership ?? null);
   if (installedAgentModelSelector) cleanupLegacyModelSelector(projectDir, flowtaskDir, manifest);
   if (manifest.some((entry) => entry?.kind === "cli")) regenerateCanonicalCli(projectDir, flowtaskDir, manifest);
-  return { registered: registeredCount };
+  return { registered: registeredCount, restoredPaths: [...restoredPaths] };
 }
 
 /** Remove destination entries outside an explicit manifest allowlist. */
@@ -1812,11 +1936,6 @@ export async function update(flowtaskDir, options = {}) {
 
 async function runUpdate(flowtaskDir, options, report) {
   assertRunnerCanon({ flowtaskDir });
-  const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "update" });
-  if (worktreeManager) {
-    const versionNotice = formatWorktreeManagerVersionNotice({ previousVersion: worktreeManager.previousVersion, version: worktreeManager.version });
-    if (versionNotice) logInfo(versionNotice);
-  }
 
   const readline = await import("readline");
   const projectDir = process.cwd();
@@ -1866,6 +1985,12 @@ async function runUpdate(flowtaskDir, options, report) {
     return { ok: false };
   }
 
+  const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "update" });
+  if (worktreeManager) {
+    const versionNotice = formatWorktreeManagerVersionNotice({ previousVersion: worktreeManager.previousVersion, version: worktreeManager.version });
+    if (versionNotice) logInfo(versionNotice);
+  }
+
   const preflight = nonClaudeTargets.some(({ id }) => id === "opencode")
     ? await prepareInstallation(flowtaskDir, projectDir, "update", { targets: nonClaudeTargets, worktreeManager }) : null;
 
@@ -1888,6 +2013,27 @@ async function runUpdate(flowtaskDir, options, report) {
   }
 
   const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
+  const managedSnapshot = new Map();
+  const runnerBeforeByTarget = new Map();
+  for (const { id, subDir } of nonClaudeTargets) {
+    const targetDir = path.join(projectDir, subDir);
+    for (const { src, dest } of ASSETS[id] ?? []) {
+      if (fileExists(path.join(flowtaskDir, src))) snapshotManagedTree(path.join(targetDir, dest), projectDir, managedSnapshot);
+    }
+    runnerBeforeByTarget.set(id, readOptionalText(path.join(targetDir, "agents", "runner.md")));
+    if (id === "opencode") {
+      snapshotManagedTree(path.join(projectDir, ".opencode", "skills"), projectDir, managedSnapshot);
+      snapshotManagedTree(path.join(projectDir, ".opencode", "plugins"), projectDir, managedSnapshot);
+    }
+  }
+  const installedPluginNames = new Set();
+  for (const entry of Array.isArray(manifest) ? manifest : []) {
+    if (!validateManifestEntry(entry) || !entry.destinations.includes("opencode")) continue;
+    if (CLASSIFIER_PLUGIN_NAMES.includes(entry.name) && !isClassifierEnabled(manifest)) continue;
+    if (!fileExists(path.join(flowtaskDir, "plugins", entry.path))) continue;
+    installedPluginNames.add(entry.name);
+  }
+
   const transaction = createInstallTransaction();
   try {
     captureInstallSurfaces(transaction, { projectDir, targets, manifest, flowtaskDir });
@@ -1938,9 +2084,11 @@ async function runUpdate(flowtaskDir, options, report) {
     let pluginsRegistered = null;
     let pluginsDurationMs = null;
     const graphifyStates = [];
+    const canonicalRunnerContent = readOptionalText(path.join(flowtaskDir, "agents", "runner.md"));
 
     for (const { id, subDir, ideDir, previousMethod } of nonClaudeTargets) {
       const TARGET_DIR = path.join(projectDir, subDir);
+      const targetPrefix = subDir.split(path.sep).join("/");
       logStep(2, `Updating ${id}...`);
       const syncStartedAt = Date.now();
 
@@ -2002,6 +2150,34 @@ async function runUpdate(flowtaskDir, options, report) {
           pluginsDurationMs = Date.now() - pluginsStartedAt;
         }
 
+        // The transaction moved the managed trees before the copy, so update
+        // classifies them against the read-only snapshot taken in this run.
+        const classification = { updated: 0, unchanged: 0, restoredPaths: new Set() };
+        const classify = (root, options = {}) => {
+          const result = classifyManagedTree(root, projectDir, managedSnapshot, options);
+          classification.updated += result.updated;
+          classification.unchanged += result.unchanged;
+          for (const restoredPath of result.restoredPaths) classification.restoredPaths.add(restoredPath);
+        };
+        for (const { src, dest } of ASSETS[id] ?? []) {
+          if (!fileExists(path.join(flowtaskDir, src))) continue;
+          classify(path.join(TARGET_DIR, dest), {
+            preservePaths,
+            exclude: src === "agents" ? [path.posix.join(targetPrefix, "agents", "runner.md")] : [],
+          });
+        }
+        if (id === "opencode") {
+          classify(path.join(projectDir, ".opencode", "skills"), { preservePaths });
+          for (const pluginName of installedPluginNames) {
+            classify(path.join(projectDir, ".opencode", "plugins", pluginName));
+          }
+        }
+        if (runnerContentDrifted(runnerBeforeByTarget.get(id), canonicalRunnerContent, subDir)) {
+          classification.restoredPaths.add(path.posix.join(targetPrefix, "agents", "runner.md"));
+        }
+        if (targetConfig.review?.restored) classification.restoredPaths.add(toProjectPath(projectDir, targetConfig.review.path));
+        const restoredPaths = classification.restoredPaths;
+
         // ── Inject persona and autonomy into runner.md ───────────────────
         injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
         if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
@@ -2018,10 +2194,19 @@ async function runUpdate(flowtaskDir, options, report) {
           }, null, 2)
         );
 
-        results.push({ target: id, status: "Success", stats: { copied: totalCopied, skipped: totalSkipped } });
-        report.syncRow(id, `${totalCopied} updated · ${totalSkipped} unchanged`, {
+        const restored = [...restoredPaths];
+        results.push({
+          target: id,
+          status: "Success",
+          stats: { copied: totalCopied, skipped: totalSkipped, updated: classification.updated, unchanged: classification.unchanged, restored: restored.length },
+        });
+        report.syncRow(id, `${restored.length} restored · ${classification.updated} upd · ${classification.unchanged} eq`, {
           durationMs: Date.now() - syncStartedAt,
         });
+        report.restored(id, restored);
+        if (report.verbose && restored.length > 0) {
+          logInfo(`${id}: ${restored.length} restored (${restored.join(", ")})`);
+        }
       } catch (err) {
         results.push({ target: id, status: "Error", message: err.message });
         report.syncRow(id, err.message, { failed: true, durationMs: Date.now() - syncStartedAt });
@@ -2044,14 +2229,19 @@ async function runUpdate(flowtaskDir, options, report) {
           autonomyProfile,
           replaceAutonomy,
         });
+        const claudeRestored = Array.isArray(claudeResult.restoredPaths) ? claudeResult.restoredPaths : [];
         results.push({
           target: "claude",
           status: "Success",
-          stats: { registered: claudeResult.registered },
+          stats: { registered: claudeResult.registered, restored: claudeRestored.length },
         });
-        report.syncRow("claude", claudeResult.registered === false ? "runtime refreshed · not registered" : "runtime refreshed", {
+        report.syncRow("claude", `${claudeRestored.length} restored · ${claudeResult.registered === false ? "not registered" : "registered"}`, {
           durationMs: Date.now() - claudeStartedAt,
         });
+        report.restored("claude", claudeRestored);
+        if (report.verbose && claudeRestored.length > 0) {
+          logInfo(`claude: ${claudeRestored.length} restored (${claudeRestored.join(", ")})`);
+        }
       } catch (err) {
         results.push({ target: "claude", status: "Error", message: err.message });
         report.syncRow("claude", err.message, { failed: true, durationMs: Date.now() - claudeStartedAt });
