@@ -24,6 +24,7 @@ import {
   readLayerSources,
   resolveLayers,
 } from "./lib/layers.js";
+import { diagnoseAuthority } from "./lib/layer-repair.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -644,6 +645,26 @@ switch (command) {
     break;
   }
 
+  case "authority": {
+    const subCommand = args[1];
+    if (subCommand !== "status") {
+      process.stderr.write(`[FlowTask Authority] Unknown subcommand: ${subCommand ?? "(none)"}. Use: authority status.\n`);
+      process.exitCode = 1;
+      break;
+    }
+    const statusArgs = args.slice(2);
+    const unknown = statusArgs.find((argument) => argument !== "--json");
+    if (unknown) {
+      process.stderr.write(`[FlowTask Authority] Unknown option: ${unknown}. Use: authority status [--json].\n`);
+      process.exitCode = 1;
+      break;
+    }
+    const diagnosis = diagnoseAuthority();
+    if (statusArgs.includes("--json")) console.log(JSON.stringify(diagnosis, null, 2));
+    else console.log(diagnosis.message);
+    break;
+  }
+
   case "flows": {
     const subCommand = args[1];
     if (subCommand !== "verify") {
@@ -699,6 +720,8 @@ Usage:
                       Show the resolved persona, autonomy and permissions layers
   flowtask layers resolve --json
                       Show the resolved layers as JSON
+  flowtask authority status [--json]
+                      Show whether the authority configuration is healthy
   flowtask flows verify [--flowtask-dir <path>] [--baseline <ref>]
                       Verify the permanent core, its flows and the target deliveries
   flowtask flows verify --baseline <ref>
