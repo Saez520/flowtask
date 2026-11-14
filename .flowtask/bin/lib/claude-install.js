@@ -398,6 +398,7 @@ function ensureGlobalSurfaces({
   personaContent = undefined,
   autonomyProfile = null,
   replaceAutonomy = false,
+  allowEngramTools = false,
 }) {
   const paths = resolveClaudePaths(projectDir);
   const version = readVersion(flowtaskDir);
@@ -444,15 +445,16 @@ function ensureGlobalSurfaces({
   }
 
   const userSettingsPath = path.join(paths.claudeUserDir, "settings.json");
-  const hook = mergeClaudeSettings(userSettingsPath, {
+  const settings = mergeClaudeSettings(userSettingsPath, {
     hooks: buildSessionStartHook(paths.runtimeRoot),
+    permissions: allowEngramTools ? { allow: ["mcp__engram__*"] } : undefined,
   });
-  if (!hook.ok) {
+  if (!settings.ok) {
     const error = new Error(
-      `Could not register the FlowTask SessionStart hook: ${hook.error ?? "unknown error"}. ` +
+      `Could not update the Claude user settings: ${settings.error ?? "unknown error"}. ` +
         "The project was not registered.",
     );
-    error.code = "hook_registration_failed";
+    error.code = "settings_registration_failed";
     throw error;
   }
 
@@ -471,7 +473,7 @@ function ensureGlobalSurfaces({
   }
   persistMcpState(paths.runtimeRoot, mcp);
 
-  return { paths, version, runtime, config, hook, mcp, runnerAgent };
+  return { paths, version, runtime, config, hook: settings, mcp, runnerAgent };
 }
 
 /**
@@ -495,6 +497,7 @@ export function installClaudeTarget({
     personaContent,
     autonomyProfile,
     replaceAutonomy,
+    allowEngramTools: options.allowEngramTools === true,
   });
   const runtimeManifest = readClaudeRuntimeManifest(surfaces.paths.runtimeRoot);
   const registration = registerClaudeProject({
@@ -703,6 +706,7 @@ export function updateClaudeTarget({
     personaContent,
     autonomyProfile,
     replaceAutonomy,
+    allowEngramTools: options.allowEngramTools === true,
   });
   const paths = surfaces.paths;
   const registered = fileExists(paths.registryPath);
