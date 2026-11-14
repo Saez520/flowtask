@@ -608,6 +608,64 @@ describe("Claude user-level runtime contract", () => {
     }
   });
 
+  it("merges Engram tool permissions additively, idempotently and fail-closed", () => {
+    const root = makeTempDir();
+    const settingsPath = path.join(root, "settings.json");
+    try {
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({
+          permissions: {
+            allow: ["Bash(git status)", "mcp__other__*"],
+            deny: ["Read(.env)"],
+            defaultMode: "default",
+          },
+          userKey: true,
+        }, null, 2),
+        "utf8",
+      );
+
+      const added = mergeClaudeSettings(settingsPath, { permissions: { allow: ["mcp__engram__*"] } });
+      assert.equal(added.ok, true);
+      assert.equal(added.changed, true);
+
+      const merged = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+      assert.deepEqual(merged.permissions.allow, ["Bash(git status)", "mcp__other__*", "mcp__engram__*"]);
+      assert.deepEqual(merged.permissions.deny, ["Read(.env)"]);
+      assert.equal(merged.permissions.defaultMode, "default");
+      assert.equal(merged.userKey, true);
+
+      const beforeSecondRun = fs.readFileSync(settingsPath, "utf8");
+      const again = mergeClaudeSettings(settingsPath, { permissions: { allow: ["mcp__engram__*"] } });
+      assert.equal(again.ok, true);
+      assert.equal(again.changed, false);
+      assert.equal(fs.readFileSync(settingsPath, "utf8"), beforeSecondRun);
+
+      const malformedPath = path.join(root, "malformed.json");
+      fs.writeFileSync(malformedPath, '{ "permissions": {\n', "utf8");
+      const malformedBefore = fs.readFileSync(malformedPath);
+      const malformed = mergeClaudeSettings(malformedPath, { permissions: { allow: ["mcp__engram__*"] } });
+      assert.equal(malformed.ok, false);
+      assert.deepEqual(fs.readFileSync(malformedPath), malformedBefore);
+
+      const nonArrayPath = path.join(root, "non-array.json");
+      fs.writeFileSync(nonArrayPath, JSON.stringify({ permissions: { allow: "mcp__engram__*" } }, null, 2), "utf8");
+      const nonArrayBefore = fs.readFileSync(nonArrayPath);
+      const nonArray = mergeClaudeSettings(nonArrayPath, { permissions: { allow: ["mcp__engram__*"] } });
+      assert.equal(nonArray.ok, false);
+      assert.deepEqual(fs.readFileSync(nonArrayPath), nonArrayBefore);
+
+      const nonObjectPath = path.join(root, "non-object.json");
+      fs.writeFileSync(nonObjectPath, JSON.stringify({ permissions: "allow-all" }, null, 2), "utf8");
+      const nonObjectBefore = fs.readFileSync(nonObjectPath);
+      const nonObject = mergeClaudeSettings(nonObjectPath, { permissions: { allow: ["mcp__engram__*"] } });
+      assert.equal(nonObject.ok, false);
+      assert.deepEqual(fs.readFileSync(nonObjectPath), nonObjectBefore);
+    } finally {
+      cleanupDir(root);
+    }
+  });
+
   it("registers Engram in the user scope through the CLI and preserves a preexisting entry", () => {
     const root = makeTempDir();
     const claudeUserDir = path.join(root, "claude");

@@ -912,4 +912,62 @@ describe("Claude global lifecycle", () => {
       cleanupFixtures();
     }
   });
+
+  it("pre-approves Engram tools only with the explicit flag and preserves the rule", () => {
+    const root = makeRoot();
+    const fake = writeFakeClaude(root);
+    const env = environment(root, fake);
+    const user = writeUserState(path.join(root, "user"));
+    const settings = readJson(user.settingsPath);
+    settings.permissions = {
+      allow: ["Bash(git status)"],
+      deny: ["Read(.env)"],
+    };
+    writeJson(user.settingsPath, settings);
+    const projectDefault = createGitProject(root, "default");
+    const projectExplicit = createGitProject(root, "explicit");
+
+    try {
+      assertExit(
+        runCli(projectDefault, env, ["install", "--target", "claude", "--persona", "senior"]),
+        "install without the flag",
+      );
+      const withoutFlag = readJson(user.settingsPath);
+      assert.deepEqual(
+        withoutFlag.permissions.allow,
+        ["Bash(git status)"],
+        "the allowlist must not change without the flag",
+      );
+
+      assertExit(
+        runCli(projectExplicit, env, ["install", "--target", "claude", "--persona", "senior", "--allow-engram-tools"]),
+        "install with the flag",
+      );
+      const withFlag = readJson(user.settingsPath);
+      assert.deepEqual(withFlag.permissions.allow, ["Bash(git status)", "mcp__engram__*"]);
+      assert.deepEqual(withFlag.permissions.deny, ["Read(.env)"]);
+      assert.equal(withFlag.userKey, "keep");
+
+      const beforeUpdate = fs.readFileSync(user.settingsPath, "utf8");
+      assertExit(runCli(projectExplicit, env, ["update", "--allow-engram-tools"]), "update with the flag");
+      assert.equal(
+        fs.readFileSync(user.settingsPath, "utf8"),
+        beforeUpdate,
+        "a repeated flag must not rewrite the settings",
+      );
+      assert.equal(
+        readJson(user.settingsPath).permissions.allow.filter((rule) => rule === "mcp__engram__*").length,
+        1,
+      );
+
+      assertExit(runCli(projectExplicit, env, ["uninstall", "--yes"]), "uninstall");
+      assert.deepEqual(
+        readJson(user.settingsPath).permissions.allow,
+        ["Bash(git status)", "mcp__engram__*"],
+        "uninstall preserves the accepted allowlist entry",
+      );
+    } finally {
+      cleanupFixtures();
+    }
+  });
 });
