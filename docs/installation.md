@@ -37,6 +37,12 @@ choice that raises the installation default; without the flag, a valid layer is
 preserved and an absent one receives `assistant`. The same flag is available for
 `flowtask update`.
 
+`--allow-engram-tools` is available for `install` and `update`. Without it,
+Claude Code asks for approval the first time a session calls an Engram tool.
+With it, `install` adds `mcp__engram__*` to the user-level
+`permissions.allow` list; the merge is additive and idempotent, so existing
+rules and every other key are preserved.
+
 The first installation in the account creates the user-level runtime and
 registers the current project. Running the same command in another project
 reuses the existing runtime and only adds the new registration.
@@ -267,11 +273,27 @@ Project-owned servers such as Graphify remain in the project `.mcp.json`.
 FlowTask does not merge `~/.claude.json` and does not write `mcpServers` into
 `settings.json`.
 
+### Tool permissions
+
+FlowTask does not pre-approve MCP tools by default. In the `default` permission
+mode, Claude Code discovers the Engram tools but asks for approval before the
+first call; a headless session cannot answer that prompt. `flowtask install
+--allow-engram-tools` (or `flowtask update --allow-engram-tools`) adds the
+`mcp__engram__*` wildcard to the user-level `permissions.allow` list.
+
+The merge preserves every existing rule and top-level setting, adds the
+wildcard only when it is absent, and does not rewrite the file when nothing
+changes. If the settings file is malformed, or `permissions` or
+`permissions.allow` has an unexpected shape, FlowTask fails without overwriting
+it. Once accepted, the rule belongs to the user configuration: `uninstall`
+removes the FlowTask hook but leaves the allowlist entry in place.
+
 ### Update
 
 ```bash
 flowtask update
 flowtask update --persona senior
+flowtask update --allow-engram-tools
 flowtask update --verbose
 ```
 

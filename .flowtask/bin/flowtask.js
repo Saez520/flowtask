@@ -128,6 +128,11 @@ function parseOptions(commandArgs) {
       options.verbose = true;
       continue;
     }
+
+    if (argument === "--allow-engram-tools") {
+      options.allowEngramTools = true;
+      continue;
+    }
   }
 
   return options;
@@ -721,9 +726,13 @@ Usage:
                       Select the agent personality explicitly
   flowtask install --autonomy <assistant|autonomous-dev>
                       Select how much initiative FlowTask takes on this machine
+  flowtask install --allow-engram-tools
+                      Pre-approve the Engram MCP tools in the user allowlist
   flowtask update     Update FlowTask files (delta-only sync)
   flowtask update --persona <training|mid|senior|custom>
   flowtask update --autonomy <assistant|autonomous-dev>
+  flowtask update --allow-engram-tools
+                      Pre-approve the Engram MCP tools in the user allowlist
   flowtask update --verbose
                       Show the per-step diagnostic output
   flowtask uninstall  Remove the user-level runtime and registered projects

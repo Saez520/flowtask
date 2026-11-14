@@ -403,12 +403,15 @@ export function mergeHooks(existingHooks = {}, templateHooks = {}) {
 }
 
 /**
- * Merge FlowTask hooks into a settings file. Only `hooks` is touched: every
- * other key, including `mcpServers`, is preserved verbatim. Malformed user JSON
- * fails closed without writing.
+ * Merge FlowTask hooks and optional permission rules into a settings file.
+ * Both merges are additive: every existing key and entry is preserved and only
+ * missing values are appended. Malformed user JSON, a non-object `permissions`
+ * section, or a non-array allowlist fails closed without writing.
  */
-export function mergeClaudeSettings(settingsPath, { hooks } = {}) {
-  if (!hooks || typeof hooks !== "object") return { ok: true, skipped: true };
+export function mergeClaudeSettings(settingsPath, { hooks, permissions } = {}) {
+  if (permissions === undefined && (!hooks || typeof hooks !== "object")) {
+    return { ok: true, skipped: true };
+  }
 
   try {
     const existingRead = readJsonFile(settingsPath, settingsPath);
@@ -419,15 +422,56 @@ export function mergeClaudeSettings(settingsPath, { hooks } = {}) {
     }
 
     const existing = existingRead.value;
-    const existingHooks = existing.hooks ?? {};
-    const mergedHooks = mergeHooks(existingHooks, hooks);
-    if (JSON.stringify(existingHooks) === JSON.stringify(mergedHooks)) {
+
+    let mergedHooks = null;
+    let hooksChanged = false;
+    if (hooks && typeof hooks === "object") {
+      const existingHooks = existing.hooks ?? {};
+      mergedHooks = mergeHooks(existingHooks, hooks);
+      hooksChanged = JSON.stringify(existingHooks) !== JSON.stringify(mergedHooks);
+    }
+
+    let mergedPermissions = null;
+    let permissionsChanged = false;
+    if (permissions !== undefined) {
+      if (!permissions || typeof permissions !== "object" || Array.isArray(permissions)
+        || !Array.isArray(permissions.allow)) {
+        const message = `Refusing to update ${settingsPath}: permissions must be an object with an allow array.`;
+        logError(message);
+        return { ok: false, error: message, changed: false };
+      }
+
+      const existingPermissions = existing.permissions;
+      if (existingPermissions !== undefined
+        && (!existingPermissions || typeof existingPermissions !== "object" || Array.isArray(existingPermissions))) {
+        const message = `Refusing to overwrite ${settingsPath}: permissions is not an object. Fix or move the file and retry.`;
+        logError(message);
+        return { ok: false, error: message, changed: false };
+      }
+      if (existingPermissions?.allow !== undefined && !Array.isArray(existingPermissions.allow)) {
+        const message = `Refusing to overwrite ${settingsPath}: permissions.allow is not an array. Fix or move the file and retry.`;
+        logError(message);
+        return { ok: false, error: message, changed: false };
+      }
+
+      const allow = [...(existingPermissions?.allow ?? [])];
+      for (const rule of permissions.allow) {
+        if (!allow.includes(rule)) allow.push(rule);
+      }
+      mergedPermissions = { ...(existingPermissions ?? {}), allow };
+      permissionsChanged = JSON.stringify(existingPermissions) !== JSON.stringify(mergedPermissions);
+    }
+
+    if (!hooksChanged && !permissionsChanged) {
       return { ok: true, changed: false };
     }
 
-    const next = { ...existing, hooks: mergedHooks };
+    const next = { ...existing };
+    if (hooksChanged) next.hooks = mergedHooks;
+    if (permissionsChanged) next.permissions = mergedPermissions;
     writeFileAtomic(settingsPath, JSON.stringify(next, null, 2));
-    logSuccess(`FlowTask hook added to ${settingsPath}.`);
+    if (hooksChanged) logSuccess(`FlowTask hook added to ${settingsPath}.`);
+    if (permissionsChanged) logSuccess(`Engram tool permissions added to ${settingsPath}.`);
     return { ok: true, changed: true };
   } catch (err) {
     logError(`Failed to merge Claude settings: ${err.message}`);
