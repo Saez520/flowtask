@@ -111,7 +111,8 @@ does not repair anything either: it does not invent a tone and does not alter th
 
 A missing or invalid permissions or autonomy layer is classified as a lack of authority
 (`authority_block`): it pauses the current execution and is resumable after the operator
-confirms the restoration. The gate keeps its technical message.
+confirms the restoration. The gate keeps its technical message. The operator message says
+what is missing and what to do; the technical detail stays available on request, explained.
 
 ## Runtime repair
 
