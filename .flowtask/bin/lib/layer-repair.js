@@ -43,12 +43,6 @@ export function detectAuthorityTarget(rootDir = process.cwd()) {
   return null;
 }
 
-function statusMessage(classification) {
-  if (classification === "ok") return AUTHORITY_MESSAGES.healthy;
-  if (classification === "not_installed") return AUTHORITY_MESSAGES.not_installed;
-  return AUTHORITY_MESSAGES.authority_block;
-}
-
 /**
  * Read-only diagnosis of the authority layers.
  *
