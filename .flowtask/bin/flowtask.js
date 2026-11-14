@@ -24,7 +24,7 @@ import {
   readLayerSources,
   resolveLayers,
 } from "./lib/layers.js";
-import { diagnoseAuthority } from "./lib/layer-repair.js";
+import { diagnoseAuthority, repairAuthority } from "./lib/layer-repair.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -665,6 +665,21 @@ switch (command) {
     break;
   }
 
+  case "repair": {
+    const repairArgs = args.slice(1);
+    const unknown = repairArgs.find((argument) => argument !== "--json");
+    if (unknown) {
+      process.stderr.write(`[FlowTask Repair] Unknown option: ${unknown}. Use: repair [--json].\n`);
+      process.exitCode = 1;
+      break;
+    }
+    const repair = repairAuthority();
+    if (repairArgs.includes("--json")) console.log(JSON.stringify(repair, null, 2));
+    else console.log(repair.message);
+    if (repair.status === "failed" || repair.status === "not_installed") process.exitCode = 2;
+    break;
+  }
+
   case "flows": {
     const subCommand = args[1];
     if (subCommand !== "verify") {
@@ -722,6 +737,8 @@ Usage:
                       Show the resolved layers as JSON
   flowtask authority status [--json]
                       Show whether the authority configuration is healthy
+  flowtask repair [--json]
+                      Restore the safe authority configuration and verify it
   flowtask flows verify [--flowtask-dir <path>] [--baseline <ref>]
                       Verify the permanent core, its flows and the target deliveries
   flowtask flows verify --baseline <ref>
