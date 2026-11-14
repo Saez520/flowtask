@@ -111,7 +111,7 @@ La invocación recibe:
 - `artifact_namespace`;
 - el worktree;
 - el alcance declarado;
-- el `profile` y el `report_detail`;
+- el `policy.profile` y el `report_detail`;
 - el input literal;
 - el reporte previo, cuando existe.
 
