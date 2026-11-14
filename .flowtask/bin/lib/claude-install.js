@@ -22,18 +22,13 @@ import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
 import { CUSTOM_PERSONA_TEXT, buildRuntimeRunnerBody } from "./runner-content.js";
 import {
   LAYER_FILES,
+  PERSONA_FILES,
   readLayerFile,
   validateAutonomyLayer,
   validatePermissionsLayer,
   validatePersonaLayer,
 } from "./layers.js";
 import { logInfo, logWarn, logSuccess, fileExists } from "./logger.js";
-
-const PERSONA_FILES = Object.freeze({
-  training: "tutor-training.md",
-  mid: "tutor-mid.md",
-  senior: "tutor-senior.md",
-});
 
 function readVersion(flowtaskDir) {
   const packagePath = path.join(flowtaskDir, "package.json");
@@ -42,11 +37,24 @@ function readVersion(flowtaskDir) {
 
 function personaContentFromProfile(flowtaskDir, profile) {
   if (!profile) return null;
-  if (profile.persona === "custom" || profile.level === "custom") return CUSTOM_PERSONA_TEXT;
-  const fileName = PERSONA_FILES[profile.level];
-  if (!fileName) return null;
+  if (profile.persona === "custom") {
+    if (!CUSTOM_PERSONA_TEXT.trim()) {
+      logWarn("The custom personality has no text; continuing without persona.");
+      return null;
+    }
+    return CUSTOM_PERSONA_TEXT;
+  }
+  const fileName = PERSONA_FILES[profile.persona];
+  if (!fileName) {
+    logWarn(`Unknown personality: ${JSON.stringify(profile.persona)}; continuing without persona.`);
+    return null;
+  }
   const source = path.join(flowtaskDir, "personas", fileName);
-  return fileExists(source) ? fs.readFileSync(source, "utf8") : null;
+  if (!fileExists(source)) {
+    logWarn(`Personality file not found: ${source}; continuing without persona.`);
+    return null;
+  }
+  return fs.readFileSync(source, "utf8");
 }
 
 function runnerBodyFor(flowtaskDir, runtimeRoot, { personaContent, profile, autonomy }) {

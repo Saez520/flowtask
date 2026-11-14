@@ -8,7 +8,7 @@ import { runCliAction } from "./lib/cli-errors.js";
 import { install, update } from "./lib/installer.js";
 import { uninstallClaudeGlobal, uninstallClaudeProject } from "./lib/claude-install.js";
 import { resolveClaudePaths } from "./lib/claude.js";
-import { SESSION_START_LIMIT_BYTES, buildSessionStartContent } from "./lib/runner-content.js";
+import { SESSION_START_LIMIT_BYTES, buildSessionStartContent, readPersonaBlock } from "./lib/runner-content.js";
 import {
   buildFlowsReport,
   checkClaudeDelivery,
@@ -232,7 +232,15 @@ function runLayersResolve(commandArgs) {
   }
 
   const project = readLayerSources(configDir);
-  const resolution = resolveLayers({ team: null, project });
+  const runnerPath = path.join(path.dirname(configDir), "agents", "runner.md");
+  const customText = fs.existsSync(runnerPath)
+    ? readPersonaBlock(fs.readFileSync(runnerPath, "utf8"))
+    : null;
+  const resolution = resolveLayers({
+    team: null,
+    project,
+    persona: { personaDir: path.join(__dirname, "..", "personas"), customText },
+  });
   const { persona, autonomy, permissions } = resolution.layers;
 
   if (options.json) {

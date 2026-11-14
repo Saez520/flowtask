@@ -774,6 +774,18 @@ export const AUTONOMY_START_MARKER = "<!-- FLOWTASK:AUTONOMY_START -->";
 export const AUTONOMY_END_MARKER = "<!-- FLOWTASK:AUTONOMY_END -->";
 
 /**
+ * Text between the persona markers, trimmed. Returns `null` when the markers
+ * are missing: an unreadable block is not an empty block.
+ */
+export function readPersonaBlock(content) {
+  if (typeof content !== "string") return null;
+  const startIdx = content.indexOf(PERSONA_START_MARKER);
+  const endIdx = content.indexOf(PERSONA_END_MARKER);
+  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx + PERSONA_START_MARKER.length) return null;
+  return content.slice(startIdx + PERSONA_START_MARKER.length, endIdx).trim();
+}
+
+/**
  * Injects a runner's persona block.
  *
  * `undefined` leaves the block intact; `null` (or empty content) clears it.

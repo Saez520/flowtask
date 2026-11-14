@@ -335,6 +335,8 @@ describe("migracion y sincronizacion de capas", () => {
 
   it("creates the layers of a target without touching the persona profile", () => {
     const { flowtaskDir } = createFlowtaskDir();
+    fs.mkdirSync(path.join(flowtaskDir, "personas"), { recursive: true });
+    fs.writeFileSync(path.join(flowtaskDir, "personas", "tutor-senior.md"), "# tutor-senior\n", "utf8");
     const { targetDir } = createTarget({
       "profile.json": { level: "senior", persona: "tutor-senior", onboarded: true },
     });
@@ -489,7 +491,14 @@ describe("base de equipo y override por proyecto en el instalador", () => {
     assert.equal(result.persona, "valid");
     assert.deepEqual(
       JSON.parse(fs.readFileSync(path.join(targetDir, "config", "profile.json"), "utf8")),
-      { level: "mid", persona: "tutor-mid", onboarded: true },
+      {
+        level: "mid",
+        persona: "tutor-mid",
+        onboarded: true,
+        quiz_completed_at: null,
+        stack_snapshot: null,
+        quiz_answers: [],
+      },
     );
     assert.deepEqual(
       JSON.parse(fs.readFileSync(path.join(targetDir, "config", "autonomy.json"), "utf8")),

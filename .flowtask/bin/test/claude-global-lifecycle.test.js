@@ -773,6 +773,9 @@ describe("Claude global lifecycle", () => {
         level: "senior",
         persona: "tutor-senior",
         onboarded: true,
+        quiz_completed_at: null,
+        stack_snapshot: null,
+        quiz_answers: [],
       });
       assert.deepEqual(readJson(path.join(runtimeConfig, "autonomy.json")), { version: 1, profile: "autonomous-dev" });
       assert.deepEqual(readJson(path.join(runtimeConfig, "permissions.json")), { version: 1, envelope: "standard" });

@@ -409,7 +409,7 @@ Each target resolves three configuration layers: persona (tone), autonomy
 
 | File | Layer | Values |
 |---------|------|---------|
-| `profile.json` | Persona (tone) | `level`: `training`, `mid`, `senior`, or `custom`; `persona`: tone identity; `onboarded`: onboarding status. |
+| `profile.json` | Persona (tone) | `level`: `training`, `mid`, `senior`, or `custom`; `persona`: `tutor-training`, `tutor-mid`, `tutor-senior`, or `custom`; `onboarded`: onboarding status; `quiz_completed_at`: ISO-8601 date or `null`; `stack_snapshot`: stack object or `null`; `quiz_answers`: quiz history array. |
 | `autonomy.json` | Autonomy (initiative) | `version`: `1`; `profile`: `assistant` or `autonomous-dev`. |
 | `permissions.json` | Permissions (technical authority) | `version`: `1`; `envelope`: `standard`. |
 
@@ -425,9 +425,12 @@ overwrites a valid layer with the selected value, and the interactive answer
 applies only to absent layers. That default is a migration, not a runtime
 fallback: at runtime, a missing or invalid layer is a failure with an
 operational message. An invalid layer is never repaired with a default — the
-operation fails and the file is preserved. `profile.json` keeps its current
-shape, and a missing or invalid persona leaves a warning without altering
-autonomy or permissions.
+operation fails and the file is preserved. `profile.json` uses the six-field
+shape, and a missing or invalid persona — including a tutor without its file or
+a custom persona without text — leaves a visible warning and continues without
+tone, without altering autonomy or permissions. An old three-field profile is
+preserved with the missing quiz fields empty, and extra top-level keys survive
+on disk.
 
 Layer precedence is `permissions > autonomy > persona`. To inspect the resolved
 layers of a target:

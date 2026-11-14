@@ -290,7 +290,7 @@ confirmación para avanzar y no existe una decisión previa que re-evaluar.
    `tests_report_ref: NONE` y `tests_gaps: NONE`.
 4. Si hay huecos o pedido válido, invocá `flowtask-tester` con `execution_id`,
    `artifact_namespace`, `plan_ref`, `gap_refs` (criterio, defecto y `why_not_detected`),
-   el worktree, el alcance, el `profile` con su `report_detail`, el input literal y el
+   el worktree, el alcance, el `policy.profile` con su `report_detail`, el input literal y el
    reporte previo. Hilo fresco, tratamiento ligero.
 5. Manejo de respuestas:
    - `needs_decision` → pausa con `authority_block` y el mensaje canónico de tres líneas.

@@ -25,10 +25,18 @@ envelope. The permissions envelope is the only limit that bounds action.
 
 ## Values and schema
 
-**Persona.** `profile.json` keeps its current shape: `{level, persona,
-onboarded}`. Valid levels are `training`, `mid`, `senior`, and `custom`. The
-legacy `junior` level is accepted only as a read alias and is normalized to
-`training`; no new write emits it.
+**Persona.** `profile.json` has a single six-field shape:
+`{level, persona, onboarded, quiz_completed_at, stack_snapshot, quiz_answers}`.
+Valid levels are `training`, `mid`, `senior`, and `custom`. The legacy `junior`
+level is accepted only as a read alias and is normalized to `training`; no new
+write emits it. Valid personas are `tutor-training`, `tutor-mid`,
+`tutor-senior`, and `custom`. A tutor requires its persona file to exist; a
+custom persona requires non-empty text of its own. A missing quiz date or stack
+snapshot is stored as `null`, and missing quiz answers as an empty list; an old
+three-field profile is preserved without inventing quiz data. Extra top-level
+keys are ignored when reading and preserved on disk. An invalid persona leaves
+a visible warning and execution continues without tone, with autonomy and
+permissions intact.
 
 **Autonomy.** `autonomy.json` is a new and separate layer, with an explicit
 schema version:

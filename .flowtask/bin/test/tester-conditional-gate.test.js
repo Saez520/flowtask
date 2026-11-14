@@ -18,6 +18,7 @@ const VALIDATOR = ".flowtask/agents/validator.md";
 const PLANNER = ".flowtask/agents/planner.md";
 const PLAN_AUDITOR = ".flowtask/agents/plan-auditor.md";
 const PLAN_TEMPLATE = ".flowtask/skills/plan-template/SKILL.md";
+const TESTER_SKILL = ".flowtask/skills/runner-flow-ejecucion-ca/SKILL.md";
 
 function assertDeclares(text, tokens, file) {
   for (const token of tokens) {
@@ -80,6 +81,15 @@ function assertTesterGapContract(tester) {
     ],
     "tester.md",
   );
+}
+
+/**
+ * Guarda de la entrada del Tester: la invocación nombra `policy.profile` y no
+ * reintroduce la forma desnuda `profile`.
+ */
+function assertPolicyProfileEntry(text, file) {
+  assert.ok(text.includes("`policy.profile`"), `${file} debe nombrar policy.profile`);
+  assert.doesNotMatch(text, /`profile`/, `${file} no debe reintroducir la forma desnuda profile`);
 }
 
 /**
@@ -313,5 +323,25 @@ describe("guarda del contrato gap-driven", () => {
       () => assertPlannerAuditorGovernance(planner, planAuditor, withFiller),
       /Tests after implementation/,
     );
+  });
+
+  // gap: G1 — reintroducir la forma desnuda `profile` en la entrada del Tester pasa la suite actual
+  it("G1: la entrada del Tester nombra policy.profile y no reintroduce la forma desnuda", () => {
+    const tester = read(TESTER);
+    const skill = read(TESTER_SKILL);
+    assertPolicyProfileEntry(tester, TESTER);
+    assertPolicyProfileEntry(skill, TESTER_SKILL);
+
+    const testerWithBareEntry = `${tester}\n- el \`profile\` y el \`report_detail\`;\n`;
+    assert.notEqual(testerWithBareEntry, tester, "la copia mutada debe diferir del contrato");
+    assert.throws(() => assertPolicyProfileEntry(testerWithBareEntry, TESTER), /forma desnuda/);
+
+    const skillWithBareEntry = `${skill}\n   el \`profile\` con su \`report_detail\`,\n`;
+    assert.notEqual(skillWithBareEntry, skill, "la copia mutada debe diferir del contrato");
+    assert.throws(() => assertPolicyProfileEntry(skillWithBareEntry, TESTER_SKILL), /forma desnuda/);
+
+    const testerWithoutPolicy = tester.replaceAll("`policy.profile`", "`policy`");
+    assert.notEqual(testerWithoutPolicy, tester, "la copia mutada debe diferir del contrato");
+    assert.throws(() => assertPolicyProfileEntry(testerWithoutPolicy, TESTER), /policy\.profile/);
   });
 });
