@@ -96,6 +96,9 @@ Estado conservado: {trabajo; artifacts; cambios; última ronda confirmada}
 Para reanudar: {condición exacta}
 ~~~
 
+`{motivo}` se rinde como qué falta y por qué, no como código; el motivo vigente queda
+en el registro. El paso exacto va en `Para reanudar`.
+
 El detalle se ajusta al `policy.profile` vigente: el perfil de desarrollo detalla `source_ref` y `observed_at`; el perfil de producción mantiene la fuente y el estado concisos. La verificación mínima para reanudar es la misma en ambos perfiles.
 
 ## Alcance por rol

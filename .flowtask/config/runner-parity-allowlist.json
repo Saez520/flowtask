@@ -290,5 +290,9 @@
   {
     "sha256": "cfe70640e3f76071b344b00f2e7a595c126be8b0826c9d0180231a05a78b575d",
     "reason": "El prompt de delegación nombra el perfil de política vigente en lugar del campo genérico anterior."
+  },
+  {
+    "sha256": "591dc4f561f9814c147a208e0d63101669dba44443401d6e0457eb028875ef7f",
+    "reason": "El motivo del rechazo del Gate se explica en lenguaje llano y el código queda en el registro."
   }
 ]
