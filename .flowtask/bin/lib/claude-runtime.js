@@ -348,7 +348,12 @@ export function ensureClaudeRuntimeConfig(
 
 // ─── Runtime manifest ─────────────────────────────────────────────────────────
 
-export function readClaudeRuntimeManifest(runtimeRoot) {
+/**
+ * Read and validate the runtime manifest. With `verifyPayload` disabled the
+ * schema, the payload id and the entry shapes are still checked, but a missing
+ * payload or modified file does not abort: update needs that state to restore it.
+ */
+export function readClaudeRuntimeManifest(runtimeRoot, { verifyPayload = true } = {}) {
   const manifestPath = path.join(runtimeRoot, "runtime.json");
   if (!fileExists(manifestPath)) {
     const error = new Error(`FlowTask runtime manifest not found at ${manifestPath}. Run: flowtask install`);
@@ -379,7 +384,7 @@ export function readClaudeRuntimeManifest(runtimeRoot) {
   }
 
   const active = resolveActiveRuntimePaths(runtimeRoot, manifest);
-  if (!fileExists(active.payloadDir)) {
+  if (verifyPayload && !fileExists(active.payloadDir)) {
     const error = new Error(
       `FlowTask runtime payload ${manifest.payloadId} is missing at ${active.payloadDir}. Run: flowtask install`,
     );
@@ -394,7 +399,13 @@ export function readClaudeRuntimeManifest(runtimeRoot) {
       throw error;
     }
     const absolute = path.resolve(active.payloadDir, file.path);
-    if (!absolute.startsWith(path.resolve(active.payloadDir) + path.sep) || !fileExists(absolute)) {
+    if (!absolute.startsWith(path.resolve(active.payloadDir) + path.sep)) {
+      const error = new Error(`FlowTask runtime payload is incomplete: ${file.path} is missing. Run: flowtask install`);
+      error.code = "runtime_payload_incomplete";
+      throw error;
+    }
+    if (!verifyPayload) continue;
+    if (!fileExists(absolute)) {
       const error = new Error(`FlowTask runtime payload is incomplete: ${file.path} is missing. Run: flowtask install`);
       error.code = "runtime_payload_incomplete";
       throw error;
@@ -444,7 +455,7 @@ export function ensureClaudeRuntime(flowtaskDir, options = {}) {
   }
 
   let previousManifest = null;
-  if (fileExists(manifestPath)) previousManifest = readClaudeRuntimeManifest(runtimeRoot);
+  if (fileExists(manifestPath)) previousManifest = readClaudeRuntimeManifest(runtimeRoot, { verifyPayload: false });
 
   fs.mkdirSync(runtimeVersionsDir, { recursive: true });
   const stagingDir = path.join(runtimeVersionsDir, `.staging-${process.pid}-${Date.now()}`);
@@ -492,32 +503,33 @@ export function ensureClaudeRuntime(flowtaskDir, options = {}) {
     const files = buildPayloadFiles(stagingDir);
 
     let action = previousManifest ? "updated" : "installed";
-    let payloadExisted = fileExists(payloadDir);
+    const payloadExisted = fileExists(payloadDir);
+    const restoredPaths = [];
 
     if (payloadExisted) {
       const existingFiles = buildPayloadFiles(payloadDir);
       if (compareJson(existingFiles, files)) {
         fs.rmSync(stagingDir, { recursive: true, force: true });
-        if (previousManifest?.payloadId === payloadId && previousManifest.version === version) {
-          return {
-            ok: true,
-            action: "unchanged",
-            payloadId,
-            previousPayloadId: previousManifest.previousPayloadId ?? null,
-            version,
-          };
-        }
+        if (previousManifest?.payloadId === payloadId && previousManifest.version === version) action = "unchanged";
       } else {
-        // The directory carries the expected id but not the expected content:
-        // never adopt it silently.
-        const error = new Error(
-          `Runtime payload ${payloadId} exists with different content. ` +
-            "Remove it manually after inspecting it and retry flowtask update.",
-        );
-        error.code = "runtime_payload_collision";
-        throw error;
+        for (const file of files) {
+          const existing = existingFiles.find((entry) => entry.path === file.path);
+          if (!existing || existing.sha256 !== file.sha256) restoredPaths.push(path.join(payloadDir, file.path));
+        }
+        const backupDir = `${payloadDir}.backup-${process.pid}-${Date.now()}`;
+        fs.renameSync(payloadDir, backupDir);
+        try {
+          fs.renameSync(stagingDir, payloadDir);
+        } catch (error) {
+          fs.renameSync(backupDir, payloadDir);
+          throw error;
+        }
+        try { fs.rmSync(backupDir, { recursive: true, force: true }); } catch { /* the active payload is already published */ }
       }
     } else {
+      if (previousManifest?.payloadId === payloadId && previousManifest.version === version) {
+        for (const file of files) restoredPaths.push(path.join(payloadDir, file.path));
+      }
       fs.renameSync(stagingDir, payloadDir);
     }
 
@@ -525,10 +537,28 @@ export function ensureClaudeRuntime(flowtaskDir, options = {}) {
     const launcherPath = path.join(runtimeRoot, "bin", "session-start.mjs");
     let launcher = null;
     if (fileExists(launcherSource)) {
-      writeFileAtomic(launcherPath, fs.readFileSync(launcherSource));
+      const launcherBytes = fs.readFileSync(launcherSource);
+      const launcherStat = fs.lstatSync(launcherPath, { throwIfNoEntry: false });
+      const launcherChanged = !launcherStat || !launcherStat.isFile() || !fs.readFileSync(launcherPath).equals(launcherBytes);
+      if (launcherChanged) {
+        writeFileAtomic(launcherPath, launcherBytes);
+        if (launcherStat) restoredPaths.push(launcherPath);
+        if (action === "unchanged") action = "updated";
+      }
       launcher = { path: "bin/session-start.mjs", sha256: sha256File(launcherPath) };
     } else {
       logWarn(`Runtime launcher template not found at ${launcherSource}; the hook will not start until it is installed.`);
+    }
+
+    if (action === "unchanged") {
+      return {
+        ok: true,
+        action,
+        payloadId,
+        previousPayloadId: previousManifest.previousPayloadId ?? null,
+        version,
+        restoredPaths,
+      };
     }
 
     const manifest = {
@@ -574,6 +604,7 @@ export function ensureClaudeRuntime(flowtaskDir, options = {}) {
       payloadId,
       previousPayloadId: manifest.previousPayloadId,
       version,
+      restoredPaths,
     };
   } catch (error) {
     try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { /* already gone */ }
