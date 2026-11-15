@@ -318,5 +318,29 @@
   {
     "sha256": "8fd6873ead35fc22b58b51c18cfa57823963c59d4b8a97528252dd38b9f8cf07",
     "reason": "El estado y la severidad de la revisión son registro técnico y se informan en lenguaje llano."
+  },
+  {
+    "sha256": "6a262b817adab1f4904db4caef391de2295e2310cd7c89defc99932db1bd3ca4",
+    "reason": "Delta intencional: reescritura de ejemplos del canon con marcadores de plantilla y eliminación del enlace a la documentación de origen."
+  },
+  {
+    "sha256": "139951e9a3ef6edfb588bd4e56d50f3ba33bab19aeadacf5f6b14799ae536d74",
+    "reason": "Delta intencional: reescritura de ejemplos del canon con marcadores de plantilla y eliminación del enlace a la documentación de origen."
+  },
+  {
+    "sha256": "748791052284b9cf5cd30bc93d9d1237431344e7f27582f9ee54ea3a11487423",
+    "reason": "Delta intencional: reescritura de ejemplos del canon con marcadores de plantilla y eliminación del enlace a la documentación de origen."
+  },
+  {
+    "sha256": "6993d8e4bf18da7eb74e00931302c0d4522df9a6d5b1960a2b1120dfece9e1d1",
+    "reason": "Delta intencional: reescritura de ejemplos del canon con marcadores de plantilla y eliminación del enlace a la documentación de origen."
+  },
+  {
+    "sha256": "0913e5d5b69b5df08ec1a8b1802c25bde6710776229ca2af6b32e5d63ed01a21",
+    "reason": "Delta intencional: reescritura de ejemplos del canon con marcadores de plantilla y eliminación del enlace a la documentación de origen."
+  },
+  {
+    "sha256": "77ea76d3c54837110a876883f00894f76b63209d3156f4a29d575fb71d680213",
+    "reason": "Delta intencional: reescritura de ejemplos del canon con marcadores de plantilla y eliminación del enlace a la documentación de origen."
   }
 ]
