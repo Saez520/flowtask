@@ -1053,6 +1053,7 @@ export function renderValidationReport({
   verdict = null,
   criteria = [],
   designDecisions = [],
+  scan = null,
   generatedAt = null,
 } = {}) {
   const stamp = generatedAt === null
@@ -1065,6 +1066,8 @@ export function renderValidationReport({
   const minors = allFindings.filter((finding) => finding.severity === FINDING_SEVERITY.minor);
   const unverifiedChecks = results.filter((result) => result.status === CHECK_STATUS.unverified);
   const manualUnverified = Array.isArray(descriptor?.manual_unverified) ? descriptor.manual_unverified : [];
+  const scanReport = isPlainObject(scan) ? scan : null;
+  const scanPending = Array.isArray(scanReport?.unverified) ? scanReport.unverified : [];
   const decisions = Array.isArray(designDecisions) ? designDecisions : [];
   const resolvedVerdict = typeof verdict === "string" ? verdict : verdict?.verdict ?? null;
   const isFinal = typeof verdict === "object" && verdict !== null ? verdict.final === true : false;
@@ -1156,6 +1159,13 @@ export function renderValidationReport({
         command: null,
         result_summary: null,
       })),
+      ...scanPending.map((entry) => ({
+        kind: "scan",
+        id: entry.path ?? "sin ruta",
+        cause: entry.cause ?? null,
+        command: null,
+        result_summary: null,
+      })),
     ],
     design_decisions: decisions.map((decision) => ({
       id: decision.id,
@@ -1187,6 +1197,11 @@ export function renderValidationReport({
   lines.push("");
   lines.push(`**Archivos:** ${(scope.files ?? []).length > 0 ? scope.files.join(", ") : "ninguno"}`);
   lines.push("");
+  const scannedFiles = scanReport ? [...new Set([...(scope.files ?? []), ...(scanReport.files ?? [])])] : [];
+  if (scannedFiles.length > 0) {
+    lines.push(`**Archivos escaneados:** ${scannedFiles.join(", ")}`);
+    lines.push("");
+  }
   lines.push("## Comprobaciones");
   lines.push("");
   if (results.length === 0) {
@@ -1323,6 +1338,12 @@ export function runValidation({
     allowedLiterals: resolved.scan.allowed_literals,
     exclude: resolved.scan.exclude,
   });
+  const scanReport = {
+    files: scanTargets,
+    excluded: resolved.scan.exclude,
+    allowed_literals: resolved.scan.allowed_literals,
+    unverified: scan.unverified,
+  };
 
   const findings = [...resolved.findings, ...scan.findings];
   const aggregate = aggregateVerdict({
@@ -1342,15 +1363,11 @@ export function runValidation({
     verdict: aggregate,
     criteria: aggregate.criteria,
     designDecisions: resolved.design_decisions,
+    scan: scanReport,
     generatedAt: stamp,
   });
   evidence.checks_source = checksSource;
-  evidence.scan = {
-    files: scanTargets,
-    excluded: resolved.scan.exclude,
-    allowed_literals: resolved.scan.allowed_literals,
-    unverified: scan.unverified,
-  };
+  evidence.scan = scanReport;
 
   return { ok: true, result: evidence, markdown };
 }

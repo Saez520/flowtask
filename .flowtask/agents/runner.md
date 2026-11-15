@@ -163,8 +163,8 @@ Reglas de la capa:
 - **El valor no se infiere del pedido.** Si el bloque está vacío o el valor no
   es uno de los dos, la ejecución no arranca.
 
-La fuente normativa de la capa es
-[persona-autonomy-permissions-layers.md](../../docs/architecture/persona-autonomy-permissions-layers.md).
+La fuente normativa de la capa es el documento de arquitectura de persona,
+autonomía y permisos.
 
 ## NUNCA ROMPER ESTA REGLA (MANDATORIA, SIN EXCEPCIONES)
 
@@ -335,7 +335,7 @@ Flujo de delegación — con continuidad explícita acotada:
    conservas/derivas `instance_name` desde el mapa y fuerzas Escenario A sin
    `sessionID` ni contexto de sesión.
 4. La skill ya ejecutó **Context Injection** (mem_context + mem_search). Incorporas los hallazgos al prompt como **referencias citables** (IDs de Engram, rutas) — nunca como resúmenes ni conclusiones.
-5. **Antes de invocar**: verificar si existe checkpoint en Engram (`flow-state/{CA-ID}/{agente}`).
+5. **Antes de invocar**: verificar si existe checkpoint en Engram (`flow-state/{execution_id}/{agente}`).
 6. Si el agente es `ca-writer` o `planner`, invocas `subagent(...)` según A/B.
     Para `constructor`, aplicas la rama A/B de continuidad limitada y el
     checkpoint restaurable. Para los demás agentes ligeros, invocas siempre
@@ -360,7 +360,7 @@ Fuente única de verdad de qué entra en un prompt de delegación. Aplica a toda
 - guiones de respuesta o posturas dictadas;
 - agendas de preguntas o prescripción de proceso ("Debes 1..5");
 - tareas que pertenecen a otro rol;
-- re-narración del estado propio del agente — el estado vive en su checkpoint en Engram (`flow-state/{CA-ID}/{agente}`); el prompt deriva al checkpoint, no lo re-narra;
+- re-narración del estado propio del agente — el estado vive en su checkpoint en Engram (`flow-state/{execution_id}/{agente}`); el prompt deriva al checkpoint, no lo re-narra;
 - mecánica interna del runner (`scenario`, `task_id`, `base_names`, `topic_signature`, "aceptado por el runner").
 
 Las prohibiciones viven solo aquí (lado emisor). Los receptores definen únicamente su contrato de entrada en positivo.
@@ -425,7 +425,7 @@ registro antes de llamar al Constructor. No se permite pasar el objeto original
 ni una paráfrasis como sustituto de `target_direct_descriptor`.
 
 ```json
-{"descriptor_version":"1","operation":"link-parent","target_kind":"submodule","target_repo":"/abs/sub","target_common_dir":"/abs/sub/.git","parent_repo":"/abs/parent","parent_common_dir":"/abs/parent/.git","submodule_path":"sub","gitlink_sha":"<sha>","target_head":"<sha>","base":"main","base_sha":"<sha>","branch":"worktree/CA","worktree_path":"/abs/sub/.worktrees/CA","link_parent":"staged-only","namespace":"CA-worktree-submodule-target-direct","owner":"<pid>","phase":"verified","tx_id":"td-CA","index_snapshot_ref":"/abs/state/snapshot"}
+{"descriptor_version":"1","operation":"link-parent","target_kind":"submodule","target_repo":"/abs/sub","target_common_dir":"/abs/sub/.git","parent_repo":"/abs/parent","parent_common_dir":"/abs/parent/.git","submodule_path":"sub","gitlink_sha":"<sha>","target_head":"<sha>","base":"main","base_sha":"<sha>","branch":"worktree/CA","worktree_path":"/abs/sub/.worktrees/CA","link_parent":"staged-only","namespace":"CA-{slug}-worktree-submodule-target-direct","owner":"<pid>","phase":"verified","tx_id":"td-CA","index_snapshot_ref":"/abs/state/snapshot"}
 ```
 
 El prompt del Constructor contiene sólo una referencia a ese registro y su
@@ -644,7 +644,7 @@ y declara el contexto durable **antes de actuar**. No arranca suponiendo.
 
 **Orden de consulta:**
 
-1. `mem_search(query: "flow-state/{CA-ID}/instances", type: "decision", scope: "project")`
+1. `mem_search(query: "flow-state/{execution_id}/instances", type: "decision", scope: "project")`
 2. `mem_search(query: "CA-{ID} plan", type: "ca-artifact", scope: "project")`
 3. `mem_search(query: "{work_id} Agent Loop run", type: "decision", scope: "project")`; si
    no aparece, buscar `Agent Loop progress — {work_id}` y `Agent Loop budget — {work_id}`

@@ -296,6 +296,13 @@ cuatro criterios binarios son inspección del Validator.
 
 **No son hallazgos**: artifacts de Engram, checkpoints y flow state, mensajes de commit, y `docs/project-history.md`, cuyo propósito explícito es registrar la coordinación del proyecto. Tampoco los archivos de coordinación de `.flowtask/` (agentes, comandos y skills), donde las referencias de coordinación son parte de su contenido: los registros, los reportes, los mensajes de coordinación, la configuración de `.flowtask/` y `docs/roadmap/` no son hallazgos. Un archivo funcional explícito dentro de `.flowtask/` sí se escanea cuando el alcance lo declara.
 
+**Excepción de alcance del canon**: en la validación del canon de FlowTask, el núcleo del
+runner (`.flowtask/agents/runner.md`) y el skill del controlador del Agent Loop
+(`.flowtask/skills/agent-loop-run/SKILL.md`) se declaran en `scan.files` y se escanean
+además de los archivos funcionales del alcance. Esos dos archivos se escanean sin
+`allowed_literals`. Si uno no se puede leer, el contrato lo informa como no verificado y
+la validación no puede aprobar.
+
 **Excepción**: una cadena literal que el dominio exige (API, contrato, configuración o valor persistido) no es hallazgo cuando aparece por el valor funcional que aporta y no como atribución a la ejecución.
 
 ---
