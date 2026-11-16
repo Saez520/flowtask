@@ -9,7 +9,8 @@ import {
   isAuthorityCommand,
   isWorktreeManagerMcpTool,
 } from "./authorizer.js";
-import { buildLayerBlockMessage, readOperationalLayers } from "./layers.js";
+import { buildLayerBlockMessage, readOperationalLayers, readOperationalLayersAt } from "./layers.js";
+import { evaluateOpencodeActivation, type ActivationResult } from "./registration.js";
 import {
   applyReducedDelivery,
   buildAttachmentDelivery,
@@ -352,6 +353,39 @@ export default Plugin.define({
   id: "flowtask-permission-gate",
   async setup(ctx) {
     const sessionDir = ctx.location.directory || process.cwd();
+    const registered: Array<{ dispose: () => Promise<void> }> = [];
+    const runtimeRoot = typeof ctx.options?.runtimeRoot === "string" && ctx.options.runtimeRoot
+      ? ctx.options.runtimeRoot
+      : null;
+
+    // Registration gate: without a registered project, FlowTask agents and
+    // skills are not exposed. A broken or unsupported registration is reported
+    // through the context hook; an inactive project is removed silently.
+    if (runtimeRoot) {
+      const activation: ActivationResult = evaluateOpencodeActivation({ directory: sessionDir, runtimeRoot });
+      if (activation.status !== "active") {
+        registered.push(await ctx.agent.transform(async (editor) => {
+          for (const agent of editor.list()) {
+            const id = String(agent.id ?? "");
+            const name = String(agent.name ?? "");
+            if (id.startsWith("flowtask-") || name.startsWith("flowtask-")) editor.remove(String(agent.id));
+          }
+        }));
+        const normalizedRoot = runtimeRoot.replaceAll("\\", "/");
+        registered.push(await ctx.skill.transform(async (editor) => {
+          for (const skill of editor.list()) {
+            const skillPath = String(skill.path ?? "").replaceAll("\\", "/");
+            if (skillPath.startsWith(`${normalizedRoot}/versions/`)) editor.remove(String(skill.id));
+          }
+        }));
+        if (activation.message) {
+          const message = activation.message;
+          registered.push(await ctx.session.hook("context", async (event) => {
+            event.system.push({ type: "text", text: message });
+          }));
+        }
+      }
+    }
 
     const beforeHook = await ctx.tool.hook("execute.before", async (event) => {
       const input = event.input && typeof event.input === "object"
@@ -366,7 +400,9 @@ export default Plugin.define({
         // does not authorize: it only checks that the layer is healthy. An
         // absent configuration is also a denial, not a pass.
         const layerWorkdir = readWorkdir(input, sessionDir);
-        const operationalLayers = readOperationalLayers([layerWorkdir, sessionDir]);
+        const operationalLayers = typeof ctx.options?.configDir === "string" && ctx.options.configDir
+          ? readOperationalLayersAt(ctx.options.configDir)
+          : readOperationalLayers([layerWorkdir, sessionDir]);
         if (!operationalLayers.ok) {
           const authorityBypass = event.tool === "bash" && isAuthorityCommand(command);
           if (!authorityBypass) throw new Error(buildLayerBlockMessage(operationalLayers));
@@ -524,7 +560,12 @@ export default Plugin.define({
       TURN_STATE.clear();
       TURN_SEQ.clear();
       resetNarrowingNotices();
-      await Promise.all([promptHook.dispose(), beforeHook.dispose(), afterHook.dispose()]);
+      await Promise.all([
+        promptHook.dispose(),
+        beforeHook.dispose(),
+        afterHook.dispose(),
+        ...registered.map((entry) => entry.dispose()),
+      ]);
     };
   },
 });

@@ -104,6 +104,35 @@ function readLayerFile(filePath, parse) {
 }
 
 /**
+ * Resolves the operational layers stored in one explicit configuration
+ * directory. Both files must exist and be valid; a missing layer is reported
+ * as a failure for that directory.
+ *
+ * @param {string} configDir
+ * @returns {OperationalLayersOk | OperationalLayersError}
+ */
+export function readOperationalLayersAt(configDir) {
+  const autonomyPath = join(configDir, AUTONOMY_FILE);
+  const permissionsPath = join(configDir, PERMISSIONS_FILE);
+
+  const autonomy = readLayerFile(autonomyPath, parseAutonomyLayer);
+  if (!autonomy.ok) {
+    return { ok: false, layer: "autonomy", reason: autonomy.reason, path: autonomyPath, configDir };
+  }
+
+  const permissions = readLayerFile(permissionsPath, parsePermissionsLayer);
+  if (!permissions.ok) {
+    return { ok: false, layer: "permissions", reason: permissions.reason, path: permissionsPath, configDir };
+  }
+
+  return {
+    ok: true,
+    layers: { autonomy: autonomy.value, permissions: permissions.value },
+    configDir,
+  };
+}
+
+/**
  * Resolves the operational layers of a target.
  *
  * The first candidate directory that contains `autonomy.json` or
@@ -125,22 +154,7 @@ export function readOperationalLayers(directories) {
       const autonomyPath = join(configDir, AUTONOMY_FILE);
       const permissionsPath = join(configDir, PERMISSIONS_FILE);
       if (!existsSync(autonomyPath) && !existsSync(permissionsPath)) continue;
-
-      const autonomy = readLayerFile(autonomyPath, parseAutonomyLayer);
-      if (!autonomy.ok) {
-        return { ok: false, layer: "autonomy", reason: autonomy.reason, path: autonomyPath, configDir };
-      }
-
-      const permissions = readLayerFile(permissionsPath, parsePermissionsLayer);
-      if (!permissions.ok) {
-        return { ok: false, layer: "permissions", reason: permissions.reason, path: permissionsPath, configDir };
-      }
-
-      return {
-        ok: true,
-        layers: { autonomy: autonomy.value, permissions: permissions.value },
-        configDir,
-      };
+      return readOperationalLayersAt(configDir);
     }
   }
 

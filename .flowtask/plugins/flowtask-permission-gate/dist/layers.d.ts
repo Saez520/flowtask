@@ -21,6 +21,15 @@ export function parseAutonomyLayer(raw: string): LayerParseResult;
  */
 export function parsePermissionsLayer(raw: string): LayerParseResult;
 /**
+ * Resolves the operational layers stored in one explicit configuration
+ * directory. Both files must exist and be valid; a missing layer is reported
+ * as a failure for that directory.
+ *
+ * @param {string} configDir
+ * @returns {OperationalLayersOk | OperationalLayersError}
+ */
+export function readOperationalLayersAt(configDir: string): OperationalLayersOk | OperationalLayersError;
+/**
  * Resolves the operational layers of a target.
  *
  * The first candidate directory that contains `autonomy.json` or
