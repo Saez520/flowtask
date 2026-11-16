@@ -6,18 +6,14 @@ import {
   readLayerSources,
   resolveLayers,
 } from "./layers.js";
+import { resolveUserRuntimePaths } from "./user-runtime.js";
 import { AUTHORITY_MESSAGES } from "./authority-messages.js";
 
 /**
- * Installed targets, in the same order the permission gate probes them.
- * `dir` is project-relative: repair runs from the project root.
+ * The authority configuration lives once per user. `configDir` is the runtime
+ * configuration directory, shared by every destination.
  */
-export const AUTHORITY_TARGETS = Object.freeze([
-  Object.freeze({ id: "opencode", dir: ".opencode/flowtask/config" }),
-  Object.freeze({ id: "claude", dir: ".claude/flowtask/config" }),
-  Object.freeze({ id: "vscode", dir: ".vscode/flowtask/config" }),
-  Object.freeze({ id: "standalone", dir: ".flowtask/config" }),
-]);
+export const AUTHORITY_TARGET = Object.freeze({ id: "user", kind: "global" });
 
 const OPERATIONAL_LAYERS = Object.freeze(["autonomy", "permissions"]);
 
@@ -25,20 +21,18 @@ const STATUS_SCHEMA = "flowtask-authority-status/v1";
 const REPAIR_SCHEMA = "flowtask-authority-repair/v1";
 
 /**
- * Returns the first installed target from `rootDir`, in gate order, or `null`.
- * A target is installed when its configuration directory exists; the layer
- * files may be missing or invalid, which is exactly the state repair handles.
+ * Returns the user-level authority target when its configuration directory
+ * exists. The layer files may be missing or invalid, which is exactly the state
+ * repair handles.
  */
-export function detectAuthorityTarget(rootDir = process.cwd()) {
-  for (const target of AUTHORITY_TARGETS) {
-    const configDir = path.resolve(rootDir, target.dir);
-    let stat;
-    try {
-      stat = fs.statSync(configDir);
-    } catch {
-      continue;
+export function detectAuthorityTarget() {
+  const configDir = resolveUserRuntimePaths().configDir;
+  try {
+    if (fs.statSync(configDir).isDirectory()) {
+      return { id: AUTHORITY_TARGET.id, dir: configDir, configDir };
     }
-    if (stat.isDirectory()) return { id: target.id, dir: target.dir, configDir };
+  } catch {
+    return null;
   }
   return null;
 }
@@ -50,8 +44,8 @@ export function detectAuthorityTarget(rootDir = process.cwd()) {
  * `code`, `layer`, `path`, and `reason`. The top-level `message` is the
  * operator channel and never includes those details.
  */
-export function diagnoseAuthority({ rootDir = process.cwd() } = {}) {
-  const target = detectAuthorityTarget(rootDir);
+export function diagnoseAuthority() {
+  const target = detectAuthorityTarget();
   if (!target) {
     return {
       schema: STATUS_SCHEMA,
@@ -64,7 +58,7 @@ export function diagnoseAuthority({ rootDir = process.cwd() } = {}) {
     };
   }
 
-  const resolution = resolveLayers({ team: null, project: readLayerSources(target.configDir) });
+  const resolution = resolveLayers({ user: readLayerSources(target.configDir) });
   if (resolution.operational.ok) {
     const autonomy = resolution.layers.autonomy;
     return {
@@ -138,7 +132,7 @@ function restoreOriginal(filePath, original) {
 }
 
 function verifyRepair(configDir, planned, preservedSnapshots) {
-  const resolution = resolveLayers({ team: null, project: readLayerSources(configDir) });
+  const resolution = resolveLayers({ user: readLayerSources(configDir) });
   if (!resolution.operational.ok) return false;
 
   for (const [name, value] of planned) {
@@ -161,11 +155,11 @@ function verifyRepair(configDir, planned, preservedSnapshots) {
  * are verified after the write; on any failure every original file is restored
  * and the result is `failed`.
  */
-export function repairAuthority({ rootDir = process.cwd() } = {}) {
-  const target = detectAuthorityTarget(rootDir);
+export function repairAuthority() {
+  const target = detectAuthorityTarget();
   if (!target) return repairResult(null, "not_installed");
 
-  const resolution = resolveLayers({ team: null, project: readLayerSources(target.configDir) });
+  const resolution = resolveLayers({ user: readLayerSources(target.configDir) });
   const preserved = [];
   const preservedSnapshots = [];
   for (const name of OPERATIONAL_LAYERS) {

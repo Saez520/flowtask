@@ -570,6 +570,7 @@ function ensureGlobalSurfaces({
   autonomyProfile = null,
   replaceAutonomy = false,
   allowEngramTools = false,
+  userConfig = null,
 }) {
   const paths = resolveClaudePaths(projectDir);
   const version = readVersion(flowtaskDir);
@@ -581,7 +582,7 @@ function ensureGlobalSurfaces({
   });
 
   const configDir = paths.runtimeConfigDir;
-  const config = ensureClaudeRuntimeConfig(configDir, {
+  const config = userConfig ?? ensureClaudeRuntimeConfig(configDir, {
     personaChoice,
     autonomyProfile,
     replaceAutonomy,
@@ -678,6 +679,7 @@ export function installClaudeTarget({
   worktreeManager = null,
   autonomyProfile = null,
   replaceAutonomy = false,
+  userConfig = null,
 }) {
   const surfaces = ensureGlobalSurfaces({
     flowtaskDir,
@@ -687,6 +689,7 @@ export function installClaudeTarget({
     autonomyProfile,
     replaceAutonomy,
     allowEngramTools: options.allowEngramTools === true,
+    userConfig,
   });
   const runtimeManifest = readClaudeRuntimeManifest(surfaces.paths.runtimeRoot);
   const registration = registerClaudeProject({
@@ -889,6 +892,7 @@ export function updateClaudeTarget({
   worktreeManager = null,
   autonomyProfile = null,
   replaceAutonomy = false,
+  userConfig = null,
 }) {
   const beforePaths = resolveClaudePaths(projectDir);
   const legacyBefore =
@@ -903,6 +907,7 @@ export function updateClaudeTarget({
     autonomyProfile,
     replaceAutonomy,
     allowEngramTools: options.allowEngramTools === true,
+    userConfig,
   });
   const paths = surfaces.paths;
   const registered = fileExists(paths.registryPath);

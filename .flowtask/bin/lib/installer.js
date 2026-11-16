@@ -13,8 +13,12 @@ import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
 import { ensureGlobalFerrisSearch, isFerrisSearchSupported } from "./ferris-search.js";
 import { installClaudeTarget, updateClaudeTarget } from "./claude-install.js";
 import { describeClaudeModResults, installClaudeModPlugins } from "./claude-plugin.js";
-import { hasLayerFiles, preflightClaudeRuntimeConfig } from "./claude-runtime.js";
 import { resolveClaudePaths } from "./claude.js";
+import {
+  ensureUserRuntimeConfig,
+  preflightUserRuntimeConfig,
+  resolveUserRuntimePaths,
+} from "./user-runtime.js";
 import {
   AUTONOMY_END_MARKER,
   AUTONOMY_START_MARKER,
@@ -24,7 +28,6 @@ import {
   configureRunnerScriptsContent,
   injectAutonomyIntoRunnerContent,
   injectPersonaIntoRunnerContent,
-  readPersonaBlock,
 } from "./runner-content.js";
 export {
   configureRunnerScriptsContent,
@@ -53,11 +56,9 @@ import {
   LAYER_FILES,
   MIGRATION_DEFAULTS,
   PERSONA_FILES,
-  buildProfileForWrite,
   describeOperationalFailure,
   readLayerSources,
   resolveLayers,
-  validatePersonaLayer,
 } from "./layers.js";
 
 export const INSTALLER_WRITERS = Object.freeze([
@@ -820,31 +821,16 @@ export function targetConfigDir(targetDir) {
   return path.join(targetDir, "config");
 }
 
-function writeProfile(targetDir, level, persona, onboarded) {
-  const configDir = targetConfigDir(targetDir);
-  const existing = readProfile(targetDir);
-  const profile = buildProfileForWrite(existing, { level, persona, onboarded });
-  fs.mkdirSync(configDir, { recursive: true });
-  const profilePath = path.join(configDir, "profile.json");
-  if (!writeJsonVerified(profilePath, profile)) throw new Error(`could not verify ${profilePath}`);
-  logSuccess(`Profile saved to ${profilePath}`);
-}
-
-function readTargetPersonaBlock(targetDir) {
-  const runnerPath = path.join(targetDir, "agents", "runner.md");
-  if (!fileExists(runnerPath)) return null;
-  return readPersonaBlock(fs.readFileSync(runnerPath, "utf8"));
-}
-
-function readProfile(targetDir) {
-  const profilePath = path.join(targetConfigDir(targetDir), "profile.json");
+/** Persona level stored in the user-level profile, if any. */
+function readUserProfileLevel() {
+  const profilePath = path.join(resolveUserRuntimePaths().configDir, LAYER_FILES.persona);
   if (!fileExists(profilePath)) return null;
-  try { return JSON.parse(fs.readFileSync(profilePath, "utf8")); } catch { return null; }
-}
-
-function readProfileLevel(targetDir) {
-  const level = readProfile(targetDir)?.level;
-  return level && levelToChoice[level] ? level : null;
+  try {
+    const level = JSON.parse(fs.readFileSync(profilePath, "utf8")).level;
+    return level && levelToChoice[level] ? level : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -863,10 +849,6 @@ export function normalizeAutonomyChoice(value) {
 
 const OPERATIONAL_LAYERS = Object.freeze(["autonomy", "permissions"]);
 
-function layerLabel(name) {
-  return name === "autonomy" ? "autonomy" : "permissions";
-}
-
 function layerOperationalError(name, layer) {
   const reason = layer.reason
     ?? (layer.status === "missing"
@@ -884,31 +866,18 @@ function layerOperationalError(name, layer) {
   return error;
 }
 
-/** Atomic write for a layer value: temp file, parse, equality and rename. */
-function writeLayerValueAtomic(filePath, value) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  if (!writeJsonVerified(filePath, value)) throw new Error(`could not verify ${filePath}`);
-}
-
-function writeLayerValue(configDir, name, value, message) {
-  const filePath = path.join(configDir, LAYER_FILES[name]);
-  writeLayerValueAtomic(filePath, value);
-  logSuccess(message ?? `${layerLabel(name)} layer migrated at ${filePath} with the installation default value.`);
-}
-
-function resolveTargetLayers(targetDir, teamConfigDir) {
-  const project = readLayerSources(targetConfigDir(targetDir));
-  const team = teamConfigDir ? readLayerSources(teamConfigDir) : null;
-  return resolveLayers({ team, project });
+function resolveTargetLayers() {
+  const paths = resolveUserRuntimePaths();
+  return resolveLayers({ user: readLayerSources(paths.configDir) });
 }
 
 /**
- * Read-only layer check for an installation target. An invalid operational
- * layer fails with its operational message; a missing one is reported so the
- * caller can decide which value to write. Nothing is written.
+ * Read-only check of the user-level layers. An invalid operational layer fails
+ * with its operational message; a missing one is reported so the caller can
+ * decide which value to write. Nothing is written.
  */
-export function preflightTargetLayers(targetDir, { teamConfigDir = null } = {}) {
-  const resolution = resolveTargetLayers(targetDir, teamConfigDir);
+export function preflightTargetLayers() {
+  const resolution = resolveTargetLayers();
   for (const name of OPERATIONAL_LAYERS) {
     const layer = resolution.layers[name];
     if (layer.status === "invalid") throw layerOperationalError(name, layer);
@@ -918,69 +887,24 @@ export function preflightTargetLayers(targetDir, { teamConfigDir = null } = {}) 
 }
 
 /**
- * Ensures the target has the autonomy and permissions layers.
- *
- * Resolution is per layer with full replacement: a valid layer is
- * preserved, and an invalid layer fails the target without overwriting the file.
- * A missing layer receives the explicit choice when there is one and the
- * migration default otherwise. Writes are reversible: if a later write fails,
- * the previous files are restored byte for byte.
+ * Ensures the user-level autonomy and permissions layers. A valid layer is
+ * preserved and an invalid one fails without overwriting the file. A missing
+ * layer receives the explicit choice when there is one and the migration
+ * default otherwise.
  */
-export function ensureTargetLayers(targetDir, { teamConfigDir = null, autonomyProfile = null, replaceAutonomy = false } = {}) {
-  const choice = normalizeAutonomyChoice(autonomyProfile);
-  const configDir = targetConfigDir(targetDir);
-  const { resolution } = preflightTargetLayers(targetDir, { teamConfigDir });
-  const created = [];
-  const updated = [];
-  const writes = [];
-
-  const autonomy = resolution.layers.autonomy;
-  if (autonomy.status === "missing") {
-    writes.push({
-      name: "autonomy",
-      value: choice ? { version: 1, profile: choice } : MIGRATION_DEFAULTS.autonomy,
-      message: choice
-        ? `${layerLabel("autonomy")} layer written at ${path.join(configDir, LAYER_FILES.autonomy)} with the selected value.`
-        : undefined,
-      outcome: "created",
-    });
-  } else if (replaceAutonomy && choice && autonomy.value.profile !== choice) {
-    writes.push({
-      name: "autonomy",
-      value: { version: 1, profile: choice },
-      message: `${layerLabel("autonomy")} layer updated at ${path.join(configDir, LAYER_FILES.autonomy)} with the selected value.`,
-      outcome: "updated",
-    });
-  }
-
-  if (resolution.layers.permissions.status === "missing") {
-    writes.push({ name: "permissions", value: MIGRATION_DEFAULTS.permissions, outcome: "created" });
-  }
-
-  const backups = [];
-  try {
-    for (const write of writes) {
-      const filePath = path.join(configDir, LAYER_FILES[write.name]);
-      const original = fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
-      writeLayerValue(configDir, write.name, write.value, write.message);
-      backups.push({ filePath, original });
-      (write.outcome === "created" ? created : updated).push(write.name);
-    }
-  } catch (error) {
-    for (const { filePath, original } of backups.reverse()) {
-      try {
-        if (original === null) fs.rmSync(filePath, { force: true });
-        else fs.writeFileSync(filePath, original);
-      } catch {
-        // The original write error is the actionable failure; a partial
-        // restore is reported by the caller's transaction.
-      }
-    }
-    throw error;
-  }
-
-  const finalResolution = resolveTargetLayers(targetDir, teamConfigDir);
-  return { resolution: finalResolution, created, updated };
+export function ensureTargetLayers(targetDir, { autonomyProfile = null, replaceAutonomy = false } = {}) {
+  const paths = resolveUserRuntimePaths();
+  const before = preflightTargetLayers();
+  const config = ensureUserRuntimeConfig(paths.configDir, { autonomyProfile, replaceAutonomy });
+  const resolution = resolveTargetLayers();
+  const created = OPERATIONAL_LAYERS.filter((name) =>
+    before.resolution.layers[name].status === "missing" && resolution.layers[name].status !== "missing");
+  const updated = replaceAutonomy && autonomyProfile
+    && before.resolution.layers.autonomy.status !== "missing"
+    && before.resolution.layers.autonomy.value?.profile !== autonomyProfile
+    ? ["autonomy"]
+    : [];
+  return { resolution, created, updated, config };
 }
 
 export function materializeReviewConfig(flowtaskDir, targetDir) {
@@ -1007,54 +931,35 @@ export function materializeReviewConfig(flowtaskDir, targetDir) {
 }
 
 /**
- * Synchronizes the target configuration: managed review, the persona layer,
- * and the autonomy and permissions layers.
- *
- * Persona is written only with an explicit choice; a valid profile is
- * preserved, and an invalid one without an explicit choice is not overwritten. The
- * operational layers are resolved first and are never repaired with a default:
- * an invalid layer fails before any managed configuration is materialized.
+ * Synchronizes the target configuration with the user-level layers. The
+ * persona, autonomy and permissions layers live in the runtime config; the
+ * target only receives the generated review configuration and the resolved
+ * status used to report the run.
  */
 export function syncTargetConfig(
   flowtaskDir,
   targetDir,
   personaChoice,
-  { preserveProfile = false, explicitPersona = false, autonomyProfile = null, replaceAutonomy = false } = {},
+  { autonomyProfile = null, replaceAutonomy = false, userConfig = null } = {},
 ) {
-  const { resolution } = ensureTargetLayers(targetDir, { autonomyProfile, replaceAutonomy });
+  const config = userConfig ?? ensureUserRuntimeConfig(resolveUserRuntimePaths().configDir, {
+    personaChoice,
+    autonomyProfile,
+    replaceAutonomy,
+  });
   const review = materializeReviewConfig(flowtaskDir, targetDir);
-
-  const existing = readProfile(targetDir);
-  const existingValidation = existing
-    ? validatePersonaLayer(existing, {
-        personaDir: path.join(flowtaskDir, "personas"),
-        customText: existing.persona === "custom" ? readTargetPersonaBlock(targetDir) : undefined,
-      })
-    : null;
-  const valid = existingValidation?.status === "valid";
-
-  let personaStatus;
-  if (explicitPersona && personaChoice) {
-    writeProfile(targetDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
-    personaStatus = "valid";
-  } else if (valid) {
-    personaStatus = "valid";
-  } else if (existing) {
-    personaStatus = "invalid";
-    logWarn(`Invalid persona profile in ${targetConfigDir(targetDir)}: ${existingValidation?.reason ?? "invalid layer"}. It is not overwritten and the flow continues without persona.`);
-  } else if (!preserveProfile && personaChoice) {
-    writeProfile(targetDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
-    personaStatus = "valid";
-  } else {
-    personaStatus = "missing";
-    logWarn(`No persona profile was found in ${targetConfigDir(targetDir)}: continuing without persona.`);
-  }
+  const personaStatus = config.profile?.status === "valid"
+    ? "valid"
+    : config.profile?.status === "invalid"
+      ? "invalid"
+      : "missing";
 
   return {
     persona: personaStatus,
-    autonomy: resolution.layers.autonomy,
-    permissions: resolution.layers.permissions,
+    autonomy: config.autonomy,
+    permissions: config.permissions,
     review,
+    config,
   };
 }
 
@@ -1586,20 +1491,15 @@ export function migrateProfileLocation(projectDir, flowtaskDir, targetDirs = [fl
   if (!source) return true;
   try {
     const profile = JSON.parse(fs.readFileSync(source, "utf8"));
-    const destinations = targetDirs.map((targetDir) => path.join(targetConfigDir(targetDir), "profile.json"));
-    for (const destination of destinations) {
-      if (path.resolve(source) === path.resolve(destination)) continue;
-      if (fs.existsSync(destination)) continue;
-      fs.mkdirSync(path.dirname(destination), { recursive: true });
+    const destination = path.join(resolveUserRuntimePaths().configDir, LAYER_FILES.persona);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    if (path.resolve(source) !== path.resolve(destination) && !fs.existsSync(destination)) {
       if (!writeJsonVerified(destination, profile)) throw new Error(`verification of ${destination} failed`);
-    }
-    for (const destination of destinations) {
-      if (path.resolve(source) === path.resolve(destination)) continue;
       const verified = JSON.parse(fs.readFileSync(destination, "utf8"));
       if (JSON.stringify(verified) !== JSON.stringify(profile)) throw new Error(`verification of ${destination} failed`);
     }
     fs.rmSync(source);
-    logSuccess(`Profile migrated from ${source} to ${destinations.join(", ")}`);
+    logSuccess(`Profile migrated from ${source} to ${destination}`);
     return true;
   } catch (err) {
     logError(`Could not migrate profile.json from ${source}: ${err.message}. Check permissions/space and retry with flowtask update.`);
@@ -1697,40 +1597,20 @@ ${COLORS.blue}╔═════════════════════
 
     const rootFlowtask = path.join(projectDir, ".flowtask");
     const isSourceDir = path.resolve(rootFlowtask) === path.resolve(flowtaskDir);
-    const rootMigrationApplies = !isSourceDir && fileExists(rootFlowtask);
-    const migrationTargetId = nonClaudeTargets.find(({ id }) => id !== "standalone")?.id ?? null;
 
-    const targetLayerPreflights = nonClaudeTargets.map((target) => {
-      const layerSourceDir = rootMigrationApplies && migrationTargetId === target.id
-        ? rootFlowtask
-        : path.join(projectDir, target.targetSubDir);
-      return preflightTargetLayers(layerSourceDir);
-    });
-
+    const userRuntimePaths = resolveUserRuntimePaths();
+    const userLayerPreflight = preflightUserRuntimeConfig(userRuntimePaths.configDir);
     const claudePaths = resolveClaudePaths(projectDir);
-    let claudeLayerPreflight = null;
-    let claudeLegacyPreflight = null;
-    if (claudeSelected) {
-      claudeLayerPreflight = preflightClaudeRuntimeConfig(claudePaths.runtimeConfigDir);
-      const legacyConfigDir = path.join(claudePaths.projectFlowtaskDir, "config");
-      if (hasLayerFiles(legacyConfigDir)) claudeLegacyPreflight = preflightClaudeRuntimeConfig(legacyConfigDir);
-    }
 
     const requestedAutonomy = normalizeAutonomyChoice(options.autonomy);
-    const missingOperationalLayers = targetLayerPreflights.some(({ missing }) => missing.length > 0)
-      || (claudeLayerPreflight?.missing.length ?? 0) > 0
-      || (claudeLegacyPreflight?.missing.length ?? 0) > 0;
+    const missingOperationalLayers = userLayerPreflight.missing.length > 0;
     const selectedAutonomy = !requestedAutonomy && process.stdin.isTTY && missingOperationalLayers
       ? await promptAutonomySelection(readline)
       : null;
     const autonomyProfile = requestedAutonomy ?? selectedAutonomy;
     const replaceAutonomy = Boolean(options.autonomy);
 
-    const autonomyWillBeWritten = targetLayerPreflights.some(
-      ({ resolution }) => resolution.layers.autonomy.status === "missing",
-    )
-      || (claudeLayerPreflight?.missing.includes("autonomy") ?? false)
-      || replaceAutonomy;
+    const autonomyWillBeWritten = userLayerPreflight.missing.includes("autonomy") || replaceAutonomy;
     if (autonomyWillBeWritten) {
       const effective = autonomyProfile ?? MIGRATION_DEFAULTS.autonomy.profile;
       const initiative = effective === "assistant"
@@ -1745,6 +1625,13 @@ ${COLORS.blue}╔═════════════════════
       targets,
       manifest: preflight?.manifest ?? loadPluginManifest(flowtaskDir),
       flowtaskDir,
+    });
+
+    // The user-level layers are ensured once for every destination.
+    const userConfig = ensureUserRuntimeConfig(userRuntimePaths.configDir, {
+      personaChoice,
+      autonomyProfile,
+      replaceAutonomy,
     });
 
     const targetDirs = nonClaudeTargets.map(({ targetSubDir }) => path.join(projectDir, targetSubDir));
@@ -1797,14 +1684,10 @@ ${COLORS.blue}╔═════════════════════
           if (!verifyDirectoryMirror(srcDir, destDir, { ignorePaths: pruned.preserved })) throw new Error(`Mirror verification failed for ${src}`);
         }
 
-        // ── Target config: persona and autonomy/permissions layers ──
-        // Layers are resolved and written before installing the plugin and before
-        // injecting persona and autonomy.
+        // ── Target config: generated review plus the user-level layers ──
         configureRunnerScripts(TARGET_DIR, targetSubDir);
         const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
-          explicitPersona: Boolean(personaChoice),
-          autonomyProfile,
-          replaceAutonomy,
+          userConfig,
         });
         const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
 
@@ -1864,6 +1747,7 @@ ${COLORS.blue}╔═════════════════════
           worktreeManager,
           autonomyProfile,
           replaceAutonomy,
+          userConfig,
         });
         results.push({
           target: "claude",
@@ -2013,14 +1897,8 @@ async function runUpdate(flowtaskDir, options, report) {
   const preflight = nonClaudeTargets.some(({ id }) => id === "opencode")
     ? await prepareInstallation(flowtaskDir, projectDir, "update", { targets: nonClaudeTargets, worktreeManager }) : null;
 
-  for (const target of nonClaudeTargets) {
-    preflightTargetLayers(path.join(projectDir, target.subDir));
-  }
-  if (claudeActive) {
-    preflightClaudeRuntimeConfig(claudePaths.runtimeConfigDir);
-    const legacyConfigDir = path.join(claudePaths.projectFlowtaskDir, "config");
-    if (hasLayerFiles(legacyConfigDir)) preflightClaudeRuntimeConfig(legacyConfigDir);
-  }
+  const userRuntimePaths = resolveUserRuntimePaths();
+  preflightUserRuntimeConfig(userRuntimePaths.configDir);
 
   const autonomyProfile = normalizeAutonomyChoice(options.autonomy);
   const replaceAutonomy = Boolean(options.autonomy);
@@ -2077,11 +1955,7 @@ async function runUpdate(flowtaskDir, options, report) {
     }
 
     // ── Step 1.5: Agent Personality ──────────────────────────────
-    let currentLevel = null;
-    for (const targetDir of targetDirs) {
-      currentLevel = readProfileLevel(targetDir);
-      if (currentLevel) break;
-    }
+    const currentLevel = readUserProfileLevel();
 
     let personaChoice = null;
     if (options.persona && levelToChoice[options.persona]) {
@@ -2095,6 +1969,13 @@ async function runUpdate(flowtaskDir, options, report) {
       logWarn("No valid personality was found and --persona was not provided. Continuing without injecting a personality.");
     }
     const personaContent = personaChoice ? resolvePersonaContent(flowtaskDir, personaChoice) : null;
+
+    // The user-level layers are ensured once for every destination.
+    const userConfig = ensureUserRuntimeConfig(userRuntimePaths.configDir, {
+      personaChoice,
+      autonomyProfile,
+      replaceAutonomy,
+    });
 
     // ── Step 2: Delta sync each target ──────────────────────────────────────
     const preservePaths = ["CA-", "workspace", ".workspace", ".installation-method"];
@@ -2150,15 +2031,10 @@ async function runUpdate(flowtaskDir, options, report) {
 
         logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
 
-        // ── Target config: persona and autonomy/permissions layers ──
-        // Layers are resolved and written before installing the plugin and before
-        // injecting persona and autonomy.
+        // ── Target config: generated review plus the user-level layers ──
         configureRunnerScripts(TARGET_DIR, subDir);
         const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
-          preserveProfile: !options.persona,
-          explicitPersona: Boolean(options.persona),
-          autonomyProfile,
-          replaceAutonomy,
+          userConfig,
         });
         const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
 
@@ -2248,6 +2124,7 @@ async function runUpdate(flowtaskDir, options, report) {
           worktreeManager,
           autonomyProfile,
           replaceAutonomy,
+          userConfig,
         });
         const claudeRestored = Array.isArray(claudeUpdate.restoredPaths) ? claudeUpdate.restoredPaths : [];
         results.push({

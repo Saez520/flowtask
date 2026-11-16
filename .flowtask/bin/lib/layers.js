@@ -307,6 +307,14 @@ export function readLayerSources(configDir) {
 }
 
 /**
+ * Reads the three layers from a user-level configuration directory. Reading
+ * lives here: the resolver never opens files.
+ */
+export function readUserLayers(configDir) {
+  return readLayerSources(configDir);
+}
+
+/**
  * A source entry is a raw layer value or a file record
  * `{ status, value, reason, path }`. No layer schema declares a `status`
  * field, so the record shape is unambiguous.
@@ -342,10 +350,11 @@ function evaluateLayer(name, entry, options = {}) {
 
 /**
  * Resolves a layer: the project governs entirely when it defines it (valid or
- * invalid); if it does not define it, the team base applies; if neither defines it,
- * the layer is absent. Fields are never mixed between sources.
+ * invalid); if it does not define it, the user layer applies; when neither
+ * defines it, the team base applies; if none defines it, the layer is absent.
+ * Fields are never mixed between sources.
  */
-function resolveLayer(name, projectEntry, teamEntry, options = {}) {
+function resolveLayer(name, projectEntry, userEntry, teamEntry, options = {}) {
   const project = evaluateLayer(name, projectEntry, options);
   if (project.status !== "missing") {
     return {
@@ -354,6 +363,17 @@ function resolveLayer(name, projectEntry, teamEntry, options = {}) {
       source: "project",
       reason: project.reason,
       path: project.path,
+    };
+  }
+
+  const user = evaluateLayer(name, userEntry, options);
+  if (user.status !== "missing") {
+    return {
+      status: user.status,
+      value: user.value,
+      source: "user",
+      reason: user.reason,
+      path: user.path,
     };
   }
 
@@ -368,7 +388,7 @@ function resolveLayer(name, projectEntry, teamEntry, options = {}) {
     };
   }
 
-  return { status: "missing", value: null, source: null, reason: null, path: project.path ?? team.path ?? null };
+  return { status: "missing", value: null, source: null, reason: null, path: project.path ?? user.path ?? team.path ?? null };
 }
 
 function buildOperationalError(code, layer, state) {
@@ -407,16 +427,22 @@ function buildWarnings(layers) {
 }
 
 /**
- * Resolves the three layers from two already-read logical sources.
+ * Resolves the three layers from three already-read logical sources.
  * `persona` carries `{ personaDir, customText }` through persona validation;
  * the operational layers never receive it. Returns
  * `{ layers, precedence, operational, warnings }`.
  */
-export function resolveLayers({ team = null, project = null, persona = null } = {}) {
+export function resolveLayers({ team = null, user = null, project = null, persona = null } = {}) {
   const options = { persona: isPlainObject(persona) ? persona : {} };
   const layers = {};
   for (const name of LAYER_ORDER) {
-    layers[name] = resolveLayer(name, project ? project[name] : null, team ? team[name] : null, options);
+    layers[name] = resolveLayer(
+      name,
+      project ? project[name] : null,
+      user ? user[name] : null,
+      team ? team[name] : null,
+      options,
+    );
   }
   return {
     layers,
