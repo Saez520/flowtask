@@ -15,25 +15,29 @@ const TARGETS = [
   {
     id: "standalone",
     cliSource: "controlled",
-    installedMarker: ".flowtask/agents/runner.md",
-    managedFile: ".flowtask/agents/plan-auditor.md",
+    registration: ".flowtask/project.json",
+    engineRoot: ".flowtask/agents",
+    managedFile: null,
   },
   {
     id: "opencode",
     cliSource: "canonical",
-    installedMarker: ".opencode/flowtask/agents/runner.md",
-    managedFile: ".opencode/flowtask/agents/plan-auditor.md",
+    registration: ".opencode/flowtask/project.json",
+    engineRoot: ".opencode/flowtask/agents",
+    managedFile: null,
   },
   {
     id: "vscode",
     cliSource: "controlled",
-    installedMarker: ".vscode/flowtask/agents/runner.md",
-    managedFile: ".vscode/flowtask/agents/plan-auditor.md",
+    registration: ".vscode/flowtask/project.json",
+    engineRoot: ".vscode/flowtask/agents",
+    managedFile: null,
   },
   {
     id: "claude",
     cliSource: "canonical",
-    installedMarker: ".claude/flowtask/project.json",
+    registration: ".claude/flowtask/project.json",
+    engineRoot: null,
     managedFile: ".claude/agents/flowtask-plan-auditor.md",
   },
 ];
@@ -257,11 +261,18 @@ test("G2: update detects and syncs every supported target", () => {
     );
     assert.equal(install.status, 0, `install ${target.id} failed:\n${outputOf(install)}`);
     assert.ok(
-      fs.existsSync(path.join(sandbox.projectDir, target.installedMarker)),
-      `install ${target.id} did not write ${target.installedMarker}`,
+      fs.existsSync(path.join(sandbox.projectDir, target.registration)),
+      `install ${target.id} did not write ${target.registration}`,
     );
+    if (target.engineRoot) {
+      assert.equal(
+        fs.existsSync(path.join(sandbox.projectDir, target.engineRoot)),
+        false,
+        `install ${target.id} copied the engine into ${target.engineRoot}`,
+      );
+    }
 
-    const update = runCli(cli, ["update"], { sandbox, input: "n\nn\n" });
+    const update = runCli(cli, ["update"], { sandbox, input: "n\nn\nn\n" });
     const output = outputOf(update);
     assert.equal(update.status, 0, `update ${target.id} failed:\n${output}`);
     assert.match(
@@ -274,13 +285,18 @@ test("G2: update detects and syncs every supported target", () => {
       new RegExp(`│\\s+sync\\s+${target.id}\\b`),
       `update did not sync ${target.id}:\n${output}`,
     );
-    assert.match(output, /COMPLETE/, `update ${target.id} did not finish COMPLETE:\n${output}`);
+    assert.ok(
+      fs.existsSync(path.join(sandbox.projectDir, target.registration)),
+      `update ${target.id} removed or did not refresh ${target.registration}`,
+    );
   }
 });
 
 // gap: G3 — una edición manual en un gestionado sobrevive o se restaura sin figurar en el informe
-test("G3: update restores a hand-edited managed file and reports its path for each target", () => {
-  for (const target of TARGETS) {
+test("G3: update restores a hand-edited managed file and reports its path", () => {
+  // Only the Claude target materializes managed project artifacts; the other
+  // destinations keep the engine in the user runtime and carry a registration.
+  for (const target of TARGETS.filter((entry) => entry.managedFile)) {
     const sandbox = createSandbox(`flowtask-update-drift-${target.id}-`);
     const cli = resolveCli(sandbox, target);
 
@@ -297,7 +313,7 @@ test("G3: update restores a hand-edited managed file and reports its path for ea
     fs.appendFileSync(managedPath, "\nmanual drift\n");
     assert.notDeepEqual(fs.readFileSync(managedPath), canonical);
 
-    const update = runCli(cli, ["update"], { sandbox, input: "n\nn\n" });
+    const update = runCli(cli, ["update"], { sandbox, input: "n\nn\nn\n" });
     const output = outputOf(update);
     assert.equal(update.status, 0, `update ${target.id} failed:\n${output}`);
     assert.deepEqual(

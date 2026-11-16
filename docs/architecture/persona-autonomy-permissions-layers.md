@@ -63,16 +63,18 @@ technical gate: it adds no capability.
 
 ## Per-layer resolution
 
-There are two logical sources: `team` (base) and `project` (override). Resolution
-is done **per layer** and with **full replacement**:
+There are three logical sources: `team` (base), `user` (the account
+configuration), and `project` (override). Resolution is done **per layer** and
+with **full replacement**:
 
 - If the project defines the layer, the project governs entirely.
-- If the project does not define it, the team base applies.
-- If neither defines it, the layer is absent.
+- If the project does not define it, the user configuration applies.
+- If the user configuration does not define it, the team base applies.
+- If none defines it, the layer is absent.
 
 There is no field mixing between sources: a layer resolves completely or does not resolve.
-An invalid project layer **does not** fall back to the team base: it is invalid, and
-that is a failure.
+An invalid project or user layer **does not** fall back to the next source: it is
+invalid, and that is a failure.
 
 Once resolved, layer precedence is:
 
@@ -128,7 +130,7 @@ never writes the files; the installer command does.
 | Point | What it verifies | Scope |
 |-------|---------------|---------|
 | Runner injection | The resolved autonomy value is injected into the runner agent between its markers. | Runner only. |
-| Permissions gate | Before applying the technical allowlist, the gate validates that the autonomy and permissions layers exist and are valid in the target. | Runner tools only. |
+| Permissions gate | Before applying the technical allowlist, the gate validates that the autonomy and permissions layers exist and are valid in the user configuration. | Runner tools only. |
 
 The gate **does not read autonomy to authorize tools**: autonomy does not
 authorize. If the permissions or autonomy layer is missing or invalid, the gate
@@ -157,11 +159,13 @@ overwrites it only when the developer chooses a different value. The interactive
 answer applies to absent layers only. A persona change preserves its file and
 does not touch the autonomy and permissions layers.
 
-Layer files live next to `profile.json` in the target's configuration
-directory and are ignored in git: they are local state, not versioned content.
-The definitive path for the team base and the project registry is defined by the per-team
-installation and per-project registry phases; the layer resolver receives logical
-sources and does not fix that path.
+Layer files live in the single user configuration directory
+(`<global-config>/flowtask/config/`) and are ignored in git: they are local
+state, not versioned content. The installer writes only that directory; the
+resolver still accepts a project definition and a team base as override and
+fallback sources. `flowtask layers resolve --json` reports the resolved source
+and the configuration directory. The onboarder writes `profile.json` to the
+`configDir` returned by that command.
 
 ## Boundary with the domain policy
 

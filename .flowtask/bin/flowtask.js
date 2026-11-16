@@ -5,10 +5,9 @@ import path from "path";
 import { execFileSync } from "child_process";
 import { fileURLToPath } from "url";
 import { runCliAction } from "./lib/cli-errors.js";
-import { install, update } from "./lib/installer.js";
-import { uninstallClaudeGlobal, uninstallClaudeProject } from "./lib/claude-install.js";
+import { install, update, uninstallGlobal, uninstallProject } from "./lib/installer.js";
 import { resolveClaudePaths } from "./lib/claude.js";
-import { SESSION_START_LIMIT_BYTES, buildSessionStartContent, readPersonaBlock } from "./lib/runner-content.js";
+import { SESSION_START_LIMIT_BYTES, buildSessionStartContent } from "./lib/runner-content.js";
 import {
   buildFlowsReport,
   checkClaudeDelivery,
@@ -21,10 +20,11 @@ import {
   AUTONOMY_PROFILES,
   PERSONA_LEVELS,
   describeOperationalFailure,
-  readLayerSources,
+  readUserLayers,
   resolveLayers,
 } from "./lib/layers.js";
 import { diagnoseAuthority, repairAuthority } from "./lib/layer-repair.js";
+import { resolveUserRuntimePaths } from "./lib/user-runtime.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,12 +35,12 @@ export const FLOWTASK_DIR = path.resolve(__dirname, "..");
 const args = process.argv.slice(2);
 const command = args[0] || "install";
 
-/** Layer configuration directory for each target, in detection order. */
+/** Layer resolution targets. Layers live once per user for every destination. */
 const LAYER_TARGETS = [
-  { id: "opencode", dir: ".opencode/flowtask/config" },
-  { id: "claude", dir: ".claude/flowtask/config", global: true },
-  { id: "vscode", dir: ".vscode/flowtask/config" },
-  { id: "standalone", dir: ".flowtask/config" },
+  { id: "opencode" },
+  { id: "claude" },
+  { id: "vscode" },
+  { id: "standalone" },
 ];
 
 const TARGET_IDS = ["opencode", "claude", "vscode", "standalone"];
@@ -119,6 +119,11 @@ function parseOptions(commandArgs) {
       continue;
     }
 
+    if (argument === "--global") {
+      options.global = true;
+      continue;
+    }
+
     if (argument === "--yes") {
       options.yes = true;
       continue;
@@ -193,59 +198,27 @@ function runLayersResolve(commandArgs) {
     return;
   }
 
-  const projectDir = process.cwd();
-  const claudePaths = resolveClaudePaths(projectDir);
-  let target = null;
-  let configDir = null;
+  const userPaths = resolveUserRuntimePaths();
+  const configDir = userPaths.configDir;
+  const target = options.target ?? "user";
 
-  if (options.target) {
-    const known = LAYER_TARGETS.find((entry) => entry.id === options.target);
-    target = known.id;
-    configDir = known.global ? claudePaths.runtimeConfigDir : path.join(projectDir, known.dir);
-    if (!fs.existsSync(configDir)) {
-      process.stderr.write(
-        known.global
-          ? "[FlowTask Layers] No user-level Claude Code layer configuration was found. Run flowtask install.\n"
-          : "[FlowTask Layers] No layer configuration was found in the current project.\n",
-      );
-      process.exit(1);
-      return;
-    }
-  } else {
-    for (const entry of LAYER_TARGETS) {
-      if (entry.id === "claude") continue;
-      const candidate = path.join(projectDir, entry.dir);
-      if (!fs.existsSync(candidate)) continue;
-      target = entry.id;
-      configDir = candidate;
-      break;
-    }
-    if (!configDir && fs.existsSync(claudePaths.registryPath) && fs.existsSync(claudePaths.runtimeConfigDir)) {
-      target = "claude";
-      configDir = claudePaths.runtimeConfigDir;
-    }
-    if (!configDir) {
-      process.stderr.write("[FlowTask Layers] No layer configuration was found in the current project.\n");
-      process.exit(1);
-      return;
-    }
+  if (!fs.existsSync(configDir)) {
+    process.stderr.write("[FlowTask Layers] No user-level layer configuration was found. Run flowtask install.\n");
+    process.exit(1);
+    return;
   }
 
-  const project = readLayerSources(configDir);
-  const runnerPath = path.join(path.dirname(configDir), "agents", "runner.md");
-  const customText = fs.existsSync(runnerPath)
-    ? readPersonaBlock(fs.readFileSync(runnerPath, "utf8"))
-    : null;
+  const user = readUserLayers(configDir);
   const resolution = resolveLayers({
-    team: null,
-    project,
-    persona: { personaDir: path.join(__dirname, "..", "personas"), customText },
+    user,
+    persona: { personaDir: path.join(__dirname, "..", "personas"), customText: null },
   });
   const { persona, autonomy, permissions } = resolution.layers;
 
   if (options.json) {
     const payload = {
       target,
+      configDir,
       precedence: resolution.precedence,
       layers: {
         persona: { status: persona.status, value: persona.value, source: persona.source, reason: persona.reason },
@@ -256,10 +229,11 @@ function runLayersResolve(commandArgs) {
     console.log(JSON.stringify(payload, null, 2));
   } else {
     console.log(`Target: ${target}`);
+    console.log(`Config: ${configDir}`);
     console.log(`Persona: ${layerValueText(persona, "persona") ?? layerStateText(persona)} [${persona.source ?? "no injection"}]`);
     console.log(`Autonomy: ${layerValueText(autonomy, "profile") ?? layerStateText(autonomy)} [${autonomy.source ?? "no source"}]`);
     console.log(`Permissions: ${layerValueText(permissions, "envelope") ?? layerStateText(permissions)} [${permissions.source ?? "no source"}]`);
-    console.log("Precedence: permissions > autonomy > persona");
+    console.log("Precedence: project > user > team");
     for (const warning of resolution.warnings) {
       console.log(`Warning: ${warning}`);
     }
@@ -615,26 +589,25 @@ switch (command) {
       }
 
       const projectDir = process.cwd();
-      const claudePaths = resolveClaudePaths(projectDir);
+      if (options.project && options.global) {
+        throw new Error("uninstall accepts --project or --global, not both.");
+      }
 
       if (options.project) {
-        const result = uninstallClaudeProject({
-          projectDir,
-          runtimeRoot: claudePaths.runtimeRoot,
-          flowtaskDir: FLOWTASK_DIR,
-        });
+        const result = uninstallProject({ flowtaskDir: FLOWTASK_DIR, projectDir });
         console.log(`Removed ${result.removed.length} FlowTask artifact(s) from ${projectDir}.`);
         if (result.preserved.length > 0) {
           console.log(`Preserved ${result.preserved.length} unowned file(s): ${result.preserved.join(", ")}`);
         }
+        if (!result.ok) {
+          throw new Error(
+            `Some targets could not be uninstalled: ${result.failures.map((failure) => `${failure.target}: ${failure.error}`).join("; ")}`,
+          );
+        }
         return;
       }
 
-      const result = uninstallClaudeGlobal({
-        runtimeRoot: claudePaths.runtimeRoot,
-        claudeUserDir: claudePaths.claudeUserDir,
-        flowtaskDir: FLOWTASK_DIR,
-      });
+      const result = uninstallGlobal({ flowtaskDir: FLOWTASK_DIR, projectDir });
       if (!result.ok) throw new Error(result.error);
       console.log(`Removed the FlowTask runtime and ${result.projects.length} project registration(s).`);
       if (result.manualReview.length > 0) {
@@ -728,6 +701,8 @@ FlowTask CLI
 
 Usage:
   flowtask install    Install FlowTask in the current project
+  flowtask install --global
+                      Install only the user-level runtime and global surfaces
   flowtask install --target <opencode|claude|vscode|standalone>
                       Select targets explicitly; repeat the flag or use commas
   flowtask install --persona <training|mid|senior|custom>
@@ -737,6 +712,8 @@ Usage:
   flowtask install --allow-engram-tools
                       Pre-approve the Engram MCP tools in the user allowlist
   flowtask update     Update FlowTask files (delta-only sync)
+  flowtask update --global
+                      Update only the user-level runtime and global surfaces
   flowtask update --persona <training|mid|senior|custom>
   flowtask update --autonomy <assistant|autonomous-dev>
   flowtask update --allow-engram-tools
@@ -744,6 +721,8 @@ Usage:
   flowtask update --verbose
                       Show the per-step diagnostic output
   flowtask uninstall  Remove the user-level runtime and registered projects
+  flowtask uninstall --global
+                      Same as the default: remove the user-level installation
   flowtask uninstall --project
                       Remove only the current project registration
   flowtask uninstall --yes

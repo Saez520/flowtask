@@ -293,32 +293,37 @@ describe("Claude global lifecycle", () => {
       userOwned: true,
     });
     commitAll(projectA);
-    const mcpBefore = fs.readFileSync(path.join(projectA, ".mcp.json"), "utf8");
 
     try {
       const installed = runCli(projectA, env, ["install", "--target", "claude", "--persona", "senior"]);
       assertExit(installed, "install");
 
-      const manifestPath = path.join(user.claudeDir, "flowtask", "runtime.json");
+      const runtimeRoot = path.join(root, "xdg", "flowtask");
+      const manifestPath = path.join(runtimeRoot, "runtime.json");
       const manifest = readJson(manifestPath);
-      assert.equal(manifest.schema, 1);
+      assert.equal(manifest.schema, 2);
       assert.equal(manifest.version, VERSION);
-      assert.match(manifest.payloadId, new RegExp(`^${VERSION.replaceAll(".", "\\.")}-[0-9a-f]{12}$`));
-      assert.equal(manifest.hookCommand, `"${process.execPath}" "${path.join(user.claudeDir, "flowtask", "bin", "session-start.mjs")}"`);
+      assert.match(manifest.payloads.claude.payloadId, new RegExp(`^${VERSION.replaceAll(".", "\\.")}-[0-9a-f]{12}$`));
+      assert.equal(manifest.hookCommand, `"${process.execPath}" "${path.join(runtimeRoot, "bin", "session-start.mjs")}"`);
       assert.equal(manifest.mcp.engram.scope, "user");
       assert.equal(manifest.mcp.engram.managed, true);
+      assert.equal(
+        fs.existsSync(path.join(user.claudeDir, "flowtask")),
+        false,
+        "the runtime must not live under the Claude directory",
+      );
 
-      const active = resolveActiveRuntimePaths(path.join(user.claudeDir, "flowtask"), manifest);
-      for (const file of manifest.files) {
+      const active = resolveActiveRuntimePaths(runtimeRoot, manifest);
+      for (const file of manifest.payloads.claude.files) {
         assert.equal(sha256File(path.join(active.payloadDir, file.path)), file.sha256, `hash mismatch for ${file.path}`);
       }
-      assert.equal(sha256File(path.join(user.claudeDir, "flowtask", "bin", "session-start.mjs")), manifest.launcher.sha256);
+      assert.equal(sha256File(path.join(runtimeRoot, "bin", "session-start.mjs")), manifest.payloads.claude.launcher.sha256);
       for (const relative of ["runner.md", "session-start.md", "skills/investigacion/SKILL.md", "scripts/worktree.sh", "bin/lib/target-direct-transport.js"]) {
         assert.ok(fs.existsSync(path.join(active.payloadDir, relative)), `payload is missing ${relative}`);
       }
       assert.equal(Buffer.byteLength(fs.readFileSync(active.sessionStartPath, "utf8"), "utf8") < 10000, true);
 
-      const configDir = path.join(user.claudeDir, "flowtask", "config");
+      const configDir = path.join(runtimeRoot, "config");
       for (const file of ["profile.json", "autonomy.json", "permissions.json"]) {
         assert.ok(fs.existsSync(path.join(configDir, file)), `runtime config is missing ${file}`);
       }
@@ -355,11 +360,25 @@ describe("Claude global lifecycle", () => {
           `the runtime layer ${layer} lives once per user, not in the project`,
         );
       }
-      assert.equal(fs.readFileSync(path.join(projectA, ".mcp.json"), "utf8"), mcpBefore, "project MCP servers are untouched");
+      const projectMcp = readJson(path.join(projectA, ".mcp.json"));
+      assert.deepEqual(projectMcp.mcpServers.graphify, { type: "stdio", command: "graphify", args: ["mcp"] }, "the user's MCP servers are untouched");
+      assert.equal(projectMcp.userOwned, true, "unknown project MCP keys are preserved");
+      assert.ok(projectMcp.mcpServers.worktree_manager, "the Worktree Manager MCP server is registered for the project");
+      assert.match(
+        projectMcp.mcpServers.worktree_manager.env.PYTHONPATH,
+        new RegExp(`${path.join("xdg", "flowtask", "worktree-manager").replaceAll("\\", "\\\\")}$`),
+      );
       assert.equal(fs.existsSync(path.join(projectC, ".claude")), false, "an unregistered project receives no artifacts");
 
       const status = spawnSync("git", ["status", "--short"], { cwd: projectA, encoding: "utf8" });
-      assert.equal(status.stdout.trim(), "", "the registration and materialization must not dirty git status");
+      // The Worktree Manager MCP registration is project configuration, not a
+      // FlowTask artifact; every FlowTask-owned path must stay ignored.
+      const dirty = status.stdout.trim().split("\n").filter(Boolean);
+      assert.deepEqual(
+        dirty.filter((line) => !line.endsWith(".mcp.json")),
+        [],
+        `the registration and materialization must not dirty git status; dirty: ${dirty.join(", ")}`,
+      );
       for (const ignored of [".claude/flowtask/project.json", ".claude/agents/flowtask-ca-writer.md", ".claude/commands/update.md"]) {
         const check = spawnSync("git", ["check-ignore", "-q", "--", ignored], { cwd: projectA });
         assert.equal(check.status, 0, `${ignored} must be ignored`);
@@ -381,18 +400,18 @@ describe("Claude global lifecycle", () => {
       assert.equal(calls.filter((args) => args[0] === "mcp" && args[1] === "add").length, 1);
       assert.ok(calls.some((args) => args.join(" ") === "mcp add --scope user engram -- engram mcp"));
 
-      const indexPath = path.join(user.claudeDir, "flowtask", "projects.json");
+      const indexPath = path.join(runtimeRoot, "projects.json");
       const index = readJson(indexPath);
       assert.equal(index.schema, 1);
       assert.deepEqual(index.projects.map((entry) => entry.path), [fs.realpathSync(projectA)]);
       assert.equal(typeof index.projects[0].registeredAt, "string");
       assert.equal(index.projects[0].runtimeVersion, VERSION);
       fs.rmSync(indexPath);
-      const reconstructed = runLauncher(path.join(user.claudeDir, "flowtask", "bin", "session-start.mjs"), projectA, env);
+      const reconstructed = runLauncher(path.join(runtimeRoot, "bin", "session-start.mjs"), projectA, env);
       assertExit(reconstructed, "launcher index reconstruction");
       assert.deepEqual(readJson(indexPath).projects.map((entry) => entry.path), [fs.realpathSync(projectA)]);
 
-      const launcher = path.join(user.claudeDir, "flowtask", "bin", "session-start.mjs");
+      const launcher = path.join(runtimeRoot, "bin", "session-start.mjs");
       const registered = runLauncher(launcher, projectA, env);
       assertExit(registered, "registered launcher");
       assert.match(registered.stdout, /# FlowTask session start/);
@@ -437,7 +456,7 @@ describe("Claude global lifecycle", () => {
       }
 
       const incompatible = JSON.parse(manifestBackup);
-      incompatible.schema = 2;
+      incompatible.schema = 9;
       writeJson(manifestPath, incompatible);
       try {
         const unsupported = runLauncher(launcher, projectA, env);
@@ -478,14 +497,14 @@ describe("Claude global lifecycle", () => {
         "install default autonomy",
       );
 
-      const runtimeRoot = path.join(root, "user", ".claude", "flowtask");
+      const runtimeRoot = path.join(root, "xdg", "flowtask");
       const configPath = path.join(runtimeRoot, "config", "autonomy.json");
       assert.deepEqual(readJson(configPath), { version: 1, profile: "assistant" });
       let manifest = readClaudeRuntimeManifest(runtimeRoot);
       let active = resolveActiveRuntimePaths(runtimeRoot, manifest);
       assert.match(
         fs.readFileSync(active.runnerPath, "utf8"),
-        /Current autonomy: assistant \(source: project\)\./,
+        /Current autonomy: assistant \(source: user\)\./,
       );
 
       assertExit(
@@ -500,7 +519,7 @@ describe("Claude global lifecycle", () => {
       active = resolveActiveRuntimePaths(runtimeRoot, manifest);
       assert.match(
         fs.readFileSync(active.runnerPath, "utf8"),
-        /Current autonomy: autonomous-dev \(source: project\)\./,
+        /Current autonomy: autonomous-dev \(source: user\)\./,
       );
     } finally {
       cleanupFixtures();
@@ -520,13 +539,15 @@ describe("Claude global lifecycle", () => {
       assertExit(runCli(projectA, env, ["install", "--target", "claude", "--persona", "senior"]), "install A");
       assertExit(runCli(projectB, env, ["install", "--target", "claude", "--persona", "senior"]), "install B");
 
-      const manifestPath = path.join(user.claudeDir, "flowtask", "runtime.json");
+      const runtimeRoot = path.join(root, "xdg", "flowtask");
+      const manifestPath = path.join(runtimeRoot, "runtime.json");
       const manifest = readJson(manifestPath);
+      assert.equal(manifest.schema, 2);
       const registryA = readJson(path.join(projectA, ".claude", "flowtask", "project.json"));
       const registryB = readJson(path.join(projectB, ".claude", "flowtask", "project.json"));
       assert.equal(registryA.runtimeVersion, VERSION);
       assert.equal(registryB.runtimeVersion, VERSION);
-      const index = readJson(path.join(user.claudeDir, "flowtask", "projects.json"));
+      const index = readJson(path.join(runtimeRoot, "projects.json"));
       assert.deepEqual(
         index.projects.map((entry) => entry.path).sort(),
         [fs.realpathSync(projectA), fs.realpathSync(projectB)].sort(),
@@ -567,7 +588,7 @@ describe("Claude global lifecycle", () => {
 
       fs.rmSync(path.join(projectB, ".claude", "flowtask"), { recursive: true, force: true });
       assertExit(runCli(projectA, env, ["update"]), "update after project B disappeared");
-      const reconciled = readJson(path.join(user.claudeDir, "flowtask", "projects.json"));
+      const reconciled = readJson(path.join(runtimeRoot, "projects.json"));
       assert.deepEqual(reconciled.projects.map((entry) => entry.path), [fs.realpathSync(projectA)]);
 
       const manifestBeforeUnregistered = fs.readFileSync(manifestPath, "utf8");
@@ -577,70 +598,85 @@ describe("Claude global lifecycle", () => {
       assert.equal(fs.readFileSync(manifestPath, "utf8"), manifestBeforeUnregistered);
       assert.equal(fs.existsSync(path.join(projectC, ".claude", "flowtask", "project.json")), false);
       assert.deepEqual(
-        readJson(path.join(user.claudeDir, "flowtask", "projects.json")).projects.map((entry) => entry.path),
+        readJson(path.join(runtimeRoot, "projects.json")).projects.map((entry) => entry.path),
         [fs.realpathSync(projectA)],
       );
-      assert.match(fs.readFileSync(path.join(user.claudeDir, "flowtask", "projects.json"), "utf8"), /schema/);
+      assert.match(fs.readFileSync(path.join(runtimeRoot, "projects.json"), "utf8"), /schema/);
 
       // The runtime pointer must be swapped atomically and keep the previous
       // payload complete for a session that is already running.
       const atomicRoot = makeRoot("flowtask-runtime-");
       const flowtaskDir = writeMinimalRuntimeSource(atomicRoot);
-      const runtimeRoot = path.join(atomicRoot, "user", ".claude", "flowtask");
-      const body1 = adaptRunnerForRuntime(minimalRuntimeRunner("one"), runtimeRoot);
-      const body2 = adaptRunnerForRuntime(minimalRuntimeRunner("two"), runtimeRoot);
-      const body3 = adaptRunnerForRuntime(minimalRuntimeRunner("three"), runtimeRoot);
+      const atomicRuntimeRoot = path.join(atomicRoot, "xdg", "flowtask");
+      const buildBody = (marker) => (payloadPaths) =>
+        adaptRunnerForRuntime(minimalRuntimeRunner(marker), payloadPaths.payloadDir);
 
-      const first = ensureClaudeRuntime(flowtaskDir, { runtimeRoot, runnerBody: body1, version: "1.0.0" });
+      const first = ensureClaudeRuntime(flowtaskDir, {
+        runtimeRoot: atomicRuntimeRoot,
+        buildRunnerBody: buildBody("one"),
+        version: "1.0.0",
+      });
       assert.equal(first.action, "installed");
-      const firstManifest = readClaudeRuntimeManifest(runtimeRoot);
-      assert.equal(firstManifest.payloadId, first.payloadId);
-      const firstActive = resolveActiveRuntimePaths(runtimeRoot, firstManifest);
+      const firstManifest = readClaudeRuntimeManifest(atomicRuntimeRoot);
+      assert.equal(firstManifest.payloads.claude.payloadId, first.payloadId);
+      const firstActive = resolveActiveRuntimePaths(atomicRuntimeRoot, firstManifest);
       assert.ok(fs.existsSync(path.join(firstActive.payloadDir, "runner.md")));
 
-      const unchanged = ensureClaudeRuntime(flowtaskDir, { runtimeRoot, runnerBody: body1, version: "1.0.0" });
+      const unchanged = ensureClaudeRuntime(flowtaskDir, {
+        runtimeRoot: atomicRuntimeRoot,
+        buildRunnerBody: buildBody("one"),
+        version: "1.0.0",
+      });
       assert.equal(unchanged.action, "unchanged");
       assert.equal(unchanged.payloadId, first.payloadId);
 
-      const second = ensureClaudeRuntime(flowtaskDir, { runtimeRoot, runnerBody: body2, version: "1.1.0" });
+      const second = ensureClaudeRuntime(flowtaskDir, {
+        runtimeRoot: atomicRuntimeRoot,
+        buildRunnerBody: buildBody("two"),
+        version: "1.1.0",
+      });
       assert.equal(second.action, "updated");
       assert.equal(second.previousPayloadId, first.payloadId);
       assert.notEqual(second.payloadId, first.payloadId);
-      const secondManifest = readClaudeRuntimeManifest(runtimeRoot);
-      assert.equal(secondManifest.payloadId, second.payloadId);
-      assert.equal(secondManifest.previousPayloadId, first.payloadId);
+      const secondManifest = readClaudeRuntimeManifest(atomicRuntimeRoot);
+      assert.equal(secondManifest.payloads.claude.payloadId, second.payloadId);
+      assert.equal(secondManifest.previous.claude, first.payloadId);
       assert.equal(secondManifest.retainedPayloads[0].payloadId, first.payloadId);
-      assert.ok(fs.existsSync(path.join(runtimeRoot, "versions", first.payloadId)), "the previous payload is retained");
-      for (const file of firstManifest.files) {
+      assert.ok(fs.existsSync(path.join(atomicRuntimeRoot, "versions", first.payloadId)), "the previous payload is retained");
+      for (const file of firstManifest.payloads.claude.files) {
         assert.equal(
-          sha256File(path.join(runtimeRoot, "versions", first.payloadId, file.path)),
+          sha256File(path.join(atomicRuntimeRoot, "versions", first.payloadId, file.path)),
           file.sha256,
           `the previous payload is incomplete at ${file.path}`,
         );
       }
-      const secondActive = resolveActiveRuntimePaths(runtimeRoot, secondManifest);
-      for (const file of secondManifest.files) {
+      const secondActive = resolveActiveRuntimePaths(atomicRuntimeRoot, secondManifest);
+      for (const file of secondManifest.payloads.claude.files) {
         assert.equal(sha256File(path.join(secondActive.payloadDir, file.path)), file.sha256);
       }
 
-      const third = ensureClaudeRuntime(flowtaskDir, { runtimeRoot, runnerBody: body3, version: "1.2.0" });
+      const third = ensureClaudeRuntime(flowtaskDir, {
+        runtimeRoot: atomicRuntimeRoot,
+        buildRunnerBody: buildBody("three"),
+        version: "1.2.0",
+      });
       assert.equal(third.action, "updated");
       assert.equal(third.previousPayloadId, second.payloadId);
-      const thirdManifest = readClaudeRuntimeManifest(runtimeRoot);
-      const thirdActive = resolveActiveRuntimePaths(runtimeRoot, thirdManifest);
+      const thirdManifest = readClaudeRuntimeManifest(atomicRuntimeRoot);
+      const thirdActive = resolveActiveRuntimePaths(atomicRuntimeRoot, thirdManifest);
       assert.equal(
-        sha256File(path.join(runtimeRoot, "bin", "session-start.mjs")),
-        thirdManifest.launcher.sha256,
+        sha256File(path.join(atomicRuntimeRoot, "bin", "session-start.mjs")),
+        thirdManifest.payloads.claude.launcher.sha256,
         "the stable launcher matches the manifest",
       );
-      assert.equal(fs.existsSync(path.join(runtimeRoot, "versions", first.payloadId)), false, "older payloads are pruned");
-      assert.ok(fs.existsSync(path.join(runtimeRoot, "versions", second.payloadId)));
+      assert.equal(fs.existsSync(path.join(atomicRuntimeRoot, "versions", first.payloadId)), false, "older payloads are pruned");
+      assert.ok(fs.existsSync(path.join(atomicRuntimeRoot, "versions", second.payloadId)));
       assert.ok(fs.existsSync(thirdActive.payloadDir));
 
       const adaptedRunner = fs.readFileSync(thirdActive.runnerPath, "utf8");
-      assert.ok(adaptedRunner.includes(`${runtimeRoot}/scripts`));
-      assert.ok(adaptedRunner.includes(`${runtimeRoot}/skills/`));
-      assert.ok(adaptedRunner.includes(`${runtimeRoot}/bin/lib/`));
+      assert.ok(adaptedRunner.includes(`${thirdActive.payloadDir}/scripts`));
+      assert.ok(adaptedRunner.includes(`${thirdActive.payloadDir}/skills/`));
+      assert.ok(adaptedRunner.includes(`${thirdActive.payloadDir}/bin/lib/`));
       assert.equal(adaptedRunner.includes('FLOWTASK_SCRIPTS="./.flowtask/scripts"'), false);
       assert.equal(adaptedRunner.includes(".flowtask/skills/"), false);
       assert.equal(adaptedRunner.includes(".flowtask/bin/lib/"), false);
@@ -650,20 +686,20 @@ describe("Claude global lifecycle", () => {
 
       fs.appendFileSync(thirdActive.runnerPath, "\ntampered\n");
       assert.throws(
-        () => readClaudeRuntimeManifest(runtimeRoot),
+        () => readClaudeRuntimeManifest(atomicRuntimeRoot),
         (error) => error.code === "runtime_payload_modified",
       );
-      const removal = removeClaudeRuntime(runtimeRoot);
+      const removal = removeClaudeRuntime(atomicRuntimeRoot);
       assert.ok(removal.preserved.includes(thirdActive.runnerPath), "a modified file is never deleted");
       assert.equal(removal.removed.includes(thirdActive.runnerPath), false);
       assert.equal(fs.existsSync(thirdActive.runnerPath), true);
-      assert.equal(fs.existsSync(path.join(runtimeRoot, "runtime.json")), false);
+      assert.equal(fs.existsSync(path.join(atomicRuntimeRoot, "runtime.json")), false);
 
       const unknownRoot = path.join(root, "unmanaged");
       fs.mkdirSync(unknownRoot, { recursive: true });
       fs.writeFileSync(path.join(unknownRoot, "stray.txt"), "keep", "utf8");
       assert.throws(
-        () => ensureClaudeRuntime(flowtaskDir, { runtimeRoot: unknownRoot, runnerBody: body1, version: "1.0.0" }),
+        () => ensureClaudeRuntime(flowtaskDir, { runtimeRoot: unknownRoot, buildRunnerBody: buildBody("one"), version: "1.0.0" }),
         (error) => error.code === "runtime_root_unmanaged",
       );
       assert.equal(fs.existsSync(path.join(unknownRoot, "runtime.json")), false);
@@ -678,7 +714,7 @@ describe("Claude global lifecycle", () => {
     const env = environment(root, fake);
     writeUserState(path.join(root, "user"));
     const projectDir = createGitProject(root, "update-mcp");
-    const manifestPath = path.join(root, "user", ".claude", "flowtask", "runtime.json");
+    const manifestPath = path.join(root, "xdg", "flowtask", "runtime.json");
 
     try {
       assertExit(runCli(projectDir, env, ["install", "--target", "claude", "--persona", "senior"]), "install");
@@ -709,6 +745,7 @@ describe("Claude global lifecycle", () => {
     };
     const legacy = createGitProject(root, "legacy");
     const other = createGitProject(root, "other");
+    const runtimeRoot = path.join(root, "xdg", "flowtask");
 
     const legacyFlowtask = path.join(legacy, ".claude", "flowtask");
     writeJson(path.join(legacyFlowtask, ".installation-method"), { method: "unified-installation-v2", target: "claude" });
@@ -769,7 +806,7 @@ describe("Claude global lifecycle", () => {
     try {
       assertExit(runCli(legacy, env, ["update"]), "legacy update");
 
-      const runtimeConfig = path.join(user.claudeDir, "flowtask", "config");
+      const runtimeConfig = path.join(runtimeRoot, "config");
       assert.deepEqual(readJson(path.join(runtimeConfig, "profile.json")), {
         level: "senior",
         persona: "tutor-senior",
@@ -816,10 +853,10 @@ describe("Claude global lifecycle", () => {
       assert.equal(mcp.userOwned, true);
 
       const idempotencyPaths = [
-        path.join(user.claudeDir, "flowtask", "runtime.json"),
-        path.join(user.claudeDir, "flowtask", "config", "profile.json"),
-        path.join(user.claudeDir, "flowtask", "config", "autonomy.json"),
-        path.join(user.claudeDir, "flowtask", "config", "permissions.json"),
+        path.join(runtimeRoot, "runtime.json"),
+        path.join(runtimeRoot, "config", "profile.json"),
+        path.join(runtimeRoot, "config", "autonomy.json"),
+        path.join(runtimeRoot, "config", "permissions.json"),
         path.join(legacyFlowtask, "project.json"),
         path.join(legacy, ".claude", "settings.json"),
         path.join(legacy, "CLAUDE.md"),
@@ -854,20 +891,20 @@ describe("Claude global lifecycle", () => {
 
       assertExit(runCli(other, env, ["install", "--target", "claude", "--persona", "senior"]), "install other");
       assert.deepEqual(
-        readJson(path.join(user.claudeDir, "flowtask", "projects.json")).projects.map((entry) => entry.path).sort(),
+        readJson(path.join(runtimeRoot, "projects.json")).projects.map((entry) => entry.path).sort(),
         [fs.realpathSync(legacy), fs.realpathSync(other)].sort(),
       );
 
-      const launcher = path.join(user.claudeDir, "flowtask", "bin", "session-start.mjs");
+      const launcher = path.join(runtimeRoot, "bin", "session-start.mjs");
       assert.ok(runLauncher(launcher, legacy, env).stdout.length > 0);
       assert.ok(runLauncher(launcher, other, env).stdout.length > 0);
 
       assertExit(runCli(legacy, env, ["uninstall", "--project", "--yes"]), "uninstall --project");
       assert.equal(fs.existsSync(path.join(legacyFlowtask, "project.json")), false);
-      assert.equal(fs.existsSync(path.join(user.claudeDir, "flowtask", "runtime.json")), true);
+      assert.equal(fs.existsSync(path.join(runtimeRoot, "runtime.json")), true);
       assert.equal(fs.existsSync(path.join(other, ".claude", "flowtask", "project.json")), true);
       assert.deepEqual(
-        readJson(path.join(user.claudeDir, "flowtask", "projects.json")).projects.map((entry) => entry.path),
+        readJson(path.join(runtimeRoot, "projects.json")).projects.map((entry) => entry.path),
         [fs.realpathSync(other)],
       );
       assert.equal(runLauncher(launcher, legacy, env).stdout, "");
@@ -879,7 +916,7 @@ describe("Claude global lifecycle", () => {
       assert.equal(excludeAfterProject.includes("# FlowTask managed"), false);
 
       assertExit(runCli(other, env, ["uninstall", "--yes"]), "uninstall global");
-      assert.equal(fs.existsSync(path.join(user.claudeDir, "flowtask")), false, "the runtime root must be removed");
+      assert.equal(fs.existsSync(runtimeRoot), false, "the runtime root must be removed");
       assert.equal(fs.existsSync(path.join(other, ".claude", "flowtask", "project.json")), false);
       assert.equal(fs.existsSync(path.join(other, ".claude", "agents", "flowtask-ca-writer.md")), false);
       assert.equal(fs.existsSync(path.join(other, ".claude", "commands", "update.md")), false);

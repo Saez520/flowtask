@@ -5,10 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
-  buildPayloadId,
   ensureClaudeRuntime,
   readClaudeRuntimeManifest,
 } from "../lib/claude-runtime.js";
+import { buildPayloadIdFromSource } from "../lib/user-runtime.js";
 import { resolveActiveRuntimePaths, sha256File } from "../lib/claude.js";
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -41,6 +41,26 @@ function writeRuntimeSource(root) {
   }
   fs.mkdirSync(path.join(flowtaskDir, "scripts"), { recursive: true });
   fs.writeFileSync(path.join(flowtaskDir, "scripts", "worktree.sh"), "#!/bin/sh\n", "utf8");
+  fs.mkdirSync(path.join(flowtaskDir, "agents"), { recursive: true });
+  fs.writeFileSync(
+    path.join(flowtaskDir, "agents", "runner.md"),
+    [
+      "---",
+      "name: runner",
+      "---",
+      'FLOWTASK_SCRIPTS="./.flowtask/scripts"',
+      "Skills live in `.flowtask/skills/`.",
+      "Transport: `.flowtask/bin/lib/target-direct-transport.js`.",
+      "",
+      "## Skills disponibles",
+      "",
+      'skill({ name: "investigacion" })',
+      'skill({ name: "memory-protocol" })',
+      'skill({ name: "zero-assumptions" })',
+      "",
+    ].join("\n"),
+    "utf8",
+  );
   fs.mkdirSync(path.join(flowtaskDir, "claude"), { recursive: true });
   fs.copyFileSync(
     path.join(FLOWTASK_SOURCE, "claude", "session-start.mjs"),
@@ -108,24 +128,29 @@ describe("runtime payload id", () => {
     }
   });
 
-  it("changes the id when only the startup document changes", () => {
-    const files = (startupHash) => [
+  it("keeps the id stable when only the runner and the startup document change", () => {
+    const files = (startupHash, skillHash = "b".repeat(64)) => [
       { path: "runner.md", sha256: "a".repeat(64) },
       { path: "session-start.md", sha256: startupHash },
-      { path: "skills/investigacion/SKILL.md", sha256: "b".repeat(64) },
+      { path: "skills/investigacion/SKILL.md", sha256: skillHash },
     ];
+    const id = (startupHash, skillHash) =>
+      buildPayloadIdFromSource({ version: VERSION, files: files(startupHash, skillHash) });
 
-    assert.notEqual(
-      buildPayloadId(VERSION, files("c".repeat(64))),
-      buildPayloadId(VERSION, files("d".repeat(64))),
-    );
     assert.equal(
-      buildPayloadId(VERSION, files("c".repeat(64))),
-      buildPayloadId(VERSION, files("c".repeat(64))),
+      id("c".repeat(64)),
+      id("d".repeat(64)),
+      "the generated runner and startup document must not change the payload identity",
     );
+    assert.notEqual(
+      id("c".repeat(64)),
+      id("c".repeat(64), "e".repeat(64)),
+      "a change in the source tree must produce a new payload identity",
+    );
+    assert.equal(id("c".repeat(64)), id("c".repeat(64)));
   });
 
-  it("installs a new payload when only the startup block changes", async () => {
+  it("republishes the startup document inside the same payload when it changes", async () => {
     const root = makeRoot("flowtask-payload-startup-");
     const flowtaskDir = writeRuntimeSource(root);
     const runtimeRoot = path.join(root, "runtime");
@@ -137,7 +162,8 @@ describe("runtime payload id", () => {
         version: VERSION,
       });
       const firstManifest = readClaudeRuntimeManifest(runtimeRoot);
-      const firstActive = resolveActiveRuntimePaths(runtimeRoot, firstManifest);
+      assert.equal(firstManifest.schema, 2);
+      const firstPayload = firstManifest.payloads.claude;
 
       const variantModule = await import(pathToFileURL(writeVariantRuntime(root)).href);
       const second = variantModule.ensureClaudeRuntime(flowtaskDir, {
@@ -147,26 +173,29 @@ describe("runtime payload id", () => {
       });
 
       assert.equal(second.action, "updated");
-      assert.notEqual(second.payloadId, first.payloadId);
-      assert.equal(second.previousPayloadId, first.payloadId);
+      assert.equal(second.payloadId, first.payloadId, "the startup document must not move the payload");
+      assert.equal(second.previousPayloadId, null, "no previous payload is retained for an in-place republication");
+      assert.ok(
+        second.restoredPaths.some((file) => file.endsWith("session-start.md")),
+        "the regenerated startup document is reported as restored",
+      );
 
       const secondManifest = readClaudeRuntimeManifest(runtimeRoot);
+      const secondPayload = secondManifest.payloads.claude;
+      assert.equal(secondPayload.payloadId, firstPayload.payloadId);
       const secondActive = resolveActiveRuntimePaths(runtimeRoot, secondManifest);
       const finalStartup = fs.readFileSync(secondActive.sessionStartPath, "utf8");
       assert.ok(finalStartup.includes(STARTUP_VARIANT));
       assert.ok(finalStartup.includes(secondActive.skillsDir));
       assert.equal(finalStartup.includes(PLACEHOLDER_PATH_MARKER), false);
       assert.equal(
-        secondManifest.files.filter((file) => file.path === "session-start.md").length,
+        secondPayload.files.filter((file) => file.path === "session-start.md").length,
         1,
       );
       assert.equal(
         sha256File(secondActive.sessionStartPath),
-        secondManifest.files.find((file) => file.path === "session-start.md").sha256,
+        secondPayload.files.find((file) => file.path === "session-start.md").sha256,
       );
-
-      const firstStartup = fs.readFileSync(firstActive.sessionStartPath, "utf8");
-      assert.equal(firstStartup.includes(STARTUP_VARIANT), false);
     } finally {
       cleanupFixtures();
     }

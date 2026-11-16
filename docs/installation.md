@@ -45,7 +45,10 @@ rules and every other key are preserved.
 
 The first installation in the account creates the user-level runtime and
 registers the current project. Running the same command in another project
-reuses the existing runtime and only adds the new registration.
+reuses the existing runtime and only adds the new registration. With
+`--global`, the command installs or refreshes only the runtime, the layers, the
+global surfaces, and the user plugins; it does not register the project. The
+same flag is available for `flowtask update`.
 
 ### The single installation question
 
@@ -63,10 +66,9 @@ valid choice; it never repairs an invalid layer.
 
 ### Preflight and rollback
 
-Before writing, `install` and `update` validate every selected target's
-operational layers. An invalid autonomy or permissions layer fails the
-operation with the operational message, preserves the file byte for byte, and
-does not write an installation marker or register the project.
+Before writing, `install` and `update` validate the user-level autonomy and
+permissions layers. An invalid layer fails the operation with the operational
+message, preserves the file byte for byte, and does not write a registration.
 
 Managed surfaces are captured before they are written. A failure in any target
 aborts the whole operation, restores the captured configuration and files, and
@@ -77,60 +79,84 @@ coordination keep their non-fatal behavior and stay outside the transaction.
 
 ### User-level runtime
 
-The runtime lives under the Claude Code user directory (`~/.claude/flowtask` on
-macOS and Linux, and the equivalent user directory on Windows).
-`CLAUDE_CONFIG_DIR` takes precedence when it is set.
+The runtime lives once per operating-system account under FlowTask's global
+configuration directory: `$XDG_CONFIG_HOME/flowtask` or `~/.config/flowtask` on
+macOS and Linux, and `%APPDATA%/FlowTask` on Windows. Claude Code's
+`CLAUDE_CONFIG_DIR` only changes the Claude-specific surfaces (settings and
+agents), not the runtime location.
 
 The layout is:
 
 ```text
-~/.claude/flowtask/
-├── runtime.json              # manifest, active payload, hashes and hook command
-├── projects.json             # registered project index
-├── bin/session-start.mjs     # stable SessionStart launcher
+<global-config>/flowtask/
+├── runtime.json              # schema 2 manifest: payloads, previous versions, plugins, targets
+├── projects.json             # registered project index by real path and destinations
+├── bin/session-start.mjs     # stable SessionStart launcher for Claude Code
 ├── config/
 │   ├── profile.json          # one persona per user
 │   ├── autonomy.json
 │   ├── permissions.json
 │   └── identity.json         # base name shown by the runner identity
+├── plugins/
+│   └── <plugin-name>/        # user-scope plugins with an ownership marker
 └── versions/
-    └── <version>-<hash12>/   # runner, skills, scripts, bin/lib, session-start.md
+    └── <version>-<hash12>/   # runner, agents, commands, skills, scripts, bin/lib
 ```
 
-The user-level agent surface lives next to the runtime:
-
-```text
-~/.claude/agents/flowtask-runner.md   # main-thread runner agent, regenerated on install and update
-```
+The manifest declares two payload variants per version: `canonical` (OpenCode,
+VS Code, and standalone) and `claude`. Each variant keeps its own files and
+digests. The payload id is derived from the version, the source digests, and the
+persona/autonomy descriptor; the generated runner and startup document are
+excluded so the id never depends on their content or location.
 
 Payloads are staged under `versions/.staging-*` and published with a rename.
 `runtime.json` is replaced atomically, so an open session keeps the payload it
 already loaded and the next session reads the new payload as a whole. The
-previous payload is retained until the next update; no project pins a version.
+previous payload of each variant is retained until the next update; no project
+pins a version. The runtime is self-sufficient: skills, scripts, agents,
+commands, and helper modules resolve from the payload with absolute paths.
 
-The runtime is self-sufficient: skills, scripts, and helper modules resolve from
-the payload with absolute paths. The canonical `runner.md` is never modified.
-The startup document and the adapted runner are generated inside the payload.
+The Claude-specific user surfaces remain in the Claude user directory:
+
+```text
+<claude-user-dir>/agents/flowtask-runner.md   # main-thread runner agent
+<claude-user-dir>/settings.json               # SessionStart hook
+```
 
 ### Project registration
 
-A project is registered by a small file inside an ignored folder:
+A project is registered by a small file inside an ignored folder. The rule is
+the same for every destination:
+
+| Target | Registration folder |
+| --- | --- |
+| Claude Code | `<project>/.claude/flowtask/` |
+| OpenCode | `<project>/.opencode/flowtask/` |
+| VS Code | `<project>/.vscode/flowtask/` |
+| Standalone | `<project>/.flowtask/` |
 
 ```text
-<project>/.claude/flowtask/
+<registration-folder>/
 ├── .gitignore      # contains "*"
 └── project.json    # schema, real project path, registration date and runtime version
 ```
 
 `project.json` is the only condition that activates FlowTask in a project. A
 registration copied from another project does not activate because the stored
-real path does not match.
+real path does not match. The global index records the real path and the
+destinations that registered it; it is rebuilt from the registrations that still
+exist on install and update.
 
-Registration materializes only what Claude Code discovers per project:
+Registration never copies the engine. Claude Code additionally materializes what
+it discovers per project:
 
 - agent definitions in `.claude/agents/flowtask-*.md`;
 - commands in `.claude/commands/`;
 - the `agent: "flowtask-runner"` key in `.claude/settings.local.json`.
+
+OpenCode and the other destinations keep only the registration and a generated
+`config/review.json`; their agents, skills, and plugins are discovered from the
+global runtime configuration.
 
 `.claude/settings.local.json` is the personal settings file of the project and
 is not committed. The installer writes only the `agent` key there and preserves
@@ -148,7 +174,8 @@ configuration it writes is the `agent` key in the local settings file.
 
 Generated agent definitions do not invoke the platform skill tool. Each skill
 declaration in an agent body is rendered as a direct read of the file inside the
-active runtime payload (`~/.claude/flowtask/versions/<payload-id>/skills/<skill>/SKILL.md`);
+active runtime payload
+(`<global-config>/flowtask/versions/<payload-id>/skills/<skill>/SKILL.md`);
 canonical `.flowtask/skills/...` references are rewritten to the same payload.
 Skills named only as catalog entries are listed at the end of the agent with
 their absolute paths, and every generated agent states that a failed read must
@@ -215,7 +242,7 @@ pointer to read the runner is not required when the session is already running a
 `flowtask-runner`.
 
 The base name is stored once per installation in
-`~/.claude/flowtask/config/identity.json`:
+`<global-config>/flowtask/config/identity.json`:
 
 ```json
 {"version":1,"baseName":"Aitana"}
@@ -299,26 +326,25 @@ flowtask update --verbose
 
 `update` refreshes the user-level runtime once and refreshes the current project
 when it is registered or carries a legacy installation. In an unregistered
-project it updates the runtime and reports that the project was not registered;
-it never registers a project on its own. Repeated updates do not duplicate the
-hook, the MCP entry, the agents, or the registration. The registration keeps its
-original `registeredAt` value.
+project it updates the global installation and reports that the project was not
+registered; it never registers a project on its own. Repeated updates do not
+duplicate the hook, the MCP entry, the agents, or the registration. The
+registration keeps its original `registeredAt` value.
 
 `update` compares every managed copy by content, not by size or modification
 time. A managed file edited by hand is restored to its canonical copy and its
 path is reported; a file that already matches is counted as unchanged. The
-comparison covers the target assets, the OpenCode skills, the managed plugin
-packages, `review.json`, the versioned Claude Code runtime payload and its stable
-launcher, and the generated Claude agents and commands. The persona and autonomy
-blocks injected into `runner.md` are expected content, not drift; a difference
-outside those blocks restores the file and reports it.
+comparison covers the runtime payloads and launcher, the user plugins, the
+project registration, the generated `review.json`, and the generated Claude
+agents and commands. A difference outside the expected content restores the file
+and reports it.
 
 These surfaces are preserved and never reported as restored: `CA-*` workspaces,
-`workspace/`, `.workspace/`, `.installation-method`, valid persona, autonomy and
-permissions layers, and the injected blocks of `runner.md`. The Claude Code
-runtime lives outside the project, so its restored paths are reported as
-absolute paths. An absent, unreadable or incompatible runtime manifest fails
-closed: FlowTask does not overwrite a runtime without ownership evidence.
+`workspace/`, `.workspace/`, valid persona, autonomy and permissions layers, and
+user files inside a registration folder. The runtime lives outside the project,
+so its restored paths are reported as absolute paths. An absent, unreadable or
+incompatible runtime manifest fails closed: FlowTask does not overwrite a runtime
+without ownership evidence.
 
 By default the command prints a framed dashboard of fixed width: one row per
 phase with its elapsed time and state, one row per environment under `sync` with
@@ -373,20 +399,24 @@ flowtask uninstall --yes
 flowtask uninstall --project --yes
 ```
 
-The global form removes the runtime, the FlowTask hook, the Engram registration
-that FlowTask added, the registrations and materialized files of the projects
-listed in the index, and the `agent` key of each project. It removes
+The global form removes the runtime, the user plugins, the FlowTask hook, the
+Engram registration that FlowTask added, the OpenCode user surface, and the
+registrations and generated files of every project listed in the index. It stops
+before deleting the runtime when a project cannot be cleaned, so no project is
+left pointing at a missing runtime. It removes
 `~/.claude/agents/flowtask-runner.md` only when no project still references it;
 a preserved key (a different value or malformed settings) keeps the agent and
-produces a warning. User hooks and user skills are preserved. If the MCP removal
-fails, the runtime and its manifest are preserved so the operation can be
-retried with `flowtask update` or the reported command.
+produces a warning. User hooks, user skills, user agents, user plugins, user
+commands, and user MCP servers are preserved. If the MCP removal fails, the
+runtime and its manifest are preserved so the operation can be retried with
+`flowtask update` or the reported command.
 
-`--project` removes only the current project registration, its materialized
-files, and the `agent` key from `.claude/settings.local.json` (the file is
-removed when no other keys remain). The runtime, the user-level agent, and other
-projects keep working. Without `--yes`, an interactive confirmation is required;
-without a TTY and without `--yes`, the command fails with the required action.
+`--project` removes only the current project registration for every destination,
+its generated files, and the `agent` key from `.claude/settings.local.json` (the
+file is removed when no other keys remain). The runtime, the user-level agent,
+and other projects keep working. Without `--yes`, an interactive confirmation is
+required; without a TTY and without `--yes`, the command fails with the required
+action.
 
 ### Migration from per-project installations
 
@@ -415,20 +445,29 @@ them for manual review. Repeating the migration produces no new changes.
 
 ## Other targets
 
-OpenCode, VS Code, and standalone keep their historical per-target layout. They
-can be selected explicitly with `--target opencode`, `--target vscode`, or
-`--target standalone`.
+OpenCode, VS Code, and standalone use the same user-level runtime and the same
+registration rule. They can be selected explicitly with `--target opencode`,
+`--target vscode`, or `--target standalone`.
 
-| Target | Installation | Derived files |
+| Target | Global surface | Project files |
 | --- | --- | --- |
-| OpenCode | `.opencode/flowtask/` and `.opencode/skills/` | `.opencode/opencode.json`, `.opencode/tui.json`, `.opencode/plugins/` |
-| Claude Code | user-level `~/.claude/flowtask/` plus `<project>/.claude/flowtask/project.json` | `~/.claude/agents/flowtask-runner.md`, `<project>/.claude/settings.local.json`, `.claude/agents/flowtask-*.md`, `.claude/commands/` |
-| VS Code | `.vscode/flowtask/` | mirror of the VS Code target |
-| Standalone | `.flowtask/` | agents, commands, skills, plugins, and scripts |
+| OpenCode | `<global-config>/flowtask/` plus `<opencode-config>/opencode.json` | `.opencode/flowtask/project.json`, generated review, model selector |
+| Claude Code | `<global-config>/flowtask/` plus `<claude-user-dir>/settings.json` and `agents/flowtask-runner.md` | `.claude/flowtask/project.json`, generated agents and commands |
+| VS Code | `<global-config>/flowtask/` | `.vscode/flowtask/project.json`, generated review |
+| Standalone | `<global-config>/flowtask/` | `.flowtask/project.json`, generated review |
 
-The Claude Code model selector plugin is the exception to the per-target layout:
-the plugin manager installs it at user scope and keeps it in the plugins store
-under `~/.claude`, not in the project.
+None of these targets copies the engine into the project. The OpenCode global
+configuration declares the FlowTask agents with their payload paths, the payload
+skills directory, the global permission gate and context checkpoint plugins, the
+FlowTask commands, the default agent only when absent, and the Engram MCP only
+when absent. A consumer's own agents, skills, plugins, commands, MCP servers, and
+settings are preserved. A JSONC OpenCode configuration fails closed without
+writing.
+
+The permission gate and the context checkpoint are installed once in
+`<global-config>/flowtask/plugins/` and registered from there. The model selector
+remains a project plugin. Claude Code installs its model selector at user scope
+and keeps it in the plugins store under `~/.claude`, not in the project.
 
 OpenCode is also the only target that offers the web search MCP, installed once
 per user as described in [Web search MCP (OpenCode only)](#web-search-mcp-opencode-only).
@@ -460,20 +499,17 @@ When the user-level write cannot complete, the command shows the cause and the
 next action, continues without web search, and leaves the project installation
 registered. The next `flowtask update` retries the user-level installation.
 
-## Target configuration layers
+## Configuration layers
 
-Each target resolves three configuration layers: persona (tone), autonomy
-(initiative), and permissions (technical envelope).
+Persona (tone), autonomy (initiative), and permissions (technical envelope) live
+once per user in `<global-config>/flowtask/config/`. The installer does not offer
+a per-project override.
 
 | File | Layer | Values |
 |---------|------|---------|
 | `profile.json` | Persona (tone) | `level`: `training`, `mid`, `senior`, or `custom`; `persona`: `tutor-training`, `tutor-mid`, `tutor-senior`, or `custom`; `onboarded`: onboarding status; `quiz_completed_at`: ISO-8601 date or `null`; `stack_snapshot`: stack object or `null`; `quiz_answers`: quiz history array. |
 | `autonomy.json` | Autonomy (initiative) | `version`: `1`; `profile`: `assistant` or `autonomous-dev`. |
 | `permissions.json` | Permissions (technical authority) | `version`: `1`; `envelope`: `standard`. |
-
-For Claude Code the layers live once per user in
-`~/.claude/flowtask/config/`. There is no per-project override in this version.
-For the other targets they live in `<target>/config/`.
 
 `install` and `update` create `autonomy.json` and `permissions.json` only when the
 layer does not exist, with `assistant` and `standard` as installation values.
@@ -490,18 +526,22 @@ tone, without altering autonomy or permissions. An old three-field profile is
 preserved with the missing quiz fields empty, and extra top-level keys survive
 on disk.
 
+The resolver combines three logical sources: a project definition when present,
+then the user configuration, then a team base. Fields are never mixed between
+sources. The installer and the onboarder write only the user configuration.
+`authority status` and `repair` read and restore that same directory.
+
 Layer precedence is `permissions > autonomy > persona`. To inspect the resolved
-layers of a target:
+layers:
 
 ```bash
-flowtask layers resolve --target claude
+flowtask layers resolve
 flowtask layers resolve --target opencode
 flowtask layers resolve --json
 ```
 
-For `--target claude`, the command reads the user-level configuration. Automatic
-detection keeps the OpenCode, VS Code, and standalone candidates and considers
-Claude only when the project is registered.
+Every target resolves the same user configuration; `--json` includes `configDir`
+and reports `source: "user"` when no project or team layer overrides it.
 
 The full contract is in
 [architecture/persona-autonomy-permissions-layers.md](architecture/persona-autonomy-permissions-layers.md).
@@ -510,16 +550,18 @@ The full contract is in
 
 ```bash
 flowtask update
+flowtask update --global
 flowtask update --persona senior
 ```
 
-For OpenCode and VS Code, `update` detects `.installation-method` markers,
-synchronizes the delta, preserves preservable paths, reinstalls plugins,
-regenerates configuration, and coordinates Graphify. For OpenCode, `update` also
-retries the user-level web search installation described above. For a Claude
-registration, the runtime and materialized artifacts are refreshed as described
-above. If no installation is found and there is no user-level Claude runtime,
-run `install` first.
+`update` detects destinations from their registrations and legacy markers and
+refreshes the user runtime, the layers, the OpenCode user surface, the Claude
+user surfaces, and the user plugins once. It then refreshes the current project
+registration when one exists; an unregistered project only receives the global
+update and a warning. For OpenCode, `update` also retries the user-level web
+search installation described above. If no installation is found, run `install`
+first. A second update leaves the same runtime, configuration, and
+registrations.
 
 ## Worktree Manager
 
@@ -608,7 +650,7 @@ authorized through the shell. See
 
 ## Plugins and Graphify
 
-The manifest declares permission-gate, model-selector, and context-checkpoint; classifier-hook and classifier-tui are deprecated and disabled, so they are not installed by default. The permission gate and the context checkpoint are managed V2 packages: installation copies the package, writes its owner marker, verifies the mirror, and registers a single `{"package":"./plugins/<name>"}` entry in `.opencode/opencode.json` — for example, `{"package":"./plugins/flowtask-permission-gate"}` and `{"package":"./plugins/flowtask-context-checkpoint"}`; any older file-path entry under `plugins/<name>/` is replaced. The context-checkpoint source gitlink may be empty if the submodule was not materialized, while a copy installed in `.opencode/plugins` belongs to the consumer project and does not prove the state of the source checkout.
+The manifest declares permission-gate, model-selector, and context-checkpoint; classifier-hook and classifier-tui are deprecated and disabled, so they are not installed by default. The permission gate and the context checkpoint are user-scope plugins: installation copies each package once into `<global-config>/flowtask/plugins/<name>`, writes its ownership marker, verifies the copy, and registers a single global `{"package": "<absolute path>", "options": {...}}` entry in the OpenCode user configuration. A directory without the marker is preserved and reported. The model selector remains a project plugin. The context-checkpoint source gitlink may be empty if the submodule was not materialized; the user-scope copy is what the runtime publishes.
 
 Graphify is queried through `graphify_query_graph` via MCP. `flowtask graphify query --query <query>` only tests the deprecated shim and exits without querying locally.
 
@@ -618,10 +660,10 @@ Graphify is queried through `graphify_query_graph` via MCP. `flowtask graphify q
 flowtask --version
 flowtask --help
 git status --short
-find ~/.claude/flowtask -maxdepth 3 -type f
-find .claude/flowtask -maxdepth 2 -type f
-cat ~/.claude/flowtask/config/identity.json
-head -n 20 ~/.claude/agents/flowtask-runner.md
+find "$XDG_CONFIG_HOME/flowtask" -maxdepth 3 -type f
+find .claude/flowtask .opencode/flowtask .vscode/flowtask .flowtask -maxdepth 2 -name project.json
+cat "${XDG_CONFIG_HOME:-$HOME/.config}/flowtask/config/identity.json"
+head -n 20 "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/agents/flowtask-runner.md"
 cat .claude/settings.local.json
 claude mcp get engram
 ```

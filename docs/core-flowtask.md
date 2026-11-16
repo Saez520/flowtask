@@ -277,13 +277,15 @@ Squash-merge to `main` at `198cf54` — it is the hotfix that produced THIS file
 
 **Manifest:** `.flowtask/plugins/flowtask-plugins.json`
 
-The permission gate and the context checkpoint load as V2 packages. Install and
-update copy each package into `.opencode/plugins/<name>`, write
+The permission gate and the context checkpoint are user-scope V2 packages.
+Install and update copy each package once into
+`<global-config>/flowtask/plugins/<name>`, write
 `.flowtask-plugin-owner.json`, verify the copy against the source, and register
-a single `{"package":"./plugins/<name>"}` entry in `.opencode/opencode.json`. An
-older registration that points to a file under `plugins/<name>/` is replaced.
-The package entrypoint (`dist/index.js` for the gate, `index.ts` for the
-checkpoint) belongs to the package, not to the configuration entry.
+a single absolute `{"package": "<path>", "options": {...}}` entry in the user
+OpenCode configuration. Project registrations do not receive these plugins; the
+model selector remains a project plugin. The package entrypoint (`dist/index.js`
+for the gate, `index.ts` for the checkpoint) belongs to the package, not to the
+configuration entry.
 
 **Ownership does not depend on the installed revision** (`revisión`).
 `sourceCommit` records which plugin revision was packaged; a marker written by
@@ -304,7 +306,8 @@ malformed `source` or `sourceCommit` remain rejected.
 
 #### `flowtask-permission-gate` (detail)
 
-- loads as a managed V2 package registered once as `{"package":"./plugins/flowtask-permission-gate"}`
+- loads as a user-scope package registered once with an absolute package path and its options
+- gates the FlowTask surface: without an active project registration it removes the `flowtask-*` agents and payload skills; a broken runtime or an unsupported registration emits one actionable line
 - authorizes the runner's tools (`read`/`glob`/`grep`/`skill`/`mem_*`/`graphify`)
 - authorizes the runner's `bash` (whitelist: `worktree.sh`, read-only git, commit)
 - blocks `task()` to subagents outside the list → *"delegate to the subagent"*
@@ -314,6 +317,7 @@ malformed `source` or `sourceCommit` remain rejected.
 #### `flowtask-context-checkpoint` (detail)
 
 - detects child sessions (subagents) and measures their context window
+- stays inactive when the plugin receives a runtime root and the project has no active registration
 - at ≥70% injects the checkpoint order in Engram + capability tag
 - if the subagent ignores 2 consecutive steps → warning in logs
 

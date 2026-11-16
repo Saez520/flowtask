@@ -222,17 +222,18 @@ Mapear el nivel determinado a un archivo de personalidad:
 
 ### Paso 8 — Persistir perfil
 
-1. **Generar el objeto de perfil** según el esquema definido en la sección "Esquema de profile.json" (abajo).
-2. **Conservar datos previos**: si `TARGET_DIR/config/profile.json` ya existe, leé su contenido y conservá las claves de nivel superior desconocidas. Solo se sobrescriben los seis campos del perfil; el resto del archivo del usuario no se destruye.
-3. **Escribir** el archivo `TARGET_DIR/config/profile.json` con el objeto JSON generado.
-4. **Mostrar resumen al usuario:**
+1. **Resolver el directorio de configuración**: ejecutá `flowtask layers resolve --json` y usá el valor `configDir`. Las capas viven una sola vez por usuario; no escribas el perfil dentro del proyecto.
+2. **Generar el objeto de perfil** según el esquema definido en la sección "Esquema de profile.json" (abajo).
+3. **Conservar datos previos**: si `CONFIG_DIR/profile.json` ya existe, leé su contenido y conservá las claves de nivel superior desconocidas. Solo se sobrescriben los seis campos del perfil; el resto del archivo del usuario no se destruye.
+4. **Escribir** el archivo `CONFIG_DIR/profile.json` con el objeto JSON generado.
+5. **Mostrar resumen al usuario:**
    - Nivel detectado
    - Personalidad asignada
    - Archivo modificado: `runner.md`
-   - Archivo creado/actualizado: `TARGET_DIR/config/profile.json`
+   - Archivo creado/actualizado: `CONFIG_DIR/profile.json`
     - Si el quiz se completó: "¡Listo! El runner ahora opera con la personalidad **{persona}**. Podés volver a ejecutar `/onboard` en cualquier momento para re-evaluar tu nivel."
 
-5. **Nota:** El onboarder solo escribe `'training'`, `'mid'`, `'senior'` o `'custom'` en profile.json. Los valores `'junior'` y `'custom'` son escritos por el installer — el onboarder los lee e interpreta, pero no los genera (excepto `'custom'` en caso de abandono).
+6. **Nota:** El onboarder solo escribe `'training'`, `'mid'`, `'senior'` o `'custom'` en profile.json. Los valores `'junior'` y `'custom'` son escritos por el installer — el onboarder los lee e interpreta, pero no los genera (excepto `'custom'` en caso de abandono).
 
 ---
 
@@ -283,7 +284,7 @@ Al finalizar las 4 preguntas, se cuenta la frecuencia de cada nivel:
 
 ## Esquema de profile.json
 
-El archivo `TARGET_DIR/config/profile.json` se genera en el Paso 8. Sigue esta estructura exacta:
+El archivo `CONFIG_DIR/profile.json` se genera en el Paso 8, donde `CONFIG_DIR` es el `configDir` que devuelve `flowtask layers resolve --json`. Sigue esta estructura exacta:
 
 ```json
 {
@@ -424,7 +425,7 @@ El archivo `TARGET_DIR/config/profile.json` se genera en el Paso 8. Sigue esta e
 
 ### Error al escribir profile.json
 
-- **Condición**: Fallo al escribir `TARGET_DIR/config/profile.json` (permisos, disco lleno, etc.).
+- **Condición**: Fallo al escribir `CONFIG_DIR/profile.json` (permisos, disco lleno, etc.).
 - **Acción**: Informar al usuario del error específico. La inyección en `runner.md` ya se realizó (ese paso es anterior).
 - Intentar guardar en Engram igualmente (`mem_save`).
 

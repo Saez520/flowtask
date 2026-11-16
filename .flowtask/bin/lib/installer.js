@@ -9,22 +9,43 @@ import {
 } from "./logger.js";
 import { copyWithProgress, copyDirectoryDelta, pruneDirectoryExtras, verifyDirectoryMirror } from "./copy.js";
 import { captureInstallSurfaces, createInstallTransaction, migrateLegacyRootTransactional } from "./install-transaction.js";
-import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
-import { ensureGlobalFerrisSearch, isFerrisSearchSupported } from "./ferris-search.js";
-import { installClaudeTarget, updateClaudeTarget } from "./claude-install.js";
+import { registerPluginArrayEntry } from "./opencode.js";
+import { ensureGlobalFerrisSearch } from "./ferris-search.js";
+import { installClaudeTarget, installClaudeUserSurface, updateClaudeTarget, uninstallClaudeGlobal, uninstallClaudeProject, migrateLegacyClaudeProjectConfig } from "./claude-install.js";
 import { describeClaudeModResults, installClaudeModPlugins } from "./claude-plugin.js";
-import { hasLayerFiles, preflightClaudeRuntimeConfig } from "./claude-runtime.js";
 import { resolveClaudePaths } from "./claude.js";
+import {
+  ensureUserRuntime,
+  ensureUserRuntimeConfig,
+  preflightUserRuntimeConfig,
+  removeUserRuntime,
+  resolveUserRuntimePaths,
+} from "./user-runtime.js";
+import { installUserPlugins, removeUserPlugins } from "./user-plugins.js";
+import { ensureOpencodeGlobalSurface, removeOpencodeGlobalSurface } from "./opencode-global.js";
+import {
+  migrateLegacyOpencodeProject,
+  migrateLegacyTargetProject,
+  registerOpencodeProject,
+  removeOpencodeProject,
+} from "./opencode-project.js";
+import {
+  readProjectRegistration,
+  readProjectsIndex,
+  registerTargetProject,
+  removeProjectRegistration,
+  resolveRegistrationDir,
+} from "./project-registration.js";
 import {
   AUTONOMY_END_MARKER,
   AUTONOMY_START_MARKER,
   CUSTOM_PERSONA_TEXT,
   PERSONA_END_MARKER,
   PERSONA_START_MARKER,
+  buildRuntimeRunnerBody,
   configureRunnerScriptsContent,
   injectAutonomyIntoRunnerContent,
   injectPersonaIntoRunnerContent,
-  readPersonaBlock,
 } from "./runner-content.js";
 export {
   configureRunnerScriptsContent,
@@ -32,7 +53,7 @@ export {
   injectPersonaIntoRunnerContent,
 } from "./runner-content.js";
 import { showInteractiveSelector } from "./ui.js";
-import { coordinateGraphify } from "./graphify.js";
+import { coordinateGraphify, globalStatePath } from "./graphify.js";
 import {
   createUpdateReport,
   describeGraphifyPhase,
@@ -43,7 +64,7 @@ import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA, classifyOwnership, rep
 import { resolveGlobalConfigDir } from "./global-paths.js";
 import { globalWorktreeManagerDir } from "./global-paths.js";
 import { assertRunnerCanon } from "./runner-flows.js";
-import { ensureGlobalWorktreeManager, formatWorktreeManagerVersionNotice } from "./worktree-manager-runtime.js";
+import { ensureGlobalWorktreeManager, formatWorktreeManagerVersionNotice, removeGlobalWorktreeManager } from "./worktree-manager-runtime.js";
 import { downloadWorktreeManagerPackage } from "./worktree-manager-package.js";
 import { resolvePythonRuntime } from "./python-runtime.js";
 import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
@@ -53,11 +74,9 @@ import {
   LAYER_FILES,
   MIGRATION_DEFAULTS,
   PERSONA_FILES,
-  buildProfileForWrite,
   describeOperationalFailure,
   readLayerSources,
   resolveLayers,
-  validatePersonaLayer,
 } from "./layers.js";
 
 export const INSTALLER_WRITERS = Object.freeze([
@@ -371,7 +390,8 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
   }
   const pluginEntry = manifest.find((entry) => entry.name === CONTEXT_CHECKPOINT_NAME);
   if (!pluginEntry) throw new Error(`required plugin manifest entry missing: ${CONTEXT_CHECKPOINT_NAME}`);
-  const managedEntries = manifest.filter((entry) => entry.managedPackage === true || entry.name === CONTEXT_CHECKPOINT_NAME);
+  const managedEntries = manifest.filter((entry) =>
+    (entry.managedPackage === true || entry.name === CONTEXT_CHECKPOINT_NAME) && entry.scope !== "user");
   for (const entry of manifest) {
     const resolved = path.resolve(flowtaskDir, "plugins", entry.path);
     const pluginRoot = path.resolve(flowtaskDir, "plugins");
@@ -408,8 +428,7 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
   }
   const ownership = managedOwnership.find((decision) =>
     decision.path === path.join(projectDir, ".opencode", "plugins", CONTEXT_CHECKPOINT_NAME),
-  );
-  if (!ownership) throw new Error(`required plugin manifest entry missing: ${CONTEXT_CHECKPOINT_NAME}`);
+  ) ?? null;
   const classifierOwnership = [];
   for (const name of CLASSIFIER_PLUGIN_NAMES) {
     const classifierDir = path.join(projectDir, ".opencode", "plugins", name);
@@ -466,26 +485,11 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
 // standalone → .flowtask/          : agents/, commands/, skills/, plugins/, scripts/
 
 export const ASSETS = {
-  opencode: [
-    { src: "agents",  dest: "agents" },
-    { src: "scripts", dest: "scripts" },
-  ],
+  opencode: [],
   claude: [],
-  standalone: [
-    { src: "agents",   dest: "agents" },
-    { src: "commands", dest: "commands" },
-    { src: "skills",   dest: "skills" },
-    { src: "plugins",  dest: "plugins" },
-    { src: "scripts",  dest: "scripts" },
-  ],
+  standalone: [],
   // vscode mirrors standalone for now
-  vscode: [
-    { src: "agents",   dest: "agents" },
-    { src: "commands", dest: "commands" },
-    { src: "skills",   dest: "skills" },
-    { src: "plugins",  dest: "plugins" },
-    { src: "scripts",  dest: "scripts" },
-  ],
+  vscode: [],
 };
 
 export const CLASSIFIER_PLUGIN_NAMES = [
@@ -682,13 +686,6 @@ export function injectAutonomyIntoRunner(targetDir, descriptor) {
   logSuccess(`Autonomy injected into runner.md of ${targetDir}.`);
 }
 
-/** Autonomy descriptor resolved by layer synchronization. */
-function autonomyDescriptorFrom(targetConfig) {
-  const layer = targetConfig && targetConfig.autonomy;
-  if (!layer || layer.status !== "valid" || !layer.value) return null;
-  return { profile: layer.value.profile, source: layer.source };
-}
-
 function configureRunnerScripts(targetDir, targetSubDir) {
   const runnerPath = path.join(targetDir, "agents", "runner.md");
   if (!fileExists(runnerPath)) return;
@@ -820,31 +817,16 @@ export function targetConfigDir(targetDir) {
   return path.join(targetDir, "config");
 }
 
-function writeProfile(targetDir, level, persona, onboarded) {
-  const configDir = targetConfigDir(targetDir);
-  const existing = readProfile(targetDir);
-  const profile = buildProfileForWrite(existing, { level, persona, onboarded });
-  fs.mkdirSync(configDir, { recursive: true });
-  const profilePath = path.join(configDir, "profile.json");
-  if (!writeJsonVerified(profilePath, profile)) throw new Error(`could not verify ${profilePath}`);
-  logSuccess(`Profile saved to ${profilePath}`);
-}
-
-function readTargetPersonaBlock(targetDir) {
-  const runnerPath = path.join(targetDir, "agents", "runner.md");
-  if (!fileExists(runnerPath)) return null;
-  return readPersonaBlock(fs.readFileSync(runnerPath, "utf8"));
-}
-
-function readProfile(targetDir) {
-  const profilePath = path.join(targetConfigDir(targetDir), "profile.json");
+/** Persona level stored in the user-level profile, if any. */
+function readUserProfileLevel() {
+  const profilePath = path.join(resolveUserRuntimePaths().configDir, LAYER_FILES.persona);
   if (!fileExists(profilePath)) return null;
-  try { return JSON.parse(fs.readFileSync(profilePath, "utf8")); } catch { return null; }
-}
-
-function readProfileLevel(targetDir) {
-  const level = readProfile(targetDir)?.level;
-  return level && levelToChoice[level] ? level : null;
+  try {
+    const level = JSON.parse(fs.readFileSync(profilePath, "utf8")).level;
+    return level && levelToChoice[level] ? level : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -863,10 +845,6 @@ export function normalizeAutonomyChoice(value) {
 
 const OPERATIONAL_LAYERS = Object.freeze(["autonomy", "permissions"]);
 
-function layerLabel(name) {
-  return name === "autonomy" ? "autonomy" : "permissions";
-}
-
 function layerOperationalError(name, layer) {
   const reason = layer.reason
     ?? (layer.status === "missing"
@@ -884,31 +862,18 @@ function layerOperationalError(name, layer) {
   return error;
 }
 
-/** Atomic write for a layer value: temp file, parse, equality and rename. */
-function writeLayerValueAtomic(filePath, value) {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  if (!writeJsonVerified(filePath, value)) throw new Error(`could not verify ${filePath}`);
-}
-
-function writeLayerValue(configDir, name, value, message) {
-  const filePath = path.join(configDir, LAYER_FILES[name]);
-  writeLayerValueAtomic(filePath, value);
-  logSuccess(message ?? `${layerLabel(name)} layer migrated at ${filePath} with the installation default value.`);
-}
-
-function resolveTargetLayers(targetDir, teamConfigDir) {
-  const project = readLayerSources(targetConfigDir(targetDir));
-  const team = teamConfigDir ? readLayerSources(teamConfigDir) : null;
-  return resolveLayers({ team, project });
+function resolveTargetLayers() {
+  const paths = resolveUserRuntimePaths();
+  return resolveLayers({ user: readLayerSources(paths.configDir) });
 }
 
 /**
- * Read-only layer check for an installation target. An invalid operational
- * layer fails with its operational message; a missing one is reported so the
- * caller can decide which value to write. Nothing is written.
+ * Read-only check of the user-level layers. An invalid operational layer fails
+ * with its operational message; a missing one is reported so the caller can
+ * decide which value to write. Nothing is written.
  */
-export function preflightTargetLayers(targetDir, { teamConfigDir = null } = {}) {
-  const resolution = resolveTargetLayers(targetDir, teamConfigDir);
+export function preflightTargetLayers() {
+  const resolution = resolveTargetLayers();
   for (const name of OPERATIONAL_LAYERS) {
     const layer = resolution.layers[name];
     if (layer.status === "invalid") throw layerOperationalError(name, layer);
@@ -918,69 +883,24 @@ export function preflightTargetLayers(targetDir, { teamConfigDir = null } = {}) 
 }
 
 /**
- * Ensures the target has the autonomy and permissions layers.
- *
- * Resolution is per layer with full replacement: a valid layer is
- * preserved, and an invalid layer fails the target without overwriting the file.
- * A missing layer receives the explicit choice when there is one and the
- * migration default otherwise. Writes are reversible: if a later write fails,
- * the previous files are restored byte for byte.
+ * Ensures the user-level autonomy and permissions layers. A valid layer is
+ * preserved and an invalid one fails without overwriting the file. A missing
+ * layer receives the explicit choice when there is one and the migration
+ * default otherwise.
  */
-export function ensureTargetLayers(targetDir, { teamConfigDir = null, autonomyProfile = null, replaceAutonomy = false } = {}) {
-  const choice = normalizeAutonomyChoice(autonomyProfile);
-  const configDir = targetConfigDir(targetDir);
-  const { resolution } = preflightTargetLayers(targetDir, { teamConfigDir });
-  const created = [];
-  const updated = [];
-  const writes = [];
-
-  const autonomy = resolution.layers.autonomy;
-  if (autonomy.status === "missing") {
-    writes.push({
-      name: "autonomy",
-      value: choice ? { version: 1, profile: choice } : MIGRATION_DEFAULTS.autonomy,
-      message: choice
-        ? `${layerLabel("autonomy")} layer written at ${path.join(configDir, LAYER_FILES.autonomy)} with the selected value.`
-        : undefined,
-      outcome: "created",
-    });
-  } else if (replaceAutonomy && choice && autonomy.value.profile !== choice) {
-    writes.push({
-      name: "autonomy",
-      value: { version: 1, profile: choice },
-      message: `${layerLabel("autonomy")} layer updated at ${path.join(configDir, LAYER_FILES.autonomy)} with the selected value.`,
-      outcome: "updated",
-    });
-  }
-
-  if (resolution.layers.permissions.status === "missing") {
-    writes.push({ name: "permissions", value: MIGRATION_DEFAULTS.permissions, outcome: "created" });
-  }
-
-  const backups = [];
-  try {
-    for (const write of writes) {
-      const filePath = path.join(configDir, LAYER_FILES[write.name]);
-      const original = fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
-      writeLayerValue(configDir, write.name, write.value, write.message);
-      backups.push({ filePath, original });
-      (write.outcome === "created" ? created : updated).push(write.name);
-    }
-  } catch (error) {
-    for (const { filePath, original } of backups.reverse()) {
-      try {
-        if (original === null) fs.rmSync(filePath, { force: true });
-        else fs.writeFileSync(filePath, original);
-      } catch {
-        // The original write error is the actionable failure; a partial
-        // restore is reported by the caller's transaction.
-      }
-    }
-    throw error;
-  }
-
-  const finalResolution = resolveTargetLayers(targetDir, teamConfigDir);
-  return { resolution: finalResolution, created, updated };
+export function ensureTargetLayers(targetDir, { autonomyProfile = null, replaceAutonomy = false } = {}) {
+  const paths = resolveUserRuntimePaths();
+  const before = preflightTargetLayers();
+  const config = ensureUserRuntimeConfig(paths.configDir, { autonomyProfile, replaceAutonomy });
+  const resolution = resolveTargetLayers();
+  const created = OPERATIONAL_LAYERS.filter((name) =>
+    before.resolution.layers[name].status === "missing" && resolution.layers[name].status !== "missing");
+  const updated = replaceAutonomy && autonomyProfile
+    && before.resolution.layers.autonomy.status !== "missing"
+    && before.resolution.layers.autonomy.value?.profile !== autonomyProfile
+    ? ["autonomy"]
+    : [];
+  return { resolution, created, updated, config };
 }
 
 export function materializeReviewConfig(flowtaskDir, targetDir) {
@@ -1007,54 +927,35 @@ export function materializeReviewConfig(flowtaskDir, targetDir) {
 }
 
 /**
- * Synchronizes the target configuration: managed review, the persona layer,
- * and the autonomy and permissions layers.
- *
- * Persona is written only with an explicit choice; a valid profile is
- * preserved, and an invalid one without an explicit choice is not overwritten. The
- * operational layers are resolved first and are never repaired with a default:
- * an invalid layer fails before any managed configuration is materialized.
+ * Synchronizes the target configuration with the user-level layers. The
+ * persona, autonomy and permissions layers live in the runtime config; the
+ * target only receives the generated review configuration and the resolved
+ * status used to report the run.
  */
 export function syncTargetConfig(
   flowtaskDir,
   targetDir,
   personaChoice,
-  { preserveProfile = false, explicitPersona = false, autonomyProfile = null, replaceAutonomy = false } = {},
+  { autonomyProfile = null, replaceAutonomy = false, userConfig = null } = {},
 ) {
-  const { resolution } = ensureTargetLayers(targetDir, { autonomyProfile, replaceAutonomy });
+  const config = userConfig ?? ensureUserRuntimeConfig(resolveUserRuntimePaths().configDir, {
+    personaChoice,
+    autonomyProfile,
+    replaceAutonomy,
+  });
   const review = materializeReviewConfig(flowtaskDir, targetDir);
-
-  const existing = readProfile(targetDir);
-  const existingValidation = existing
-    ? validatePersonaLayer(existing, {
-        personaDir: path.join(flowtaskDir, "personas"),
-        customText: existing.persona === "custom" ? readTargetPersonaBlock(targetDir) : undefined,
-      })
-    : null;
-  const valid = existingValidation?.status === "valid";
-
-  let personaStatus;
-  if (explicitPersona && personaChoice) {
-    writeProfile(targetDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
-    personaStatus = "valid";
-  } else if (valid) {
-    personaStatus = "valid";
-  } else if (existing) {
-    personaStatus = "invalid";
-    logWarn(`Invalid persona profile in ${targetConfigDir(targetDir)}: ${existingValidation?.reason ?? "invalid layer"}. It is not overwritten and the flow continues without persona.`);
-  } else if (!preserveProfile && personaChoice) {
-    writeProfile(targetDir, personaChoice.level, personaChoice.persona, personaChoice.onboarded);
-    personaStatus = "valid";
-  } else {
-    personaStatus = "missing";
-    logWarn(`No persona profile was found in ${targetConfigDir(targetDir)}: continuing without persona.`);
-  }
+  const personaStatus = config.profile?.status === "valid"
+    ? "valid"
+    : config.profile?.status === "invalid"
+      ? "invalid"
+      : "missing";
 
   return {
     persona: personaStatus,
-    autonomy: resolution.layers.autonomy,
-    permissions: resolution.layers.permissions,
+    autonomy: config.autonomy,
+    permissions: config.permissions,
     review,
+    config,
   };
 }
 
@@ -1404,6 +1305,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
 
   for (const entry of manifest) {
     if (!validateManifestEntry(entry)) continue;
+    if (entry.scope === "user") continue;
     if (!entry.destinations.includes("opencode")) continue;
     if (CLASSIFIER_PLUGIN_NAMES.includes(entry.name) && !isClassifierEnabled(manifest)) continue;
 
@@ -1585,20 +1487,15 @@ export function migrateProfileLocation(projectDir, flowtaskDir, targetDirs = [fl
   if (!source) return true;
   try {
     const profile = JSON.parse(fs.readFileSync(source, "utf8"));
-    const destinations = targetDirs.map((targetDir) => path.join(targetConfigDir(targetDir), "profile.json"));
-    for (const destination of destinations) {
-      if (path.resolve(source) === path.resolve(destination)) continue;
-      if (fs.existsSync(destination)) continue;
-      fs.mkdirSync(path.dirname(destination), { recursive: true });
+    const destination = path.join(resolveUserRuntimePaths().configDir, LAYER_FILES.persona);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    if (path.resolve(source) !== path.resolve(destination) && !fs.existsSync(destination)) {
       if (!writeJsonVerified(destination, profile)) throw new Error(`verification of ${destination} failed`);
-    }
-    for (const destination of destinations) {
-      if (path.resolve(source) === path.resolve(destination)) continue;
       const verified = JSON.parse(fs.readFileSync(destination, "utf8"));
       if (JSON.stringify(verified) !== JSON.stringify(profile)) throw new Error(`verification of ${destination} failed`);
     }
     fs.rmSync(source);
-    logSuccess(`Profile migrated from ${source} to ${destinations.join(", ")}`);
+    logSuccess(`Profile migrated from ${source} to ${destination}`);
     return true;
   } catch (err) {
     logError(`Could not migrate profile.json from ${source}: ${err.message}. Check permissions/space and retry with flowtask update.`);
@@ -1656,10 +1553,125 @@ function reportFerrisSearch(globalResult, localResult) {
 
 // ─── Install ──────────────────────────────────────────────────────────────────
 
+/** Payload variants needed by the selected targets. */
+function userRuntimeVariantsFor(targets) {
+  const ids = new Set((targets ?? []).map((target) => (typeof target === "string" ? target : target.id)));
+  const variants = [];
+  if ([...ids].some((id) => id !== "claude")) variants.push("canonical");
+  if (ids.has("claude")) variants.push("claude");
+  return variants.length > 0 ? variants : ["canonical", "claude"];
+}
+
+/**
+ * Build the user runtime once for the selected destinations. The runner body
+ * is composed against each final payload so it references its own files.
+ */
+function buildUserRuntime(flowtaskDir, { targets, userConfig, personaContent = undefined }) {
+  const variants = userRuntimeVariantsFor(targets);
+  const runnerContent = fs.readFileSync(path.join(flowtaskDir, "agents", "runner.md"), "utf8");
+  const profile = userConfig.profile?.status === "valid" ? userConfig.profile.value : null;
+  const autonomy = userConfig.autonomy?.status === "valid"
+    ? userConfig.autonomy.value.profile
+    : MIGRATION_DEFAULTS.autonomy.profile;
+  let content = personaContent;
+  if (content === undefined && profile) {
+    const choice = mapping[levelToChoice[profile.level]] ?? {
+      level: profile.level,
+      persona: profile.persona,
+      file: PERSONA_FILES[profile.persona] ?? null,
+      onboarded: profile.onboarded,
+    };
+    content = resolvePersonaContent(flowtaskDir, choice);
+  }
+  return ensureUserRuntime(flowtaskDir, {
+    version: readProjectVersion(flowtaskDir),
+    variants,
+    descriptor: {
+      persona: profile?.persona ?? null,
+      level: profile?.level ?? null,
+      autonomy,
+    },
+    buildRunnerBody: (payloadPaths) => buildRuntimeRunnerBody({
+      runnerContent,
+      runtimeRoot: payloadPaths.payloadDir,
+      personaContent: content ?? null,
+      autonomyDescriptor: { profile: autonomy, source: "user" },
+    }),
+  });
+}
+
+/**
+ * Install or update only the global surfaces: the user runtime, the layer
+ * configuration, the OpenCode user configuration, the Claude user surfaces and
+ * the user plugins. No project registration and no project file is written.
+ */
+async function installGlobalSurfaces(flowtaskDir, options, mode) {
+  const userPaths = resolveUserRuntimePaths();
+  const preflight = preflightUserRuntimeConfig(userPaths.configDir);
+  const requested = Array.isArray(options.target) && options.target.length > 0
+    ? options.target
+    : ["opencode", "claude"];
+  const requestedAutonomy = normalizeAutonomyChoice(options.autonomy);
+  let autonomyProfile = requestedAutonomy;
+  if (mode === "install" && !autonomyProfile && process.stdin.isTTY && preflight.missing.includes("autonomy")) {
+    const readline = await import("readline");
+    autonomyProfile = await promptAutonomySelection(readline);
+  }
+  const personaChoice = options.persona ? mapping[levelToChoice[options.persona]] : null;
+  const personaContent = personaChoice ? resolvePersonaContent(flowtaskDir, personaChoice) : undefined;
+  const userConfig = ensureUserRuntimeConfig(userPaths.configDir, {
+    personaChoice,
+    autonomyProfile,
+    replaceAutonomy: Boolean(options.autonomy),
+  });
+
+  const runtime = buildUserRuntime(flowtaskDir, { targets: requested, userConfig, personaContent });
+  const results = [{
+    target: "runtime",
+    status: "Success",
+    stats: { version: runtime.version, payloads: Object.keys(runtime.payloads).join(" + ") },
+  }];
+
+  if (requested.includes("opencode")) {
+    const surface = ensureOpencodeGlobalSurface({ flowtaskDir });
+    if (!surface.ok) {
+      const error = new Error(
+        `The OpenCode user configuration could not be updated: ${surface.reason ?? surface.status}.`,
+      );
+      error.code = "opencode_global_failed";
+      throw error;
+    }
+    results.push({ target: "opencode", status: "Success", stats: { config: surface.status } });
+  }
+
+  if (requested.includes("claude")) {
+    installClaudeUserSurface({
+      flowtaskDir,
+      projectDir: process.cwd(),
+      personaChoice,
+      personaContent,
+      options,
+      userConfig,
+    });
+    results.push({ target: "claude", status: "Success", stats: { surface: "ready" } });
+  }
+
+  const plugins = installUserPlugins({ flowtaskDir, manifest: loadPluginManifest(flowtaskDir) });
+  results.push({
+    target: "plugins",
+    status: "Success",
+    stats: { installed: plugins.installed.length, replaced: plugins.replaced.length, preserved: plugins.preserved.length },
+  });
+
+  printSummary(mode === "install" ? "Installation Summary" : "Update Summary", results);
+  return { ok: true };
+}
+
 export async function install(flowtaskDir, options = {}) {
   let transaction = null;
   try {
     assertRunnerCanon({ flowtaskDir });
+    if (options.global) return await installGlobalSurfaces(flowtaskDir, options, "install");
     const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "install" });
     console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
@@ -1696,40 +1708,23 @@ ${COLORS.blue}╔═════════════════════
 
     const rootFlowtask = path.join(projectDir, ".flowtask");
     const isSourceDir = path.resolve(rootFlowtask) === path.resolve(flowtaskDir);
-    const rootMigrationApplies = !isSourceDir && fileExists(rootFlowtask);
-    const migrationTargetId = nonClaudeTargets.find(({ id }) => id !== "standalone")?.id ?? null;
 
-    const targetLayerPreflights = nonClaudeTargets.map((target) => {
-      const layerSourceDir = rootMigrationApplies && migrationTargetId === target.id
-        ? rootFlowtask
-        : path.join(projectDir, target.targetSubDir);
-      return preflightTargetLayers(layerSourceDir);
-    });
-
+    const userRuntimePaths = resolveUserRuntimePaths();
+    // Legacy project layers move before any user default is written; otherwise
+    // the destination always exists and the user's choice would be discarded.
+    if (claudeSelected) migrateLegacyClaudeProjectConfig(projectDir);
+    const userLayerPreflight = preflightUserRuntimeConfig(userRuntimePaths.configDir);
     const claudePaths = resolveClaudePaths(projectDir);
-    let claudeLayerPreflight = null;
-    let claudeLegacyPreflight = null;
-    if (claudeSelected) {
-      claudeLayerPreflight = preflightClaudeRuntimeConfig(claudePaths.runtimeConfigDir);
-      const legacyConfigDir = path.join(claudePaths.projectFlowtaskDir, "config");
-      if (hasLayerFiles(legacyConfigDir)) claudeLegacyPreflight = preflightClaudeRuntimeConfig(legacyConfigDir);
-    }
 
     const requestedAutonomy = normalizeAutonomyChoice(options.autonomy);
-    const missingOperationalLayers = targetLayerPreflights.some(({ missing }) => missing.length > 0)
-      || (claudeLayerPreflight?.missing.length ?? 0) > 0
-      || (claudeLegacyPreflight?.missing.length ?? 0) > 0;
+    const missingOperationalLayers = userLayerPreflight.missing.length > 0;
     const selectedAutonomy = !requestedAutonomy && process.stdin.isTTY && missingOperationalLayers
       ? await promptAutonomySelection(readline)
       : null;
     const autonomyProfile = requestedAutonomy ?? selectedAutonomy;
     const replaceAutonomy = Boolean(options.autonomy);
 
-    const autonomyWillBeWritten = targetLayerPreflights.some(
-      ({ resolution }) => resolution.layers.autonomy.status === "missing",
-    )
-      || (claudeLayerPreflight?.missing.includes("autonomy") ?? false)
-      || replaceAutonomy;
+    const autonomyWillBeWritten = userLayerPreflight.missing.includes("autonomy") || replaceAutonomy;
     if (autonomyWillBeWritten) {
       const effective = autonomyProfile ?? MIGRATION_DEFAULTS.autonomy.profile;
       const initiative = effective === "assistant"
@@ -1745,6 +1740,25 @@ ${COLORS.blue}╔═════════════════════
       manifest: preflight?.manifest ?? loadPluginManifest(flowtaskDir),
       flowtaskDir,
     });
+
+    // The user-level layers are ensured once for every destination.
+    const userConfig = ensureUserRuntimeConfig(userRuntimePaths.configDir, {
+      personaChoice,
+      autonomyProfile,
+      replaceAutonomy,
+    });
+
+    // The canonical payload is published once for every non-Claude destination.
+    const needsCanonical = nonClaudeTargets.length > 0;
+    const userRuntime = needsCanonical
+      ? buildUserRuntime(flowtaskDir, { targets: nonClaudeTargets, userConfig, personaContent })
+      : null;
+    if (nonClaudeTargets.some(({ id }) => id === "opencode")) {
+      const surface = ensureOpencodeGlobalSurface({ flowtaskDir });
+      if (!surface.ok) {
+        throw new Error(`The OpenCode user configuration could not be updated: ${surface.reason ?? surface.status}.`);
+      }
+    }
 
     const targetDirs = nonClaudeTargets.map(({ targetSubDir }) => path.join(projectDir, targetSubDir));
     if (targetDirs.length > 0 && !migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
@@ -1778,9 +1792,24 @@ ${COLORS.blue}╔═════════════════════
 
         // ── Step 3: Migrate legacy root .flowtask/ if present ────────────────
         logStep(3, "Checking existing installation...");
-        if (id !== "standalone" && !isSourceDir && fileExists(rootFlowtask)) {
+        const standaloneRegistered = readProjectRegistration(projectDir, "standalone").status === "active";
+        if (id === "vscode" && !isSourceDir && !standaloneRegistered && fileExists(rootFlowtask)) {
           logWarn(`Found root .flowtask/ — moving contents to ${targetSubDir}...`);
           transaction.addJournal(migrateLegacyRootTransactional({ projectDir, targetDir: TARGET_DIR, flowtaskDir }));
+        }
+        if (id === "opencode") {
+          migrateLegacyOpencodeProject({
+            projectDir,
+            flowtaskDir,
+            runtimeRoot: userRuntimePaths.runtimeRoot,
+          });
+        } else if (path.resolve(TARGET_DIR) !== path.resolve(flowtaskDir)) {
+          migrateLegacyTargetProject({
+            projectDir,
+            flowtaskDir,
+            target: id,
+            runtimeRoot: userRuntimePaths.runtimeRoot,
+          });
         }
 
         // ── Step 4: Copy only the required assets ────────────────────────────
@@ -1796,27 +1825,15 @@ ${COLORS.blue}╔═════════════════════
           if (!verifyDirectoryMirror(srcDir, destDir, { ignorePaths: pruned.preserved })) throw new Error(`Mirror verification failed for ${src}`);
         }
 
-        // ── Target config: persona and autonomy/permissions layers ──
-        // Layers are resolved and written before installing the plugin and before
-        // injecting persona and autonomy.
+        // ── Target config: generated review plus the user-level layers ──
         configureRunnerScripts(TARGET_DIR, targetSubDir);
         const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
-          explicitPersona: Boolean(personaChoice),
-          autonomyProfile,
-          replaceAutonomy,
+          userConfig,
         });
-        const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
 
-        // OpenCode: skills go to .opencode/skills/ (outside flowtask subdir)
+        // OpenCode: the engine lives in the user runtime; the project keeps
+        // only its registration and the generated review configuration.
         if (id === "opencode") {
-          const srcSkills = path.join(flowtaskDir, "skills");
-          if (fileExists(srcSkills)) copyWithProgress(srcSkills, path.join(projectDir, ".opencode", "skills"), "skills (opencode)", readline);
-          localFerrisSearch = mergeOpencodeConfig(
-            path.join(projectDir, ideDir, "opencode.json"),
-            flowtaskDir,
-            ideDir,
-            { removeFerrisSearch: isFerrisSearchSupported() },
-          );
           registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
         }
 
@@ -1828,17 +1845,21 @@ ${COLORS.blue}╔═════════════════════
           logStep(5, "Installing plugins from manifest...");
           const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
           installManifestPlugins(projectDir, preflight?.manifest ?? manifest, flowtaskDir, preflight);
+          registerOpencodeProject({
+            projectDir,
+            runtimeManifest: userRuntime.manifest,
+            flowtaskDir,
+          });
         }
 
-        // ── Inject persona and autonomy into runner.md ───────────────────
-        injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
-        if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
-
-        // ── Step 6: Write installation marker ───────────────────────────────
-        fs.writeFileSync(
-          path.join(TARGET_DIR, ".installation-method"),
-          JSON.stringify({ method: "unified-installation-v2", target: id, timestamp: new Date().toISOString() }, null, 2)
-        );
+        if (id !== "opencode" && path.resolve(TARGET_DIR) !== path.resolve(flowtaskDir)) {
+          registerTargetProject({
+            projectDir,
+            target: id,
+            runtimeManifest: userRuntime.manifest,
+            runtimeRoot: userRuntimePaths.runtimeRoot,
+          });
+        }
 
         results.push({ target: id, status: "Success" });
       } catch (err) {
@@ -1863,6 +1884,7 @@ ${COLORS.blue}╔═════════════════════
           worktreeManager,
           autonomyProfile,
           replaceAutonomy,
+          userConfig,
         });
         results.push({
           target: "claude",
@@ -1886,6 +1908,22 @@ ${COLORS.blue}╔═════════════════════
         flowtaskDir,
         manifest: loadPluginManifest(flowtaskDir),
         claudeUserDir: claudePaths.claudeUserDir,
+      });
+    }
+
+    const userPlugins = installUserPlugins({
+      flowtaskDir,
+      manifest: loadPluginManifest(flowtaskDir),
+    });
+    if (userPlugins.installed.length > 0 || userPlugins.replaced.length > 0 || userPlugins.preserved.length > 0) {
+      results.push({
+        target: "plugins",
+        status: "Success",
+        stats: {
+          installed: userPlugins.installed.length,
+          replaced: userPlugins.replaced.length,
+          preserved: userPlugins.preserved.length,
+        },
       });
     }
 
@@ -1929,6 +1967,7 @@ ${COLORS.blue}╔═════════════════════
 // ─── Update ───────────────────────────────────────────────────────────────────
 
 export async function update(flowtaskDir, options = {}) {
+  if (options.global) return installGlobalSurfaces(flowtaskDir, options, "update");
   const report = createUpdateReport({
     version: readProjectVersion(flowtaskDir),
     verbose: options.verbose === true,
@@ -1986,6 +2025,16 @@ async function runUpdate(flowtaskDir, options, report) {
     targets.push({ id: "claude", marker: null, subDir: path.join(".claude", "flowtask"), ideDir: ".claude", registered: true });
     logSuccess("Found claude project registration");
   }
+  for (const candidate of [
+    { id: "opencode", subDir: ".opencode/flowtask", ideDir: ".opencode" },
+    { id: "vscode", subDir: ".vscode/flowtask", ideDir: ".vscode" },
+    { id: "standalone", subDir: ".flowtask", ideDir: "" },
+  ]) {
+    if (targets.some(({ id }) => id === candidate.id)) continue;
+    if (readProjectRegistration(projectDir, candidate.id).status !== "active") continue;
+    targets.push({ ...candidate, marker: null, registered: true });
+    logSuccess(`Found ${candidate.id} project registration`);
+  }
 
   const nonClaudeTargets = targets.filter(({ id }) => id !== "claude");
   const claudeTarget = targets.find(({ id }) => id === "claude") ?? null;
@@ -2003,6 +2052,24 @@ async function runUpdate(flowtaskDir, options, report) {
     return { ok: false };
   }
 
+  if (targets.length === 0) {
+    logWarn("This project is not registered with FlowTask; the global installation was updated without registering it.");
+    logInfo("Run flowtask install in this project to register it.");
+    let selected = [];
+    try {
+      const manifest = JSON.parse(fs.readFileSync(claudePaths.runtimeManifestPath, "utf8"));
+      if (manifest.payloads?.canonical) selected.push("opencode");
+      if (manifest.payloads?.claude) selected.push("claude");
+    } catch {
+      selected = [];
+    }
+    return installGlobalSurfaces(
+      flowtaskDir,
+      { ...options, target: selected.length > 0 ? selected : ["opencode", "claude"] },
+      "update",
+    );
+  }
+
   const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "update" });
   if (worktreeManager) {
     const versionNotice = formatWorktreeManagerVersionNotice({ previousVersion: worktreeManager.previousVersion, version: worktreeManager.version });
@@ -2012,14 +2079,11 @@ async function runUpdate(flowtaskDir, options, report) {
   const preflight = nonClaudeTargets.some(({ id }) => id === "opencode")
     ? await prepareInstallation(flowtaskDir, projectDir, "update", { targets: nonClaudeTargets, worktreeManager }) : null;
 
-  for (const target of nonClaudeTargets) {
-    preflightTargetLayers(path.join(projectDir, target.subDir));
-  }
-  if (claudeActive) {
-    preflightClaudeRuntimeConfig(claudePaths.runtimeConfigDir);
-    const legacyConfigDir = path.join(claudePaths.projectFlowtaskDir, "config");
-    if (hasLayerFiles(legacyConfigDir)) preflightClaudeRuntimeConfig(legacyConfigDir);
-  }
+  const userRuntimePaths = resolveUserRuntimePaths();
+  // Legacy project layers move before any user default is written; otherwise
+  // the destination always exists and the user's choice would be discarded.
+  if (claudeActive) migrateLegacyClaudeProjectConfig(projectDir);
+  preflightUserRuntimeConfig(userRuntimePaths.configDir);
 
   const autonomyProfile = normalizeAutonomyChoice(options.autonomy);
   const replaceAutonomy = Boolean(options.autonomy);
@@ -2046,7 +2110,7 @@ async function runUpdate(flowtaskDir, options, report) {
   }
   const installedPluginNames = new Set();
   for (const entry of Array.isArray(manifest) ? manifest : []) {
-    if (!validateManifestEntry(entry) || !entry.destinations.includes("opencode")) continue;
+    if (!validateManifestEntry(entry) || entry.scope === "user" || !entry.destinations.includes("opencode")) continue;
     if (CLASSIFIER_PLUGIN_NAMES.includes(entry.name) && !isClassifierEnabled(manifest)) continue;
     if (!fileExists(path.join(flowtaskDir, "plugins", entry.path))) continue;
     installedPluginNames.add(entry.name);
@@ -2076,11 +2140,7 @@ async function runUpdate(flowtaskDir, options, report) {
     }
 
     // ── Step 1.5: Agent Personality ──────────────────────────────
-    let currentLevel = null;
-    for (const targetDir of targetDirs) {
-      currentLevel = readProfileLevel(targetDir);
-      if (currentLevel) break;
-    }
+    const currentLevel = readUserProfileLevel();
 
     let personaChoice = null;
     if (options.persona && levelToChoice[options.persona]) {
@@ -2094,6 +2154,23 @@ async function runUpdate(flowtaskDir, options, report) {
       logWarn("No valid personality was found and --persona was not provided. Continuing without injecting a personality.");
     }
     const personaContent = personaChoice ? resolvePersonaContent(flowtaskDir, personaChoice) : null;
+
+    // The user-level layers are ensured once for every destination.
+    const userConfig = ensureUserRuntimeConfig(userRuntimePaths.configDir, {
+      personaChoice,
+      autonomyProfile,
+      replaceAutonomy,
+    });
+
+    const userRuntime = nonClaudeTargets.length > 0
+      ? buildUserRuntime(flowtaskDir, { targets: nonClaudeTargets, userConfig, personaContent })
+      : null;
+    if (nonClaudeTargets.some(({ id }) => id === "opencode")) {
+      const surface = ensureOpencodeGlobalSurface({ flowtaskDir });
+      if (!surface.ok) {
+        throw new Error(`The OpenCode user configuration could not be updated: ${surface.reason ?? surface.status}.`);
+      }
+    }
 
     // ── Step 2: Delta sync each target ──────────────────────────────────────
     const preservePaths = ["CA-", "workspace", ".workspace", ".installation-method"];
@@ -2128,44 +2205,44 @@ async function runUpdate(flowtaskDir, options, report) {
           if (!verifyDirectoryMirror(srcDir, destDir, { ignorePaths: pruned.preserved })) throw new Error(`Mirror verification failed for ${src}`);
         }
 
-        if (id !== "standalone") cleanupLegacyScripts(projectDir, TARGET_DIR, flowtaskDir);
+        if (id !== "standalone" && id !== "opencode") cleanupLegacyScripts(projectDir, TARGET_DIR, flowtaskDir);
 
-        // OpenCode: skills delta
+        // OpenCode: the engine lives in the user runtime; the project keeps
+        // only its registration and the generated review configuration.
         if (id === "opencode") {
-          const srcSkills = path.join(flowtaskDir, "skills");
-          if (fileExists(srcSkills)) {
-            const stats = copyDirectoryDelta(srcSkills, path.join(projectDir, ".opencode", "skills"), preservePaths);
-            totalCopied += stats.copied;
-            totalSkipped += stats.skipped;
-          }
-          localFerrisSearch = mergeOpencodeConfig(
-            path.join(projectDir, ideDir, "opencode.json"),
+          migrateLegacyOpencodeProject({
+            projectDir,
             flowtaskDir,
-            ideDir,
-            { removeFerrisSearch: isFerrisSearchSupported() },
-          );
+            runtimeRoot: userRuntimePaths.runtimeRoot,
+          });
           registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
+        } else {
+          migrateLegacyTargetProject({
+            projectDir,
+            flowtaskDir,
+            target: id,
+            runtimeRoot: userRuntimePaths.runtimeRoot,
+          });
         }
 
         logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
 
-        // ── Target config: persona and autonomy/permissions layers ──
-        // Layers are resolved and written before installing the plugin and before
-        // injecting persona and autonomy.
+        // ── Target config: generated review plus the user-level layers ──
         configureRunnerScripts(TARGET_DIR, subDir);
         const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
-          preserveProfile: !options.persona,
-          explicitPersona: Boolean(options.persona),
-          autonomyProfile,
-          replaceAutonomy,
+          userConfig,
         });
-        const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
 
         // ── Re-install plugins from manifest (OpenCode only) ─────────────────
         if (id === "opencode") {
           const pluginsStartedAt = Date.now();
           pluginsRegistered = installManifestPlugins(projectDir, manifest, flowtaskDir, preflight).registered;
           pluginsDurationMs = Date.now() - pluginsStartedAt;
+          registerOpencodeProject({
+            projectDir,
+            runtimeManifest: userRuntime.manifest,
+            flowtaskDir,
+          });
         }
 
         // The transaction moved the managed trees before the copy, so update
@@ -2196,21 +2273,14 @@ async function runUpdate(flowtaskDir, options, report) {
         if (targetConfig.review?.restored) classification.restoredPaths.add(toProjectPath(projectDir, targetConfig.review.path));
         const restoredPaths = classification.restoredPaths;
 
-        // ── Inject persona and autonomy into runner.md ───────────────────
-        injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
-        if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
-
-        fs.writeFileSync(
-          path.join(TARGET_DIR, ".installation-method"),
-          JSON.stringify({
-            method: "unified-installation-v2",
+        if (id !== "opencode" && path.resolve(TARGET_DIR) !== path.resolve(flowtaskDir)) {
+          registerTargetProject({
+            projectDir,
             target: id,
-            updatedAt: new Date().toISOString(),
-            previousUpdate: previousMethod?.updatedAt || previousMethod?.timestamp || null,
-            filesUpdated: totalCopied,
-            filesSkipped: totalSkipped,
-          }, null, 2)
-        );
+            runtimeManifest: userRuntime.manifest,
+            runtimeRoot: userRuntimePaths.runtimeRoot,
+          });
+        }
 
         const restored = [...restoredPaths];
         results.push({
@@ -2247,6 +2317,7 @@ async function runUpdate(flowtaskDir, options, report) {
           worktreeManager,
           autonomyProfile,
           replaceAutonomy,
+          userConfig,
         });
         const claudeRestored = Array.isArray(claudeUpdate.restoredPaths) ? claudeUpdate.restoredPaths : [];
         results.push({
@@ -2288,6 +2359,11 @@ async function runUpdate(flowtaskDir, options, report) {
     const committed = transaction.commit();
     if (!committed.ok) {
       logWarn(`Update finished but some transaction backups could not be removed: ${committed.failures.map(({ path: failedPath }) => failedPath).join(", ")}.`);
+    }
+
+    const userPlugins = installUserPlugins({ flowtaskDir, manifest });
+    if (userPlugins.installed.length > 0 || userPlugins.replaced.length > 0) {
+      report.phase("plugins-user", `${userPlugins.installed.length} installed · ${userPlugins.replaced.length} replaced`);
     }
 
     if (claudeUpdate?.registered === true) {
@@ -2359,6 +2435,168 @@ async function runUpdate(flowtaskDir, options, report) {
     if (error && typeof error === "object") error.rollback = rolled;
     throw error;
   }
+}
+
+// ─── Uninstall ────────────────────────────────────────────────────────────────
+
+/**
+ * Remove every FlowTask-owned artifact of the current project for every
+ * destination, preserving user settings, hooks, plugins and MCP servers.
+ */
+export function uninstallProject({ flowtaskDir, projectDir }) {
+  const removed = [];
+  const preserved = [];
+  const failures = [];
+
+  try {
+    const claude = uninstallClaudeProject({ projectDir, flowtaskDir });
+    removed.push(...claude.removed);
+    preserved.push(...claude.preserved);
+  } catch (error) {
+    failures.push({ target: "claude", error: error.message });
+  }
+
+  try {
+    const opencode = removeOpencodeProject({ projectDir });
+    removed.push(...opencode.removed);
+    preserved.push(...opencode.preserved);
+  } catch (error) {
+    failures.push({ target: "opencode", error: error.message });
+  }
+
+  for (const target of ["vscode", "standalone"]) {
+    try {
+      const registration = readProjectRegistration(projectDir, target);
+      if (registration.status === "absent") continue;
+      const review = path.join(resolveRegistrationDir(projectDir, target), "config", "review.json");
+      if (fileExists(review)) {
+        fs.rmSync(review, { force: true });
+        removed.push(review);
+        try {
+          const configDir = path.dirname(review);
+          if (fs.existsSync(configDir) && fs.readdirSync(configDir).length === 0) {
+            fs.rmdirSync(configDir);
+            removed.push(configDir);
+          }
+        } catch {
+          // Left in place for the report.
+        }
+      }
+      const removal = removeProjectRegistration(projectDir, target);
+      removed.push(...removal.removed);
+      preserved.push(...removal.preserved);
+    } catch (error) {
+      failures.push({ target, error: error.message });
+    }
+  }
+
+  return { ok: failures.length === 0, removed, preserved, failures };
+}
+
+/**
+ * Remove the user-level runtime, the global surfaces and every registered
+ * project. It stops before deleting the runtime when a project cannot be
+ * cleaned, so no registered project is left pointing at a missing runtime.
+ */
+export function uninstallGlobal({ flowtaskDir, projectDir }) {
+  const claudePaths = resolveClaudePaths(projectDir);
+  const runtimeRoot = claudePaths.runtimeRoot;
+  const index = readProjectsIndex(runtimeRoot);
+  if (!index.ok) {
+    return {
+      ok: false,
+      error: `The projects index is unreadable and uninstall stopped before removing the runtime: ${index.error}`,
+      removed: [],
+      preserved: [],
+      failures: [],
+      manualReview: [],
+    };
+  }
+
+  const claude = uninstallClaudeGlobal({
+    runtimeRoot,
+    claudeUserDir: claudePaths.claudeUserDir,
+    flowtaskDir,
+    removeRuntime: false,
+  });
+  if (!claude.ok) {
+    return {
+      ok: false,
+      error: claude.error ?? "The Claude Code user surface could not be removed.",
+      removed: [],
+      preserved: [],
+      failures: claude.failures ?? [],
+      manualReview: claude.manualReview ?? [],
+    };
+  }
+
+  const removed = [...(claude.removed ?? [])];
+  const preserved = [...(claude.preserved ?? [])];
+  const failures = [];
+  for (const entry of index.index.projects) {
+    if (!entry || typeof entry.path !== "string") continue;
+    const targets = Array.isArray(entry.targets) ? entry.targets : ["claude"];
+    for (const target of targets) {
+      if (target === "claude") continue;
+      try {
+        if (target === "opencode") {
+          const result = removeOpencodeProject({ projectDir: entry.path, runtimeRoot });
+          removed.push(...result.removed);
+          preserved.push(...result.preserved);
+        } else {
+          const result = removeProjectRegistration(entry.path, target, { runtimeRoot });
+          removed.push(...result.removed);
+          preserved.push(...result.preserved);
+        }
+      } catch (error) {
+        failures.push({ target, path: entry.path, error: error.message });
+      }
+    }
+  }
+
+  if (failures.length > 0) {
+    return {
+      ok: false,
+      error: "One or more projects could not be uninstalled; the runtime was preserved.",
+      removed,
+      preserved,
+      failures,
+      manualReview: claude.manualReview ?? [],
+    };
+  }
+
+  const opencode = removeOpencodeGlobalSurface({ flowtaskDir, runtimeRoot });
+  if (!opencode.ok) {
+    preserved.push(`${opencode.path ?? "OpenCode configuration"}#FlowTask surface`);
+  }
+  const plugins = removeUserPlugins({ runtimeRoot });
+  preserved.push(...plugins.preserved);
+
+  // The global manager and Graphify state live in the runtime root; remove
+  // the owned copies so the runtime directory can be retired completely.
+  const worktreeManager = removeGlobalWorktreeManager(globalWorktreeManagerDir());
+  removed.push(...worktreeManager.removed);
+  preserved.push(...worktreeManager.preserved);
+  const globalGraphify = globalStatePath();
+  if (fileExists(globalGraphify)) {
+    fs.rmSync(globalGraphify, { force: true });
+    removed.push(globalGraphify);
+  }
+
+  const runtime = removeUserRuntime(runtimeRoot);
+  removed.push(...runtime.removed);
+  preserved.push(...runtime.preserved);
+
+  return {
+    ok: true,
+    projects: index.index.projects,
+    removed,
+    preserved,
+    failures,
+    manualReview: claude.manualReview ?? [],
+    opencodeSurface: opencode.status,
+    pluginsRemoved: plugins.removed,
+  };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
