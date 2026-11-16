@@ -98,7 +98,7 @@ function isFlowTaskPluginEntry(entry) {
   return Boolean(name?.includes("flowtask-") || normalized.includes("flowtask-"));
 }
 
-function mergeMissingObjects(target, source) {
+export function mergeMissingObjects(target, source) {
   const result = { ...target };
   for (const [key, sourceValue] of Object.entries(source)) {
     if (sourceValue === undefined || Object.prototype.hasOwnProperty.call(result, key)) {
@@ -135,7 +135,7 @@ function isFlowTaskAgent(name) {
   return typeof name === "string" && name.startsWith(FLOWTASK_AGENT_PREFIX);
 }
 
-function mergeAgentEntries(target, source) {
+export function mergeAgentEntries(target, source) {
   const result = { ...target };
   for (const [name, sourceEntry] of Object.entries(source)) {
     if (!isFlowTaskAgent(name) || !isPlainObject(sourceEntry)) {
@@ -163,7 +163,7 @@ function removeLegacyAgentPermission(agents) {
   }
 }
 
-function normalizePluginEntries(existing, incoming) {
+export function normalizePluginEntries(existing, incoming) {
   const result = [];
   const indexes = new Map();
   const incomingByName = new Map();
