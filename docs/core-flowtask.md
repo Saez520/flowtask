@@ -326,9 +326,10 @@ malformed `source` or `sourceCommit` remain rejected.
 
 #### `agent-model-selector-claude-code` (detail)
 
-- installs from the submodule `.flowtask/plugins/agent-model-selector/packages/claude-code`
-- the manifest declares `kind: "mod"`, `destinations: ["claude-code"]` and the hooks entrypoint `hooks/dist/register.js`; the OpenCode installer discards entries without the `opencode` destination before copying or registering anything, so this entry is inert for OpenCode
-- the Claude Code runtime consumes the payload (`files`: `.claude-plugin`, `hooks/dist`, `hooks/hooks.json`, `package.json`, `README.md`); loading it with `claude --plugin-dir <path>` is the development path
+- installs with the Claude Code plugin manager from the marketplace published at the root of the selector repository; `flowtask install` with the Claude target selected and `flowtask update` with the project registered add the local marketplace of the pinned submodule and install or update the `flowtask-model@agent-model-selector` ref at user scope
+- the manifest declares `kind: "mod"`, `destinations: ["claude-code"]`, the hooks entrypoint `hooks/dist/register.js` and `marketplaceRoot`; the entrypoint is validated inside the marketplace source, and the OpenCode installer discards entries without the `opencode` destination before copying or registering anything
+- no file is copied into the project: the plugin manager keeps the installed copy in its user plugin store, so the installed version equals the submodule pin and removing the checkout does not affect the installed plugin; loading it with `claude --plugin-dir <path>` is only the development path
+- a failure is reported with its cause and next action and does not interrupt the update; the dashboard adds a `selector` row in the `warn` state and the update keeps its `COMPLETE` badge
 - exposes `/flowtask-model` with `list`, `set`, `clear`, `clear --all`, `export` and `import`; the pane shows one row per agent with one selector per provider section and a Clear button where the surface has those elements
 - reads the live model offer from the gateway configured for the session (`GET {ANTHROPIC_BASE_URL}/v1/models`) on every pane open and retry; it keeps no fixed model list, cache, or stored catalog
 - groups the offer by provider and shows only models whose target matches a tier the engine preserves in subagents (`sonnet`/`haiku`); `opus` and models without a preserved target are hidden
@@ -344,7 +345,7 @@ malformed `source` or `sourceCommit` remain rejected.
 #### Claude Code Mod rollback
 
 1. Run `/flowtask-model clear --all` in each project that used an override.
-2. Remove or disable the plugin in Claude Code (`--plugin-dir` removal, or the plugin manager).
+2. Uninstall the plugin with `claude plugin uninstall flowtask-model@agent-model-selector`.
 3. Confirm that `/flowtask-model` no longer exists and that OpenCode is unchanged: the Mod never writes `.opencode`, `opencode.json` or the global OpenCode configuration.
 
 #### Selector rollback
