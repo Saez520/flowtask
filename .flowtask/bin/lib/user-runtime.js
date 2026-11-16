@@ -38,7 +38,7 @@ const BIN_LIB_ALLOWLIST = Object.freeze([
 ]);
 
 /** Runner and startup document are generated after the payload id is known. */
-const PAYLOAD_ID_EXCLUDED = Object.freeze(["agents/runner.md", "session-start.md"]);
+const PAYLOAD_ID_EXCLUDED = Object.freeze(["runner.md", "session-start.md"]);
 
 const KNOWN_CONFIG_FILES = Object.freeze([
   LAYER_FILES.persona,
@@ -534,6 +534,10 @@ function stagePayloadSource(flowtaskDir, stagingDir) {
   for (const source of PAYLOAD_SOURCES) {
     copyTree(path.join(flowtaskDir, source), path.join(stagingDir, source));
   }
+  // The canonical runner is a source input, not a payload agent: the runtime
+  // runner is written at the payload root once its id is known.
+  const stagedRunner = path.join(stagingDir, "agents", "runner.md");
+  if (fileExists(stagedRunner)) fs.rmSync(stagedRunner, { force: true });
   const stagingBinLib = path.join(stagingDir, "bin", "lib");
   fs.mkdirSync(stagingBinLib, { recursive: true });
   for (const fileName of BIN_LIB_ALLOWLIST) {
@@ -653,9 +657,9 @@ export function ensureUserRuntime(flowtaskDir, options = {}) {
         adaptStagingFlows({ stagingDir, runnerBody: runnerSource, finalPaths: payloadPaths });
       }
 
-      writeFileAtomic(path.join(stagingDir, "agents", "runner.md"), buildRunnerBody(payloadPaths));
+      writeFileAtomic(path.join(stagingDir, "runner.md"), buildRunnerBody(payloadPaths));
 
-      const runnerContent = fs.readFileSync(path.join(stagingDir, "agents", "runner.md"), "utf8");
+      const runnerContent = fs.readFileSync(path.join(stagingDir, "runner.md"), "utf8");
       if (variant === "claude") {
         generateClaudeSessionStart({
           skillsDir: payloadPaths.skillsDir,
@@ -851,8 +855,7 @@ export function removeUserRuntime(runtimeRoot, { preserveConfig = false } = {}) 
 
   const versionsDir = path.join(runtimeRoot, "versions");
   if (!manifestFileExists && fileExists(versionsDir)) {
-    fs.rmSync(versionsDir, { recursive: true, force: true });
-    removed.push(versionsDir);
+    for (const file of walkFiles(versionsDir)) preserved.push(file);
   } else if (fileExists(versionsDir)) {
     for (const entry of fs.readdirSync(versionsDir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;

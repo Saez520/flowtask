@@ -14,9 +14,15 @@ import {
   ensureClaudeRuntime,
   ensureClaudeRuntimeConfig,
   readClaudeRuntimeManifest,
+  readLegacyClaudeRuntimeManifest,
   removeClaudeRuntime,
 } from "./claude-runtime.js";
-import { readProjectsIndex, registerClaudeProject, removeClaudeProject } from "./claude-projects.js";
+import {
+  readProjectsIndex,
+  registerClaudeProject,
+  removeClaudeProject,
+} from "./claude-projects.js";
+import { readProjectRegistration, reconcileProjectsIndex } from "./project-registration.js";
 import { ensureUserEngram, removeUserEngram } from "./claude-mcp.js";
 import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
 import { CUSTOM_PERSONA_TEXT, buildRuntimeRunnerBody } from "./runner-content.js";
@@ -260,6 +266,163 @@ function migrateLegacyConfig(paths, removed, preserved, manualReview, { migrate 
   }
 }
 
+function migrateLegacyRuntimeConfig(legacyConfigDir, configDir, removed, preserved, manualReview) {
+  fs.mkdirSync(configDir, { recursive: true });
+  for (const layer of LEGACY_LAYERS) {
+    const source = path.join(legacyConfigDir, layer.file);
+    if (!fileExists(source)) continue;
+
+    const read = readLayerFile(source);
+    const validated = read.status === "invalid"
+      ? { status: "invalid", value: null, reason: read.reason }
+      : layer.validate(read.value);
+
+    if (validated.status !== "valid") {
+      preserved.push(source);
+      manualReview.push(`${source} is not a valid ${layer.name} layer and was preserved.`);
+      continue;
+    }
+
+    const destination = path.join(configDir, layer.file);
+    if (!fileExists(destination)) {
+      writeFileAtomic(destination, JSON.stringify(validated.value, null, 2));
+      fs.rmSync(source, { force: true });
+      removed.push(source);
+      logInfo(`Legacy ${layer.name} layer migrated to ${destination}.`);
+      continue;
+    }
+
+    const existing = readLayerFile(destination);
+    const existingValidated = existing.status === "invalid"
+      ? { status: "invalid", value: null, reason: existing.reason }
+      : layer.validate(existing.value);
+    if (existingValidated.status !== "valid") {
+      preserved.push(source);
+      manualReview.push(`${destination} is invalid; the legacy ${layer.name} layer at ${source} was preserved.`);
+      continue;
+    }
+    if (JSON.stringify(existingValidated.value) !== JSON.stringify(validated.value)) {
+      preserved.push(source);
+      manualReview.push(`${destination} already defines a different ${layer.name} layer; the legacy copy at ${source} was preserved.`);
+      continue;
+    }
+    fs.rmSync(source, { force: true });
+    removed.push(source);
+  }
+
+  const identitySource = path.join(legacyConfigDir, "identity.json");
+  if (fileExists(identitySource)) {
+    const identity = readIdentityProfile(legacyConfigDir);
+    const destination = path.join(configDir, "identity.json");
+    if (identity.status !== "present") {
+      preserved.push(identitySource);
+      manualReview.push(`${identitySource} is not a valid identity profile and was preserved.`);
+    } else if (!fileExists(destination)) {
+      writeFileAtomic(destination, JSON.stringify(identity.value, null, 2));
+      fs.rmSync(identitySource, { force: true });
+      removed.push(identitySource);
+    } else {
+      const existing = readIdentityProfile(configDir);
+      if (existing.status !== "present" || existing.value.baseName !== identity.value.baseName) {
+        preserved.push(identitySource);
+        manualReview.push(`${destination} already defines a different identity; the legacy copy at ${identitySource} was preserved.`);
+      } else {
+        fs.rmSync(identitySource, { force: true });
+        removed.push(identitySource);
+      }
+    }
+  }
+}
+
+function mergeLegacyProjectsIndex(legacyRoot, runtimeRoot, preserved, manualReview) {
+  const legacyIndexPath = path.join(legacyRoot, "projects.json");
+  if (!fileExists(legacyIndexPath)) return;
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(legacyIndexPath, "utf8"));
+  } catch (error) {
+    preserved.push(legacyIndexPath);
+    manualReview.push(`${legacyIndexPath} is not valid JSON; its entries were preserved.`);
+    return;
+  }
+  const entries = Array.isArray(parsed?.projects) ? parsed.projects : [];
+  for (const entry of entries) {
+    if (!entry || typeof entry.path !== "string") continue;
+    const registration = readProjectRegistration(entry.path, "claude");
+    if (registration.status === "active") {
+      reconcileProjectsIndex(runtimeRoot, {
+        current: { ...registration.registry, targets: ["claude"] },
+        mode: "install",
+      });
+    } else {
+      manualReview.push(`Legacy index entry ${entry.path} has no readable registration and was not merged.`);
+    }
+  }
+}
+
+/**
+ * Move a schema 1 runtime from the Claude user directory to the global runtime.
+ * Only a valid legacy manifest is migrated and removed; declared files are
+ * removed with their hash, invalid or conflicting layers are preserved, and
+ * the SessionStart hook is repointed before the old runtime is removed.
+ */
+export function migrateLegacyClaudeRuntime({ flowtaskDir, runtimeRoot, claudeUserDir }) {
+  const legacyRoot = path.join(claudeUserDir, "flowtask");
+  const removed = [];
+  const preserved = [];
+  const manualReview = [];
+  if (path.resolve(legacyRoot) === path.resolve(runtimeRoot)) {
+    return { migrated: false, legacyRoot, removed, preserved, manualReview };
+  }
+
+  let manifest;
+  try {
+    manifest = readLegacyClaudeRuntimeManifest(legacyRoot, { verifyPayload: false });
+  } catch (error) {
+    if (error.code !== "runtime_manifest_missing") {
+      logWarn(`The previous Claude runtime at ${legacyRoot} was preserved: ${error.message}`);
+      manualReview.push(`${legacyRoot} was preserved because its manifest is not a valid schema 1 manifest.`);
+    }
+    return { migrated: false, legacyRoot, removed, preserved, manualReview };
+  }
+
+  migrateLegacyRuntimeConfig(
+    path.join(legacyRoot, "config"),
+    path.join(runtimeRoot, "config"),
+    removed,
+    preserved,
+    manualReview,
+  );
+  mergeLegacyProjectsIndex(legacyRoot, runtimeRoot, preserved, manualReview);
+
+  const settingsPath = path.join(claudeUserDir, "settings.json");
+  const legacyLauncher = path.join(legacyRoot, "bin", "session-start.mjs");
+  if (fileExists(settingsPath)) {
+    const merge = mergeClaudeSettings(settingsPath, { hooks: buildSessionStartHook(runtimeRoot) });
+    if (!merge.ok) {
+      manualReview.push(`${settingsPath} could not be updated: ${merge.error}. The previous runtime was preserved.`);
+      return { migrated: false, legacyRoot, removed, preserved, manualReview };
+    }
+    if (merge.changed) removed.push(`${settingsPath}#FlowTask hook`);
+    const cleanup = removeClaudeHook(settingsPath, { commandIncludes: legacyLauncher });
+    if (!cleanup.ok) {
+      manualReview.push(`${settingsPath} keeps the previous FlowTask hook: ${cleanup.error}. The previous runtime was preserved.`);
+      return { migrated: false, legacyRoot, removed, preserved, manualReview };
+    }
+    if (cleanup.changed) removed.push(`${settingsPath}#legacy FlowTask hook`);
+  }
+
+  const runtimeRemoval = removeClaudeRuntime(legacyRoot, { preserveConfig: true });
+  removed.push(...runtimeRemoval.removed);
+  preserved.push(...runtimeRemoval.preserved);
+
+  if (manualReview.length > 0) {
+    for (const message of manualReview) logWarn(message);
+  }
+  logSuccess(`Previous Claude runtime migrated from ${legacyRoot}: ${runtimeRemoval.removed.length} artifact(s) removed.`);
+  return { migrated: true, legacyRoot, removed, preserved, manualReview };
+}
+
 function removeLegacyClaudeBlock(projectDir, removed, preserved, manualReview) {
   const claudeMdPath = path.join(projectDir, "CLAUDE.md");
   if (!fileExists(claudeMdPath)) return;
@@ -424,19 +587,28 @@ function ensureGlobalSurfaces({
     replaceAutonomy,
   });
 
-  const runnerBody = runnerBodyFor(flowtaskDir, paths.runtimeRoot, {
-    personaContent,
-    profile: config.profile,
-    autonomy: {
-      profile: config.autonomy.value.profile,
-      source: "project",
-    },
-  });
-
   const runtime = ensureClaudeRuntime(flowtaskDir, {
     runtimeRoot: paths.runtimeRoot,
-    runnerBody,
     version,
+    descriptor: {
+      persona: config.profile?.value?.persona ?? null,
+      level: config.profile?.value?.level ?? null,
+      autonomy: config.autonomy?.value?.profile ?? null,
+    },
+    buildRunnerBody: (payloadPaths) => runnerBodyFor(flowtaskDir, payloadPaths.payloadDir, {
+      personaContent,
+      profile: config.profile,
+      autonomy: {
+        profile: config.autonomy.value.profile,
+        source: "user",
+      },
+    }),
+  });
+
+  migrateLegacyClaudeRuntime({
+    flowtaskDir,
+    runtimeRoot: paths.runtimeRoot,
+    claudeUserDir: paths.claudeUserDir,
   });
 
   const runnerAgent = generateClaudeRunnerAgent({
@@ -582,7 +754,7 @@ export function uninstallClaudeGlobal({ runtimeRoot, claudeUserDir, flowtaskDir 
   if (manifestExists) {
     try {
       const parsed = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-      if (parsed?.schema === 1) manifest = parsed;
+      if (parsed?.schema === 1 || parsed?.schema === 2) manifest = parsed;
     } catch {
       manifest = null;
     }
@@ -641,6 +813,8 @@ export function uninstallClaudeGlobal({ runtimeRoot, claudeUserDir, flowtaskDir 
   const settingsAgents = [];
   for (const entry of indexRead.index.projects) {
     if (!entry || typeof entry.path !== "string") continue;
+    const targets = Array.isArray(entry.targets) ? entry.targets : ["claude"];
+    if (!targets.includes("claude")) continue;
     try {
       const result = uninstallClaudeProject({
         projectDir: entry.path,

@@ -47,7 +47,7 @@ export const MIGRATION_DEFAULTS = Object.freeze({
 });
 
 /** Logical resolution sources. */
-export const LAYER_SOURCES = Object.freeze(["team", "project"]);
+export const LAYER_SOURCES = Object.freeze(["team", "user", "project"]);
 
 const VALIDATORS = Object.freeze({
   persona: validatePersonaLayer,
