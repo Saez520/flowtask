@@ -11,7 +11,7 @@ Current version: run `flowtask --version` (source: `.flowtask/package.json`).
 - Keeps decisions, artifacts, and state across sessions through Engram.
 - Isolates each CA or hotfix in its own worktree and branch.
 - Enables conversational work without depending on legacy coordination commands.
-- Installs and updates resources, plugins, and derived configuration as a delta.
+- Installs and updates one user-level runtime and registers each project without copying the engine.
 - Includes review, permissions, runner personality, and Graphify support.
 
 ## How it is used
@@ -32,11 +32,9 @@ Commands in the installed environment: `/init-types`, `/init-data`, `/init-busin
 
 `.flowtask/` — canonical source for the CLI, contracts, and plugins.
 
-`.opencode/` — OpenCode installation/configuration, if applicable.
+`<global-config>/flowtask/` — installed user-level runtime, layers, and plugins.
 
-`.claude/` — Claude Code installation/configuration, if applicable.
-
-`.vscode/` — VS Code installation/configuration, if applicable.
+`.opencode/`, `.claude/`, `.vscode/`, `.flowtask/` (in a consumer project) — project registration and the generated surfaces that each IDE discovers.
 
 `docs/` — public documentation.
 

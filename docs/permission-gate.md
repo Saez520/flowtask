@@ -5,12 +5,12 @@ The migration from the historical gate was consolidated into a single plugin:
 `[FlowTask Permission Gate]`.
 
 `flowtask-permission-gate` is the only runtime control for FlowTask-specific
-permissions. It is installed as a managed V2 package in
-`.opencode/plugins/flowtask-permission-gate` after `flowtask install` or
-`flowtask update`, and the configuration registers it once as
-`{"package":"./plugins/flowtask-permission-gate"}`; the package entrypoint is
-`dist/index.js`. The change takes effect when OpenCode restarts. There is no
-native fallback.
+permissions. It is installed once per user as a managed package in
+`<global-config>/flowtask/plugins/flowtask-permission-gate` after `flowtask
+install` or `flowtask update`, and the OpenCode user configuration registers it
+once as an absolute `{"package": "...", "options": {"configDir": "...",
+"runtimeRoot": "..."}}` entry; the package entrypoint is `dist/index.js`. The
+change takes effect when OpenCode restarts. There is no native fallback.
 
 ## Policies
 
@@ -42,12 +42,11 @@ native fallback.
 ## Permissions layer
 
 Before applying the runner's technical allowlist, the gate validates that the
-autonomy and permissions layers exist and are valid in the target. Autonomy does
-not authorize: it only checks that the layer is healthy.
+autonomy and permissions layers exist and are valid in the user configuration.
+Autonomy does not authorize: it only checks that the layer is healthy.
 
-**Schema.** Both files live in the target's configuration directory
-(`<target>/config/` for OpenCode, VS Code, and standalone). For Claude Code they
-live once per user in `~/.claude/flowtask/config/`:
+**Schema.** Both files live once per user in
+`<global-config>/flowtask/config/`:
 
 ```json
 { "version": 1, "profile": "autonomous-dev" }
@@ -61,19 +60,18 @@ live once per user in `~/.claude/flowtask/config/`:
 `standard`, the only technical envelope in this phase: it is equivalent to the
 current technical gate and adds no capability.
 
-**Resolution.** The first candidate directory that contains `autonomy.json` or
-`permissions.json` is the source, and in that source both files must exist and
-be valid. Candidates are tried in order: `.opencode/flowtask/config`,
-`.claude/flowtask/config` (legacy per-project location),
-`.vscode/flowtask/config`, and `.flowtask/config`. When no candidate contains
-either file, the target declares no layer configuration and the gate denies with
-the permissions-layer message; absence is not a pass.
+**Resolution.** The gate receives the runtime configuration directory through
+its plugin options. When it is set, `autonomy.json` and `permissions.json` are
+read from that directory and both must exist and be valid. Without the option,
+the gate keeps the legacy candidate search (`.opencode/flowtask/config`,
+`.claude/flowtask/config`, `.vscode/flowtask/config`, and `.flowtask/config`).
+When no source contains the layers, the gate denies with the permissions-layer
+message; absence is not a pass.
 
-This plugin is the OpenCode runtime control. It does not govern Claude Code
-sessions: Claude Code reads its three layers from the user-level
-`~/.claude/flowtask/config/`. A `.claude/flowtask/config/` directory in a
-consumer project is a legacy candidate and is migrated to the user-level
-configuration; new installations do not create it.
+The same plugin controls OpenCode and, through the global runtime, the
+registered-project surface. Claude Code keeps its own SessionStart launcher and
+reads the same user-level configuration through the runtime payload. New
+installations do not create project-level layer files.
 
 **Failure.**
 
@@ -112,6 +110,17 @@ paths, and causes only when the operator asks for it.
 **Scope.** The check applies only to the runner's tools. The universal commit
 gate keeps its behavior, and subagent permissions do not change. The bash
 allowlist and the list of authorized subagents are not expanded.
+
+**Registration gate.** The global plugin also decides whether the FlowTask
+surface is exposed at all. It looks for `.opencode/flowtask/project.json` walking
+up from the session directory, validates schema 1 and the real project path, and
+reads the canonical payload from the runtime manifest. When the project is not
+registered, the plugin removes the `flowtask-*` agents and the payload skills
+without showing a message. When the registration is unreadable or uses an
+unsupported schema, or when the runtime or canonical payload is missing or
+incomplete, it removes the same surface and emits one actionable line through
+the context hook. Tools are not blocked by this gate: an unregistered project
+continues as a normal OpenCode project.
 
 **Smoke.** In an installed target, delete `permissions.json`, restart OpenCode,
 and verify that a runner tool is denied with the operational message;
@@ -372,20 +381,20 @@ fixture tests only verify the script and do not replace this test.
    fallback), the verified paths, the allowed and denied commands,
    the literal feedback, and any runtime GAP.
 8. Test the permissions layer: delete
-   `.opencode/flowtask/config/permissions.json`, restart OpenCode, and invoke
+   `<global-config>/flowtask/config/permissions.json`, restart OpenCode, and invoke
    a runner tool. Expected result: the tool is denied
    with `[FlowTask Permission Gate] Missing or invalid permissions layer.` and the
    cause and recommended action. Restore the file, restart OpenCode, and
    repeat: the allowed operation works again.
 9. Test the total absence of layer configuration: delete both
-   `.opencode/flowtask/config/autonomy.json` and
-   `.opencode/flowtask/config/permissions.json` (or use an empty target),
+   `<global-config>/flowtask/config/autonomy.json` and
+   `<global-config>/flowtask/config/permissions.json` (or use an empty target),
    restart OpenCode, and invoke a runner tool. Expected result: the tool is
    denied with `[FlowTask Permission Gate] Missing or invalid permissions layer.`,
    the expected file, the cause of absence, and the recommended action. Restore
    both files, restart OpenCode, and repeat: the allowed operation works again.
 10. Test the authority pause and repair: corrupt
-    `.opencode/flowtask/config/permissions.json` and restart OpenCode. The runner
+    `<global-config>/flowtask/config/permissions.json` and restart OpenCode. The runner
     must report `authority_block` with a single restore action and no internal
     details, and `flowtask authority status --json` must be allowed while every
     other runner tool is denied. Confirm the restore; `flowtask repair` must back
