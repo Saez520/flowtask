@@ -3,7 +3,9 @@
     "name": "flowtask-classifier-hook",
     "path": "flowtask-classifier-hook",
     "kind": "server",
-    "destinations": ["opencode"],
+    "destinations": [
+      "opencode"
+    ],
     "entrypoint": "dist/index.js",
     "deprecated": true,
     "enabled": false
@@ -12,7 +14,9 @@
     "name": "flowtask-classifier-tui",
     "path": "flowtask-classifier-tui",
     "kind": "tui",
-    "destinations": ["opencode"],
+    "destinations": [
+      "opencode"
+    ],
     "entrypoint": "dist/tui.js",
     "deprecated": true,
     "enabled": false
@@ -21,15 +25,24 @@
     "name": "agent-model-selector-opencode",
     "path": "agent-model-selector/packages/opencode",
     "kind": "cli",
-    "destinations": ["opencode"],
+    "destinations": [
+      "opencode"
+    ],
     "entrypoint": "dist/tui.js",
-    "files": ["dist", "package.json", "README.md", "tui.ts"]
+    "files": [
+      "dist",
+      "package.json",
+      "README.md",
+      "tui.ts"
+    ]
   },
   {
     "name": "agent-model-selector-claude-code",
     "path": "agent-model-selector/packages/claude-code",
     "kind": "mod",
-    "destinations": ["claude-code"],
+    "destinations": [
+      "claude-code"
+    ],
     "entrypoint": "hooks/dist/register.js",
     "marketplaceRoot": "agent-model-selector"
   },
@@ -37,16 +50,22 @@
     "name": "flowtask-permission-gate",
     "path": "flowtask-permission-gate",
     "kind": "server",
-    "destinations": ["opencode"],
+    "destinations": [
+      "opencode"
+    ],
     "entrypoint": "dist/index.js",
-    "managedPackage": true
+    "managedPackage": true,
+    "scope": "user"
   },
   {
     "name": "flowtask-context-checkpoint",
     "path": "flowtask-context-checkpoint",
     "kind": "server",
-    "destinations": ["opencode"],
+    "destinations": [
+      "opencode"
+    ],
     "entrypoint": "index.ts",
-    "managedPackage": true
+    "managedPackage": true,
+    "scope": "user"
   }
 ]

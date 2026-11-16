@@ -250,6 +250,7 @@ export function migrateLegacyRootTransactional({ projectDir, targetDir, flowtask
 function managedPluginNames(manifest) {
   const names = new Set();
   for (const entry of Array.isArray(manifest) ? manifest : []) {
+    if (entry?.scope === "user") continue;
     if (entry?.managedPackage === true || entry?.name === CONTEXT_CHECKPOINT_NAME) names.add(entry.name);
   }
   return names;

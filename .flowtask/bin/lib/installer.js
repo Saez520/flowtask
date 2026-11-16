@@ -371,7 +371,8 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
   }
   const pluginEntry = manifest.find((entry) => entry.name === CONTEXT_CHECKPOINT_NAME);
   if (!pluginEntry) throw new Error(`required plugin manifest entry missing: ${CONTEXT_CHECKPOINT_NAME}`);
-  const managedEntries = manifest.filter((entry) => entry.managedPackage === true || entry.name === CONTEXT_CHECKPOINT_NAME);
+  const managedEntries = manifest.filter((entry) =>
+    (entry.managedPackage === true || entry.name === CONTEXT_CHECKPOINT_NAME) && entry.scope !== "user");
   for (const entry of manifest) {
     const resolved = path.resolve(flowtaskDir, "plugins", entry.path);
     const pluginRoot = path.resolve(flowtaskDir, "plugins");
@@ -408,8 +409,7 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
   }
   const ownership = managedOwnership.find((decision) =>
     decision.path === path.join(projectDir, ".opencode", "plugins", CONTEXT_CHECKPOINT_NAME),
-  );
-  if (!ownership) throw new Error(`required plugin manifest entry missing: ${CONTEXT_CHECKPOINT_NAME}`);
+  ) ?? null;
   const classifierOwnership = [];
   for (const name of CLASSIFIER_PLUGIN_NAMES) {
     const classifierDir = path.join(projectDir, ".opencode", "plugins", name);
@@ -1404,6 +1404,7 @@ export function installManifestPlugins(projectDir, manifest, flowtaskDir, prefli
 
   for (const entry of manifest) {
     if (!validateManifestEntry(entry)) continue;
+    if (entry.scope === "user") continue;
     if (!entry.destinations.includes("opencode")) continue;
     if (CLASSIFIER_PLUGIN_NAMES.includes(entry.name) && !isClassifierEnabled(manifest)) continue;
 
@@ -2046,7 +2047,7 @@ async function runUpdate(flowtaskDir, options, report) {
   }
   const installedPluginNames = new Set();
   for (const entry of Array.isArray(manifest) ? manifest : []) {
-    if (!validateManifestEntry(entry) || !entry.destinations.includes("opencode")) continue;
+    if (!validateManifestEntry(entry) || entry.scope === "user" || !entry.destinations.includes("opencode")) continue;
     if (CLASSIFIER_PLUGIN_NAMES.includes(entry.name) && !isClassifierEnabled(manifest)) continue;
     if (!fileExists(path.join(flowtaskDir, "plugins", entry.path))) continue;
     installedPluginNames.add(entry.name);
