@@ -377,6 +377,15 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
     if (resolved !== pluginRoot && !resolved.startsWith(`${pluginRoot}${path.sep}`)) {
       throw new Error(`plugin manifest path escapes plugin root: ${entry.name}`);
     }
+    if (entry.marketplaceRoot !== undefined) {
+      if (typeof entry.marketplaceRoot !== "string" || entry.marketplaceRoot.length === 0) {
+        throw new Error(`plugin manifest marketplaceRoot is invalid: ${entry.name}`);
+      }
+      const marketplaceRoot = path.resolve(pluginRoot, entry.marketplaceRoot);
+      if (marketplaceRoot !== pluginRoot && !marketplaceRoot.startsWith(`${pluginRoot}${path.sep}`)) {
+        throw new Error(`plugin manifest marketplaceRoot escapes plugin root: ${entry.name}`);
+      }
+    }
     const entrypoint = path.resolve(resolved, entry.entrypoint);
     if (entrypoint !== resolved && !entrypoint.startsWith(`${resolved}${path.sep}`)) {
       throw new Error(`plugin manifest entrypoint escapes source: ${entry.name}`);
