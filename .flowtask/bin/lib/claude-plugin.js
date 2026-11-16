@@ -159,9 +159,12 @@ function actionForCommandFailure(cause) {
   return MANUAL_INSTALL_ACTION;
 }
 
+// The plugin manager refuses a ref that names the marketplace together with
+// `--marketplace`, so the install path names the plugin and lets the source
+// add the marketplace when it is missing.
 function installArguments(target) {
   return [
-    "plugin", "install", target.ref,
+    "plugin", "install", target.pluginName,
     "--marketplace", target.marketplaceRoot,
     "--scope", "user", "-y", "--json",
   ];
