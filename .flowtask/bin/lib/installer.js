@@ -12,6 +12,7 @@ import { captureInstallSurfaces, createInstallTransaction, migrateLegacyRootTran
 import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
 import { ensureGlobalFerrisSearch, isFerrisSearchSupported } from "./ferris-search.js";
 import { installClaudeTarget, updateClaudeTarget } from "./claude-install.js";
+import { describeClaudeModResults, installClaudeModPlugins } from "./claude-plugin.js";
 import { hasLayerFiles, preflightClaudeRuntimeConfig } from "./claude-runtime.js";
 import { resolveClaudePaths } from "./claude.js";
 import {
@@ -376,6 +377,15 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
     const pluginRoot = path.resolve(flowtaskDir, "plugins");
     if (resolved !== pluginRoot && !resolved.startsWith(`${pluginRoot}${path.sep}`)) {
       throw new Error(`plugin manifest path escapes plugin root: ${entry.name}`);
+    }
+    if (entry.marketplaceRoot !== undefined) {
+      if (typeof entry.marketplaceRoot !== "string" || entry.marketplaceRoot.length === 0) {
+        throw new Error(`plugin manifest marketplaceRoot is invalid: ${entry.name}`);
+      }
+      const marketplaceRoot = path.resolve(pluginRoot, entry.marketplaceRoot);
+      if (marketplaceRoot !== pluginRoot && !marketplaceRoot.startsWith(`${pluginRoot}${path.sep}`)) {
+        throw new Error(`plugin manifest marketplaceRoot escapes plugin root: ${entry.name}`);
+      }
     }
     const entrypoint = path.resolve(resolved, entry.entrypoint);
     if (entrypoint !== resolved && !entrypoint.startsWith(`${resolved}${path.sep}`)) {
@@ -1871,6 +1881,14 @@ ${COLORS.blue}╔═════════════════════
       logWarn(`Installation finished but some transaction backups could not be removed: ${committed.failures.map(({ path: failedPath }) => failedPath).join(", ")}.`);
     }
 
+    if (claudeSelected) {
+      installClaudeModPlugins({
+        flowtaskDir,
+        manifest: loadPluginManifest(flowtaskDir),
+        claudeUserDir: claudePaths.claudeUserDir,
+      });
+    }
+
     for (const { id, targetSubDir } of nonClaudeTargets) {
       try {
         await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, targetSubDir), flowtaskDir, selectedClis: [id], readline });
@@ -2214,12 +2232,13 @@ async function runUpdate(flowtaskDir, options, report) {
       }
     }
 
+    let claudeUpdate = null;
     if (claudeActive) {
       logStep(2, "Updating claude...");
       const claudeStartedAt = Date.now();
       try {
         const explicitPersona = Boolean(options.persona);
-        const claudeResult = updateClaudeTarget({
+        claudeUpdate = updateClaudeTarget({
           flowtaskDir,
           projectDir,
           personaChoice: explicitPersona ? personaChoice : null,
@@ -2229,13 +2248,13 @@ async function runUpdate(flowtaskDir, options, report) {
           autonomyProfile,
           replaceAutonomy,
         });
-        const claudeRestored = Array.isArray(claudeResult.restoredPaths) ? claudeResult.restoredPaths : [];
+        const claudeRestored = Array.isArray(claudeUpdate.restoredPaths) ? claudeUpdate.restoredPaths : [];
         results.push({
           target: "claude",
           status: "Success",
-          stats: { registered: claudeResult.registered, restored: claudeRestored.length },
+          stats: { registered: claudeUpdate.registered, restored: claudeRestored.length },
         });
-        report.syncRow("claude", `${claudeRestored.length} restored · ${claudeResult.registered === false ? "not registered" : "registered"}`, {
+        report.syncRow("claude", `${claudeRestored.length} restored · ${claudeUpdate.registered === false ? "not registered" : "registered"}`, {
           durationMs: Date.now() - claudeStartedAt,
         });
         report.restored("claude", claudeRestored);
@@ -2269,6 +2288,21 @@ async function runUpdate(flowtaskDir, options, report) {
     const committed = transaction.commit();
     if (!committed.ok) {
       logWarn(`Update finished but some transaction backups could not be removed: ${committed.failures.map(({ path: failedPath }) => failedPath).join(", ")}.`);
+    }
+
+    if (claudeUpdate?.registered === true) {
+      const selectorStartedAt = Date.now();
+      const selectorResults = installClaudeModPlugins({
+        flowtaskDir,
+        manifest,
+        claudeUserDir: claudePaths.claudeUserDir,
+      });
+      if (selectorResults.length > 0) {
+        report.phase("selector", describeClaudeModResults(selectorResults), {
+          status: selectorResults.some(({ status }) => status === "failed") ? "warn" : "ok",
+          durationMs: Date.now() - selectorStartedAt,
+        });
+      }
     }
 
     const graphifyStartedAt = Date.now();

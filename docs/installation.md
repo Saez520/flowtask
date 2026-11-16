@@ -332,6 +332,40 @@ the same dashboard is printed without color or ANSI escape sequences. `--verbose
 prints the per-step detail for every target instead, including the restored
 files.
 
+### Claude Code model selector
+
+When the Claude target is selected during `install` or the project is registered
+with Claude Code, the same run installs the `flowtask-model` plugin from the
+marketplace published by the selector submodule. FlowTask calls the plugin
+manager at user scope with the marketplace root of the pinned submodule, so the
+plugin is added to the user plugin store under `~/.claude` and no file is copied
+into the project. The installed version is the submodule pin declared by the
+manifest entry `marketplaceRoot`, and the entrypoint is validated inside the
+marketplace source before installing.
+
+The manager calls behind that step are the documented ones:
+
+```bash
+claude plugin marketplace add <flowtask-dir>/plugins/agent-model-selector --scope user
+claude plugin install flowtask-model@agent-model-selector --scope user
+claude plugin update flowtask-model@agent-model-selector --scope user
+```
+
+A failure is reported with its cause and next action, does not count as an
+update failure, and leaves the rest of the target intact; the dashboard adds a
+`selector` row in the `warn` state. Running `flowtask update` again retries the
+operation.
+
+A machine without FlowTask installs the same plugin from the public repository:
+
+```bash
+claude plugin marketplace add Saez520/agent-model-selector
+claude plugin install flowtask-model@agent-model-selector
+```
+
+Remove the plugin with
+`claude plugin uninstall flowtask-model@agent-model-selector`.
+
 ### Uninstall
 
 ```bash
@@ -391,6 +425,10 @@ can be selected explicitly with `--target opencode`, `--target vscode`, or
 | Claude Code | user-level `~/.claude/flowtask/` plus `<project>/.claude/flowtask/project.json` | `~/.claude/agents/flowtask-runner.md`, `<project>/.claude/settings.local.json`, `.claude/agents/flowtask-*.md`, `.claude/commands/` |
 | VS Code | `.vscode/flowtask/` | mirror of the VS Code target |
 | Standalone | `.flowtask/` | agents, commands, skills, plugins, and scripts |
+
+The Claude Code model selector plugin is the exception to the per-target layout:
+the plugin manager installs it at user scope and keeps it in the plugins store
+under `~/.claude`, not in the project.
 
 OpenCode is also the only target that offers the web search MCP, installed once
 per user as described in [Web search MCP (OpenCode only)](#web-search-mcp-opencode-only).

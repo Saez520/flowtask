@@ -31,7 +31,7 @@
     "kind": "mod",
     "destinations": ["claude-code"],
     "entrypoint": "hooks/dist/register.js",
-    "files": [".claude-plugin", "hooks/dist", "hooks/hooks.json", "package.json", "README.md"]
+    "marketplaceRoot": "agent-model-selector"
   },
   {
     "name": "flowtask-permission-gate",
