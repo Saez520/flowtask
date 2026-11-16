@@ -253,6 +253,13 @@ function migrateLegacyConfig(paths, removed, preserved, manualReview, { migrate 
         );
         continue;
       }
+      if (JSON.stringify(existingValidated.value) !== JSON.stringify(validated.value)) {
+        preserved.push(source);
+        manualReview.push(
+          `${destination} already defines a different ${layer.name} layer; the legacy copy at ${source} was preserved.`,
+        );
+        continue;
+      }
     }
 
     fs.rmSync(source, { force: true });
@@ -487,6 +494,28 @@ function removeLegacyProjectMcp(paths, flowtaskDir, removed, preserved, manualRe
     writeFileAtomic(mcpPath, JSON.stringify(next, null, 2));
   }
   removed.push(`${mcpPath}#mcpServers.engram`);
+}
+
+/**
+ * Move the valid layers of a legacy per-project Claude installation into the
+ * user configuration before the installer writes its defaults. The full
+ * project cleanup still runs later; this only protects the user's choices
+ * from being replaced by installation defaults. An existing user layer wins
+ * and a different legacy value is preserved for manual review.
+ */
+export function migrateLegacyClaudeProjectConfig(projectDir) {
+  const paths = resolveClaudePaths(projectDir);
+  const removed = [];
+  const preserved = [];
+  const manualReview = [];
+  const configDir = path.join(paths.projectFlowtaskDir, "config");
+  if (!fileExists(configDir)) return { removed, preserved, manualReview };
+
+  migrateLegacyConfig(paths, removed, preserved, manualReview);
+  if (manualReview.length > 0) {
+    for (const message of manualReview) logWarn(message);
+  }
+  return { removed, preserved, manualReview };
 }
 
 /**

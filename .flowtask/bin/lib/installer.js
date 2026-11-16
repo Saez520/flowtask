@@ -11,7 +11,7 @@ import { copyWithProgress, copyDirectoryDelta, pruneDirectoryExtras, verifyDirec
 import { captureInstallSurfaces, createInstallTransaction, migrateLegacyRootTransactional } from "./install-transaction.js";
 import { registerPluginArrayEntry } from "./opencode.js";
 import { ensureGlobalFerrisSearch } from "./ferris-search.js";
-import { installClaudeTarget, installClaudeUserSurface, updateClaudeTarget, uninstallClaudeGlobal, uninstallClaudeProject } from "./claude-install.js";
+import { installClaudeTarget, installClaudeUserSurface, updateClaudeTarget, uninstallClaudeGlobal, uninstallClaudeProject, migrateLegacyClaudeProjectConfig } from "./claude-install.js";
 import { describeClaudeModResults, installClaudeModPlugins } from "./claude-plugin.js";
 import { resolveClaudePaths } from "./claude.js";
 import {
@@ -1710,6 +1710,9 @@ ${COLORS.blue}╔═════════════════════
     const isSourceDir = path.resolve(rootFlowtask) === path.resolve(flowtaskDir);
 
     const userRuntimePaths = resolveUserRuntimePaths();
+    // Legacy project layers move before any user default is written; otherwise
+    // the destination always exists and the user's choice would be discarded.
+    if (claudeSelected) migrateLegacyClaudeProjectConfig(projectDir);
     const userLayerPreflight = preflightUserRuntimeConfig(userRuntimePaths.configDir);
     const claudePaths = resolveClaudePaths(projectDir);
 
@@ -2077,6 +2080,9 @@ async function runUpdate(flowtaskDir, options, report) {
     ? await prepareInstallation(flowtaskDir, projectDir, "update", { targets: nonClaudeTargets, worktreeManager }) : null;
 
   const userRuntimePaths = resolveUserRuntimePaths();
+  // Legacy project layers move before any user default is written; otherwise
+  // the destination always exists and the user's choice would be discarded.
+  if (claudeActive) migrateLegacyClaudeProjectConfig(projectDir);
   preflightUserRuntimeConfig(userRuntimePaths.configDir);
 
   const autonomyProfile = normalizeAutonomyChoice(options.autonomy);
