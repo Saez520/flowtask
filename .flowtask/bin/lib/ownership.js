@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import { copyDirectoryDelta, verifyDirectoryMirror } from "./copy.js";
 
 export const CONTEXT_CHECKPOINT_NAME = "flowtask-context-checkpoint";
-export const CONTEXT_CHECKPOINT_SHA = "a863ee144a088428b8078583f13bf48ce13d7631";
+export const CONTEXT_CHECKPOINT_SHA = "567d39571881a8caef2cdc0e55d094e718547505";
 const OWNER_MARKER_FILE = ".flowtask-plugin-owner.json";
 export function ownerMarkerFor(pluginName, { source = "submodule", sourceCommit = CONTEXT_CHECKPOINT_SHA } = {}) {
   return {
