@@ -77,6 +77,50 @@ export function classifyGlobalManagerOwnership(managerDir) {
   return { state: OWNERSHIP.MANAGED, path: managerDir, marker, reason: null };
 }
 
+/**
+ * Remove the global manager only when FlowTask owns it. Files outside the
+ * ownership manifest are preserved so a hand-edited directory is never lost.
+ */
+export function removeGlobalWorktreeManager(managerDir) {
+  const ownership = classifyGlobalManagerOwnership(managerDir);
+  if (ownership.state === OWNERSHIP.ABSENT) {
+    return { status: "absent", removed: [], preserved: [] };
+  }
+  if (ownership.state !== OWNERSHIP.MANAGED) {
+    return { status: "preserved", removed: [], preserved: [managerDir], reason: ownership.reason };
+  }
+
+  const removed = [];
+  const preserved = [];
+  const managed = new Set(ownership.marker.files);
+  walkDir(managerDir, (relative, absolute) => {
+    if (relative === WORKTREE_MANAGER_OWNER_FILE) return;
+    if (!managed.has(relative)) {
+      preserved.push(absolute);
+      return;
+    }
+    fs.rmSync(absolute, { force: true });
+    removed.push(absolute);
+  });
+
+  const markerPath = path.join(managerDir, WORKTREE_MANAGER_OWNER_FILE);
+  if (fs.existsSync(markerPath)) {
+    fs.rmSync(markerPath, { force: true });
+    removed.push(markerPath);
+  }
+  removeEmptyDirectories(managerDir);
+
+  return { status: "removed", removed, preserved };
+}
+
+function removeEmptyDirectories(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) removeEmptyDirectories(path.join(dir, entry.name));
+  }
+  if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+}
+
 function walkDir(dir, cb, base = dir) {
   if (!fs.existsSync(dir)) return;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

@@ -269,9 +269,7 @@ export function removeProjectRegistration(projectDir, target, { runtimeRoot = nu
     for (const entry of remaining) preserved.push(path.join(registrationDir, entry));
   }
 
-  const exclude = removeProjectExclude(projectDir, {
-    registrationDir: path.relative(projectDir, registrationDir).split(path.sep).join("/"),
-  });
+  const exclude = removeProjectExclude(projectDir);
   if (!exclude.ok) preserved.push(`${exclude.path ?? "git exclude"}#FlowTask block`);
   const indexRoot = runtimeRoot ?? resolveUserRuntimePaths().runtimeRoot;
   const reconcile = reconcileProjectsIndex(indexRoot, { mode: "uninstall" });
@@ -399,8 +397,8 @@ export function updateProjectExclude(projectDir, { registrationDir = null, files
   return { ok: true, changed: true, path: context.excludePath };
 }
 
-/** Remove the FlowTask block from `.git/info/exclude`, preserving the rest. */
-export function removeProjectExclude(projectDir, { registrationDir = null } = {}) {
+/** Remove the FlowTask-managed block from `.git/info/exclude`, preserving the rest. */
+export function removeProjectExclude(projectDir) {
   const context = repoContext(projectDir);
   if (!context.ok) return { ok: false, reason: context.reason };
   if (!fs.existsSync(context.excludePath)) return { ok: true, changed: false };
@@ -410,18 +408,9 @@ export function removeProjectExclude(projectDir, { registrationDir = null } = {}
   const end = current.indexOf(EXCLUDE_END);
   if (start === -1 || end === -1 || end < start) return { ok: true, changed: false };
 
-  const entries = current
-    .slice(start + EXCLUDE_START.length, end)
-    .split("\n")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  const owned = registrationDir ? `${registrationDir.replace(/\/$/, "")}/` : null;
-  const remaining = owned ? entries.filter((entry) => entry !== owned) : [];
-
   const prefix = current.slice(0, start).trimEnd();
   const suffix = current.slice(end + EXCLUDE_END.length).replace(/^\n*/, "");
-  const block = remaining.length > 0 ? [EXCLUDE_START, ...remaining, EXCLUDE_END].join("\n") : "";
-  const next = [prefix, block, suffix].filter((part) => part !== "").join("\n\n");
+  const next = [prefix, suffix].filter((part) => part !== "").join("\n\n");
   writeFileAtomic(context.excludePath, next === "" ? "" : `${next}\n`);
   return { ok: true, changed: true };
 }

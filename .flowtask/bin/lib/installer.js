@@ -53,7 +53,7 @@ export {
   injectPersonaIntoRunnerContent,
 } from "./runner-content.js";
 import { showInteractiveSelector } from "./ui.js";
-import { coordinateGraphify } from "./graphify.js";
+import { coordinateGraphify, globalStatePath } from "./graphify.js";
 import {
   createUpdateReport,
   describeGraphifyPhase,
@@ -64,7 +64,7 @@ import { CONTEXT_CHECKPOINT_NAME, CONTEXT_CHECKPOINT_SHA, classifyOwnership, rep
 import { resolveGlobalConfigDir } from "./global-paths.js";
 import { globalWorktreeManagerDir } from "./global-paths.js";
 import { assertRunnerCanon } from "./runner-flows.js";
-import { ensureGlobalWorktreeManager, formatWorktreeManagerVersionNotice } from "./worktree-manager-runtime.js";
+import { ensureGlobalWorktreeManager, formatWorktreeManagerVersionNotice, removeGlobalWorktreeManager } from "./worktree-manager-runtime.js";
 import { downloadWorktreeManagerPackage } from "./worktree-manager-package.js";
 import { resolvePythonRuntime } from "./python-runtime.js";
 import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
@@ -2571,6 +2571,17 @@ export function uninstallGlobal({ flowtaskDir, projectDir }) {
   }
   const plugins = removeUserPlugins({ runtimeRoot });
   preserved.push(...plugins.preserved);
+
+  // The global manager and Graphify state live in the runtime root; remove
+  // the owned copies so the runtime directory can be retired completely.
+  const worktreeManager = removeGlobalWorktreeManager(globalWorktreeManagerDir());
+  removed.push(...worktreeManager.removed);
+  preserved.push(...worktreeManager.preserved);
+  const globalGraphify = globalStatePath();
+  if (fileExists(globalGraphify)) {
+    fs.rmSync(globalGraphify, { force: true });
+    removed.push(globalGraphify);
+  }
 
   const runtime = removeUserRuntime(runtimeRoot);
   removed.push(...runtime.removed);
