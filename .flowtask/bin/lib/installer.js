@@ -25,13 +25,16 @@ import { installUserPlugins, removeUserPlugins } from "./user-plugins.js";
 import { ensureOpencodeGlobalSurface, removeOpencodeGlobalSurface } from "./opencode-global.js";
 import {
   migrateLegacyOpencodeProject,
+  migrateLegacyTargetProject,
   registerOpencodeProject,
   removeOpencodeProject,
 } from "./opencode-project.js";
 import {
   readProjectRegistration,
   readProjectsIndex,
+  registerTargetProject,
   removeProjectRegistration,
+  resolveRegistrationDir,
 } from "./project-registration.js";
 import {
   AUTONOMY_END_MARKER,
@@ -484,21 +487,9 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
 export const ASSETS = {
   opencode: [],
   claude: [],
-  standalone: [
-    { src: "agents",   dest: "agents" },
-    { src: "commands", dest: "commands" },
-    { src: "skills",   dest: "skills" },
-    { src: "plugins",  dest: "plugins" },
-    { src: "scripts",  dest: "scripts" },
-  ],
+  standalone: [],
   // vscode mirrors standalone for now
-  vscode: [
-    { src: "agents",   dest: "agents" },
-    { src: "commands", dest: "commands" },
-    { src: "skills",   dest: "skills" },
-    { src: "plugins",  dest: "plugins" },
-    { src: "scripts",  dest: "scripts" },
-  ],
+  vscode: [],
 };
 
 export const CLASSIFIER_PLUGIN_NAMES = [
@@ -693,13 +684,6 @@ export function injectAutonomyIntoRunner(targetDir, descriptor) {
   const content = fs.readFileSync(runnerPath, "utf8");
   fs.writeFileSync(runnerPath, injectAutonomyIntoRunnerContent(content, descriptor), "utf8");
   logSuccess(`Autonomy injected into runner.md of ${targetDir}.`);
-}
-
-/** Autonomy descriptor resolved by layer synchronization. */
-function autonomyDescriptorFrom(targetConfig) {
-  const layer = targetConfig && targetConfig.autonomy;
-  if (!layer || layer.status !== "valid" || !layer.value) return null;
-  return { profile: layer.value.profile, source: layer.source };
 }
 
 function configureRunnerScripts(targetDir, targetSubDir) {
@@ -1805,7 +1789,8 @@ ${COLORS.blue}╔═════════════════════
 
         // ── Step 3: Migrate legacy root .flowtask/ if present ────────────────
         logStep(3, "Checking existing installation...");
-        if (id !== "standalone" && id !== "opencode" && !isSourceDir && fileExists(rootFlowtask)) {
+        const standaloneRegistered = readProjectRegistration(projectDir, "standalone").status === "active";
+        if (id === "vscode" && !isSourceDir && !standaloneRegistered && fileExists(rootFlowtask)) {
           logWarn(`Found root .flowtask/ — moving contents to ${targetSubDir}...`);
           transaction.addJournal(migrateLegacyRootTransactional({ projectDir, targetDir: TARGET_DIR, flowtaskDir }));
         }
@@ -1813,6 +1798,13 @@ ${COLORS.blue}╔═════════════════════
           migrateLegacyOpencodeProject({
             projectDir,
             flowtaskDir,
+            runtimeRoot: userRuntimePaths.runtimeRoot,
+          });
+        } else if (path.resolve(TARGET_DIR) !== path.resolve(flowtaskDir)) {
+          migrateLegacyTargetProject({
+            projectDir,
+            flowtaskDir,
+            target: id,
             runtimeRoot: userRuntimePaths.runtimeRoot,
           });
         }
@@ -1835,7 +1827,6 @@ ${COLORS.blue}╔═════════════════════
         const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
           userConfig,
         });
-        const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
 
         // OpenCode: the engine lives in the user runtime; the project keeps
         // only its registration and the generated review configuration.
@@ -1858,18 +1849,13 @@ ${COLORS.blue}╔═════════════════════
           });
         }
 
-        // ── Inject persona and autonomy into runner.md ───────────────────
-        if (id !== "opencode") {
-          injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
-          if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
-        }
-
-        // ── Step 6: Write installation marker ───────────────────────────────
-        if (id !== "opencode") {
-          fs.writeFileSync(
-            path.join(TARGET_DIR, ".installation-method"),
-            JSON.stringify({ method: "unified-installation-v2", target: id, timestamp: new Date().toISOString() }, null, 2)
-          );
+        if (id !== "opencode" && path.resolve(TARGET_DIR) !== path.resolve(flowtaskDir)) {
+          registerTargetProject({
+            projectDir,
+            target: id,
+            runtimeManifest: userRuntime.manifest,
+            runtimeRoot: userRuntimePaths.runtimeRoot,
+          });
         }
 
         results.push({ target: id, status: "Success" });
@@ -2224,6 +2210,13 @@ async function runUpdate(flowtaskDir, options, report) {
             runtimeRoot: userRuntimePaths.runtimeRoot,
           });
           registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
+        } else {
+          migrateLegacyTargetProject({
+            projectDir,
+            flowtaskDir,
+            target: id,
+            runtimeRoot: userRuntimePaths.runtimeRoot,
+          });
         }
 
         logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
@@ -2233,7 +2226,6 @@ async function runUpdate(flowtaskDir, options, report) {
         const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
           userConfig,
         });
-        const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
 
         // ── Re-install plugins from manifest (OpenCode only) ─────────────────
         if (id === "opencode") {
@@ -2275,24 +2267,13 @@ async function runUpdate(flowtaskDir, options, report) {
         if (targetConfig.review?.restored) classification.restoredPaths.add(toProjectPath(projectDir, targetConfig.review.path));
         const restoredPaths = classification.restoredPaths;
 
-        // ── Inject persona and autonomy into runner.md ───────────────────
-        if (id !== "opencode") {
-          injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
-          if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
-        }
-
-        if (id !== "opencode") {
-          fs.writeFileSync(
-            path.join(TARGET_DIR, ".installation-method"),
-            JSON.stringify({
-              method: "unified-installation-v2",
-              target: id,
-              updatedAt: new Date().toISOString(),
-              previousUpdate: previousMethod?.updatedAt || previousMethod?.timestamp || null,
-              filesUpdated: totalCopied,
-              filesSkipped: totalSkipped,
-            }, null, 2)
-          );
+        if (id !== "opencode" && path.resolve(TARGET_DIR) !== path.resolve(flowtaskDir)) {
+          registerTargetProject({
+            projectDir,
+            target: id,
+            runtimeManifest: userRuntime.manifest,
+            runtimeRoot: userRuntimePaths.runtimeRoot,
+          });
         }
 
         const restored = [...restoredPaths];
@@ -2481,6 +2462,20 @@ export function uninstallProject({ flowtaskDir, projectDir }) {
     try {
       const registration = readProjectRegistration(projectDir, target);
       if (registration.status === "absent") continue;
+      const review = path.join(resolveRegistrationDir(projectDir, target), "config", "review.json");
+      if (fileExists(review)) {
+        fs.rmSync(review, { force: true });
+        removed.push(review);
+        try {
+          const configDir = path.dirname(review);
+          if (fs.existsSync(configDir) && fs.readdirSync(configDir).length === 0) {
+            fs.rmdirSync(configDir);
+            removed.push(configDir);
+          }
+        } catch {
+          // Left in place for the report.
+        }
+      }
       const removal = removeProjectRegistration(projectDir, target);
       removed.push(...removal.removed);
       preserved.push(...removal.preserved);

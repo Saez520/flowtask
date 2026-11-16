@@ -161,8 +161,7 @@ export function writeProjectRegistration({
   extra = {},
   files = [],
   runtimeRoot = null,
-} = {}) {
-  assertTarget(target);
+} = {}) {  assertTarget(target);
   const registrationDir = resolveRegistrationDir(projectDir, target);
   const registrationPath = resolveRegistrationPath(projectDir, target);
   const existingRead = readProjectRegistration(projectDir, target);
@@ -212,6 +211,19 @@ export function writeProjectRegistration({
     existing: existingRead.status,
     index: reconcile.ok ? reconcile.index : null,
   };
+}
+
+/**
+ * Register one destination with the shared minimal record. Used by the
+ * destinations that do not need generated engine artifacts.
+ */
+export function registerTargetProject({ projectDir, target, runtimeManifest, runtimeRoot = null }) {
+  return writeProjectRegistration({
+    projectDir,
+    target,
+    runtimeVersion: runtimeManifest.version,
+    runtimeRoot,
+  });
 }
 
 /**

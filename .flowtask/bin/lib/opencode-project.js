@@ -8,6 +8,7 @@ import {
 } from "./ownership.js";
 import {
   removeProjectRegistration,
+  resolveRegistrationDir,
   writeProjectRegistration,
 } from "./project-registration.js";
 import {
@@ -250,8 +251,8 @@ function hasLegacyOpencodeArtifacts(projectDir, flowtaskDir, markerPath) {
   return false;
 }
 
-function migrateLegacyLayers(projectDir, runtimeConfigDir, removed, preserved, manualReview, { removeReview = false } = {}) {
-  const legacyConfigDir = path.join(projectDir, ".opencode", "flowtask", "config");
+function migrateLegacyLayers(projectDir, runtimeConfigDir, removed, preserved, manualReview, { removeReview = false, configDir = null } = {}) {
+  const legacyConfigDir = configDir ?? path.join(projectDir, ".opencode", "flowtask", "config");
   if (!fileExists(legacyConfigDir)) return;
   fs.mkdirSync(runtimeConfigDir, { recursive: true });
   for (const layer of LEGACY_LAYERS) {
@@ -314,11 +315,8 @@ function removeCanonicalTree(sourceDir, destinationDir, removed, preserved) {
   pruneEmptyDirectories(destinationDir);
 }
 
-function removeManagedPluginDirectories(projectDir, config, removed, preserved) {
-  for (const pluginsDir of [
-    path.join(projectDir, ".opencode", "plugins"),
-    path.join(projectDir, ".opencode", "flowtask", "plugins"),
-  ]) {
+function removeManagedPluginDirectories(pluginsDirs, config, removed, preserved) {
+  for (const pluginsDir of pluginsDirs) {
     if (!fileExists(pluginsDir)) continue;
     for (const entry of fs.readdirSync(pluginsDir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
@@ -415,7 +413,15 @@ export function migrateLegacyOpencodeProject({ projectDir, flowtaskDir, runtimeR
   );
 
   const legacyConfig = readJson(legacyConfigPath);
-  removeManagedPluginDirectories(projectDir, legacyConfig.ok ? legacyConfig.value : {}, removed, preserved);
+  removeManagedPluginDirectories(
+    [
+      path.join(projectDir, ".opencode", "plugins"),
+      path.join(flowtaskDirProject, "plugins"),
+    ],
+    legacyConfig.ok ? legacyConfig.value : {},
+    removed,
+    preserved,
+  );
 
   const projectSkillsDir = path.join(projectDir, ".opencode", "skills");
   if (fileExists(projectSkillsDir)) {
@@ -458,6 +464,72 @@ export function migrateLegacyOpencodeProject({ projectDir, flowtaskDir, runtimeR
   }
   if (removed.length > 0 || preserved.length > 0) {
     logSuccess(`Legacy OpenCode installation migrated: ${removed.length} artifact(s) removed, ${preserved.length} preserved.`);
+  }
+  return { migrated: true, removed, preserved, manualReview };
+}
+
+/**
+ * Move a legacy VS Code or standalone installation to the global runtime.
+ * Only demonstrably FlowTask-owned files are removed; unrelated files are
+ * preserved and reported.
+ */
+export function migrateLegacyTargetProject({ projectDir, flowtaskDir, target, runtimeRoot = null }) {
+  const root = runtimeRoot ?? resolveUserRuntimePaths().runtimeRoot;
+  const runtimePaths = resolveUserRuntimePaths({ runtimeRoot: root });
+  const targetDir = resolveRegistrationDir(projectDir, target);
+  const markerPath = path.join(targetDir, ".installation-method");
+  const removed = [];
+  const preserved = [];
+  const manualReview = [];
+
+  const legacyLayerFiles = LEGACY_LAYERS.some((layer) =>
+    fileExists(path.join(targetDir, "config", layer.file)));
+  const hasOwned = fileExists(markerPath)
+    || legacyLayerFiles
+    || ["agents", "commands", "skills", "scripts"].some((directory) =>
+      containsCanonicalFile(path.join(flowtaskDir, directory), path.join(targetDir, directory)))
+    || FLOWTASK_MANAGED_PLUGINS.some((name) =>
+      fileExists(path.join(targetDir, "plugins", name, ".flowtask-plugin-owner.json")));
+  if (!hasOwned) return { migrated: false, removed, preserved, manualReview };
+
+  migrateLegacyLayers(
+    projectDir,
+    runtimePaths.configDir,
+    removed,
+    preserved,
+    manualReview,
+    {
+      removeReview: fileExists(markerPath) || legacyLayerFiles,
+      configDir: path.join(targetDir, "config"),
+    },
+  );
+
+  for (const directory of ["agents", "commands", "skills", "scripts"]) {
+    removeCanonicalTree(
+      path.join(flowtaskDir, directory),
+      path.join(targetDir, directory),
+      removed,
+      preserved,
+    );
+  }
+  removeManagedPluginDirectories(
+    [path.join(targetDir, "plugins")],
+    {},
+    removed,
+    preserved,
+  );
+
+  if (fileExists(markerPath)) {
+    fs.rmSync(markerPath, { force: true });
+    removed.push(markerPath);
+  }
+  pruneEmptyDirectories(targetDir);
+
+  if (manualReview.length > 0) {
+    for (const message of manualReview) logWarn(message);
+  }
+  if (removed.length > 0 || preserved.length > 0) {
+    logSuccess(`Legacy ${target} installation migrated: ${removed.length} artifact(s) removed, ${preserved.length} preserved.`);
   }
   return { migrated: true, removed, preserved, manualReview };
 }
