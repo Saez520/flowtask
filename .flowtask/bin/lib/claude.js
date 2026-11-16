@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import crypto from "crypto";
 import { logSuccess, logError, fileExists } from "./logger.js";
+import { resolveGlobalConfigDir } from "./global-paths.js";
 import {
   assertEveryDeclaredSkillHasPath,
   assertNoSkillCalls,
@@ -20,8 +21,8 @@ export { buildSkillIndex, buildStartupBlock, extractSkillReferences } from "./ru
 
 // ─── Claude paths ─────────────────────────────────────────────────────────────
 
-/** Schema of the runtime manifest written at the user-level runtime root. */
-export const CLAUDE_RUNTIME_SCHEMA = 1;
+/** Schema of the user-level runtime manifest written by every target. */
+export const CLAUDE_RUNTIME_SCHEMA = 2;
 /** Schema of the per-project registration file. */
 export const PROJECT_REGISTRY_SCHEMA = 1;
 /** Schema of the user-level project index. */
@@ -32,17 +33,18 @@ export const FLOWTASK_MANAGED_MARKER = "<!-- FLOWTASK:MANAGED v1 -->";
 /**
  * Single resolver for every Claude Code path.
  *
- * The runtime lives once per operating-system account under the Claude user
- * directory; the project only receives a registration and the artifacts Claude
- * Code discovers per project. `CLAUDE_CONFIG_DIR` takes precedence over the
- * home directory, so isolated smoke tests can redirect the whole layout.
+ * The runtime lives once per operating-system account under the global
+ * configuration directory; the project only receives a registration and the
+ * artifacts Claude Code discovers per project. `CLAUDE_CONFIG_DIR` takes
+ * precedence over the home directory for the Claude-specific surfaces, so
+ * isolated smoke tests can redirect the whole layout.
  */
 export function resolveClaudePaths(projectDir = process.cwd(), options = {}) {
   const homeDir = options.homeDir ?? os.homedir();
   const claudeUserDir =
     options.claudeUserDir ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(homeDir, ".claude");
 
-  const runtimeRoot = path.join(claudeUserDir, "flowtask");
+  const runtimeRoot = options.runtimeRoot ?? resolveGlobalConfigDir();
   const projectClaudeDir = path.join(projectDir, ".claude");
   const projectFlowtaskDir = path.join(projectClaudeDir, "flowtask");
 
@@ -71,12 +73,17 @@ export function resolveClaudePaths(projectDir = process.cwd(), options = {}) {
 }
 
 /**
- * Resolve the paths inside the active payload directory.
- * `manifest` may be the runtime manifest or a payload id string.
+ * Resolve the paths inside a published payload directory.
+ * `manifest` may be the runtime manifest or a payload id string; with the
+ * schema 2 manifest, `variant` selects which payload is active.
  */
-export function resolveActiveRuntimePaths(runtimeRoot, manifest) {
-  const payloadId = typeof manifest === "string" ? manifest : manifest?.payloadId;
-  if (!payloadId) throw new Error("runtime manifest does not declare a payloadId");
+export function resolveActiveRuntimePaths(runtimeRoot, manifest, variant = "claude") {
+  const payloadId = typeof manifest === "string"
+    ? manifest
+    : manifest?.payloads
+      ? manifest.payloads[variant]?.payloadId
+      : manifest?.payloadId;
+  if (!payloadId) throw new Error(`runtime manifest does not declare a ${variant} payloadId`);
   const payloadDir = path.join(runtimeRoot, "versions", payloadId);
   return {
     payloadId,
@@ -85,6 +92,8 @@ export function resolveActiveRuntimePaths(runtimeRoot, manifest) {
     sessionStartPath: path.join(payloadDir, "session-start.md"),
     skillsDir: path.join(payloadDir, "skills"),
     scriptsDir: path.join(payloadDir, "scripts"),
+    agentsDir: path.join(payloadDir, "agents"),
+    commandsDir: path.join(payloadDir, "commands"),
     binLibDir: path.join(payloadDir, "bin", "lib"),
   };
 }

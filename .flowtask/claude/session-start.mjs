@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const RUNTIME_SCHEMA = 1;
+const RUNTIME_SCHEMA = 2;
 const REGISTRY_SCHEMA = 1;
 const INDEX_SCHEMA = 1;
 const SESSION_START_LIMIT_BYTES = 10000;
@@ -68,11 +68,20 @@ function readRuntime() {
 
   const parsed = readJson(manifestPath);
   if (!parsed.ok || parsed.value?.schema !== RUNTIME_SCHEMA) return null;
-  if (typeof parsed.value.payloadId !== "string" || !parsed.value.payloadId) return null;
+  const claudePayload = parsed.value.payloads?.claude;
+  if (
+    !claudePayload ||
+    typeof claudePayload.payloadId !== "string" ||
+    !claudePayload.payloadId ||
+    !Array.isArray(claudePayload.files)
+  ) {
+    return null;
+  }
 
-  const payloadDir = path.join(runtimeRoot, "versions", parsed.value.payloadId);
+  const payloadDir = path.join(runtimeRoot, "versions", claudePayload.payloadId);
   const sessionStartPath = path.join(payloadDir, "session-start.md");
   if (!fs.existsSync(payloadDir) || !fs.existsSync(sessionStartPath)) return null;
+  if (!claudePayload.files.some((file) => file?.path === "session-start.md")) return null;
   return { manifest: parsed.value, sessionStartPath };
 }
 
