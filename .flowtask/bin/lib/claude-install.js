@@ -667,6 +667,32 @@ function collectRestoredPaths({ runtime, runnerAgent, materialized }) {
 }
 
 /**
+ * Install or refresh only the user-level Claude surfaces: runtime, hook,
+ * runner agent and user MCP registration. No project registration is written.
+ */
+export function installClaudeUserSurface({
+  flowtaskDir,
+  projectDir,
+  personaChoice = null,
+  personaContent = undefined,
+  options = {},
+  autonomyProfile = null,
+  replaceAutonomy = false,
+  userConfig = null,
+}) {
+  return ensureGlobalSurfaces({
+    flowtaskDir,
+    projectDir,
+    personaChoice,
+    personaContent,
+    autonomyProfile,
+    replaceAutonomy,
+    allowEngramTools: options.allowEngramTools === true,
+    userConfig,
+  });
+}
+
+/**
  * Install or refresh the user-level runtime, the SessionStart hook, the user
  * MCP registration, and the current project registration.
  */
@@ -748,7 +774,7 @@ export function uninstallClaudeProject({ projectDir, runtimeRoot, flowtaskDir = 
  * added, and every project listed in the index. It stops before deleting the
  * runtime when a global surface or a project cannot be cleaned.
  */
-export function uninstallClaudeGlobal({ runtimeRoot, claudeUserDir, flowtaskDir = null }) {
+export function uninstallClaudeGlobal({ runtimeRoot, claudeUserDir, flowtaskDir = null, removeRuntime = true }) {
   const manualReview = [];
   const manifestPath = path.join(runtimeRoot, "runtime.json");
   const manifestExists = fileExists(manifestPath);
@@ -869,7 +895,9 @@ export function uninstallClaudeGlobal({ runtimeRoot, claudeUserDir, flowtaskDir 
     }
   }
 
-  const runtimeRemoval = removeClaudeRuntime(runtimeRoot);
+  const runtimeRemoval = removeRuntime
+    ? removeClaudeRuntime(runtimeRoot)
+    : { removed: [], preserved: [] };
   return {
     ok: true,
     mcp,
