@@ -187,23 +187,25 @@ describe("Claude user-level runtime contract", () => {
     try {
       fs.mkdirSync(projectDir, { recursive: true });
 
-      const paths = resolveClaudePaths(projectDir, { claudeUserDir });
+      const runtimeRoot = path.join(root, "xdg", "flowtask");
+      const paths = resolveClaudePaths(projectDir, { claudeUserDir, runtimeRoot });
 
       assert.equal(paths.claudeUserDir, claudeUserDir);
-      assert.equal(paths.runtimeRoot, path.join(claudeUserDir, "flowtask"));
-      assert.equal(paths.runtimeBinDir, path.join(claudeUserDir, "flowtask", "bin"));
-      assert.equal(paths.runtimeManifestPath, path.join(claudeUserDir, "flowtask", "runtime.json"));
-      assert.equal(paths.runtimeConfigDir, path.join(claudeUserDir, "flowtask", "config"));
-      assert.equal(paths.runtimeVersionsDir, path.join(claudeUserDir, "flowtask", "versions"));
-      assert.equal(paths.projectsIndexPath, path.join(claudeUserDir, "flowtask", "projects.json"));
-      assert.equal(paths.hookScriptPath, path.join(claudeUserDir, "flowtask", "bin", "session-start.mjs"));
+      assert.equal(paths.runtimeRoot, runtimeRoot, "the runtime lives once per user, not under the Claude directory");
+      assert.notEqual(paths.runtimeRoot, path.join(claudeUserDir, "flowtask"));
+      assert.equal(paths.runtimeBinDir, path.join(runtimeRoot, "bin"));
+      assert.equal(paths.runtimeManifestPath, path.join(runtimeRoot, "runtime.json"));
+      assert.equal(paths.runtimeConfigDir, path.join(runtimeRoot, "config"));
+      assert.equal(paths.runtimeVersionsDir, path.join(runtimeRoot, "versions"));
+      assert.equal(paths.projectsIndexPath, path.join(runtimeRoot, "projects.json"));
+      assert.equal(paths.hookScriptPath, path.join(runtimeRoot, "bin", "session-start.mjs"));
       assert.equal(paths.registryPath, path.join(projectDir, ".claude", "flowtask", "project.json"));
       assert.equal(paths.projectClaudeDir, path.join(projectDir, ".claude"));
       assert.equal(paths.projectSettingsPath, path.join(projectDir, ".claude", "settings.json"));
       assert.equal(paths.projectMcpPath, path.join(projectDir, ".mcp.json"));
 
       const active = resolveActiveRuntimePaths(paths.runtimeRoot, { payloadId: "1.2.3-abcdef123456" });
-      assert.equal(active.payloadDir, path.join(claudeUserDir, "flowtask", "versions", "1.2.3-abcdef123456"));
+      assert.equal(active.payloadDir, path.join(runtimeRoot, "versions", "1.2.3-abcdef123456"));
       assert.equal(active.runnerPath, path.join(active.payloadDir, "runner.md"));
       assert.equal(active.sessionStartPath, path.join(active.payloadDir, "session-start.md"));
       assert.equal(active.skillsDir, path.join(active.payloadDir, "skills"));
@@ -448,11 +450,14 @@ describe("Claude user-level runtime contract", () => {
   it("resolves generated skill paths inside the active runtime payload", () => {
     const root = makeTempDir();
     const claudeUserDir = path.join(root, "claude-user");
+    const xdgConfigHome = path.join(root, "xdg");
+    const runtimeRoot = path.join(xdgConfigHome, "flowtask");
     const payloadId = "1.0.0-abc123";
-    const payloadSkillsDir = path.join(claudeUserDir, "flowtask", "versions", payloadId, "skills");
+    const payloadSkillsDir = path.join(runtimeRoot, "versions", payloadId, "skills");
     const flowtaskDir = path.join(root, "flowtask");
     const projectDir = path.join(root, "project");
     const previousConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    const previousXdgConfigHome = process.env.XDG_CONFIG_HOME;
     try {
       const skillDir = path.join(payloadSkillsDir, "alpha-skill");
       fs.mkdirSync(path.join(skillDir, "scripts"), { recursive: true });
@@ -469,11 +474,12 @@ describe("Claude user-level runtime contract", () => {
       );
 
       process.env.CLAUDE_CONFIG_DIR = claudeUserDir;
+      process.env.XDG_CONFIG_HOME = xdgConfigHome;
       materializeClaudeProject({
         projectDir,
         flowtaskDir,
         version: "1.0.0",
-        runtimeManifest: { payloadId },
+        runtimeManifest: { schema: 2, payloads: { claude: { payloadId, files: [] } } },
       });
 
       const content = fs.readFileSync(path.join(projectDir, ".claude", "agents", "flowtask-caller.md"), "utf8");
@@ -494,6 +500,8 @@ describe("Claude user-level runtime contract", () => {
     } finally {
       if (previousConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
       else process.env.CLAUDE_CONFIG_DIR = previousConfigDir;
+      if (previousXdgConfigHome === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = previousXdgConfigHome;
       cleanupDir(root);
     }
   });
