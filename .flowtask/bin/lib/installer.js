@@ -9,22 +9,37 @@ import {
 } from "./logger.js";
 import { copyWithProgress, copyDirectoryDelta, pruneDirectoryExtras, verifyDirectoryMirror } from "./copy.js";
 import { captureInstallSurfaces, createInstallTransaction, migrateLegacyRootTransactional } from "./install-transaction.js";
-import { mergeOpencodeConfig, registerPluginArrayEntry } from "./opencode.js";
-import { ensureGlobalFerrisSearch, isFerrisSearchSupported } from "./ferris-search.js";
-import { installClaudeTarget, updateClaudeTarget } from "./claude-install.js";
+import { registerPluginArrayEntry } from "./opencode.js";
+import { ensureGlobalFerrisSearch } from "./ferris-search.js";
+import { installClaudeTarget, installClaudeUserSurface, updateClaudeTarget, uninstallClaudeGlobal, uninstallClaudeProject } from "./claude-install.js";
 import { describeClaudeModResults, installClaudeModPlugins } from "./claude-plugin.js";
 import { resolveClaudePaths } from "./claude.js";
 import {
+  ensureUserRuntime,
   ensureUserRuntimeConfig,
   preflightUserRuntimeConfig,
+  removeUserRuntime,
   resolveUserRuntimePaths,
 } from "./user-runtime.js";
+import { installUserPlugins, removeUserPlugins } from "./user-plugins.js";
+import { ensureOpencodeGlobalSurface, removeOpencodeGlobalSurface } from "./opencode-global.js";
+import {
+  migrateLegacyOpencodeProject,
+  registerOpencodeProject,
+  removeOpencodeProject,
+} from "./opencode-project.js";
+import {
+  readProjectRegistration,
+  readProjectsIndex,
+  removeProjectRegistration,
+} from "./project-registration.js";
 import {
   AUTONOMY_END_MARKER,
   AUTONOMY_START_MARKER,
   CUSTOM_PERSONA_TEXT,
   PERSONA_END_MARKER,
   PERSONA_START_MARKER,
+  buildRuntimeRunnerBody,
   configureRunnerScriptsContent,
   injectAutonomyIntoRunnerContent,
   injectPersonaIntoRunnerContent,
@@ -467,10 +482,7 @@ export async function prepareInstallation(flowtaskDir, projectDir, mode = "insta
 // standalone → .flowtask/          : agents/, commands/, skills/, plugins/, scripts/
 
 export const ASSETS = {
-  opencode: [
-    { src: "agents",  dest: "agents" },
-    { src: "scripts", dest: "scripts" },
-  ],
+  opencode: [],
   claude: [],
   standalone: [
     { src: "agents",   dest: "agents" },
@@ -1557,10 +1569,125 @@ function reportFerrisSearch(globalResult, localResult) {
 
 // ─── Install ──────────────────────────────────────────────────────────────────
 
+/** Payload variants needed by the selected targets. */
+function userRuntimeVariantsFor(targets) {
+  const ids = new Set((targets ?? []).map((target) => (typeof target === "string" ? target : target.id)));
+  const variants = [];
+  if ([...ids].some((id) => id !== "claude")) variants.push("canonical");
+  if (ids.has("claude")) variants.push("claude");
+  return variants.length > 0 ? variants : ["canonical", "claude"];
+}
+
+/**
+ * Build the user runtime once for the selected destinations. The runner body
+ * is composed against each final payload so it references its own files.
+ */
+function buildUserRuntime(flowtaskDir, { targets, userConfig, personaContent = undefined }) {
+  const variants = userRuntimeVariantsFor(targets);
+  const runnerContent = fs.readFileSync(path.join(flowtaskDir, "agents", "runner.md"), "utf8");
+  const profile = userConfig.profile?.status === "valid" ? userConfig.profile.value : null;
+  const autonomy = userConfig.autonomy?.status === "valid"
+    ? userConfig.autonomy.value.profile
+    : MIGRATION_DEFAULTS.autonomy.profile;
+  let content = personaContent;
+  if (content === undefined && profile) {
+    const choice = mapping[levelToChoice[profile.level]] ?? {
+      level: profile.level,
+      persona: profile.persona,
+      file: PERSONA_FILES[profile.persona] ?? null,
+      onboarded: profile.onboarded,
+    };
+    content = resolvePersonaContent(flowtaskDir, choice);
+  }
+  return ensureUserRuntime(flowtaskDir, {
+    version: readProjectVersion(flowtaskDir),
+    variants,
+    descriptor: {
+      persona: profile?.persona ?? null,
+      level: profile?.level ?? null,
+      autonomy,
+    },
+    buildRunnerBody: (payloadPaths) => buildRuntimeRunnerBody({
+      runnerContent,
+      runtimeRoot: payloadPaths.payloadDir,
+      personaContent: content ?? null,
+      autonomyDescriptor: { profile: autonomy, source: "user" },
+    }),
+  });
+}
+
+/**
+ * Install or update only the global surfaces: the user runtime, the layer
+ * configuration, the OpenCode user configuration, the Claude user surfaces and
+ * the user plugins. No project registration and no project file is written.
+ */
+async function installGlobalSurfaces(flowtaskDir, options, mode) {
+  const userPaths = resolveUserRuntimePaths();
+  const preflight = preflightUserRuntimeConfig(userPaths.configDir);
+  const requested = Array.isArray(options.target) && options.target.length > 0
+    ? options.target
+    : ["opencode", "claude"];
+  const requestedAutonomy = normalizeAutonomyChoice(options.autonomy);
+  let autonomyProfile = requestedAutonomy;
+  if (mode === "install" && !autonomyProfile && process.stdin.isTTY && preflight.missing.includes("autonomy")) {
+    const readline = await import("readline");
+    autonomyProfile = await promptAutonomySelection(readline);
+  }
+  const personaChoice = options.persona ? mapping[levelToChoice[options.persona]] : null;
+  const personaContent = personaChoice ? resolvePersonaContent(flowtaskDir, personaChoice) : undefined;
+  const userConfig = ensureUserRuntimeConfig(userPaths.configDir, {
+    personaChoice,
+    autonomyProfile,
+    replaceAutonomy: Boolean(options.autonomy),
+  });
+
+  const runtime = buildUserRuntime(flowtaskDir, { targets: requested, userConfig, personaContent });
+  const results = [{
+    target: "runtime",
+    status: "Success",
+    stats: { version: runtime.version, payloads: Object.keys(runtime.payloads).join(" + ") },
+  }];
+
+  if (requested.includes("opencode")) {
+    const surface = ensureOpencodeGlobalSurface({ flowtaskDir });
+    if (!surface.ok) {
+      const error = new Error(
+        `The OpenCode user configuration could not be updated: ${surface.reason ?? surface.status}.`,
+      );
+      error.code = "opencode_global_failed";
+      throw error;
+    }
+    results.push({ target: "opencode", status: "Success", stats: { config: surface.status } });
+  }
+
+  if (requested.includes("claude")) {
+    installClaudeUserSurface({
+      flowtaskDir,
+      projectDir: process.cwd(),
+      personaChoice,
+      personaContent,
+      options,
+      userConfig,
+    });
+    results.push({ target: "claude", status: "Success", stats: { surface: "ready" } });
+  }
+
+  const plugins = installUserPlugins({ flowtaskDir, manifest: loadPluginManifest(flowtaskDir) });
+  results.push({
+    target: "plugins",
+    status: "Success",
+    stats: { installed: plugins.installed.length, replaced: plugins.replaced.length, preserved: plugins.preserved.length },
+  });
+
+  printSummary(mode === "install" ? "Installation Summary" : "Update Summary", results);
+  return { ok: true };
+}
+
 export async function install(flowtaskDir, options = {}) {
   let transaction = null;
   try {
     assertRunnerCanon({ flowtaskDir });
+    if (options.global) return await installGlobalSurfaces(flowtaskDir, options, "install");
     const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "install" });
     console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
@@ -1634,6 +1761,18 @@ ${COLORS.blue}╔═════════════════════
       replaceAutonomy,
     });
 
+    // The canonical payload is published once for every non-Claude destination.
+    const needsCanonical = nonClaudeTargets.length > 0;
+    const userRuntime = needsCanonical
+      ? buildUserRuntime(flowtaskDir, { targets: nonClaudeTargets, userConfig, personaContent })
+      : null;
+    if (nonClaudeTargets.some(({ id }) => id === "opencode")) {
+      const surface = ensureOpencodeGlobalSurface({ flowtaskDir });
+      if (!surface.ok) {
+        throw new Error(`The OpenCode user configuration could not be updated: ${surface.reason ?? surface.status}.`);
+      }
+    }
+
     const targetDirs = nonClaudeTargets.map(({ targetSubDir }) => path.join(projectDir, targetSubDir));
     if (targetDirs.length > 0 && !migrateProfileLocation(projectDir, flowtaskDir, targetDirs)) {
       throw new Error("Could not migrate profile.json; the source is preserved. Check permissions/space and retry with flowtask update.");
@@ -1666,9 +1805,16 @@ ${COLORS.blue}╔═════════════════════
 
         // ── Step 3: Migrate legacy root .flowtask/ if present ────────────────
         logStep(3, "Checking existing installation...");
-        if (id !== "standalone" && !isSourceDir && fileExists(rootFlowtask)) {
+        if (id !== "standalone" && id !== "opencode" && !isSourceDir && fileExists(rootFlowtask)) {
           logWarn(`Found root .flowtask/ — moving contents to ${targetSubDir}...`);
           transaction.addJournal(migrateLegacyRootTransactional({ projectDir, targetDir: TARGET_DIR, flowtaskDir }));
+        }
+        if (id === "opencode") {
+          migrateLegacyOpencodeProject({
+            projectDir,
+            flowtaskDir,
+            runtimeRoot: userRuntimePaths.runtimeRoot,
+          });
         }
 
         // ── Step 4: Copy only the required assets ────────────────────────────
@@ -1691,16 +1837,9 @@ ${COLORS.blue}╔═════════════════════
         });
         const autonomyDescriptor = autonomyDescriptorFrom(targetConfig);
 
-        // OpenCode: skills go to .opencode/skills/ (outside flowtask subdir)
+        // OpenCode: the engine lives in the user runtime; the project keeps
+        // only its registration and the generated review configuration.
         if (id === "opencode") {
-          const srcSkills = path.join(flowtaskDir, "skills");
-          if (fileExists(srcSkills)) copyWithProgress(srcSkills, path.join(projectDir, ".opencode", "skills"), "skills (opencode)", readline);
-          localFerrisSearch = mergeOpencodeConfig(
-            path.join(projectDir, ideDir, "opencode.json"),
-            flowtaskDir,
-            ideDir,
-            { removeFerrisSearch: isFerrisSearchSupported() },
-          );
           registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
         }
 
@@ -1712,17 +1851,26 @@ ${COLORS.blue}╔═════════════════════
           logStep(5, "Installing plugins from manifest...");
           const manifest = preflight?.manifest ?? loadPluginManifest(flowtaskDir);
           installManifestPlugins(projectDir, preflight?.manifest ?? manifest, flowtaskDir, preflight);
+          registerOpencodeProject({
+            projectDir,
+            runtimeManifest: userRuntime.manifest,
+            flowtaskDir,
+          });
         }
 
         // ── Inject persona and autonomy into runner.md ───────────────────
-        injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
-        if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
+        if (id !== "opencode") {
+          injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
+          if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
+        }
 
         // ── Step 6: Write installation marker ───────────────────────────────
-        fs.writeFileSync(
-          path.join(TARGET_DIR, ".installation-method"),
-          JSON.stringify({ method: "unified-installation-v2", target: id, timestamp: new Date().toISOString() }, null, 2)
-        );
+        if (id !== "opencode") {
+          fs.writeFileSync(
+            path.join(TARGET_DIR, ".installation-method"),
+            JSON.stringify({ method: "unified-installation-v2", target: id, timestamp: new Date().toISOString() }, null, 2)
+          );
+        }
 
         results.push({ target: id, status: "Success" });
       } catch (err) {
@@ -1774,6 +1922,22 @@ ${COLORS.blue}╔═════════════════════
       });
     }
 
+    const userPlugins = installUserPlugins({
+      flowtaskDir,
+      manifest: loadPluginManifest(flowtaskDir),
+    });
+    if (userPlugins.installed.length > 0 || userPlugins.replaced.length > 0 || userPlugins.preserved.length > 0) {
+      results.push({
+        target: "plugins",
+        status: "Success",
+        stats: {
+          installed: userPlugins.installed.length,
+          replaced: userPlugins.replaced.length,
+          preserved: userPlugins.preserved.length,
+        },
+      });
+    }
+
     for (const { id, targetSubDir } of nonClaudeTargets) {
       try {
         await coordinateGraphify({ projectDir, targetDir: path.join(projectDir, targetSubDir), flowtaskDir, selectedClis: [id], readline });
@@ -1814,6 +1978,7 @@ ${COLORS.blue}╔═════════════════════
 // ─── Update ───────────────────────────────────────────────────────────────────
 
 export async function update(flowtaskDir, options = {}) {
+  if (options.global) return installGlobalSurfaces(flowtaskDir, options, "update");
   const report = createUpdateReport({
     version: readProjectVersion(flowtaskDir),
     verbose: options.verbose === true,
@@ -1871,6 +2036,16 @@ async function runUpdate(flowtaskDir, options, report) {
     targets.push({ id: "claude", marker: null, subDir: path.join(".claude", "flowtask"), ideDir: ".claude", registered: true });
     logSuccess("Found claude project registration");
   }
+  for (const candidate of [
+    { id: "opencode", subDir: ".opencode/flowtask", ideDir: ".opencode" },
+    { id: "vscode", subDir: ".vscode/flowtask", ideDir: ".vscode" },
+    { id: "standalone", subDir: ".flowtask", ideDir: "" },
+  ]) {
+    if (targets.some(({ id }) => id === candidate.id)) continue;
+    if (readProjectRegistration(projectDir, candidate.id).status !== "active") continue;
+    targets.push({ ...candidate, marker: null, registered: true });
+    logSuccess(`Found ${candidate.id} project registration`);
+  }
 
   const nonClaudeTargets = targets.filter(({ id }) => id !== "claude");
   const claudeTarget = targets.find(({ id }) => id === "claude") ?? null;
@@ -1886,6 +2061,24 @@ async function runUpdate(flowtaskDir, options, report) {
     report.markFailure();
     report.finish();
     return { ok: false };
+  }
+
+  if (targets.length === 0) {
+    logWarn("This project is not registered with FlowTask; the global installation was updated without registering it.");
+    logInfo("Run flowtask install in this project to register it.");
+    let selected = [];
+    try {
+      const manifest = JSON.parse(fs.readFileSync(claudePaths.runtimeManifestPath, "utf8"));
+      if (manifest.payloads?.canonical) selected.push("opencode");
+      if (manifest.payloads?.claude) selected.push("claude");
+    } catch {
+      selected = [];
+    }
+    return installGlobalSurfaces(
+      flowtaskDir,
+      { ...options, target: selected.length > 0 ? selected : ["opencode", "claude"] },
+      "update",
+    );
   }
 
   const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "update" });
@@ -1977,6 +2170,16 @@ async function runUpdate(flowtaskDir, options, report) {
       replaceAutonomy,
     });
 
+    const userRuntime = nonClaudeTargets.length > 0
+      ? buildUserRuntime(flowtaskDir, { targets: nonClaudeTargets, userConfig, personaContent })
+      : null;
+    if (nonClaudeTargets.some(({ id }) => id === "opencode")) {
+      const surface = ensureOpencodeGlobalSurface({ flowtaskDir });
+      if (!surface.ok) {
+        throw new Error(`The OpenCode user configuration could not be updated: ${surface.reason ?? surface.status}.`);
+      }
+    }
+
     // ── Step 2: Delta sync each target ──────────────────────────────────────
     const preservePaths = ["CA-", "workspace", ".workspace", ".installation-method"];
     const results = [];
@@ -2010,22 +2213,16 @@ async function runUpdate(flowtaskDir, options, report) {
           if (!verifyDirectoryMirror(srcDir, destDir, { ignorePaths: pruned.preserved })) throw new Error(`Mirror verification failed for ${src}`);
         }
 
-        if (id !== "standalone") cleanupLegacyScripts(projectDir, TARGET_DIR, flowtaskDir);
+        if (id !== "standalone" && id !== "opencode") cleanupLegacyScripts(projectDir, TARGET_DIR, flowtaskDir);
 
-        // OpenCode: skills delta
+        // OpenCode: the engine lives in the user runtime; the project keeps
+        // only its registration and the generated review configuration.
         if (id === "opencode") {
-          const srcSkills = path.join(flowtaskDir, "skills");
-          if (fileExists(srcSkills)) {
-            const stats = copyDirectoryDelta(srcSkills, path.join(projectDir, ".opencode", "skills"), preservePaths);
-            totalCopied += stats.copied;
-            totalSkipped += stats.skipped;
-          }
-          localFerrisSearch = mergeOpencodeConfig(
-            path.join(projectDir, ideDir, "opencode.json"),
+          migrateLegacyOpencodeProject({
+            projectDir,
             flowtaskDir,
-            ideDir,
-            { removeFerrisSearch: isFerrisSearchSupported() },
-          );
+            runtimeRoot: userRuntimePaths.runtimeRoot,
+          });
           registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
         }
 
@@ -2043,6 +2240,11 @@ async function runUpdate(flowtaskDir, options, report) {
           const pluginsStartedAt = Date.now();
           pluginsRegistered = installManifestPlugins(projectDir, manifest, flowtaskDir, preflight).registered;
           pluginsDurationMs = Date.now() - pluginsStartedAt;
+          registerOpencodeProject({
+            projectDir,
+            runtimeManifest: userRuntime.manifest,
+            flowtaskDir,
+          });
         }
 
         // The transaction moved the managed trees before the copy, so update
@@ -2074,20 +2276,24 @@ async function runUpdate(flowtaskDir, options, report) {
         const restoredPaths = classification.restoredPaths;
 
         // ── Inject persona and autonomy into runner.md ───────────────────
-        injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
-        if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
+        if (id !== "opencode") {
+          injectPersonaIntoRunner(TARGET_DIR, personaContent ?? null);
+          if (autonomyDescriptor) injectAutonomyIntoRunner(TARGET_DIR, autonomyDescriptor);
+        }
 
-        fs.writeFileSync(
-          path.join(TARGET_DIR, ".installation-method"),
-          JSON.stringify({
-            method: "unified-installation-v2",
-            target: id,
-            updatedAt: new Date().toISOString(),
-            previousUpdate: previousMethod?.updatedAt || previousMethod?.timestamp || null,
-            filesUpdated: totalCopied,
-            filesSkipped: totalSkipped,
-          }, null, 2)
-        );
+        if (id !== "opencode") {
+          fs.writeFileSync(
+            path.join(TARGET_DIR, ".installation-method"),
+            JSON.stringify({
+              method: "unified-installation-v2",
+              target: id,
+              updatedAt: new Date().toISOString(),
+              previousUpdate: previousMethod?.updatedAt || previousMethod?.timestamp || null,
+              filesUpdated: totalCopied,
+              filesSkipped: totalSkipped,
+            }, null, 2)
+          );
+        }
 
         const restored = [...restoredPaths];
         results.push({
@@ -2168,6 +2374,11 @@ async function runUpdate(flowtaskDir, options, report) {
       logWarn(`Update finished but some transaction backups could not be removed: ${committed.failures.map(({ path: failedPath }) => failedPath).join(", ")}.`);
     }
 
+    const userPlugins = installUserPlugins({ flowtaskDir, manifest });
+    if (userPlugins.installed.length > 0 || userPlugins.replaced.length > 0) {
+      report.phase("plugins-user", `${userPlugins.installed.length} installed · ${userPlugins.replaced.length} replaced`);
+    }
+
     if (claudeUpdate?.registered === true) {
       const selectorStartedAt = Date.now();
       const selectorResults = installClaudeModPlugins({
@@ -2237,6 +2448,143 @@ async function runUpdate(flowtaskDir, options, report) {
     if (error && typeof error === "object") error.rollback = rolled;
     throw error;
   }
+}
+
+// ─── Uninstall ────────────────────────────────────────────────────────────────
+
+/**
+ * Remove every FlowTask-owned artifact of the current project for every
+ * destination, preserving user settings, hooks, plugins and MCP servers.
+ */
+export function uninstallProject({ flowtaskDir, projectDir }) {
+  const removed = [];
+  const preserved = [];
+  const failures = [];
+
+  try {
+    const claude = uninstallClaudeProject({ projectDir, flowtaskDir });
+    removed.push(...claude.removed);
+    preserved.push(...claude.preserved);
+  } catch (error) {
+    failures.push({ target: "claude", error: error.message });
+  }
+
+  try {
+    const opencode = removeOpencodeProject({ projectDir });
+    removed.push(...opencode.removed);
+    preserved.push(...opencode.preserved);
+  } catch (error) {
+    failures.push({ target: "opencode", error: error.message });
+  }
+
+  for (const target of ["vscode", "standalone"]) {
+    try {
+      const registration = readProjectRegistration(projectDir, target);
+      if (registration.status === "absent") continue;
+      const removal = removeProjectRegistration(projectDir, target);
+      removed.push(...removal.removed);
+      preserved.push(...removal.preserved);
+    } catch (error) {
+      failures.push({ target, error: error.message });
+    }
+  }
+
+  return { ok: failures.length === 0, removed, preserved, failures };
+}
+
+/**
+ * Remove the user-level runtime, the global surfaces and every registered
+ * project. It stops before deleting the runtime when a project cannot be
+ * cleaned, so no registered project is left pointing at a missing runtime.
+ */
+export function uninstallGlobal({ flowtaskDir, projectDir }) {
+  const claudePaths = resolveClaudePaths(projectDir);
+  const runtimeRoot = claudePaths.runtimeRoot;
+  const index = readProjectsIndex(runtimeRoot);
+  if (!index.ok) {
+    return {
+      ok: false,
+      error: `The projects index is unreadable and uninstall stopped before removing the runtime: ${index.error}`,
+      removed: [],
+      preserved: [],
+      failures: [],
+      manualReview: [],
+    };
+  }
+
+  const claude = uninstallClaudeGlobal({
+    runtimeRoot,
+    claudeUserDir: claudePaths.claudeUserDir,
+    flowtaskDir,
+    removeRuntime: false,
+  });
+  if (!claude.ok) {
+    return {
+      ok: false,
+      error: claude.error ?? "The Claude Code user surface could not be removed.",
+      removed: [],
+      preserved: [],
+      failures: claude.failures ?? [],
+      manualReview: claude.manualReview ?? [],
+    };
+  }
+
+  const removed = [...(claude.removed ?? [])];
+  const preserved = [...(claude.preserved ?? [])];
+  const failures = [];
+  for (const entry of index.index.projects) {
+    if (!entry || typeof entry.path !== "string") continue;
+    const targets = Array.isArray(entry.targets) ? entry.targets : ["claude"];
+    for (const target of targets) {
+      if (target === "claude") continue;
+      try {
+        if (target === "opencode") {
+          const result = removeOpencodeProject({ projectDir: entry.path, runtimeRoot });
+          removed.push(...result.removed);
+          preserved.push(...result.preserved);
+        } else {
+          const result = removeProjectRegistration(entry.path, target, { runtimeRoot });
+          removed.push(...result.removed);
+          preserved.push(...result.preserved);
+        }
+      } catch (error) {
+        failures.push({ target, path: entry.path, error: error.message });
+      }
+    }
+  }
+
+  if (failures.length > 0) {
+    return {
+      ok: false,
+      error: "One or more projects could not be uninstalled; the runtime was preserved.",
+      removed,
+      preserved,
+      failures,
+      manualReview: claude.manualReview ?? [],
+    };
+  }
+
+  const opencode = removeOpencodeGlobalSurface({ flowtaskDir, runtimeRoot });
+  if (!opencode.ok) {
+    preserved.push(`${opencode.path ?? "OpenCode configuration"}#FlowTask surface`);
+  }
+  const plugins = removeUserPlugins({ runtimeRoot });
+  preserved.push(...plugins.preserved);
+
+  const runtime = removeUserRuntime(runtimeRoot);
+  removed.push(...runtime.removed);
+  preserved.push(...runtime.preserved);
+
+  return {
+    ok: true,
+    projects: index.index.projects,
+    removed,
+    preserved,
+    failures,
+    manualReview: claude.manualReview ?? [],
+    opencodeSurface: opencode.status,
+    pluginsRemoved: plugins.removed,
+  };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -615,7 +615,7 @@ export function ensureUserRuntime(flowtaskDir, options = {}) {
   if (runtimeRootExists) {
     // A migrated configuration or the user plugins may exist before the first
     // payload. Any other entry without a manifest remains an unmanaged root.
-    const entries = fs.readdirSync(runtimeRoot).filter((entry) => !["config", "plugins"].includes(entry));
+    const entries = fs.readdirSync(runtimeRoot).filter((entry) => !["config", "plugins", "worktree-manager"].includes(entry));
     if (entries.length > 0 && !fileExists(manifestPath)) {
       throw manifestError(
         "runtime_root_unmanaged",

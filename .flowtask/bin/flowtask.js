@@ -5,8 +5,7 @@ import path from "path";
 import { execFileSync } from "child_process";
 import { fileURLToPath } from "url";
 import { runCliAction } from "./lib/cli-errors.js";
-import { install, update } from "./lib/installer.js";
-import { uninstallClaudeGlobal, uninstallClaudeProject } from "./lib/claude-install.js";
+import { install, update, uninstallGlobal, uninstallProject } from "./lib/installer.js";
 import { resolveClaudePaths } from "./lib/claude.js";
 import { SESSION_START_LIMIT_BYTES, buildSessionStartContent } from "./lib/runner-content.js";
 import {
@@ -117,6 +116,11 @@ function parseOptions(commandArgs) {
 
     if (argument === "--project") {
       options.project = true;
+      continue;
+    }
+
+    if (argument === "--global") {
+      options.global = true;
       continue;
     }
 
@@ -585,26 +589,25 @@ switch (command) {
       }
 
       const projectDir = process.cwd();
-      const claudePaths = resolveClaudePaths(projectDir);
+      if (options.project && options.global) {
+        throw new Error("uninstall accepts --project or --global, not both.");
+      }
 
       if (options.project) {
-        const result = uninstallClaudeProject({
-          projectDir,
-          runtimeRoot: claudePaths.runtimeRoot,
-          flowtaskDir: FLOWTASK_DIR,
-        });
+        const result = uninstallProject({ flowtaskDir: FLOWTASK_DIR, projectDir });
         console.log(`Removed ${result.removed.length} FlowTask artifact(s) from ${projectDir}.`);
         if (result.preserved.length > 0) {
           console.log(`Preserved ${result.preserved.length} unowned file(s): ${result.preserved.join(", ")}`);
         }
+        if (!result.ok) {
+          throw new Error(
+            `Some targets could not be uninstalled: ${result.failures.map((failure) => `${failure.target}: ${failure.error}`).join("; ")}`,
+          );
+        }
         return;
       }
 
-      const result = uninstallClaudeGlobal({
-        runtimeRoot: claudePaths.runtimeRoot,
-        claudeUserDir: claudePaths.claudeUserDir,
-        flowtaskDir: FLOWTASK_DIR,
-      });
+      const result = uninstallGlobal({ flowtaskDir: FLOWTASK_DIR, projectDir });
       if (!result.ok) throw new Error(result.error);
       console.log(`Removed the FlowTask runtime and ${result.projects.length} project registration(s).`);
       if (result.manualReview.length > 0) {
@@ -698,6 +701,8 @@ FlowTask CLI
 
 Usage:
   flowtask install    Install FlowTask in the current project
+  flowtask install --global
+                      Install only the user-level runtime and global surfaces
   flowtask install --target <opencode|claude|vscode|standalone>
                       Select targets explicitly; repeat the flag or use commas
   flowtask install --persona <training|mid|senior|custom>
@@ -707,6 +712,8 @@ Usage:
   flowtask install --allow-engram-tools
                       Pre-approve the Engram MCP tools in the user allowlist
   flowtask update     Update FlowTask files (delta-only sync)
+  flowtask update --global
+                      Update only the user-level runtime and global surfaces
   flowtask update --persona <training|mid|senior|custom>
   flowtask update --autonomy <assistant|autonomous-dev>
   flowtask update --allow-engram-tools
@@ -714,6 +721,8 @@ Usage:
   flowtask update --verbose
                       Show the per-step diagnostic output
   flowtask uninstall  Remove the user-level runtime and registered projects
+  flowtask uninstall --global
+                      Same as the default: remove the user-level installation
   flowtask uninstall --project
                       Remove only the current project registration
   flowtask uninstall --yes
