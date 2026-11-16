@@ -737,7 +737,7 @@ export function ensureUserRuntime(flowtaskDir, options = {}) {
     schema: USER_RUNTIME_SCHEMA,
     version,
     installedAt: previousManifest?.installedAt ?? new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: previousManifest?.updatedAt ?? new Date().toISOString(),
     source: path.resolve(flowtaskDir),
     payloads: nextPayloads,
     previous,
@@ -748,9 +748,13 @@ export function ensureUserRuntime(flowtaskDir, options = {}) {
     hookCommand: buildSessionStartHookCommand(runtimeRoot),
   };
 
-  const serialized = JSON.stringify(manifest, null, 2);
   const previousSerialized = previousManifest ? JSON.stringify(previousManifest, null, 2) : null;
-  if (previousSerialized !== serialized) writeFileAtomic(manifestPath, serialized);
+  let serialized = JSON.stringify(manifest, null, 2);
+  if (previousSerialized !== serialized) {
+    manifest.updatedAt = new Date().toISOString();
+    serialized = JSON.stringify(manifest, null, 2);
+    writeFileAtomic(manifestPath, serialized);
+  }
 
   const keep = new Set();
   for (const entry of Object.values(nextPayloads)) keep.add(entry.payloadId);
