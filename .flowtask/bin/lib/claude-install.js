@@ -17,6 +17,7 @@ import {
   readLegacyClaudeRuntimeManifest,
   removeClaudeRuntime,
 } from "./claude-runtime.js";
+import { readIdentityProfile } from "./user-runtime.js";
 import {
   readProjectsIndex,
   registerClaudeProject,

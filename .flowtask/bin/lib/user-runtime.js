@@ -47,6 +47,18 @@ const KNOWN_CONFIG_FILES = Object.freeze([
   "identity.json",
 ]);
 
+/** Entries that may exist in the user runtime root before the first payload. */
+const KNOWN_RUNTIME_ROOT_ENTRIES = Object.freeze([
+  "config",
+  "plugins",
+  "worktree-manager",
+  "projects.json",
+  "graphify.json",
+  ".DS_Store",
+  "bin",
+  "versions",
+]);
+
 /** Identity configuration file and its installation default. */
 export const IDENTITY_FILE = "identity.json";
 export const DEFAULT_BASE_NAME = "Aitana";
@@ -613,9 +625,10 @@ export function ensureUserRuntime(flowtaskDir, options = {}) {
 
   const runtimeRootExists = fileExists(runtimeRoot);
   if (runtimeRootExists) {
-    // A migrated configuration or the user plugins may exist before the first
+    // Migrated configuration, user plugins, the project index, Graphify state,
+    // system metadata and partial runtime state may exist before the first
     // payload. Any other entry without a manifest remains an unmanaged root.
-    const entries = fs.readdirSync(runtimeRoot).filter((entry) => !["config", "plugins", "worktree-manager"].includes(entry));
+    const entries = fs.readdirSync(runtimeRoot).filter((entry) => !KNOWN_RUNTIME_ROOT_ENTRIES.includes(entry));
     if (entries.length > 0 && !fileExists(manifestPath)) {
       throw manifestError(
         "runtime_root_unmanaged",
