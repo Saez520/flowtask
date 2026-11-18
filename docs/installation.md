@@ -426,6 +426,12 @@ conservatively. The migration:
 - creates or reuses the user-level runtime;
 - copies `profile.json`, `autonomy.json`, and `permissions.json` to the global
   configuration only when the destination is missing, validating them first;
+- removes a legacy `profile.json`, `autonomy.json`, or `permissions.json` when
+  the global layer already exists and is valid, even if its content differs:
+  the user-level layer is authoritative and the legacy copy is never a runtime
+  source;
+- preserves a legacy layer only when that layer or its global destination is
+  invalid, and reports it for manual review;
 - registers the project;
 - removes legacy `skills/`, `scripts/`, `agents/`, `commands/`, the installation
   marker, and the generated `.claude/session-start.md`;

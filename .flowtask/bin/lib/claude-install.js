@@ -254,13 +254,6 @@ function migrateLegacyConfig(paths, removed, preserved, manualReview, { migrate 
         );
         continue;
       }
-      if (JSON.stringify(existingValidated.value) !== JSON.stringify(validated.value)) {
-        preserved.push(source);
-        manualReview.push(
-          `${destination} already defines a different ${layer.name} layer; the legacy copy at ${source} was preserved.`,
-        );
-        continue;
-      }
     }
 
     fs.rmSync(source, { force: true });
@@ -307,11 +300,6 @@ function migrateLegacyRuntimeConfig(legacyConfigDir, configDir, removed, preserv
     if (existingValidated.status !== "valid") {
       preserved.push(source);
       manualReview.push(`${destination} is invalid; the legacy ${layer.name} layer at ${source} was preserved.`);
-      continue;
-    }
-    if (JSON.stringify(existingValidated.value) !== JSON.stringify(validated.value)) {
-      preserved.push(source);
-      manualReview.push(`${destination} already defines a different ${layer.name} layer; the legacy copy at ${source} was preserved.`);
       continue;
     }
     fs.rmSync(source, { force: true });

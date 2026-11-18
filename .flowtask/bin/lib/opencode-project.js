@@ -283,11 +283,6 @@ function migrateLegacyLayers(projectDir, runtimeConfigDir, removed, preserved, m
       manualReview.push(`${destination} is invalid; the legacy ${layer.name} layer at ${source} was preserved.`);
       continue;
     }
-    if (JSON.stringify(existingValidated.value) !== JSON.stringify(validated.value)) {
-      preserved.push(source);
-      manualReview.push(`${destination} already defines a different ${layer.name} layer; the legacy copy at ${source} was preserved.`);
-      continue;
-    }
     fs.rmSync(source, { force: true });
     removed.push(source);
   }
