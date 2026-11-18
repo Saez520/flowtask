@@ -154,7 +154,7 @@ RUNNER classifies ── does the CA exist in Engram?
             construction (no routine wait; the Gate is still checked)
               │
               ▼
-        [6] WORKTREE ── worktree.sh create CA-{ID} --base {detected base}
+        [6] WORKTREE ── worktree_create (MCP: dry_run → plan_hash → execute) --base {detected base}
             (order: development → main → trunk; fallback main)
             → .worktrees/CA-{ID} · branch worktree/CA-{ID}
               │
@@ -187,13 +187,15 @@ RUNNER classifies ── does the CA exist in Engram?
               │                          operational recovery or pause
               │
               ▼ APPROVED with final=true
-        [10] CLOSE ── commit → worktree.sh complete (Constructor-proposed strategy: squash only without a proposal, with meaningful --title/--body)
+        [10] CLOSE ── commit → worktree_complete (MCP; Constructor-proposed strategy: squash only without a proposal, with meaningful commit_title/commit_body)
               → ca_status: closed + purge of orphan task_ids + session summary
 ```
 
 ### Portable manager and safe close
 
-`worktree.sh` can operate on a generic repository with `--repo` and a
+The MCP server is the primary path; `worktree.sh` remains the compatibility
+entrypoint for administration and for when the server is not registered or
+does not respond. It can operate on a generic repository with `--repo` and a
 `key=value` configuration file passed with `--config`; it does not need a CA,
 Engram, or FlowTask. The configuration is not executed as a shell and only accepts
 the keys documented in the README. `create` does not install dependencies or
@@ -255,14 +257,14 @@ invoke `ca-writer`/`planner`/`plan-auditor`.
 [2] PERSIST ── hotfix/{id}/artifact/investigacion
                  hotfix/{id}/artifact/plan (affected files, agreed
                  changes, verifiable acceptance criteria)
-[3] WORKTREE ── worktree.sh create hotfix/{id} --base {detected base}
+[3] WORKTREE ── worktree_create (MCP) hotfix/{id} --base {detected base}
     (order: development → main → trunk; fallback main)
     → .worktrees/hotfix/{id} · branch worktree/hotfix/{id}
 [4] CONSTRUCTOR ── implements the minimal plan (execution_id=hotfix/{id})
 [5] VALIDATOR ── → hotfix/{id}/artifact/validacion (does not go through plan-auditor)
     REJECTED → returns to [4] with the rejection evidence
               second rejection → Inspector → returns to [4]
-[6] CLOSE ── commit → worktree.sh complete (Constructor-proposed strategy; squash only without a proposal)
+[6] CLOSE ── commit → worktree_complete (MCP) (Constructor-proposed strategy; squash only without a proposal)
 ```
 
 **Real example:** a diagrams hotfix (Sep 23, 2026) converted the 14
@@ -309,7 +311,7 @@ malformed `source` or `sourceCommit` remain rejected.
 - loads as a user-scope package registered once with an absolute package path and its options
 - gates the FlowTask surface: without an active project registration it removes the `flowtask-*` agents and payload skills; a broken runtime or an unsupported registration emits one actionable line
 - authorizes the runner's tools (`read`/`glob`/`grep`/`skill`/`mem_*`/`graphify`)
-- authorizes the runner's `bash` (whitelist: `worktree.sh`, read-only git, commit)
+- authorizes the seven `worktree_manager` MCP tools; `bash` keeps the administrative `worktree.sh` forms, read-only git and commit
 - blocks `task()` to subagents outside the list → *"delegate to the subagent"*
 - commit gate: requires a current `.review-stamp` (30 min TTL; bypass ≤5 lines)
 - context budget: degrades by levels (warning, reduced delivery, per-turn omission) and blocks attachments to the runner

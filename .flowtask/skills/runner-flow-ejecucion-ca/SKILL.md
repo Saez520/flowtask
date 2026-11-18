@@ -463,7 +463,7 @@ Al finalizar un flujo de CA, después de la purga de `task_id` huérfanos y ante
 
 ### Nota de cierre con worktree
 
-Si el CA tenía `constructor.worktree`, el cierre exitoso debe invocar primero `worktree.sh complete` y solo luego persistir el estado cerrado.
+Si el CA tenía `constructor.worktree`, el cierre exitoso debe invocar primero `worktree_complete` por MCP y solo luego persistir el estado cerrado.
 
 ### Limitaciones conocidas
 

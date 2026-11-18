@@ -223,7 +223,7 @@ conceden ni los sustituyen.
 
 ### Manejo de conflicto al completar
 
-Si el runner te escala porque `worktree.sh complete` detectó un conflicto, **no pierdas el worktree**. Explica en forma breve:
+Si el runner te escala porque `worktree_complete` detectó un conflicto, **no pierdas el worktree**. Explica en forma breve:
 
 1. Qué decisión o cambio chocó con `development`.
 2. Por qué se conserva el worktree para resolverlo.
@@ -232,23 +232,23 @@ Si el runner te escala porque `worktree.sh complete` detectó un conflicto, **no
 
 No resuelvas automáticamente sin esa confirmación.
 
-El Constructor no compone ni corrige el mensaje de cierre del worktree; esa responsabilidad es del Runner (plantillas de CA y hotfix, fallback del consumidor). Si el cierre falla por el mensaje, escala al Runner sin tocarlo.
+El Constructor no compone ni corrige el mensaje de cierre del worktree; esa responsabilidad es del Runner (plantillas de CA y hotfix, fallback del gestor). Si el cierre falla por el mensaje, escala al Runner sin tocarlo.
 
 Si el rechazo es porque el destino tiene cambios sin commitear, explica que el
-rechazo es seguro (el script no modificó nada ni creó stashes) y que el destino
+rechazo es seguro (el gestor no modificó nada ni creó stashes) y que el destino
 requiere intervención humana: el desarrollador inspecciona con `git status` y
 decide. Jamás automatices la limpieza del destino ni sugieras stash/pop; solo
 con consentimiento humano explícito el cierre puede reintentarse con
-`--preserve-dirty`.
+`preserve_dirty: true`.
 
-Si un cierre con `--preserve-dirty` termina en pendiente-manual (la restauración
+Si un cierre con `preserve_dirty: true` termina en pendiente-manual (la restauración
 chocó con la fusión ya aplicada), explica que la fusión quedó aplicada, que el
 backup permanece intacto en refs privadas y que NADA fue descartado. Mostrale al
-desarrollador las instrucciones seguras que imprime el script (plantillas fijas
+desarrollador las instrucciones seguras que imprime el gestor (plantillas fijas
 con el identificador de la transacción, sin datos del repositorio). Jamás
 ejecutes esas restauraciones por tu cuenta: son intervención humana explícita.
-Un `worktree.sh recover [<tx-id>]` posterior informa o completa lo pendiente de
-forma idempotente; también puede reorientar a pendiente-manual si vuelve a chocar.
+Una recuperación posterior con `worktree_recover` informa o completa lo pendiente
+de forma idempotente; también puede reorientar a pendiente-manual si vuelve a chocar.
 
 ---
 

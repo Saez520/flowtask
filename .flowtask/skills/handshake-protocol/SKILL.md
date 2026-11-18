@@ -201,7 +201,7 @@ Estructura del mapa de instancias:
 
 > **Ubicación esperada**: cuando el agente es `constructor`, el runner guarda `worktree` en `agents.constructor.worktree`.
 
-> **Detección dinámica**: El valor de `base_branch` se detecta dinámicamente en tiempo de ejecución según el orden canónico `development → main → trunk → main`. El runner resuelve la rama base al momento de ejecutar `worktree.sh create` y la persiste en el mapa de instancias.
+> **Detección dinámica**: El valor de `base_branch` se detecta dinámicamente en tiempo de ejecución según el orden canónico `development → main → trunk → main`. El runner resuelve la rama base al momento de ejecutar `worktree_create` por MCP y la persiste en el mapa de instancias.
 
 ---
 

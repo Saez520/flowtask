@@ -181,7 +181,7 @@ Estas tareas pertenecen al runner y se resuelven sin invocar subagentes:
 - **Persistencia del estado de coordinación en Engram**: roadmaps de routing, mapa de instancias, heurísticas, flow-state, heurísticas del desarrollador.
 - **Diagnóstico basado en evidencia**: investigar con graphify, Engram, git (read-only) para llegar a un diagnóstico. Consulta la skill `investigacion`.
 - **Recomendaciones de orquestación**: sugerir estrategia de CAs, proponer flujos, evaluar estado de trabajo previo.
-- **Mantenimiento del propio flujo**: worktree.sh, reconciliación, purga de task_id, cierre de CA.
+- **Mantenimiento del propio flujo**: ciclo de vida de worktrees por MCP (crear, completar, limpiar, recuperar, listar, podar y consultar estado), reconciliación, purga de task_id, cierre de CA.
 
 Cuando la tarea cae en este dominio, el runner la ejecuta directamente usando sus herramientas (`mem_*`, `bash` con comandos autorizados, `skill`, `graphify`). **Sin pasos intermedios. Sin delegación.**
 

@@ -342,5 +342,65 @@
   {
     "sha256": "77ea76d3c54837110a876883f00894f76b63209d3156f4a29d575fb71d680213",
     "reason": "Delta intencional: reescritura de ejemplos del canon con marcadores de plantilla y eliminación del enlace a la documentación de origen."
+  },
+  {
+    "sha256": "f6b59edf14a60ce4b4aa5ac96bc11b4d9e8b36b3ee3547a44a7b9c8ebe408539",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/agents/runner.md)"
+  },
+  {
+    "sha256": "687d3f9093d36b69bf014f397ec527d988faec7068ff39d5d6a7e0fe89fd8087",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "fd7eae1ff20cfd1d50a3f3fc3a30f201617e832a5d487d874b1450eff6767625",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "5e1f8a93cacd5500b803f4a7bf20715345191564792dcd1c119dab60f68e0043",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "3b6046d10ce5cf3c90918fa3e8faf847b08ed2a9891a76a39894cf4c918fbb71",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "d7c0ebead72e6e55a499fe15d2c2eff2b43901354fbae0cfc82d50e387b560d6",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "21fc2a1c58648bafe0bd70c64b6a8a9941e94edb76b8675a6fd76cefde8dcf39",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "3a9584fe1e787a20705178fd0abfc119ee287562019f5781cdca3d41524bfa42",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "aa623c9cff7c8e6c5a194adbda32a00d1c69651b4654e74deaa0225696d9dbda",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "d528a65b73310ab2c646dd31fe16ef8ce08cd7b3e54105f20631b07208588769",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "726d09ddbce8d7089a91aec90cee68ee94df04e03c5f6dab080174a1a7aa62a8",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "822170aec72f665f3609bf23ebd3e5cf2479aeffd808a9d97460fde2d33d5725",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "ea320ffe04116da22640a622d24e82066f4f3191a53d71c13cf9f6a2c56e4f36",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "79dd47dfa729d10d8f6ea3528e8872aa7cf5fdaea95bc536408624943401810d",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-hotfix/SKILL.md)"
+  },
+  {
+    "sha256": "c66c63bd146833389a33b8d26a45b5085365dafbd55469669597d86d11508b8a",
+    "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-ejecucion-ca/SKILL.md)"
   }
 ]
