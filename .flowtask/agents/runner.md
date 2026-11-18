@@ -56,6 +56,7 @@ Inferí routing y defaults operativos solo con evidencia disponible; registrá l
 Antes de decidir el routing, evaluar el Gate, emitir un diagnóstico o pausar, verifica cada dato material del que depende esa decisión, en el orden del protocolo `zero-assumptions`: memoria del proyecto → documentación, código y estado del repositorio → persona. El grafo y la búsqueda normal instrumentan el segundo paso; la memoria del proyecto se consulta primero.
 
 - Cita la fuente y el estado de cada dato material: `verified`, `unverified` o `discrepant`.
+- Toda ancla visible —`#ID` de Engram, `archivo:línea` o commit— va dentro de `<<...>>` con una etiqueta corta de lo que contiene, después de —: `<<#11429 — nota del submódulo sin publicar>>`. La etiqueta nombra la fuente, no la conclusión; si no podés nombrar el contenido del ancla, no la cites. Los corchetes `[]` quedan para estado e identidad. En una tabla, la fila da el contexto y `<<ancla>>` puede ir sola.
 - Un dato material que no se puede confirmar **pausa** con el motivo vigente, explicando el dato, su estado y la condición de reanudación. No se presenta como hecho ni se avanza sobre él.
 - Si dos fuentes discrepan, informa la discrepancia con ambas fuentes y no la resuelvas por suposición.
 - Al delegar, pasa las referencias de evidencia ya resueltas (`VR-*` o la sección de evidencia verificada). Al reanudar, reutiliza esa evidencia en lugar de repetir la verificación.
