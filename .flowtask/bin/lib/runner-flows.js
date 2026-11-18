@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { fileExists } from "./logger.js";
+import { readProjectsIndex } from "./project-registration.js";
 import {
   FLOWS_SECTION_HEADING,
   RUNNER_CORE_BASELINE_BYTES,
@@ -494,17 +495,59 @@ function flowStateFor(targetPath, canonicalPath, validate = null) {
   return targetHash === canonicalHash ? "present" : "missing";
 }
 
-/** State of every flow in the OpenCode skills mirror. */
-export function checkOpenCodeDelivery({ projectDir, canonicalSkillsDir, flows }) {
-  const opencodeSkillsDir = path.join(projectDir, ".opencode", "skills");
+function comparablePath(value) {
+  return process.platform === "win32" ? value.toLowerCase() : value;
+}
+
+/** Real path of the project when it exists; the resolved path otherwise. */
+function projectRealPath(projectDir) {
+  try {
+    return fs.realpathSync(projectDir);
+  } catch {
+    return path.resolve(projectDir);
+  }
+}
+
+/**
+ * Skills directory of the canonical runtime payload when the project is listed
+ * in the user-level index, or null when the in-project mirror must be read.
+ */
+function canonicalPayloadSkillsDir(projectDir, runtimeRoot) {
+  if (!runtimeRoot) return null;
+  const manifestPath = path.join(runtimeRoot, "runtime.json");
+  if (!fileExists(manifestPath)) return null;
+  const read = readProjectsIndex(runtimeRoot);
+  if (!read.ok) return null;
+  const projectPath = comparablePath(projectRealPath(projectDir));
+  const listed = read.index.projects.some(
+    (entry) =>
+      entry &&
+      typeof entry.path === "string" &&
+      comparablePath(projectRealPath(entry.path)) === projectPath,
+  );
+  if (!listed) return null;
+
+  let payloadId = null;
+  try {
+    payloadId = JSON.parse(fs.readFileSync(manifestPath, "utf8")).payloads?.canonical?.payloadId ?? null;
+  } catch {
+    payloadId = null;
+  }
+  return payloadId ? path.join(runtimeRoot, "versions", payloadId, "skills") : null;
+}
+
+/** State of every flow in the OpenCode delivery of a project. */
+export function checkOpenCodeDelivery({ projectDir, runtimeRoot = null, canonicalSkillsDir, flows }) {
+  const skillsDir =
+    canonicalPayloadSkillsDir(projectDir, runtimeRoot) ?? path.join(projectDir, ".opencode", "skills");
   const states = {};
   for (const flow of flows) {
-    if (!fileExists(opencodeSkillsDir)) {
+    if (!fileExists(skillsDir)) {
       states[flow.name] = "not_installed";
       continue;
     }
     states[flow.name] = flowStateFor(
-      path.join(opencodeSkillsDir, flow.name, "SKILL.md"),
+      path.join(skillsDir, flow.name, "SKILL.md"),
       path.join(canonicalSkillsDir, flow.name, "SKILL.md"),
     );
   }
@@ -523,7 +566,8 @@ export function checkClaudeDelivery({ projectDir, runtimeRoot, canonicalSkillsDi
   }
   let payloadId = null;
   try {
-    payloadId = JSON.parse(fs.readFileSync(manifestPath, "utf8")).payloadId ?? null;
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    payloadId = manifest.payloads?.claude?.payloadId ?? manifest.payloadId ?? null;
   } catch {
     payloadId = null;
   }

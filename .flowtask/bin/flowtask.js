@@ -424,14 +424,16 @@ function runFlowsVerify(commandArgs) {
     });
   }
 
+  const runtimeRoot = resolveClaudePaths(projectDir).runtimeRoot;
   const opencodeStates = checkOpenCodeDelivery({
     projectDir,
+    runtimeRoot,
     canonicalSkillsDir: skillsDir,
     flows: verification.flows,
   });
   const claudeStates = checkClaudeDelivery({
     projectDir,
-    runtimeRoot: resolveClaudePaths(projectDir).runtimeRoot,
+    runtimeRoot,
     canonicalSkillsDir: skillsDir,
     flows: verification.flows,
   });
