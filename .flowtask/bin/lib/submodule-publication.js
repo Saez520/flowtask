@@ -88,6 +88,10 @@ function safeRelative(root, candidate) {
   return relative;
 }
 
+export function toPosixPath(value, separator = path.sep) {
+  return value.split(separator).join("/");
+}
+
 function journalPath(txId) {
   return path.join(JOURNAL_ROOT, `${txId}.json`);
 }
@@ -106,7 +110,7 @@ function removeJournal(txId) {
 
 function resolveParent(flowtaskDir, runner = defaultRunner) {
   const parentDir = gitOutput(["rev-parse", "--show-toplevel"], path.dirname(flowtaskDir), runner);
-  const relativePath = path.relative(parentDir, path.join(flowtaskDir, "plugins", "flowtask-context-checkpoint"));
+  const relativePath = toPosixPath(path.relative(parentDir, path.join(flowtaskDir, "plugins", "flowtask-context-checkpoint")));
   if (relativePath !== SUBMODULE_RELATIVE_PATH) throw new Error(`unexpected submodule path: ${relativePath}`);
   return parentDir;
 }
@@ -282,7 +286,8 @@ export async function ensureCanonicalSubmodule(flowtaskDir, {
     const journal = { version: 1, txId, ownerPid: process.pid, phase: "PREPARE", snapshot, txOwnedPaths: [], transports: [] };
     writeJournal(journal);
     let lastError;
-    for (const transport of ["ssh", "https"]) {
+    const transports = process.platform === "win32" ? ["https"] : ["ssh", "https"];
+    for (const transport of transports) {
       journal.phase = "SNAPSHOT";
       journal.transports.push({ transport, phase: journal.phase });
       writeJournal(journal);
@@ -312,7 +317,8 @@ export async function ensureCanonicalSubmodule(flowtaskDir, {
     }
     if (!source) {
       removeJournal(txId);
-      throw new Error(`submodule materialization failed for ${SUBMODULE_RELATIVE_PATH}; SSH: ${journal.transports[0]?.result?.stderr || "failed"}; HTTPS: ${journal.transports[1]?.result?.stderr || "not attempted"}; ${lastError?.message || "unknown error"}`);
+      const failures = journal.transports.map(({ transport, result }) => `${transport.toUpperCase()}: ${result?.stderr || "failed"}`).join("; ");
+      throw new Error(`submodule materialization failed for ${SUBMODULE_RELATIVE_PATH}; ${failures}; ${lastError?.message || "unknown error"}`);
     }
   }
   const final = snapshotSubmoduleParent(parentDir, SUBMODULE_RELATIVE_PATH, runner);
