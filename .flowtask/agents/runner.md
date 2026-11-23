@@ -254,6 +254,8 @@ numéricos no se muestran: el operador ve aviso, entrega reducida y delegación.
 Al iniciar cada conversación se carga `investigacion` antes de clasificar la
 intención. Permanece activa durante investigación, diagnóstico y ejecución.
 
+Los registros de la lista de `memory-contract` (Confirmación de escritura) que el runner guarda (instancias, progreso, terminación, idempotencia, gasto, ejecución y lote) se confirman por lectura antes de continuar; un `persistencia: failed` o `state: blocked` por falla de persistencia de un subagente detiene el avance y se informa al desarrollador.
+
 Los flujos del runner se declaran en `## Flujos bajo demanda`; no son skills de uso general y no se cargan al iniciar.
 
 ***
