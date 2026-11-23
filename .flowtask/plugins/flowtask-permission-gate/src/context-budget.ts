@@ -248,9 +248,20 @@ export function buildDegradationMetadata(
   return { degradation };
 }
 
+/**
+ * File targeted by a `read` call in the V2 shape (`path`) with the legacy
+ * `file` field as fallback. Returns an empty string when neither is usable.
+ */
+export function readRequestedPath(args: Record<string, unknown>): string {
+  const pathValue = args?.path;
+  if (typeof pathValue === "string" && pathValue) return pathValue;
+  const fileValue = args?.file;
+  return typeof fileValue === "string" ? fileValue : "";
+}
+
 /** Target of the broad request: the file or the pattern, or the absence of a window. */
 function narrowingTarget(tool: BudgetTool, args: Record<string, unknown>): string {
-  const candidate = tool === "read" ? args?.file : args?.pattern;
+  const candidate = tool === "read" ? readRequestedPath(args) : args?.pattern;
   return typeof candidate === "string" && candidate ? candidate : "no bounded window";
 }
 
@@ -260,7 +271,7 @@ function narrowingTarget(tool: BudgetTool, args: Record<string, unknown>): strin
  */
 export function noticeKey(tool: BudgetTool, args: Record<string, unknown>): string {
   const field = (value: unknown): string => (typeof value === "string" ? value : "");
-  if (tool === "read") return `read|${field(args?.file)}`;
+  if (tool === "read") return `read|${readRequestedPath(args)}`;
   if (tool === "glob") return `glob|${field(args?.pattern)}|${field(args?.path)}`;
   return `grep|${field(args?.pattern)}|${field(args?.path)}|${field(args?.include)}`;
 }
@@ -299,13 +310,18 @@ export function resetNarrowingNotices(sessionID?: string): void {
  * Cheap read pre-gate: file without `limit`/`offset` whose `stat.size` exceeds
  * the preventive limit. `statSize` may come from the caller's prior `statSync`;
  * if it is `undefined` (stat failed), it does NOT block: the post-gate decides.
+ * The limit comes from the loaded config; the exported default is the fallback.
  */
-export function shouldPreventiveBlockRead(args: Record<string, unknown>, statSize?: number): boolean {
-  const file = args?.file;
-  if (typeof file !== "string" || !file) return false;
+export function shouldPreventiveBlockRead(
+  args: Record<string, unknown>,
+  statSize?: number,
+  statLimit: number = PREVENTIVE_READ_STAT_LIMIT,
+): boolean {
+  const file = readRequestedPath(args);
+  if (!file) return false;
   const hasWindow = args.limit !== undefined || args.offset !== undefined;
   if (hasWindow) return false;
-  if (statSize !== undefined && statSize > PREVENTIVE_READ_STAT_LIMIT) return true;
+  if (statSize !== undefined && statSize > statLimit) return true;
   return false;
 }
 

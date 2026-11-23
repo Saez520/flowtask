@@ -5,7 +5,7 @@ import { isAbsolute, resolve } from "node:path";
 import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, isAuthorityCommand, isWorktreeManagerMcpTool, } from "./authorizer.js";
 import { buildLayerBlockMessage, readOperationalLayers, readOperationalLayersAt } from "./layers.js";
 import { evaluateOpencodeActivation } from "./registration.js";
-import { applyReducedDelivery, buildAttachmentDelivery, buildDegradationMetadata, buildNarrowingNotice, buildReducedDelivery, isImageOrPdfOutput, loadContextBudgetConfig, readDeliveredText, registerNarrowingNotice, resetNarrowingNotices, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
+import { applyReducedDelivery, buildAttachmentDelivery, buildDegradationMetadata, buildNarrowingNotice, buildReducedDelivery, isImageOrPdfOutput, loadContextBudgetConfig, readDeliveredText, readRequestedPath, registerNarrowingNotice, resetNarrowingNotices, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
 /**
  * Candidate configuration paths, tried in order within each directory.
  * Precedence: commit workdir first; sessionDir only as a fallback for
@@ -266,15 +266,17 @@ function buildStampBlockMessage(cause, stampPath, configPath, stats) {
     ].join("\n");
 }
 /**
- * `stat.size` of the read file if it exists and is a string. Returns undefined
+ * `stat.size` of the read target resolved against the commit workdir/session.
+ * Accepts the V2 `path` field with the legacy `file` fallback. Returns undefined
  * on failure (hybrid GAP: the pre-gate is a cheap saving, the post-gate decides).
  */
-function readStatSizeSafe(args) {
-    const file = args?.file;
-    if (typeof file !== "string" || !file)
+function readStatSizeSafe(args, baseDir) {
+    const file = readRequestedPath(args);
+    if (!file)
         return undefined;
+    const absolute = isAbsolute(file) ? file : resolve(baseDir, file);
     try {
-        return statSync(file).size;
+        return statSync(absolute).size;
     }
     catch {
         return undefined;
@@ -323,16 +325,16 @@ export default Plugin.define({
                 ? event.input
                 : {};
             const command = String(input.command ?? "");
+            const workdir = readWorkdir(input, sessionDir);
             const agent = resolveSessionAgent(event.sessionID, event.agent);
             if (isRunner(agent)) {
                 // Permissions layer: autonomy and permissions must exist and be
                 // valid in the target before applying the technical allowlist. Autonomy
                 // does not authorize: it only checks that the layer is healthy. An
                 // absent configuration is also a denial, not a pass.
-                const layerWorkdir = readWorkdir(input, sessionDir);
                 const operationalLayers = typeof ctx.options?.configDir === "string" && ctx.options.configDir
                     ? readOperationalLayersAt(ctx.options.configDir)
-                    : readOperationalLayers([layerWorkdir, sessionDir]);
+                    : readOperationalLayers([workdir, sessionDir]);
                 if (!operationalLayers.ok) {
                     const authorityBypass = event.tool === "bash" && isAuthorityCommand(command);
                     if (!authorityBypass)
@@ -347,8 +349,9 @@ export default Plugin.define({
             // repeated in the turn is allowed and its delivery is reduced in the post-gate.
             if (isRunner(agent) && (event.tool === "read" || event.tool === "glob" || event.tool === "grep")) {
                 const budgetTool = event.tool;
+                const budget = loadContextBudgetConfig(workdir, sessionDir);
                 const broad = budgetTool === "read"
-                    ? shouldPreventiveBlockRead(input, readStatSizeSafe(input))
+                    ? shouldPreventiveBlockRead(input, readStatSizeSafe(input, workdir), budget.preventiveReadStatLimit)
                     : budgetTool === "glob"
                         ? shouldPreventiveBlockGlob(input)
                         : shouldPreventiveBlockGrep(input);
@@ -361,13 +364,11 @@ export default Plugin.define({
             if (command.includes("--no-verify") || command.includes("--no-review")) {
                 // The bypass is only legitimate for trivial changes (≤ TRIVIAL_CHANGE_LINES).
                 // If the diff cannot be measured (getDiffStats throws), the error propagates and the commit is blocked (deny-by-default).
-                const workdir = readWorkdir(input, sessionDir);
                 const stats = getDiffStats(workdir);
                 if (stats.lines <= TRIVIAL_CHANGE_LINES)
                     return; // trivial → legitimate bypass
                 throw new Error(buildGateMessage(stats)); // non-trivial → bypass denied, review required
             }
-            const workdir = readWorkdir(input, sessionDir);
             const config = readConfig(workdir, sessionDir);
             if (!config)
                 return;

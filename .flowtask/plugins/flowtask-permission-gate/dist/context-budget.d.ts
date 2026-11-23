@@ -74,6 +74,11 @@ export declare function buildDegradationMetadata(level: DegradationLevel, option
     omittedChars?: number;
 }): Record<string, unknown>;
 /**
+ * File targeted by a `read` call in the V2 shape (`path`) with the legacy
+ * `file` field as fallback. Returns an empty string when neither is usable.
+ */
+export declare function readRequestedPath(args: Record<string, unknown>): string;
+/**
  * Identity of the broad request. The tool prefix prevents collisions between
  * each tool's field sets.
  */
@@ -93,8 +98,9 @@ export declare function resetNarrowingNotices(sessionID?: string): void;
  * Cheap read pre-gate: file without `limit`/`offset` whose `stat.size` exceeds
  * the preventive limit. `statSize` may come from the caller's prior `statSync`;
  * if it is `undefined` (stat failed), it does NOT block: the post-gate decides.
+ * The limit comes from the loaded config; the exported default is the fallback.
  */
-export declare function shouldPreventiveBlockRead(args: Record<string, unknown>, statSize?: number): boolean;
+export declare function shouldPreventiveBlockRead(args: Record<string, unknown>, statSize?: number, statLimit?: number): boolean;
 /** Glob pre-gate: broad pattern from the closed list without a bounded path or with node_modules. */
 export declare function shouldPreventiveBlockGlob(args: Record<string, unknown>): boolean;
 /** grep pre-gate: no `include` when the path is the root / unbounded. */

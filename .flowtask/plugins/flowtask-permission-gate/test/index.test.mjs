@@ -1050,6 +1050,62 @@ test("context-budget: read de archivo >50KiB sin limit avisa la acotación en be
   );
 });
 
+test("context-budget V2: read con path relativo >50KiB sin ventana avisa contra el workdir", async () => {
+  const root = makeLayeredRoot("flowtask-budget-read-path-");
+  fs.writeFileSync(path.join(root, "big.txt"), Buffer.alloc(60 * 1024, 0x61));
+  const gate = await createGate(root);
+  await assert.rejects(
+    gate.before({ tool: "read", sessionID: "s-read-path", agent: "flowtask-runner", input: { path: "big.txt" } }),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("read", { path: "big.txt" }),
+  );
+});
+
+test("context-budget V2: read con path y ventana o archivo chico no se bloquea", async () => {
+  const root = makeLayeredRoot("flowtask-budget-read-window-");
+  fs.writeFileSync(path.join(root, "big.txt"), Buffer.alloc(60 * 1024, 0x61));
+  fs.writeFileSync(path.join(root, "small.txt"), "ok\n");
+  const gate = await createGate(root);
+  await gate.before({
+    tool: "read",
+    sessionID: "s-read-window",
+    agent: "flowtask-runner",
+    input: { path: "big.txt", limit: 20 },
+  });
+  await gate.before({
+    tool: "read",
+    sessionID: "s-read-window",
+    agent: "flowtask-runner",
+    input: { path: "big.txt", offset: 40000 },
+  });
+  await gate.before({
+    tool: "read",
+    sessionID: "s-read-window",
+    agent: "flowtask-runner",
+    input: { path: "small.txt" },
+  });
+});
+
+test("context-budget V2: preventiveReadStatLimit override applies to the read path", async () => {
+  const root = makeLayeredRoot("flowtask-budget-read-limit-");
+  fs.mkdirSync(path.join(root, ".flowtask", "config"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".flowtask", "config", "context-budget.json"),
+    JSON.stringify({ preventiveReadStatLimit: 100 }),
+    "utf8",
+  );
+  fs.writeFileSync(path.join(root, "medium.txt"), Buffer.alloc(200, 0x61));
+  const gate = await createGate(root);
+  await assert.rejects(
+    gate.before({
+      tool: "read",
+      sessionID: "s-read-limit",
+      agent: "flowtask-runner",
+      input: { path: "medium.txt" },
+    }),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("read", { path: "medium.txt" }),
+  );
+});
+
 test("context-budget: grep sin include en la raíz avisa la acotación en before", async () => {
   const gate = await createGate();
   await assert.rejects(

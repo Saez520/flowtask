@@ -199,9 +199,20 @@ export function buildDegradationMetadata(level, options = {}) {
         degradation.delegated_to = DELEGATION_TARGET;
     return { degradation };
 }
+/**
+ * File targeted by a `read` call in the V2 shape (`path`) with the legacy
+ * `file` field as fallback. Returns an empty string when neither is usable.
+ */
+export function readRequestedPath(args) {
+    const pathValue = args?.path;
+    if (typeof pathValue === "string" && pathValue)
+        return pathValue;
+    const fileValue = args?.file;
+    return typeof fileValue === "string" ? fileValue : "";
+}
 /** Target of the broad request: the file or the pattern, or the absence of a window. */
 function narrowingTarget(tool, args) {
-    const candidate = tool === "read" ? args?.file : args?.pattern;
+    const candidate = tool === "read" ? readRequestedPath(args) : args?.pattern;
     return typeof candidate === "string" && candidate ? candidate : "no bounded window";
 }
 /**
@@ -211,7 +222,7 @@ function narrowingTarget(tool, args) {
 export function noticeKey(tool, args) {
     const field = (value) => (typeof value === "string" ? value : "");
     if (tool === "read")
-        return `read|${field(args?.file)}`;
+        return `read|${readRequestedPath(args)}`;
     if (tool === "glob")
         return `glob|${field(args?.pattern)}|${field(args?.path)}`;
     return `grep|${field(args?.pattern)}|${field(args?.path)}|${field(args?.include)}`;
@@ -248,15 +259,16 @@ export function resetNarrowingNotices(sessionID) {
  * Cheap read pre-gate: file without `limit`/`offset` whose `stat.size` exceeds
  * the preventive limit. `statSize` may come from the caller's prior `statSync`;
  * if it is `undefined` (stat failed), it does NOT block: the post-gate decides.
+ * The limit comes from the loaded config; the exported default is the fallback.
  */
-export function shouldPreventiveBlockRead(args, statSize) {
-    const file = args?.file;
-    if (typeof file !== "string" || !file)
+export function shouldPreventiveBlockRead(args, statSize, statLimit = PREVENTIVE_READ_STAT_LIMIT) {
+    const file = readRequestedPath(args);
+    if (!file)
         return false;
     const hasWindow = args.limit !== undefined || args.offset !== undefined;
     if (hasWindow)
         return false;
-    if (statSize !== undefined && statSize > PREVENTIVE_READ_STAT_LIMIT)
+    if (statSize !== undefined && statSize > statLimit)
         return true;
     return false;
 }
