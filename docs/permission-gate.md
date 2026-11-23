@@ -373,12 +373,12 @@ to the manager and is not admitted through bash.
 
 After updating, verify that the OpenCode user configuration registers the gate
 once as `{"package":"flowtask-permission-gate@^2.0.0","options":{...}}`, that it
-keeps no entry pointing to `<global-config>/flowtask/plugins/flowtask-permission-gate`
-or `./plugins/flowtask-permission-gate`, and that the local gate directory does
-not remain unless it lacked the FlowTask marker. Confirm that the context
-checkpoint is registered from its local package path, and that the previous name
-and `agent.flowtask-runner.permission` do not exist. Restart OpenCode and test an
-allowed Runner operation, a denied one, and the commit gate with and without a stamp.
+keeps no entry pointing to `<global-config>/flowtask/plugins/flowtask-permission-gate`,
+and that the local gate directory does not remain unless it lacked the FlowTask
+marker. Confirm that the context checkpoint is registered from its local package
+path, and that the previous name and `agent.flowtask-runner.permission` do not
+exist. Restart OpenCode and test an allowed Runner operation, a denied one, and
+the commit gate with and without a stamp.
 
 ## Post-install/update and restart runtime smoke
 
