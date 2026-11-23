@@ -658,6 +658,20 @@ authorized through the shell. See
 
 The manifest declares permission-gate, model-selector, and context-checkpoint; classifier-hook and classifier-tui are deprecated and disabled, so they are not installed by default. The permission gate and the context checkpoint are user-scope plugins: installation copies each package once into `<global-config>/flowtask/plugins/<name>`, writes its ownership marker, verifies the copy, and registers a single global `{"package": "<absolute path>", "options": {...}}` entry in the OpenCode user configuration. A directory without the marker is preserved and reported. The model selector remains a project plugin. The context-checkpoint source gitlink may be empty if the submodule was not materialized; the user-scope copy is what the runtime publishes.
 
+### Permission gate package
+
+The gate is a standalone npm package, `flowtask-permission-gate`, with its own
+README and MIT license. It requires an OpenCode runtime with the V2 plugin API;
+its only runtime dependency is `@opencode/plugin`, and it does not depend on the
+Model Context Protocol SDK. The package tarball ships `dist`, `README.md`,
+`LICENSE`, and the package metadata; `prepack` rebuilds `dist` from source.
+
+`install` and `update` do not publish. Publication and authentication are a
+separate operational step. Once the package is published, consumers use a range
+that resolves to the latest compatible version, so `flowtask update` receives
+gate fixes without pinning an exact release; until then, the installer keeps
+copying the managed user-scope package from the runtime.
+
 Graphify is queried through `graphify_query_graph` via MCP. `flowtask graphify query --query <query>` only tests the deprecated shim and exits without querying locally.
 
 ## Diagnostics

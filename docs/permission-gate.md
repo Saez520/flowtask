@@ -22,11 +22,21 @@ change takes effect when OpenCode restarts. There is no native fallback.
     `.flowtask/config/review.json`; if it exists in neither, the session/main
     root is used as a fallback ONLY for the other settings
     (`enabled`, `stampTtlMinutes`). This precedence is workdir-first.
+  - **Fail-closed config:** in a registered project, a missing `review.json`
+    blocks the commit with the searched paths, the registration, and the
+    `flowtask update` action. An unreadable or structurally invalid config also
+    blocks, naming the file and the cause. `enabled: false` remains the explicit
+    opt-out, and an unregistered project is not gated.
   - **Stamp resolution:** the relative `stampPath` is ALWAYS resolved
     against the workdir where the commit runs. Commits from the main root
     use that root's canonical path; commits from a worktree use the
     worktree path (per-flow isolation). The review-orchestrator already writes to
     `<worktree>`, so both sides stay aligned without manual steps.
+  - **Commit detection:** the gate recognizes `git commit`, `git -C <path>
+    commit`, `git -c <name=value> commit`, `git --git-dir=<path> commit` (and
+    its separated form), and compounds such as `cd <path> && git commit`.
+    Quoted values are kept in one token. Commits started internally by the
+    worktree manager or through nested shells are outside this detection.
   - **No destructive consumption:** a valid stamp is NOT deleted when validated;
     validity is governed by the TTL and branch binding. A commit that fails for
     another reason does not require regenerating the stamp as long as it has not
@@ -153,6 +163,18 @@ and the reduced delivery.
 | Reduced delivery | The delivery exceeds the per-call budget. | What was omitted, how much the omitted content weighed, and who to delegate it to. |
 | Per-turn omission | The turn total reaches the accumulated budget. | The same warning, naming the turn's accumulated budget. |
 
+The request fields follow the V2 runtime: `read` uses `path`, with the legacy
+`file` field as fallback, and relative values are resolved against the commit
+workdir or the session directory before the stat check. The preventive read
+limit, the preventive glob patterns, and the blocked path segments come from
+`.opencode/flowtask/config/context-budget.json` first and from
+`.flowtask/config/context-budget.json` as the fallback; invalid overrides fall
+back to defaults with a warning. `./` counts as an unbounded path.
+
+An image or PDF delivered as `file` parts inside the V2 `content` array is
+sanitized: the file parts are removed and the delegation text is appended, so
+the attachment payload never reaches the runner.
+
 Contract rules:
 
 - Thresholds are not exposed in messages: the scope of the applied budget is
@@ -199,6 +221,18 @@ path of the stamp being looked up, the applied config, and the real pending diff
 files: staged + unstaged + untracked) with `git diff HEAD --stat`
 (+/- lines), so "Diff: N file(s)" reflects reality even with
 an empty index.
+
+**Fail-closed configuration.** A registered project without `review.json`
+blocks with the searched paths, the registration, and the `flowtask update`
+action. An unreadable or structurally invalid config blocks with the file and
+the cause. `enabled: false` is the explicit opt-out; an unregistered project
+without config is not gated.
+
+**Known limits.** A valid stamp is not consumed and is not bound to the
+reviewed diff: TTL and branch are the only validity conditions, and binding the
+stamp to the diff is a later hardening step. Commit detection covers the forms
+listed above, not commits started internally by the worktree manager or through
+nested shells. Windows-specific command forms are verified separately.
 
 Existing safe administrative forms keep their restrictions:
 
@@ -282,11 +316,12 @@ contains an unauthorized segment or if its syntax is ambiguous.
 
 The V2 runtime exposes the acting agent in each tool event. The plugin
 evaluates that identity in `execute.before` and `execute.after`, and records
-the runner per session so phases without an identity can reuse it. An identity
-that is not the runner keeps the session fallback and does not contaminate the
-recorded runner. Identity is not inferred from the command text; if there is no
-registered runner identity, the Runner-specific rule degrades without applying
-and the universal commit gate remains.
+the runner per session so phases without an identity can reuse it. An explicit
+identity that is not the runner wins as-is and does not inherit the runner
+allowlist or the context budget; the session fallback applies only when the
+event carries no agent. Identity is not inferred from the command text; if
+there is no registered runner identity, the Runner-specific rule degrades
+without applying and the universal commit gate remains.
 
 ## Worktree Manager
 
