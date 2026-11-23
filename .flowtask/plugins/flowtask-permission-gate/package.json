@@ -1,14 +1,39 @@
 {
   "name": "flowtask-permission-gate",
   "version": "2.0.0",
+  "description": "OpenCode permission gate for FlowTask: runner allowlist, review stamps, and context budget.",
   "type": "module",
   "main": "./dist/index.js",
   "exports": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Saez520/flowtask.git",
+    "directory": ".flowtask/plugins/flowtask-permission-gate"
+  },
+  "homepage": "https://github.com/Saez520/flowtask#readme",
+  "bugs": {
+    "url": "https://github.com/Saez520/flowtask/issues"
+  },
+  "license": "MIT",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "flowtask",
+    "permission-gate",
+    "review-stamp",
+    "context-budget"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('src/layers.js','dist/layers.js')\""
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').copyFileSync('src/layers.js','dist/layers.js')\"",
+    "test": "node --test test/index.test.mjs && node test/context-budget-smoke.mjs",
+    "prepack": "npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "@opencode/plugin": "2.0.29"
   },
   "devDependencies": {
