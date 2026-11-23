@@ -69,7 +69,7 @@ Reglas de `topic_key`:
 - Distintos topics no deben sobreescribirse entre sí
 - Reutilizá el mismo `topic_key` para actualizar un tema evolutivo
 - Si no estás seguro de la key, usá `mem_suggest_topic_key` primero
-- Usá `mem_update` cuando tengas un observation ID exacto para corregir
+- Usá `mem_update` cuando tengas un observation ID exacto para corregir, y confirmá cada actualización antes de la siguiente
 
 ---
 
@@ -230,6 +230,23 @@ Antes de ejecutar `mem_save`, seguí estos pasos:
 
 ---
 
+## Protocolo Post-Write
+
+Después de ejecutar `mem_save` o `mem_update`, seguí estos pasos:
+
+1. **¿Está en la lista?** Si el registro no está en la lista de `memory-contract` (Confirmación de escritura), terminá: no exige confirmación y no se reporta como confirmada.
+2. **Leer**: ubicá el id con `mem_search` por `topic_key` y leé el contenido con `mem_get_observation(id)`. El preview de `mem_search` no cuenta como lectura.
+3. **Comparar**: en una actualización, buscá la misma clave y el fragmento marcador del cambio, ausente del contenido previo; en un alta, compará clave, tamaño y el marcador de estado esperado.
+4. **Resolver**: si no coincide, hacé un único reintento de escritura y su confirmación; si sigue sin coincidir, pausá con `persistence_unconfirmed` y reportá `persistencia: failed` con `persistencia_fallida` y el `topic_key` afectado.
+
+**Secuencia**: las actualizaciones de un mismo registro, incluidas las de `mem_update` find/replace, se escriben y confirman una por una; la siguiente espera la lectura de la anterior.
+
+**Rechazo por dos sesiones activas**: si `mem_save` rechaza por "multiple active runtime sessions", la escritura se reporta como no realizada con el motivo del rechazo; no se cuenta como guardada ni se reintenta con un `session_id` inventado.
+
+La respuesta "guardado" de la herramienta no es confirmación: solo la lectura posterior lo es.
+
+---
+
 ## IMPORTANT
 
 - Las tools `mem_*` NO cuentan contra el límite de tool calls
@@ -242,5 +259,6 @@ Antes de ejecutar `mem_save`, seguí estos pasos:
 ## Referencias
 
 - Para contratos de datos, categorías oficiales, namespaces canónicos, payloads, excepciones tipadas (incluyendo `CheckpointPayload` y `SessionSummary`), invariante central y degradación: consultá `memory-contract`.
+- Para la norma de confirmación de escritura: consultá `memory-contract`, sección Confirmación de escritura.
 - Para la tabla completa de ownership de `topic_key`: consultá `topic-keys-convention`.
 - Para el protocolo de uso específico de checkpoints: consultá `checkpoint-mixin`.
