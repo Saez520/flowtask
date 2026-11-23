@@ -1660,7 +1660,12 @@ async function installGlobalSurfaces(flowtaskDir, options, mode) {
   results.push({
     target: "plugins",
     status: "Success",
-    stats: { installed: plugins.installed.length, replaced: plugins.replaced.length, preserved: plugins.preserved.length },
+    stats: {
+      installed: plugins.installed.length,
+      replaced: plugins.replaced.length,
+      preserved: plugins.preserved.length,
+      migrated: plugins.migrated.length,
+    },
   });
 
   printSummary(mode === "install" ? "Installation Summary" : "Update Summary", results);
@@ -1915,7 +1920,7 @@ ${COLORS.blue}╔═════════════════════
       flowtaskDir,
       manifest: loadPluginManifest(flowtaskDir),
     });
-    if (userPlugins.installed.length > 0 || userPlugins.replaced.length > 0 || userPlugins.preserved.length > 0) {
+    if (userPlugins.installed.length > 0 || userPlugins.replaced.length > 0 || userPlugins.preserved.length > 0 || userPlugins.migrated.length > 0) {
       results.push({
         target: "plugins",
         status: "Success",
@@ -1923,6 +1928,7 @@ ${COLORS.blue}╔═════════════════════
           installed: userPlugins.installed.length,
           replaced: userPlugins.replaced.length,
           preserved: userPlugins.preserved.length,
+          migrated: userPlugins.migrated.length,
         },
       });
     }
@@ -2362,8 +2368,13 @@ async function runUpdate(flowtaskDir, options, report) {
     }
 
     const userPlugins = installUserPlugins({ flowtaskDir, manifest });
-    if (userPlugins.installed.length > 0 || userPlugins.replaced.length > 0) {
-      report.phase("plugins-user", `${userPlugins.installed.length} installed · ${userPlugins.replaced.length} replaced`);
+    if (userPlugins.installed.length > 0 || userPlugins.replaced.length > 0 || userPlugins.migrated.length > 0) {
+      const parts = [
+        `${userPlugins.installed.length} installed`,
+        `${userPlugins.replaced.length} replaced`,
+      ];
+      if (userPlugins.migrated.length > 0) parts.push(`${userPlugins.migrated.length} migrated`);
+      report.phase("plugins-user", parts.join(" · "));
     }
 
     if (claudeUpdate?.registered === true) {
