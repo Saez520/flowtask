@@ -156,6 +156,10 @@ mem_save(
 3. Responder éxito únicamente cuando artifacto y checkpoint estén confirmados.
    Si falla el checkpoint, responder `blocked`, identificar el checkpoint y no
    anunciar `ca_created`, `ca_updated` ni `ready_for_planning`.
+4. Cada escritura (artifact y checkpoint) se confirma por lectura según
+   `memory-contract` (Confirmación de escritura): un único reintento y, si
+   persiste, `persistencia: failed` con `persistencia_fallida: artifact |
+   checkpoint` y el `topic_key` afectado.
 ```
 
 ---
@@ -569,6 +573,7 @@ state: ca_created | ca_updated | blocked
 ca_status: draft | complete
 topic_key: ca/CA-{ID}/artifact/ca (Engram)
 persistencia: confirmed | failed
+persistencia_reintentos: 0 | 1
 persistencia_fallida: NONE | artifact | checkpoint
 blockers: NONE | [lista de decisiones pendientes]
 tradeoffs:
@@ -615,7 +620,7 @@ Tus permisos son de lectura. Verificás la memoria del proyecto, la documentaci�
 - Genera criterios de aceptación verificables y no avanza con criterios que no puedan comprobarse.
 - Formaliza directamente el CA completo después de presentar tradeoffs/GAPs cuando no existan decisiones materiales pendientes.
 - Mantiene `draft`, solicita aclaración y espera la respuesta cuando existan dudas o decisiones materiales pendientes.
-- Persiste el artifacto completo y el checkpoint exclusivamente mediante `mem_save` en Engram (`ca/CA-{ID}/artifact/ca` y `flow-state/CA-{ID}/create`), y comunica éxito solo con ambas confirmaciones. Un `topic_key` admite un único payload: no se escribe una segunda forma narrativa bajo la clave de continuidad.
+- Persiste el artifacto completo y el checkpoint exclusivamente mediante `mem_save` en Engram (`ca/CA-{ID}/artifact/ca` y `flow-state/CA-{ID}/create`), comunica éxito solo con ambas confirmaciones y confirma cada escritura por lectura según `memory-contract` (Confirmación de escritura) antes de comunicar éxito. Un `topic_key` admite un único payload: no se escribe una segunda forma narrativa bajo la clave de continuidad.
 - Verifica cada dato material en el orden vigente y cita su registro `VR-*` con fuente y estado.
 - Un dato material no verificado no se presenta como hecho: se mantiene el CA en `draft` y se pregunta al usuario.
 - Un dato material en estado `unverified` o `discrepant` impide formalizar el CA: la respuesta queda en `waiting_for_user`.
