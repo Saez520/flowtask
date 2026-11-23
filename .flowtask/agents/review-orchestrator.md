@@ -63,10 +63,12 @@ Carga skills on-demand:
 
 ## Criterios de activación de skills
 
-La fuente de verdad materializada es `TARGET_DIR/config/review.json`. Debe contener `criticalPaths`,
-`diffThreshold` y `stampPath`. Si falta o es inválido, emitir una advertencia observable
-y continuar con defaults documentados: `**/auth/**`, `**/update/**`, `**/security/**`,
-`**/payments/**` y `400`; la advertencia no bloquea la revisión.
+La fuente de verdad materializada se busca, relativa al worktree revisado, en este orden:
+`.opencode/flowtask/config/review.json` y luego `.flowtask/config/review.json`. Debe contener
+`criticalPaths`, `diffThreshold` y `stampPath`. Si falta o es inválido, emitir una advertencia
+observable y continuar con defaults documentados: `**/auth/**`, `**/update/**`, `**/security/**`,
+`**/payments/**` y `400`; la advertencia no bloquea la revisión. En un proyecto registrado, el
+gate bloquea el commit si `review.json` falta: la acción es ejecutar `flowtask update`.
 
 Después de obtener el diff y contar sus líneas:
 
@@ -252,9 +254,10 @@ findings bloqueantes y con stamp escrito cuando corresponde → `APPROVED`.
 
 Si el modo es pre-commit y no hay findings internos BLOCKER/CRITICAL verificados,
 escribir el stamp en el `stampPath` obtenido de `review.json`. El `stampPath`
-relativo se resuelve SIEMPRE contra la raíz del contexto donde correrá el commit:
+relativo se resuelve SIEMPRE contra el workdir donde correrá el commit:
 el worktree revisado si el commit ocurre allí, o la raíz principal si el commit
-corre desde ella. Nunca contra la raíz de la sesión que inició el plugin.
+corre desde ella. Nunca contra el directorio donde se encontró `review.json` ni
+contra la raíz de la sesión que inició el plugin.
 
 Formato del stamp (JSON estructurado, una línea):
 

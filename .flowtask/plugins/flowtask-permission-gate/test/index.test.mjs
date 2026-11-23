@@ -632,6 +632,70 @@ test("C5 V2: sello vigente autoriza dos commits y se conserva", async () => {
   assert.equal(fs.readFileSync(stampPath, "utf8"), original, "el sello vigente se conserva intacto");
 });
 
+test("commit gate V2: las opciones globales de git y los compuestos no escapan al gate", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-global-"));
+  const stampPath = writeConfig(root, "opencode");
+  const gate = await createGate(root);
+
+  for (const command of [
+    'git -C . commit -m "opcion C"',
+    'git -c user.name=Gate commit -m "opcion c"',
+    'git --git-dir=.git commit -m "git-dir igual"',
+    'git --git-dir .git commit -m "git-dir valor"',
+    'cd . && git commit -m "compuesto"',
+    'cd . && git status --short && git commit -m "compuesto largo"',
+  ]) {
+    await assert.rejects(
+      runGateWith(gate, root, command, "s-global-options"),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes("Cause: missing stamp") &&
+        error.message.includes(`Stamp looked up at: ${stampPath}`),
+      command,
+    );
+  }
+});
+
+test("commit gate V2: un sello válido autoriza git -C", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-global-valid-"));
+  const stampPath = writeConfig(root, "opencode");
+  writeStamp(stampPath, "main");
+  await runGateWith(await createGate(root), root, 'git -C . commit -m "valido"', "s-global-valid");
+});
+
+test("commit gate V2: review.json en .flowtask se aplica con el stamp en el workdir", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-flowtask-config-"));
+  const stampPath = writeConfig(root, "flowtask");
+  const gate = await createGate(root);
+
+  await assert.rejects(
+    runGate(gate, root, "s-flowtask-config"),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes("Cause: missing stamp") &&
+      error.message.includes(`Stamp looked up at: ${stampPath}`),
+  );
+
+  writeStamp(stampPath, "main");
+  await runGate(gate, root, "s-flowtask-config-valid");
+});
+
+test("commit gate V2: .opencode tiene precedencia sobre .flowtask", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-config-order-"));
+  const opencodeStamp = writeConfig(root, "opencode");
+  const flowtaskStamp = writeConfig(root, "flowtask");
+  writeStamp(flowtaskStamp, "main");
+
+  await assert.rejects(
+    runGate(await createGate(root), root, "s-config-order"),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes("Cause: missing stamp") &&
+      error.message.includes(`Stamp looked up at: ${opencodeStamp}`),
+    "el candidato .opencode se evalúa primero",
+  );
+});
+
 /**
  * gap_ref: G1 (C6)
  * criterio: sello obsoleto, de otra rama, expirado o bypass no trivial se

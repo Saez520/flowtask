@@ -62,6 +62,110 @@ function readWorkdir(args, fallback) {
     const candidate = args.workdir ?? args.cwd;
     return typeof candidate === "string" && candidate ? candidate : fallback;
 }
+/** Global git options that consume the next token as their value. */
+const GIT_GLOBAL_OPTIONS_WITH_VALUE = new Set([
+    "-C",
+    "-c",
+    "--git-dir",
+    "--work-tree",
+    "--namespace",
+    "--exec-path",
+]);
+/** Global git options written with `=<value>`. */
+const GIT_GLOBAL_OPTIONS_WITH_EQUALS = ["--git-dir=", "--work-tree=", "--namespace=", "--exec-path="];
+/** Splits a command on `&&` without breaking quoted segments. */
+function splitCommandSegments(command) {
+    const segments = [];
+    let current = "";
+    let quote = null;
+    for (let index = 0; index < command.length; index += 1) {
+        const char = command[index];
+        if (quote) {
+            current += char;
+            if (char === quote)
+                quote = null;
+            continue;
+        }
+        if (char === '"' || char === "'") {
+            quote = char;
+            current += char;
+            continue;
+        }
+        if (char === "&" && command[index + 1] === "&") {
+            segments.push(current);
+            current = "";
+            index += 1;
+            continue;
+        }
+        current += char;
+    }
+    segments.push(current);
+    return segments;
+}
+/** Whitespace tokenization that keeps a quoted value in one token. */
+function tokenizeSegment(segment) {
+    const tokens = [];
+    let current = "";
+    let quote = null;
+    for (const char of segment) {
+        if (quote) {
+            current += char;
+            if (char === quote)
+                quote = null;
+            continue;
+        }
+        if (char === '"' || char === "'") {
+            quote = char;
+            current += char;
+            continue;
+        }
+        if (/\s/.test(char)) {
+            if (current) {
+                tokens.push(current);
+                current = "";
+            }
+            continue;
+        }
+        current += char;
+    }
+    if (current)
+        tokens.push(current);
+    return tokens;
+}
+/**
+ * Detects a commit in any `&&` segment, including the global git options that
+ * precede the subcommand (`-C`, `-c`, `--git-dir`, and their value forms).
+ * A leading `cd` belongs to its own segment, so `cd ... && git commit` is seen.
+ */
+function isGitCommitCommand(command) {
+    for (const segment of splitCommandSegments(command)) {
+        const tokens = tokenizeSegment(segment);
+        for (let start = 0; start < tokens.length; start += 1) {
+            if (tokens[start] !== "git")
+                continue;
+            let index = start + 1;
+            while (index < tokens.length) {
+                const token = tokens[index];
+                if (token === "commit")
+                    return true;
+                if (GIT_GLOBAL_OPTIONS_WITH_VALUE.has(token)) {
+                    index += 2;
+                    continue;
+                }
+                if (GIT_GLOBAL_OPTIONS_WITH_EQUALS.some((prefix) => token.startsWith(prefix))) {
+                    index += 1;
+                    continue;
+                }
+                if (token.startsWith("-")) {
+                    index += 1;
+                    continue;
+                }
+                break;
+            }
+        }
+    }
+    return false;
+}
 function runnerToolAllowed(tool, args) {
     if (isWorktreeManagerMcpTool(tool))
         return true;
@@ -364,7 +468,7 @@ export default Plugin.define({
                     throw new Error(buildNarrowingNotice(budgetTool, input));
                 }
             }
-            if (event.tool !== "bash" || !/\bgit\s+commit\b/.test(command))
+            if (event.tool !== "bash" || !isGitCommitCommand(command))
                 return;
             if (command.includes("--no-verify") || command.includes("--no-review")) {
                 // The bypass is only legitimate for trivial changes (≤ TRIVIAL_CHANGE_LINES).
