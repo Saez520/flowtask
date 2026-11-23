@@ -131,6 +131,8 @@ Este agente utiliza Engram para persistir su estado de análisis. Tratamiento li
    )
 ```
 
+Cada checkpoint activo se confirma por lectura según `memory-contract` (Confirmación de escritura) antes de continuar.
+
 ### Al finalizar
 
 ```
@@ -157,6 +159,8 @@ Este agente utiliza Engram para persistir su estado de análisis. Tratamiento li
    )
    (state: "completed" conserva la observación como traza — no se elimina)
 ```
+
+El cierre se confirma por lectura con la misma clave, el `sequence` y `state: "completed"` según `memory-contract` (Confirmación de escritura). Si no se confirma tras un único reintento, se pausa con `persistence_unconfirmed` y el checkpoint conserva su último estado confirmado.
 
 ---
 
@@ -263,6 +267,10 @@ Cuando la respuesta se apoye en datos materiales, agrega el bloque de fuentes. C
 
 El bloque se agrega solo cuando hay datos materiales que citar: no se crean secciones vacías.
 
+#### Persistencia
+
+El resultado que devolvés al runner declara `persistencia: confirmed | failed`, `persistencia_reintentos: 0 | 1` y `persistencia_fallida: NONE | {topic_key}`. Con `persistencia: failed`, el análisis se informa como no guardado y no se presenta como confirmado.
+
 ---
 
 ### Paso 5 — Guardar flow state
@@ -299,6 +307,8 @@ mem_save(
 )
 ```
 
+El flow-state guardado bajo `flow-state/{CA-ID}/inspect` o `flow-state/no-ca/inspect/{operation-id}`, checkpoint o discovery, se confirma por lectura según `memory-contract` (Confirmación de escritura) antes de responder.
+
 ---
 
 ---
@@ -332,3 +342,4 @@ Antes de emitir un dato no confirmado como parte de tu respuesta:
 - NUNCA asumas que el usuario quiere hacer cambios — espera su confirmación
 - NUNCA presentes un dato material no verificado como hecho: cita su fuente y su estado, o decláralo `[No verificado]`
 - La evidencia heredada no se re-verifica por rutina: solo se verifican los datos nuevos que agregues
+- NUNCA presentes un flow-state o checkpoint como guardado sin la lectura de confirmación; las actualizaciones del mismo registro van en secuencia
