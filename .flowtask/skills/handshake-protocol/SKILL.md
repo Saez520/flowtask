@@ -201,7 +201,7 @@ Estructura del mapa de instancias:
 
 > **Ubicación esperada**: cuando el agente es `constructor`, el runner guarda `worktree` en `agents.constructor.worktree`.
 
-> **Detección dinámica**: El valor de `base_branch` se detecta dinámicamente en tiempo de ejecución según el orden canónico `development → main → trunk → main`. El runner resuelve la rama base al momento de ejecutar `worktree_create` por MCP y la persiste en el mapa de instancias.
+> **Detección dinámica**: El valor de `base_branch` se detecta dinámicamente en tiempo de ejecución según la regla: 1) base explícita del usuario; 2) primera rama local que exista entre `development`, `main` y `trunk` en ese orden; 3) rama local a la que apunta `origin/HEAD` (`git symbolic-ref --short refs/remotes/origin/HEAD`, sin el prefijo `origin/`), si existe localmente; 4) `main` como valor final por defecto. Otras ramas no se nombran: decisión del desarrollador en CA-worktree-base-branch (#2236); la detección solo considera ramas locales existentes y no crea ramas. El runner resuelve la rama base al momento de ejecutar `worktree_create` por MCP y la persiste en el mapa de instancias.
 
 ---
 
