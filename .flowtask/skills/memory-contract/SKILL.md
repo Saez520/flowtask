@@ -241,12 +241,49 @@ Los artifactos con `type: "ca-artifact"` no se cargan en contexto operativo norm
 
 ---
 
+## Confirmación de escritura
+
+Toda escritura de un registro de la lista se confirma por lectura antes de reportar éxito. La respuesta "guardado" de la herramienta no es confirmación.
+
+**Registros que se confirman**:
+
+| Registro | Namespace |
+|----------|-----------|
+| Artifacts de CA, plan, validación, auditoría, tests-report y logging-report | `ca/CA-{ID}/artifact/*` |
+| Checkpoints y flow-state, incluidos los de `no-ca` | `flow-state/*` |
+| Registros operativos del Agent Loop (progreso, terminación, idempotencia, gasto, ejecución) y registro de lote | `flow-state/{execution_id}/*` en los operativos; el registro de lote usa su namespace operativo |
+
+Una escritura fuera de esta lista no exige confirmación y no se reporta como confirmada.
+
+**Cómo se lee**: ubicá el id con `mem_search` por `topic_key` y leé el contenido con `mem_get_observation(id)`. El preview de `mem_search` no sirve como lectura: trunca el contenido.
+
+**Criterio de coincidencia**:
+
+- Actualización de un registro existente: la lectura devuelve la misma clave (`topic_key`) y contiene el fragmento marcador del cambio. El marcador es la línea o el valor nuevo escrito y debe estar ausente del contenido anterior; si ya estaba, no prueba nada y elegís otro.
+- Alta de un registro nuevo: la lectura devuelve la misma clave, el mismo tamaño que el contenido escrito y el marcador de estado esperado (`state: completed` en un checkpoint de cierre, `state: active` en uno abierto, el veredicto o el `status` en un reporte). Un `truncation` informado por la respuesta de `mem_save` cuenta como desajuste de tamaño.
+- Checkpoints: el marcador de actualización es el par `sequence` + `state`.
+- Registros operativos del Agent Loop: la comparación propia que define su skill (campos de `integrity`) satisface el criterio.
+
+**Falla**: ante un desajuste, hacés un único reintento de escritura y su confirmación; nunca más de uno. Si el desajuste persiste, pausás con el motivo `persistence_unconfirmed` sin avanzar de fase, sin cerrar el checkpoint como `completed` y conservando el último estado confirmado.
+
+**Reporte**: `persistencia: confirmed | failed`, `persistencia_reintentos: 0 | 1` y `persistencia_fallida: NONE | {topic_key}`. El registro afectado se identifica por su `topic_key`. El tester conserva su ortografía vigente `persistence` y `persistencia_fallida`. En falla respondés con tu valor de bloqueo vigente y no anunciás el estado de éxito ni el `next` de avance.
+
+**Secuencia**: las actualizaciones de un mismo registro se escriben y confirman una por una, en secuencia; nunca en paralelo, tampoco entre agentes de un lote que apunten al mismo registro. Una actualización con `mem_update` find/replace se confirma buscando el marcador del reemplazo.
+
+**Rechazo por dos sesiones activas**: el rechazo de `mem_save` por "multiple active runtime sessions" es una falla visible. La escritura se reporta como no realizada con el motivo del rechazo, no cuenta como guardada, no consume el reintento y no se reintenta con un identificador de sesión inventado. Solo usás un `session_id` que el runtime o quien coordina ya registró.
+
+Las reglas propias de cada skill o agente remiten a esta sección y conservan su detalle.
+
+---
+
 ## Restricciones
 
 - **NUNCA** uses `flow-state/{CA-ID}` sin sub-namespace de agente.
 - **SIEMPRE** usa prefijo `CA-` en el ID del `topic_key`.
 - **NUNCA** persistas en archivos locales ante caída de Engram.
 - **NUNCA** migres ni sanees observaciones históricas.
+- **NUNCA** reportes éxito de una escritura de la lista de Confirmación de escritura sin confirmarla por lectura.
+- **NUNCA** lances en paralelo dos actualizaciones del mismo registro.
 
 ---
 
