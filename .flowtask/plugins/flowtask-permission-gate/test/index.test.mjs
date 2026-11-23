@@ -105,6 +105,13 @@ function makeRepo(root, branch = "main") {
   return root;
 }
 
+/** Registra el proyecto para el gate de activación de OpenCode. */
+function writeRegistration(root, { schema = 1, projectPath = fs.realpathSync(root) } = {}) {
+  const dir = path.join(root, ".opencode/flowtask");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "project.json"), JSON.stringify({ schema, projectPath }));
+}
+
 /** Escribe review.json en el layout indicado y devuelve el stampPath absoluto declarado. */
 function writeConfig(root, layout, extra = {}) {
   const configDir = path.join(root, layout === "opencode" ? ".opencode/flowtask/config" : ".flowtask/config");
@@ -543,6 +550,41 @@ test("identidad V2: la sesión runner registrada se reutiliza cuando el evento n
   );
 });
 
+test("identidad V2: un agente explícito distinto del runner no hereda allowlist ni budget", async () => {
+  const gate = await createGate();
+  const sessionID = "s-agent-switch";
+  await gate.before({
+    tool: "bash",
+    sessionID,
+    agent: "flowtask-runner",
+    input: { command: "git status --short" },
+  });
+
+  await gate.before({ tool: "bash", sessionID, agent: "flowtask-inspector", input: { command: "rm -rf build" } });
+  await gate.before({ tool: "glob", sessionID, agent: "flowtask-inspector", input: { pattern: "**/*" } });
+  const result = { output: "x".repeat(60000), metadata: {} };
+  await gate.after({ tool: "read", sessionID, agent: "flowtask-inspector", result });
+  assert.equal(result.output.length, 60000, "el no-runner no recibe presupuesto de contexto");
+
+  await assert.rejects(
+    gate.before({ tool: "bash", sessionID, agent: undefined, input: { command: "rm -rf build" } }),
+    (error) => error instanceof Error && error.message === RUNNER_DELEGATION_MESSAGE,
+    "sin agent, la sesión vuelve al runner registrado",
+  );
+});
+
+test("identidad V2: un no-runner explícito no registra la sesión como runner", async () => {
+  const gate = await createGate();
+  const sessionID = "s-nonrunner-first";
+  await gate.before({ tool: "glob", sessionID, agent: "flowtask-inspector", input: { pattern: "**/*" } });
+  await gate.before({
+    tool: "bash",
+    sessionID,
+    agent: undefined,
+    input: { command: "rm -rf build" },
+  });
+});
+
 // --- Gate universal de commits: stamp estructurado ---
 
 /**
@@ -595,6 +637,120 @@ test("C5 V2: sello vigente autoriza dos commits y se conserva", async () => {
 
   assert.equal(fs.existsSync(stampPath), true, "el stamp válido no debe borrarse al validar");
   assert.equal(fs.readFileSync(stampPath, "utf8"), original, "el sello vigente se conserva intacto");
+});
+
+test("commit gate V2: las opciones globales de git y los compuestos no escapan al gate", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-global-"));
+  const stampPath = writeConfig(root, "opencode");
+  const gate = await createGate(root);
+
+  for (const command of [
+    'git -C . commit -m "opcion C"',
+    'git -c user.name=Gate commit -m "opcion c"',
+    'git --git-dir=.git commit -m "git-dir igual"',
+    'git --git-dir .git commit -m "git-dir valor"',
+    'cd . && git commit -m "compuesto"',
+    'cd . && git status --short && git commit -m "compuesto largo"',
+  ]) {
+    await assert.rejects(
+      runGateWith(gate, root, command, "s-global-options"),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes("Cause: missing stamp") &&
+        error.message.includes(`Stamp looked up at: ${stampPath}`),
+      command,
+    );
+  }
+});
+
+test("commit gate V2: un sello válido autoriza git -C", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-global-valid-"));
+  const stampPath = writeConfig(root, "opencode");
+  writeStamp(stampPath, "main");
+  await runGateWith(await createGate(root), root, 'git -C . commit -m "valido"', "s-global-valid");
+});
+
+test("commit gate V2: review.json en .flowtask se aplica con el stamp en el workdir", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-flowtask-config-"));
+  const stampPath = writeConfig(root, "flowtask");
+  const gate = await createGate(root);
+
+  await assert.rejects(
+    runGate(gate, root, "s-flowtask-config"),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes("Cause: missing stamp") &&
+      error.message.includes(`Stamp looked up at: ${stampPath}`),
+  );
+
+  writeStamp(stampPath, "main");
+  await runGate(gate, root, "s-flowtask-config-valid");
+});
+
+test("commit gate V2: .opencode tiene precedencia sobre .flowtask", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-config-order-"));
+  const opencodeStamp = writeConfig(root, "opencode");
+  const flowtaskStamp = writeConfig(root, "flowtask");
+  writeStamp(flowtaskStamp, "main");
+
+  await assert.rejects(
+    runGate(await createGate(root), root, "s-config-order"),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes("Cause: missing stamp") &&
+      error.message.includes(`Stamp looked up at: ${opencodeStamp}`),
+    "el candidato .opencode se evalúa primero",
+  );
+});
+
+test("commit gate V2: un proyecto registrado sin review.json bloquea con acción", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-registered-missing-"));
+  writeRegistration(root);
+
+  await assert.rejects(
+    runGate(await createGate(root), root, "s-registered-missing"),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.ok(error.message.includes("Cause: review config missing; run flowtask update."), error.message);
+      assert.ok(error.message.includes("Registration: "), error.message);
+      assert.ok(error.message.includes("fails closed"), error.message);
+      return true;
+    },
+  );
+});
+
+test("commit gate V2: enabled:false es el opt-out explícito en un proyecto registrado", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-enabled-false-"));
+  writeRegistration(root);
+  writeConfig(root, "opencode", { enabled: false });
+  await runGate(await createGate(root), root, "s-enabled-false");
+});
+
+test("commit gate V2: un proyecto no registrado sin review.json no se gatea", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-unregistered-"));
+  await runGate(await createGate(root), root, "s-unregistered");
+});
+
+test("commit gate V2: una config inválida bloquea aunque el proyecto no esté registrado", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-invalid-config-"));
+  const configDir = path.join(root, ".opencode/flowtask/config");
+  fs.mkdirSync(configDir, { recursive: true });
+  const configPath = path.join(configDir, "review.json");
+  fs.writeFileSync(configPath, "{invalid", "utf8");
+
+  await assert.rejects(
+    runGate(await createGate(root), root, "s-invalid-json"),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes(`invalid review config at ${configPath}`) &&
+      error.message.includes("not parseable JSON"),
+  );
+
+  fs.writeFileSync(configPath, JSON.stringify({ enabled: true }), "utf8");
+  await assert.rejects(
+    runGate(await createGate(root), root, "s-invalid-shape"),
+    (error) => error instanceof Error && error.message.includes('"stampPath" field is missing'),
+  );
 });
 
 /**
@@ -1008,7 +1164,7 @@ test("context-budget: imagen PNG (Image read successfully) se delega y no entreg
   assert.equal(result.metadata.degradation.level, "attachment_delegated");
 });
 
-test("context-budget V2: content con file part image/pdf también se delega", async () => {
+test("context-budget V2: content con file part image/pdf se delega sin dejar el archivo", async () => {
   const gate = await createGate();
   const result = {
     content: [{ type: "file", mime: "application/pdf", data: "JVBERi0=" }],
@@ -1017,6 +1173,30 @@ test("context-budget V2: content con file part image/pdf también se delega", as
   await callAfter(gate, "read", result, "s-attachment-content");
   assert.equal(result.metadata.degradation.level, "attachment_delegated");
   assert.equal(result.metadata.truncated, true);
+  assert.equal(result.content.some((part) => part.type === "file"), false, "no queda ningún file part");
+  assert.ok(
+    result.content.some((part) => part.type === "text" && part.text === buildAttachmentDelivery("read", 0)),
+    "el texto de delegación queda en content",
+  );
+});
+
+test("context-budget V2: content mixto conserva el texto y elimina los file parts", async () => {
+  const gate = await createGate();
+  const result = {
+    output: "Image read successfully",
+    content: [
+      { type: "text", text: "captura" },
+      { type: "file", mime: "image/png", data: "iVBORw0KGgo=" },
+    ],
+    metadata: { attachment: "data:image/png;base64,iVBORw0KGgo=" },
+  };
+  await callAfter(gate, "read", result, "s-attachment-mixed");
+  assert.equal(result.output, buildAttachmentDelivery("read", 23));
+  assert.equal(result.metadata.attachment, undefined);
+  assert.equal(result.content.length, 2, "conserva el texto y agrega la delegación");
+  assert.equal(result.content[0].text, "captura");
+  assert.equal(result.content.some((part) => part.type === "file"), false);
+  assert.ok(result.content.some((part) => part.text === buildAttachmentDelivery("read", 23)));
 });
 
 test("context-budget: glob **/* sin path acotado avisa la acotación en before", async () => {
@@ -1050,12 +1230,140 @@ test("context-budget: read de archivo >50KiB sin limit avisa la acotación en be
   );
 });
 
+test("context-budget V2: read con path relativo >50KiB sin ventana avisa contra el workdir", async () => {
+  const root = makeLayeredRoot("flowtask-budget-read-path-");
+  fs.writeFileSync(path.join(root, "big.txt"), Buffer.alloc(60 * 1024, 0x61));
+  const gate = await createGate(root);
+  await assert.rejects(
+    gate.before({ tool: "read", sessionID: "s-read-path", agent: "flowtask-runner", input: { path: "big.txt" } }),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("read", { path: "big.txt" }),
+  );
+});
+
+test("context-budget V2: read con path y ventana o archivo chico no se bloquea", async () => {
+  const root = makeLayeredRoot("flowtask-budget-read-window-");
+  fs.writeFileSync(path.join(root, "big.txt"), Buffer.alloc(60 * 1024, 0x61));
+  fs.writeFileSync(path.join(root, "small.txt"), "ok\n");
+  const gate = await createGate(root);
+  await gate.before({
+    tool: "read",
+    sessionID: "s-read-window",
+    agent: "flowtask-runner",
+    input: { path: "big.txt", limit: 20 },
+  });
+  await gate.before({
+    tool: "read",
+    sessionID: "s-read-window",
+    agent: "flowtask-runner",
+    input: { path: "big.txt", offset: 40000 },
+  });
+  await gate.before({
+    tool: "read",
+    sessionID: "s-read-window",
+    agent: "flowtask-runner",
+    input: { path: "small.txt" },
+  });
+});
+
+test("context-budget V2: preventiveReadStatLimit override applies to the read path", async () => {
+  const root = makeLayeredRoot("flowtask-budget-read-limit-");
+  fs.mkdirSync(path.join(root, ".flowtask", "config"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".flowtask", "config", "context-budget.json"),
+    JSON.stringify({ preventiveReadStatLimit: 100 }),
+    "utf8",
+  );
+  fs.writeFileSync(path.join(root, "medium.txt"), Buffer.alloc(200, 0x61));
+  const gate = await createGate(root);
+  await assert.rejects(
+    gate.before({
+      tool: "read",
+      sessionID: "s-read-limit",
+      agent: "flowtask-runner",
+      input: { path: "medium.txt" },
+    }),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("read", { path: "medium.txt" }),
+  );
+});
+
 test("context-budget: grep sin include en la raíz avisa la acotación en before", async () => {
   const gate = await createGate();
   await assert.rejects(
     gate.before({ tool: "grep", sessionID: "s-grep", agent: "flowtask-runner", input: { pattern: "TODO" } }),
     (error) => error instanceof Error && error.message === buildNarrowingNotice("grep", { pattern: "TODO" }),
   );
+});
+
+test("context-budget: ./ y las rutas bloqueadas también son no acotadas", async () => {
+  const gate = await createGate();
+  const sessionID = "s-unbounded";
+  for (const [tool, input] of [
+    ["glob", { pattern: "**/*", path: "./" }],
+    ["grep", { pattern: "TODO", path: "./" }],
+  ]) {
+    await assert.rejects(
+      gate.before({ tool, sessionID, agent: "flowtask-runner", input }),
+      (error) => error instanceof Error && error.message === buildNarrowingNotice(tool, input),
+      `${tool} ${JSON.stringify(input)} debe avisar`,
+    );
+  }
+});
+
+test("context-budget: los overrides preventivos del workdir se aplican", async () => {
+  const root = makeLayeredRoot("flowtask-budget-preventive-");
+  fs.writeFileSync(
+    path.join(root, ".opencode/flowtask/config/context-budget.json"),
+    JSON.stringify({ preventiveGlobPatterns: ["*.md"], blockedPaths: ["vendor"], preventiveReadStatLimit: 10 }),
+    "utf8",
+  );
+  fs.writeFileSync(path.join(root, "small.txt"), "12345678901"); // 11 bytes > 10
+  const gate = await createGate(root);
+  const sessionID = "s-preventive-override";
+
+  await assert.rejects(
+    gate.before({ tool: "glob", sessionID, agent: "flowtask-runner", input: { pattern: "*.md" } }),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("glob", { pattern: "*.md" }),
+    "el patrón agregado por config avisa",
+  );
+  await assert.rejects(
+    gate.before({
+      tool: "glob",
+      sessionID,
+      agent: "flowtask-runner",
+      input: { pattern: "*.md", path: "a/vendor/b" },
+    }),
+    (error) =>
+      error instanceof Error && error.message === buildNarrowingNotice("glob", { pattern: "*.md", path: "a/vendor/b" }),
+    "una ruta bloqueada por config avisa",
+  );
+  await assert.rejects(
+    gate.before({
+      tool: "grep",
+      sessionID,
+      agent: "flowtask-runner",
+      input: { pattern: "TODO", path: "a/vendor/b" },
+    }),
+    (error) =>
+      error instanceof Error && error.message === buildNarrowingNotice("grep", { pattern: "TODO", path: "a/vendor/b" }),
+    "grep en una ruta bloqueada por config avisa",
+  );
+  await assert.rejects(
+    gate.before({ tool: "read", sessionID, agent: "flowtask-runner", input: { path: "small.txt" } }),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("read", { path: "small.txt" }),
+    "el límite de stat por config se aplica",
+  );
+});
+
+test("context-budget: el candidato .opencode gana sobre .flowtask", () => {
+  const root = makeTemp("flowtask-budget-order-");
+  const opencodeDir = path.join(root, ".opencode/flowtask/config");
+  const flowtaskDir = path.join(root, ".flowtask/config");
+  fs.mkdirSync(opencodeDir, { recursive: true });
+  fs.mkdirSync(flowtaskDir, { recursive: true });
+  fs.writeFileSync(path.join(opencodeDir, "context-budget.json"), JSON.stringify({ readThreshold: 999 }), "utf8");
+  fs.writeFileSync(path.join(flowtaskDir, "context-budget.json"), JSON.stringify({ readThreshold: 777 }), "utf8");
+  const config = loadContextBudgetConfig(root);
+  assert.equal(config.readThreshold, 999, "el candidato .opencode tiene precedencia");
 });
 
 test("context-budget: runner no ve umbrales — el error preventivo solo expone el fallback", async () => {
@@ -1217,15 +1525,26 @@ test("context-budget: helpers preventivos puros (edge cases)", () => {
   assert.equal(shouldPreventiveBlockRead({ file: "x.txt", limit: 10 }, 60000), false, "limit acota");
   assert.equal(shouldPreventiveBlockRead({ file: "x.txt" }, 40000), false, "bajo 50KiB pasa");
   assert.equal(shouldPreventiveBlockRead({ file: "x.txt" }, 60000), true, "sin limit y >50KiB bloquea");
+  assert.equal(shouldPreventiveBlockRead({ path: "x.txt" }, 60000), true, "la forma V2 path bloquea");
+  assert.equal(shouldPreventiveBlockRead({ path: "x.txt" }, 60000, 70000), false, "el límite configurable se aplica");
   assert.equal(shouldPreventiveBlockRead({ file: "x.txt" }, undefined), false, "stat fallido no bloquea");
 
   assert.equal(shouldPreventiveBlockGlob({ pattern: "**/*" }), true, "pattern amplio sin path");
   assert.equal(shouldPreventiveBlockGlob({ pattern: "**/*", path: "src" }), false, "path acotado pasa");
   assert.equal(shouldPreventiveBlockGlob({ pattern: "**/*", path: "a/node_modules/b" }), true, "node_modules bloquea");
+  assert.equal(shouldPreventiveBlockGlob({ pattern: "**/*", path: "./" }), true, "./ es no acotado");
   assert.equal(shouldPreventiveBlockGlob({ pattern: "*.ts", path: "." }), false, "pattern angosto pasa");
+  assert.equal(shouldPreventiveBlockGlob({ pattern: "*.md" }, ["*.md"]), true, "patrón configurado");
+  assert.equal(
+    shouldPreventiveBlockGlob({ pattern: "**/*", path: "a/vendor/b" }, ["**/*"], ["vendor"]),
+    true,
+    "blockedPaths configurado",
+  );
 
   assert.equal(shouldPreventiveBlockGrep({ pattern: "x" }), true, "sin include y sin path");
   assert.equal(shouldPreventiveBlockGrep({ pattern: "x", path: "src" }), false, "path acotado pasa");
+  assert.equal(shouldPreventiveBlockGrep({ pattern: "x", path: "./" }), true, "./ es no acotado");
+  assert.equal(shouldPreventiveBlockGrep({ pattern: "x", path: "vendor" }, ["vendor"]), true, "blockedPaths configurado");
   assert.equal(shouldPreventiveBlockGrep({ pattern: "x", include: "*.ts" }), false, "include acota");
 
   assert.equal(isImageOrPdfOutput({ output: "Image read successfully" }), true, "imagen textual");

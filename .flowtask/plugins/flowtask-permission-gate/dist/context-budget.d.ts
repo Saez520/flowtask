@@ -10,6 +10,8 @@ export declare const DEFAULT_TURN_ACCUMULATED = 32000;
 export declare const PREVENTIVE_READ_STAT_LIMIT: number;
 /** Glob patterns that without a bounded path trigger the pre-gate (closed list). */
 export declare const PREVENTIVE_GLOB_PATTERNS: string[];
+/** Path segments considered unbounded by the preventive glob/grep gates. */
+export declare const DEFAULT_BLOCKED_PATHS: string[];
 /** grep without `include` on the root triggers the pre-gate. */
 export declare const PREVENTIVE_GREP_NO_INCLUDE_ROOT = true;
 /** Image/PDF attachment blocked for the runner (delegation to the Inspector). */
@@ -74,6 +76,11 @@ export declare function buildDegradationMetadata(level: DegradationLevel, option
     omittedChars?: number;
 }): Record<string, unknown>;
 /**
+ * File targeted by a `read` call in the V2 shape (`path`) with the legacy
+ * `file` field as fallback. Returns an empty string when neither is usable.
+ */
+export declare function readRequestedPath(args: Record<string, unknown>): string;
+/**
  * Identity of the broad request. The tool prefix prevents collisions between
  * each tool's field sets.
  */
@@ -93,12 +100,16 @@ export declare function resetNarrowingNotices(sessionID?: string): void;
  * Cheap read pre-gate: file without `limit`/`offset` whose `stat.size` exceeds
  * the preventive limit. `statSize` may come from the caller's prior `statSync`;
  * if it is `undefined` (stat failed), it does NOT block: the post-gate decides.
+ * The limit comes from the loaded config; the exported default is the fallback.
  */
-export declare function shouldPreventiveBlockRead(args: Record<string, unknown>, statSize?: number): boolean;
-/** Glob pre-gate: broad pattern from the closed list without a bounded path or with node_modules. */
-export declare function shouldPreventiveBlockGlob(args: Record<string, unknown>): boolean;
-/** grep pre-gate: no `include` when the path is the root / unbounded. */
-export declare function shouldPreventiveBlockGrep(args: Record<string, unknown>): boolean;
+export declare function shouldPreventiveBlockRead(args: Record<string, unknown>, statSize?: number, statLimit?: number): boolean;
+/**
+ * Glob pre-gate: broad pattern from the configured closed list with an
+ * unbounded path or a blocked segment.
+ */
+export declare function shouldPreventiveBlockGlob(args: Record<string, unknown>, patterns?: string[], blockedPaths?: string[]): boolean;
+/** grep pre-gate: no `include` on an unbounded path or in a blocked segment. */
+export declare function shouldPreventiveBlockGrep(args: Record<string, unknown>, blockedPaths?: string[]): boolean;
 type ToolOutput = {
     output?: unknown;
     content?: unknown;

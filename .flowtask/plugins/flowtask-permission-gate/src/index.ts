@@ -10,7 +10,11 @@ import {
   isWorktreeManagerMcpTool,
 } from "./authorizer.js";
 import { buildLayerBlockMessage, readOperationalLayers, readOperationalLayersAt } from "./layers.js";
-import { evaluateOpencodeActivation, type ActivationResult } from "./registration.js";
+import {
+  evaluateOpencodeActivation,
+  findOpencodeRegistration,
+  type ActivationResult,
+} from "./registration.js";
 import {
   applyReducedDelivery,
   buildAttachmentDelivery,
@@ -20,6 +24,7 @@ import {
   isImageOrPdfOutput,
   loadContextBudgetConfig,
   readDeliveredText,
+  readRequestedPath,
   registerNarrowingNotice,
   resetNarrowingNotices,
   shouldPreventiveBlockGlob,
@@ -87,15 +92,15 @@ function isRunner(agent: unknown): boolean {
 }
 
 /**
- * Resolves the identity exposed by the V2 event. The runner is registered per
- * session so later phases without an identity can reuse it; any other identity
- * keeps the session fallback without contaminating the recorded runner.
+ * Resolves the identity exposed by the V2 event. An explicit non-empty agent
+ * wins as-is: only the runner is registered per session for later phases that
+ * arrive without an identity. The session fallback applies only when the event
+ * carries no agent, so a non-runner cannot inherit the recorded runner.
  */
 function resolveSessionAgent(sessionID: string, eventAgent: unknown): string | undefined {
-  if (isRunner(eventAgent)) {
-    const agent = eventAgent as string;
-    SESSION_AGENTS.set(sessionID, agent);
-    return agent;
+  if (typeof eventAgent === "string" && eventAgent.trim()) {
+    if (isRunner(eventAgent)) SESSION_AGENTS.set(sessionID, eventAgent);
+    return eventAgent;
   }
   return SESSION_AGENTS.get(sessionID);
 }
@@ -104,6 +109,110 @@ function resolveSessionAgent(sessionID: string, eventAgent: unknown): string | u
 function readWorkdir(args: Record<string, unknown>, fallback: string): string {
   const candidate = args.workdir ?? args.cwd;
   return typeof candidate === "string" && candidate ? candidate : fallback;
+}
+
+/** Global git options that consume the next token as their value. */
+const GIT_GLOBAL_OPTIONS_WITH_VALUE = new Set([
+  "-C",
+  "-c",
+  "--git-dir",
+  "--work-tree",
+  "--namespace",
+  "--exec-path",
+]);
+
+/** Global git options written with `=<value>`. */
+const GIT_GLOBAL_OPTIONS_WITH_EQUALS = ["--git-dir=", "--work-tree=", "--namespace=", "--exec-path="];
+
+/** Splits a command on `&&` without breaking quoted segments. */
+function splitCommandSegments(command: string): string[] {
+  const segments: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+    if (quote) {
+      current += char;
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === "&" && command[index + 1] === "&") {
+      segments.push(current);
+      current = "";
+      index += 1;
+      continue;
+    }
+    current += char;
+  }
+  segments.push(current);
+  return segments;
+}
+
+/** Whitespace tokenization that keeps a quoted value in one token. */
+function tokenizeSegment(segment: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+  for (const char of segment) {
+    if (quote) {
+      current += char;
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (/\s/.test(char)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+    current += char;
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+/**
+ * Detects a commit in any `&&` segment, including the global git options that
+ * precede the subcommand (`-C`, `-c`, `--git-dir`, and their value forms).
+ * A leading `cd` belongs to its own segment, so `cd ... && git commit` is seen.
+ */
+function isGitCommitCommand(command: string): boolean {
+  for (const segment of splitCommandSegments(command)) {
+    const tokens = tokenizeSegment(segment);
+    for (let start = 0; start < tokens.length; start += 1) {
+      if (tokens[start] !== "git") continue;
+      let index = start + 1;
+      while (index < tokens.length) {
+        const token = tokens[index];
+        if (token === "commit") return true;
+        if (GIT_GLOBAL_OPTIONS_WITH_VALUE.has(token)) {
+          index += 2;
+          continue;
+        }
+        if (GIT_GLOBAL_OPTIONS_WITH_EQUALS.some((prefix) => token.startsWith(prefix))) {
+          index += 1;
+          continue;
+        }
+        if (token.startsWith("-")) {
+          index += 1;
+          continue;
+        }
+        break;
+      }
+    }
+  }
+  return false;
 }
 
 function runnerToolAllowed(tool: string, args: Record<string, unknown>): boolean {
@@ -119,6 +228,11 @@ function runnerToolAllowed(tool: string, args: Record<string, unknown>): boolean
 
 function runnerBlocked(): never { throw new Error(RUNNER_DELEGATION_MESSAGE); }
 
+/** A V2 content part that carries an attachment payload instead of text. */
+function isFilePart(part: unknown): boolean {
+  return Boolean(part) && typeof part === "object" && (part as Record<string, unknown>).type === "file";
+}
+
 function gateError(operation: string, cause: unknown, action: string): Error {
   const detail = cause instanceof Error ? cause.message : String(cause);
   return new Error(
@@ -129,50 +243,59 @@ function gateError(operation: string, cause: unknown, action: string): Error {
   );
 }
 
-function parseReviewConfig(raw: string, path: string): ReviewConfig | null {
+type ReviewConfigParse = { ok: true; config: ReviewConfig } | { ok: false; cause: string };
+
+type ReviewConfigLookup =
+  | { status: "found"; config: ReviewConfig }
+  | { status: "missing" }
+  | { status: "invalid"; path: string; cause: string };
+
+/** Structural validation: an unusable file is reported, never silently ignored. */
+function parseReviewConfig(raw: string, path: string): ReviewConfigParse {
   let value: unknown;
   try {
     value = JSON.parse(raw);
   } catch {
-    console.warn(`[FlowTask Permission Gate] invalid JSON in ${path}; continuing without blocking.`);
-    return null;
+    return { ok: false, cause: "the file is not parseable JSON" };
   }
 
-  if (
-    !value || typeof value !== "object" ||
-    typeof (value as Record<string, unknown>).enabled !== "boolean" ||
-    typeof (value as Record<string, unknown>).stampPath !== "string" ||
-    !(value as Record<string, unknown>).stampPath
-  ) {
-    console.warn(`[FlowTask Permission Gate] invalid configuration in ${path}; continuing without blocking.`);
-    return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, cause: "the file does not contain a JSON object" };
   }
 
   const config = value as Record<string, unknown>;
+  if (typeof config.enabled !== "boolean") {
+    return { ok: false, cause: 'the "enabled" field is missing or is not boolean' };
+  }
+  if (typeof config.stampPath !== "string" || !config.stampPath) {
+    return { ok: false, cause: 'the "stampPath" field is missing or empty' };
+  }
+
   let stampTtlMinutes = DEFAULT_STAMP_TTL_MINUTES;
   if (config.stampTtlMinutes !== undefined) {
     if (typeof config.stampTtlMinutes === "number" && Number.isFinite(config.stampTtlMinutes) && config.stampTtlMinutes > 0) {
       stampTtlMinutes = config.stampTtlMinutes;
     } else {
-      console.warn(
-        `[FlowTask Permission Gate] invalid stampTtlMinutes in ${path}; using the default (${DEFAULT_STAMP_TTL_MINUTES} min).`,
-      );
+      return { ok: false, cause: 'the "stampTtlMinutes" field is not a positive number' };
     }
   }
   return {
-    enabled: config.enabled as boolean,
-    stampPath: config.stampPath as string,
-    stampTtlMinutes,
-    sourcePath: path,
+    ok: true,
+    config: {
+      enabled: config.enabled,
+      stampPath: config.stampPath,
+      stampTtlMinutes,
+      sourcePath: path,
+    },
   };
 }
 
 /**
  * Looks for review.json in `directory` by trying the canonical paths in order.
- * Returns `undefined` if no candidate exists (allows moving to the next
- * directory) and `null` if one exists but is unreadable or invalid (observable fail-open).
+ * Missing lets the caller continue to the next directory; an existing but
+ * unreadable or invalid file is returned as such so the gate can fail closed.
  */
-function findConfigIn(directory: string): ReviewConfig | null | undefined {
+function findConfigIn(directory: string): ReviewConfigLookup {
   for (const candidate of CONFIG_CANDIDATES) {
     const path = resolve(directory, candidate);
     let raw: string;
@@ -180,12 +303,13 @@ function findConfigIn(directory: string): ReviewConfig | null | undefined {
       raw = readFileSync(path, "utf8");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-      console.warn(`[FlowTask Permission Gate] could not read ${path}; continuing without blocking.`);
-      return null;
+      return { status: "invalid", path, cause: "the file could not be read" };
     }
-    return parseReviewConfig(raw, path);
+    const parsed = parseReviewConfig(raw, path);
+    if (!parsed.ok) return { status: "invalid", path, cause: parsed.cause };
+    return { status: "found", config: parsed.config };
   }
-  return undefined;
+  return { status: "missing" };
 }
 
 /**
@@ -193,18 +317,15 @@ function findConfigIn(directory: string): ReviewConfig | null | undefined {
  * to sessionDir/main contributes only the other settings (enabled, TTL). The
  * resulting `stampPath` is ALWAYS resolved against the commit workdir.
  */
-function readConfig(workdir: string, fallbackCwd?: string): ReviewConfig | null {
+function readConfig(workdir: string, fallbackCwd?: string): ReviewConfigLookup {
   const directories = [workdir, fallbackCwd].filter(
     (directory, index, values): directory is string => Boolean(directory) && values.indexOf(directory) === index,
   );
   for (const directory of directories) {
     const found = findConfigIn(directory);
-    if (found !== undefined) return found;
+    if (found.status !== "missing") return found;
   }
-  console.warn(
-    `[FlowTask Permission Gate] review.json not found in ${directories.join(" or ")}; continuing without blocking.`,
-  );
-  return null;
+  return { status: "missing" };
 }
 
 function getCurrentBranch(cwd: string): string {
@@ -315,6 +436,42 @@ function buildGateMessage(stats: { lines: number; files: number }): string {
   ].join("\n");
 }
 
+function buildMissingConfigMessage(
+  workdir: string,
+  fallbackCwd: string,
+  registrationPath: string | null,
+  stats: { lines: number; files: number },
+): string {
+  const directories = [workdir, fallbackCwd].filter(
+    (directory, index, values) => Boolean(directory) && values.indexOf(directory) === index,
+  );
+  const searched = directories
+    .flatMap((directory) => CONFIG_CANDIDATES.map((candidate) => resolve(directory, candidate)))
+    .join(" or ");
+  return [
+    "[FlowTask Permission Gate] Commit blocked.",
+    "",
+    "Cause: review config missing; run flowtask update.",
+    `Searched: ${searched}`,
+    ...(registrationPath ? [`Registration: ${registrationPath}`] : []),
+    "",
+    `📊 Diff: ${stats.files} file(s), ${stats.lines} line(s) pending.`,
+    "",
+    "→ The project is registered, so the gate fails closed instead of allowing an unreviewed commit.",
+  ].join("\n");
+}
+
+function buildInvalidConfigMessage(path: string, cause: string, stats: { lines: number; files: number }): string {
+  return [
+    "[FlowTask Permission Gate] Commit blocked.",
+    "",
+    `Cause: invalid review config at ${path}: ${cause}.`,
+    "Recommended action: fix the file or run flowtask update.",
+    "",
+    `📊 Diff: ${stats.files} file(s), ${stats.lines} line(s) pending.`,
+  ].join("\n");
+}
+
 function buildStampBlockMessage(
   cause: string,
   stampPath: string,
@@ -336,14 +493,16 @@ function buildStampBlockMessage(
 }
 
 /**
- * `stat.size` of the read file if it exists and is a string. Returns undefined
+ * `stat.size` of the read target resolved against the commit workdir/session.
+ * Accepts the V2 `path` field with the legacy `file` fallback. Returns undefined
  * on failure (hybrid GAP: the pre-gate is a cheap saving, the post-gate decides).
  */
-function readStatSizeSafe(args: Record<string, unknown>): number | undefined {
-  const file = args?.file;
-  if (typeof file !== "string" || !file) return undefined;
+function readStatSizeSafe(args: Record<string, unknown>, baseDir: string): number | undefined {
+  const file = readRequestedPath(args);
+  if (!file) return undefined;
+  const absolute = isAbsolute(file) ? file : resolve(baseDir, file);
   try {
-    return statSync(file).size;
+    return statSync(absolute).size;
   } catch {
     return undefined;
   }
@@ -392,6 +551,7 @@ export default Plugin.define({
         ? (event.input as Record<string, unknown>)
         : {};
       const command = String(input.command ?? "");
+      const workdir = readWorkdir(input, sessionDir);
       const agent = resolveSessionAgent(event.sessionID, event.agent);
 
       if (isRunner(agent)) {
@@ -399,10 +559,9 @@ export default Plugin.define({
         // valid in the target before applying the technical allowlist. Autonomy
         // does not authorize: it only checks that the layer is healthy. An
         // absent configuration is also a denial, not a pass.
-        const layerWorkdir = readWorkdir(input, sessionDir);
         const operationalLayers = typeof ctx.options?.configDir === "string" && ctx.options.configDir
           ? readOperationalLayersAt(ctx.options.configDir)
-          : readOperationalLayers([layerWorkdir, sessionDir]);
+          : readOperationalLayers([workdir, sessionDir]);
         if (!operationalLayers.ok) {
           const authorityBypass = event.tool === "bash" && isAuthorityCommand(command);
           if (!authorityBypass) throw new Error(buildLayerBlockMessage(operationalLayers));
@@ -416,30 +575,43 @@ export default Plugin.define({
       // repeated in the turn is allowed and its delivery is reduced in the post-gate.
       if (isRunner(agent) && (event.tool === "read" || event.tool === "glob" || event.tool === "grep")) {
         const budgetTool = event.tool as BudgetTool;
+        const budget = loadContextBudgetConfig(workdir, sessionDir);
         const broad =
           budgetTool === "read"
-            ? shouldPreventiveBlockRead(input, readStatSizeSafe(input))
+            ? shouldPreventiveBlockRead(input, readStatSizeSafe(input, workdir), budget.preventiveReadStatLimit)
             : budgetTool === "glob"
-              ? shouldPreventiveBlockGlob(input)
-              : shouldPreventiveBlockGrep(input);
+              ? shouldPreventiveBlockGlob(input, budget.preventiveGlobPatterns, budget.blockedPaths)
+              : shouldPreventiveBlockGrep(input, budget.blockedPaths);
         if (broad && registerNarrowingNotice(event.sessionID, budgetTool, input)) {
           throw new Error(buildNarrowingNotice(budgetTool, input));
         }
       }
 
-      if (event.tool !== "bash" || !/\bgit\s+commit\b/.test(command)) return;
+      if (event.tool !== "bash" || !isGitCommitCommand(command)) return;
       if (command.includes("--no-verify") || command.includes("--no-review")) {
         // The bypass is only legitimate for trivial changes (≤ TRIVIAL_CHANGE_LINES).
         // If the diff cannot be measured (getDiffStats throws), the error propagates and the commit is blocked (deny-by-default).
-        const workdir = readWorkdir(input, sessionDir);
         const stats = getDiffStats(workdir);
         if (stats.lines <= TRIVIAL_CHANGE_LINES) return; // trivial → legitimate bypass
         throw new Error(buildGateMessage(stats)); // non-trivial → bypass denied, review required
       }
 
-      const workdir = readWorkdir(input, sessionDir);
-      const config = readConfig(workdir, sessionDir);
-      if (!config) return;
+      const configLookup = readConfig(workdir, sessionDir);
+      if (configLookup.status === "invalid") {
+        throw new Error(
+          buildInvalidConfigMessage(configLookup.path, configLookup.cause, getDiffStats(workdir)),
+        );
+      }
+      if (configLookup.status === "missing") {
+        const registration = findOpencodeRegistration(workdir);
+        if (registration.status === "active") {
+          throw new Error(
+            buildMissingConfigMessage(workdir, sessionDir, registration.path, getDiffStats(workdir)),
+          );
+        }
+        return;
+      }
+      const config = configLookup.config;
       if (!config.enabled) return;
       // Unified resolution: the relative stampPath is ALWAYS resolved against
       // the commit workdir (per-flow isolation: worktrees read/write their own stamps).
@@ -498,7 +670,13 @@ export default Plugin.define({
         const metadata = { ...(result.metadata ?? {}) };
         delete metadata.attachment;
         result.metadata = metadata;
-        applyReducedDelivery(result, buildAttachmentDelivery(budgetTool, actual), "attachment_delegated", {
+        const delivery = buildAttachmentDelivery(budgetTool, actual);
+        if (Array.isArray(result.content)) {
+          const kept = result.content.filter((part) => !isFilePart(part));
+          kept.push({ type: "text", text: delivery });
+          result.content = kept;
+        }
+        applyReducedDelivery(result, delivery, "attachment_delegated", {
           omittedChars: actual,
         });
         return;

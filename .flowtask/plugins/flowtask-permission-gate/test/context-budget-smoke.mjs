@@ -17,6 +17,9 @@
  * Sin red ni MCP. Exit 0 = SMOKE-PASS; exit no-zero = SMOKE-FAIL observable.
  */
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { isAuthorizedRunnerCommand, RUNNER_DELEGATION_MESSAGE } from "../dist/authorizer.js";
 import {
   buildAttachmentDelivery,
@@ -27,6 +30,16 @@ import plugin from "../dist/index.js";
 
 const runner = process.env.SMOKE_RUNNER ?? "flowtask-runner";
 let seq = 0;
+
+/** The gate denies the runner without valid layers; the smoke owns its fixture. */
+function createLayeredDirectory() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-gate-smoke-"));
+  const configDir = path.join(root, ".opencode/flowtask/config");
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.writeFileSync(path.join(configDir, "autonomy.json"), JSON.stringify({ version: 1, profile: "autonomous-dev" }));
+  fs.writeFileSync(path.join(configDir, "permissions.json"), JSON.stringify({ version: 1, envelope: "standard" }));
+  return root;
+}
 
 async function createGate(directory = process.cwd()) {
   const callbacks = {};
@@ -73,8 +86,9 @@ async function createGate(directory = process.cwd()) {
   };
 }
 
+const fixture = createLayeredDirectory();
 try {
-  const gate = await createGate();
+  const gate = await createGate(fixture);
   assert.equal(gate.id, "flowtask-permission-gate", "id del paquete V2");
   assert.equal(typeof gate.before, "function", "execute.before no registrado");
   assert.equal(typeof gate.after, "function", "execute.after no registrado");
@@ -157,6 +171,8 @@ try {
   const filePart = { content: [{ type: "file", mime: "application/pdf" }], metadata: {} };
   await gate.after({ tool: "read", sessionID: "smoke-file-part", agent: runner, result: filePart });
   assert.equal(filePart.metadata.degradation.level, "attachment_delegated", "file part PDF delegado");
+  assert.equal(filePart.content.some((part) => part.type === "file"), false, "el file part no llega al modelo");
+  assert.ok(filePart.content.some((part) => part.type === "text"), "el texto de delegación reemplaza al archivo");
 
   // 6) Medición no disponible: la salida se entrega intacta, deja traza y no lanza.
   const warnings = [];
@@ -221,8 +237,9 @@ try {
   console.log(
     "SMOKE-PASS: hooks V2 registrados; output/content mutados; aviso, turno, attachment y medición no disponible; allowlist intacta",
   );
-  process.exit(0);
 } catch (error) {
   console.error(`[FlowTask Context Budget] SMOKE-FAIL: ${error instanceof Error ? error.message : String(error)}`);
-  process.exit(1);
+  process.exitCode = 1;
+} finally {
+  fs.rmSync(fixture, { recursive: true, force: true });
 }

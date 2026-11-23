@@ -37,6 +37,8 @@ export const DEFAULT_TURN_ACCUMULATED = 32000;
 export const PREVENTIVE_READ_STAT_LIMIT = 50 * 1024;
 /** Glob patterns that without a bounded path trigger the pre-gate (closed list). */
 export const PREVENTIVE_GLOB_PATTERNS = ["**/*", "**"];
+/** Path segments considered unbounded by the preventive glob/grep gates. */
+export const DEFAULT_BLOCKED_PATHS = ["node_modules"];
 /** grep without `include` on the root triggers the pre-gate. */
 export const PREVENTIVE_GREP_NO_INCLUDE_ROOT = true;
 /** Image/PDF attachment blocked for the runner (delegation to the Inspector). */
@@ -90,8 +92,8 @@ export type ContextBudgetConfig = {
 };
 
 const CONFIG_CANDIDATES = [
-  ".flowtask/config/context-budget.json",
   ".opencode/flowtask/config/context-budget.json",
+  ".flowtask/config/context-budget.json",
 ] as const;
 
 function defaultConfig(): ContextBudgetConfig {
@@ -102,7 +104,7 @@ function defaultConfig(): ContextBudgetConfig {
     turnAccumulated: DEFAULT_TURN_ACCUMULATED,
     preventiveReadStatLimit: PREVENTIVE_READ_STAT_LIMIT,
     preventiveGlobPatterns: [...PREVENTIVE_GLOB_PATTERNS],
-    blockedPaths: ["node_modules"],
+    blockedPaths: [...DEFAULT_BLOCKED_PATHS],
   };
 }
 
@@ -248,9 +250,20 @@ export function buildDegradationMetadata(
   return { degradation };
 }
 
+/**
+ * File targeted by a `read` call in the V2 shape (`path`) with the legacy
+ * `file` field as fallback. Returns an empty string when neither is usable.
+ */
+export function readRequestedPath(args: Record<string, unknown>): string {
+  const pathValue = args?.path;
+  if (typeof pathValue === "string" && pathValue) return pathValue;
+  const fileValue = args?.file;
+  return typeof fileValue === "string" ? fileValue : "";
+}
+
 /** Target of the broad request: the file or the pattern, or the absence of a window. */
 function narrowingTarget(tool: BudgetTool, args: Record<string, unknown>): string {
-  const candidate = tool === "read" ? args?.file : args?.pattern;
+  const candidate = tool === "read" ? readRequestedPath(args) : args?.pattern;
   return typeof candidate === "string" && candidate ? candidate : "no bounded window";
 }
 
@@ -260,7 +273,7 @@ function narrowingTarget(tool: BudgetTool, args: Record<string, unknown>): strin
  */
 export function noticeKey(tool: BudgetTool, args: Record<string, unknown>): string {
   const field = (value: unknown): string => (typeof value === "string" ? value : "");
-  if (tool === "read") return `read|${field(args?.file)}`;
+  if (tool === "read") return `read|${readRequestedPath(args)}`;
   if (tool === "glob") return `glob|${field(args?.pattern)}|${field(args?.path)}`;
   return `grep|${field(args?.pattern)}|${field(args?.path)}|${field(args?.include)}`;
 }
@@ -299,37 +312,64 @@ export function resetNarrowingNotices(sessionID?: string): void {
  * Cheap read pre-gate: file without `limit`/`offset` whose `stat.size` exceeds
  * the preventive limit. `statSize` may come from the caller's prior `statSync`;
  * if it is `undefined` (stat failed), it does NOT block: the post-gate decides.
+ * The limit comes from the loaded config; the exported default is the fallback.
  */
-export function shouldPreventiveBlockRead(args: Record<string, unknown>, statSize?: number): boolean {
-  const file = args?.file;
-  if (typeof file !== "string" || !file) return false;
+export function shouldPreventiveBlockRead(
+  args: Record<string, unknown>,
+  statSize?: number,
+  statLimit: number = PREVENTIVE_READ_STAT_LIMIT,
+): boolean {
+  const file = readRequestedPath(args);
+  if (!file) return false;
   const hasWindow = args.limit !== undefined || args.offset !== undefined;
   if (hasWindow) return false;
-  if (statSize !== undefined && statSize > PREVENTIVE_READ_STAT_LIMIT) return true;
+  if (statSize !== undefined && statSize > statLimit) return true;
   return false;
 }
 
-/** Glob pre-gate: broad pattern from the closed list without a bounded path or with node_modules. */
-export function shouldPreventiveBlockGlob(args: Record<string, unknown>): boolean {
-  const pattern = String(args?.pattern ?? "");
-  if (!PREVENTIVE_GLOB_PATTERNS.includes(pattern)) return false;
-  const pathValue = args?.path;
-  const unboundedPath =
-    pathValue === undefined || pathValue === null || pathValue === "" || pathValue === "." || pathValue === "/";
-  const pathSegments = typeof pathValue === "string" ? pathValue.split(/[\\/]/) : [];
-  const hitsNodeModules = pathSegments.some((segment) => segment === "node_modules");
-  return unboundedPath || hitsNodeModules;
+/** The path is the root, the current directory, or absent. */
+function isUnboundedPath(pathValue: unknown): boolean {
+  return (
+    pathValue === undefined ||
+    pathValue === null ||
+    pathValue === "" ||
+    pathValue === "." ||
+    pathValue === "./" ||
+    pathValue === "/"
+  );
 }
 
-/** grep pre-gate: no `include` when the path is the root / unbounded. */
-export function shouldPreventiveBlockGrep(args: Record<string, unknown>): boolean {
+function hitsBlockedPath(pathValue: unknown, blockedPaths: string[]): boolean {
+  if (typeof pathValue !== "string") return false;
+  const segments = pathValue.split(/[\\/]/);
+  return segments.some((segment) => blockedPaths.includes(segment));
+}
+
+/**
+ * Glob pre-gate: broad pattern from the configured closed list with an
+ * unbounded path or a blocked segment.
+ */
+export function shouldPreventiveBlockGlob(
+  args: Record<string, unknown>,
+  patterns: string[] = PREVENTIVE_GLOB_PATTERNS,
+  blockedPaths: string[] = DEFAULT_BLOCKED_PATHS,
+): boolean {
+  const pattern = String(args?.pattern ?? "");
+  if (!patterns.includes(pattern)) return false;
+  const pathValue = args?.path;
+  return isUnboundedPath(pathValue) || hitsBlockedPath(pathValue, blockedPaths);
+}
+
+/** grep pre-gate: no `include` on an unbounded path or in a blocked segment. */
+export function shouldPreventiveBlockGrep(
+  args: Record<string, unknown>,
+  blockedPaths: string[] = DEFAULT_BLOCKED_PATHS,
+): boolean {
   if (!PREVENTIVE_GREP_NO_INCLUDE_ROOT) return false;
   const include = args?.include;
   if (include !== undefined && include !== null && include !== "") return false;
   const pathValue = args?.path;
-  return (
-    pathValue === undefined || pathValue === null || pathValue === "" || pathValue === "." || pathValue === "/"
-  );
+  return isUnboundedPath(pathValue) || hitsBlockedPath(pathValue, blockedPaths);
 }
 
 type ToolOutput = { output?: unknown; content?: unknown; metadata?: Record<string, unknown> };
