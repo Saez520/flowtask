@@ -1173,6 +1173,78 @@ test("context-budget: grep sin include en la raíz avisa la acotación en before
   );
 });
 
+test("context-budget: ./ y las rutas bloqueadas también son no acotadas", async () => {
+  const gate = await createGate();
+  const sessionID = "s-unbounded";
+  for (const [tool, input] of [
+    ["glob", { pattern: "**/*", path: "./" }],
+    ["grep", { pattern: "TODO", path: "./" }],
+  ]) {
+    await assert.rejects(
+      gate.before({ tool, sessionID, agent: "flowtask-runner", input }),
+      (error) => error instanceof Error && error.message === buildNarrowingNotice(tool, input),
+      `${tool} ${JSON.stringify(input)} debe avisar`,
+    );
+  }
+});
+
+test("context-budget: los overrides preventivos del workdir se aplican", async () => {
+  const root = makeLayeredRoot("flowtask-budget-preventive-");
+  fs.writeFileSync(
+    path.join(root, ".opencode/flowtask/config/context-budget.json"),
+    JSON.stringify({ preventiveGlobPatterns: ["*.md"], blockedPaths: ["vendor"], preventiveReadStatLimit: 10 }),
+    "utf8",
+  );
+  fs.writeFileSync(path.join(root, "small.txt"), "12345678901"); // 11 bytes > 10
+  const gate = await createGate(root);
+  const sessionID = "s-preventive-override";
+
+  await assert.rejects(
+    gate.before({ tool: "glob", sessionID, agent: "flowtask-runner", input: { pattern: "*.md" } }),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("glob", { pattern: "*.md" }),
+    "el patrón agregado por config avisa",
+  );
+  await assert.rejects(
+    gate.before({
+      tool: "glob",
+      sessionID,
+      agent: "flowtask-runner",
+      input: { pattern: "*.md", path: "a/vendor/b" },
+    }),
+    (error) =>
+      error instanceof Error && error.message === buildNarrowingNotice("glob", { pattern: "*.md", path: "a/vendor/b" }),
+    "una ruta bloqueada por config avisa",
+  );
+  await assert.rejects(
+    gate.before({
+      tool: "grep",
+      sessionID,
+      agent: "flowtask-runner",
+      input: { pattern: "TODO", path: "a/vendor/b" },
+    }),
+    (error) =>
+      error instanceof Error && error.message === buildNarrowingNotice("grep", { pattern: "TODO", path: "a/vendor/b" }),
+    "grep en una ruta bloqueada por config avisa",
+  );
+  await assert.rejects(
+    gate.before({ tool: "read", sessionID, agent: "flowtask-runner", input: { path: "small.txt" } }),
+    (error) => error instanceof Error && error.message === buildNarrowingNotice("read", { path: "small.txt" }),
+    "el límite de stat por config se aplica",
+  );
+});
+
+test("context-budget: el candidato .opencode gana sobre .flowtask", () => {
+  const root = makeTemp("flowtask-budget-order-");
+  const opencodeDir = path.join(root, ".opencode/flowtask/config");
+  const flowtaskDir = path.join(root, ".flowtask/config");
+  fs.mkdirSync(opencodeDir, { recursive: true });
+  fs.mkdirSync(flowtaskDir, { recursive: true });
+  fs.writeFileSync(path.join(opencodeDir, "context-budget.json"), JSON.stringify({ readThreshold: 999 }), "utf8");
+  fs.writeFileSync(path.join(flowtaskDir, "context-budget.json"), JSON.stringify({ readThreshold: 777 }), "utf8");
+  const config = loadContextBudgetConfig(root);
+  assert.equal(config.readThreshold, 999, "el candidato .opencode tiene precedencia");
+});
+
 test("context-budget: runner no ve umbrales — el error preventivo solo expone el fallback", async () => {
   const gate = await createGate();
   let error;
@@ -1332,15 +1404,26 @@ test("context-budget: helpers preventivos puros (edge cases)", () => {
   assert.equal(shouldPreventiveBlockRead({ file: "x.txt", limit: 10 }, 60000), false, "limit acota");
   assert.equal(shouldPreventiveBlockRead({ file: "x.txt" }, 40000), false, "bajo 50KiB pasa");
   assert.equal(shouldPreventiveBlockRead({ file: "x.txt" }, 60000), true, "sin limit y >50KiB bloquea");
+  assert.equal(shouldPreventiveBlockRead({ path: "x.txt" }, 60000), true, "la forma V2 path bloquea");
+  assert.equal(shouldPreventiveBlockRead({ path: "x.txt" }, 60000, 70000), false, "el límite configurable se aplica");
   assert.equal(shouldPreventiveBlockRead({ file: "x.txt" }, undefined), false, "stat fallido no bloquea");
 
   assert.equal(shouldPreventiveBlockGlob({ pattern: "**/*" }), true, "pattern amplio sin path");
   assert.equal(shouldPreventiveBlockGlob({ pattern: "**/*", path: "src" }), false, "path acotado pasa");
   assert.equal(shouldPreventiveBlockGlob({ pattern: "**/*", path: "a/node_modules/b" }), true, "node_modules bloquea");
+  assert.equal(shouldPreventiveBlockGlob({ pattern: "**/*", path: "./" }), true, "./ es no acotado");
   assert.equal(shouldPreventiveBlockGlob({ pattern: "*.ts", path: "." }), false, "pattern angosto pasa");
+  assert.equal(shouldPreventiveBlockGlob({ pattern: "*.md" }, ["*.md"]), true, "patrón configurado");
+  assert.equal(
+    shouldPreventiveBlockGlob({ pattern: "**/*", path: "a/vendor/b" }, ["**/*"], ["vendor"]),
+    true,
+    "blockedPaths configurado",
+  );
 
   assert.equal(shouldPreventiveBlockGrep({ pattern: "x" }), true, "sin include y sin path");
   assert.equal(shouldPreventiveBlockGrep({ pattern: "x", path: "src" }), false, "path acotado pasa");
+  assert.equal(shouldPreventiveBlockGrep({ pattern: "x", path: "./" }), true, "./ es no acotado");
+  assert.equal(shouldPreventiveBlockGrep({ pattern: "x", path: "vendor" }, ["vendor"]), true, "blockedPaths configurado");
   assert.equal(shouldPreventiveBlockGrep({ pattern: "x", include: "*.ts" }), false, "include acota");
 
   assert.equal(isImageOrPdfOutput({ output: "Image read successfully" }), true, "imagen textual");

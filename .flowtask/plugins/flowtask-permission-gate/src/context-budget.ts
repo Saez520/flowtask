@@ -37,6 +37,8 @@ export const DEFAULT_TURN_ACCUMULATED = 32000;
 export const PREVENTIVE_READ_STAT_LIMIT = 50 * 1024;
 /** Glob patterns that without a bounded path trigger the pre-gate (closed list). */
 export const PREVENTIVE_GLOB_PATTERNS = ["**/*", "**"];
+/** Path segments considered unbounded by the preventive glob/grep gates. */
+export const DEFAULT_BLOCKED_PATHS = ["node_modules"];
 /** grep without `include` on the root triggers the pre-gate. */
 export const PREVENTIVE_GREP_NO_INCLUDE_ROOT = true;
 /** Image/PDF attachment blocked for the runner (delegation to the Inspector). */
@@ -90,8 +92,8 @@ export type ContextBudgetConfig = {
 };
 
 const CONFIG_CANDIDATES = [
-  ".flowtask/config/context-budget.json",
   ".opencode/flowtask/config/context-budget.json",
+  ".flowtask/config/context-budget.json",
 ] as const;
 
 function defaultConfig(): ContextBudgetConfig {
@@ -102,7 +104,7 @@ function defaultConfig(): ContextBudgetConfig {
     turnAccumulated: DEFAULT_TURN_ACCUMULATED,
     preventiveReadStatLimit: PREVENTIVE_READ_STAT_LIMIT,
     preventiveGlobPatterns: [...PREVENTIVE_GLOB_PATTERNS],
-    blockedPaths: ["node_modules"],
+    blockedPaths: [...DEFAULT_BLOCKED_PATHS],
   };
 }
 
@@ -325,27 +327,49 @@ export function shouldPreventiveBlockRead(
   return false;
 }
 
-/** Glob pre-gate: broad pattern from the closed list without a bounded path or with node_modules. */
-export function shouldPreventiveBlockGlob(args: Record<string, unknown>): boolean {
-  const pattern = String(args?.pattern ?? "");
-  if (!PREVENTIVE_GLOB_PATTERNS.includes(pattern)) return false;
-  const pathValue = args?.path;
-  const unboundedPath =
-    pathValue === undefined || pathValue === null || pathValue === "" || pathValue === "." || pathValue === "/";
-  const pathSegments = typeof pathValue === "string" ? pathValue.split(/[\\/]/) : [];
-  const hitsNodeModules = pathSegments.some((segment) => segment === "node_modules");
-  return unboundedPath || hitsNodeModules;
+/** The path is the root, the current directory, or absent. */
+function isUnboundedPath(pathValue: unknown): boolean {
+  return (
+    pathValue === undefined ||
+    pathValue === null ||
+    pathValue === "" ||
+    pathValue === "." ||
+    pathValue === "./" ||
+    pathValue === "/"
+  );
 }
 
-/** grep pre-gate: no `include` when the path is the root / unbounded. */
-export function shouldPreventiveBlockGrep(args: Record<string, unknown>): boolean {
+function hitsBlockedPath(pathValue: unknown, blockedPaths: string[]): boolean {
+  if (typeof pathValue !== "string") return false;
+  const segments = pathValue.split(/[\\/]/);
+  return segments.some((segment) => blockedPaths.includes(segment));
+}
+
+/**
+ * Glob pre-gate: broad pattern from the configured closed list with an
+ * unbounded path or a blocked segment.
+ */
+export function shouldPreventiveBlockGlob(
+  args: Record<string, unknown>,
+  patterns: string[] = PREVENTIVE_GLOB_PATTERNS,
+  blockedPaths: string[] = DEFAULT_BLOCKED_PATHS,
+): boolean {
+  const pattern = String(args?.pattern ?? "");
+  if (!patterns.includes(pattern)) return false;
+  const pathValue = args?.path;
+  return isUnboundedPath(pathValue) || hitsBlockedPath(pathValue, blockedPaths);
+}
+
+/** grep pre-gate: no `include` on an unbounded path or in a blocked segment. */
+export function shouldPreventiveBlockGrep(
+  args: Record<string, unknown>,
+  blockedPaths: string[] = DEFAULT_BLOCKED_PATHS,
+): boolean {
   if (!PREVENTIVE_GREP_NO_INCLUDE_ROOT) return false;
   const include = args?.include;
   if (include !== undefined && include !== null && include !== "") return false;
   const pathValue = args?.path;
-  return (
-    pathValue === undefined || pathValue === null || pathValue === "" || pathValue === "." || pathValue === "/"
-  );
+  return isUnboundedPath(pathValue) || hitsBlockedPath(pathValue, blockedPaths);
 }
 
 type ToolOutput = { output?: unknown; content?: unknown; metadata?: Record<string, unknown> };

@@ -429,8 +429,8 @@ export default Plugin.define({
           budgetTool === "read"
             ? shouldPreventiveBlockRead(input, readStatSizeSafe(input, workdir), budget.preventiveReadStatLimit)
             : budgetTool === "glob"
-              ? shouldPreventiveBlockGlob(input)
-              : shouldPreventiveBlockGrep(input);
+              ? shouldPreventiveBlockGlob(input, budget.preventiveGlobPatterns, budget.blockedPaths)
+              : shouldPreventiveBlockGrep(input, budget.blockedPaths);
         if (broad && registerNarrowingNotice(event.sessionID, budgetTool, input)) {
           throw new Error(buildNarrowingNotice(budgetTool, input));
         }
