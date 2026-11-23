@@ -98,7 +98,7 @@ The layout is:
 │   ├── permissions.json
 │   └── identity.json         # base name shown by the runner identity
 ├── plugins/
-│   └── <plugin-name>/        # user-scope plugins with an ownership marker
+│   └── <plugin-name>/        # local user-scope plugins with an ownership marker; npm-distributed plugins are not copied
 └── versions/
     └── <version>-<hash12>/   # runner, agents, commands, skills, scripts, bin/lib
 ```
@@ -464,16 +464,19 @@ registration rule. They can be selected explicitly with `--target opencode`,
 
 None of these targets copies the engine into the project. The OpenCode global
 configuration declares the FlowTask agents with their payload paths, the payload
-skills directory, the global permission gate and context checkpoint plugins, the
-FlowTask commands, the default agent only when absent, and the Engram MCP only
-when absent. A consumer's own agents, skills, plugins, commands, MCP servers, and
-settings are preserved. A JSONC OpenCode configuration fails closed without
-writing.
+skills directory, the global permission gate by npm package spec and the local
+context checkpoint plugin, the FlowTask commands, the default agent only when
+absent, and the Engram MCP only when absent. A consumer's own agents, skills,
+plugins, commands, MCP servers, and settings are preserved. A JSONC OpenCode
+configuration fails closed without writing.
 
-The permission gate and the context checkpoint are installed once in
-`<global-config>/flowtask/plugins/` and registered from there. The model selector
-remains a project plugin. Claude Code installs its model selector at user scope
-and keeps it in the plugins store under `~/.claude`, not in the project.
+The permission gate is registered as the npm package
+`flowtask-permission-gate@^2.0.0`; OpenCode resolves and caches it on the first
+load, so that load needs access to the npm registry. The context checkpoint is
+installed once in `<global-config>/flowtask/plugins/flowtask-context-checkpoint`
+and registered from there. The model selector remains a project plugin. Claude
+Code installs its model selector at user scope and keeps it in the plugins store
+under `~/.claude`, not in the project.
 
 OpenCode is also the only target that offers the web search MCP, installed once
 per user as described in [Web search MCP (OpenCode only)](#web-search-mcp-opencode-only).
@@ -656,7 +659,9 @@ authorized through the shell. See
 
 ## Plugins and Graphify
 
-The manifest declares permission-gate, model-selector, and context-checkpoint; classifier-hook and classifier-tui are deprecated and disabled, so they are not installed by default. The permission gate and the context checkpoint are user-scope plugins: installation copies each package once into `<global-config>/flowtask/plugins/<name>`, writes its ownership marker, verifies the copy, and registers a single global `{"package": "<absolute path>", "options": {...}}` entry in the OpenCode user configuration. A directory without the marker is preserved and reported. The model selector remains a project plugin. The context-checkpoint source gitlink may be empty if the submodule was not materialized; the user-scope copy is what the runtime publishes.
+The manifest declares permission-gate, model-selector, and context-checkpoint; classifier-hook and classifier-tui are deprecated and disabled, so they are not installed by default. The permission gate is a user-scope plugin distributed as the npm package `flowtask-permission-gate@^2.0.0`: the OpenCode user configuration registers a single `{"package": "flowtask-permission-gate@^2.0.0", "options": {...}}` entry, and the installer never copies it into the runtime. The context checkpoint remains a user-scope local plugin: installation copies it once into `<global-config>/flowtask/plugins/flowtask-context-checkpoint`, writes its ownership marker, verifies the copy, and registers a single global `{"package": "<absolute path>", "options": {...}}` entry. A directory without the marker is preserved and reported.
+
+`install` and `update` migrate an existing installation: the old absolute gate entry is replaced by the npm spec, and an owned copy under `<global-config>/flowtask/plugins/flowtask-permission-gate` is removed. A directory at that path without the FlowTask marker is preserved. The migration is idempotent, and `runtime.json` records the gate with `{"source": "npm", "package": "flowtask-permission-gate@^2.0.0", "managed": true}`. The model selector remains a project plugin. The context-checkpoint source gitlink may be empty if the submodule was not materialized; the user-scope copy is what the runtime publishes.
 
 ### Permission gate package
 
@@ -667,10 +672,12 @@ Model Context Protocol SDK. The package tarball ships `dist`, `README.md`,
 `LICENSE`, and the package metadata; `prepack` rebuilds `dist` from source.
 
 `install` and `update` do not publish. Publication and authentication are a
-separate operational step. Once the package is published, consumers use a range
-that resolves to the latest compatible version, so `flowtask update` receives
-gate fixes without pinning an exact release; until then, the installer keeps
-copying the managed user-scope package from the runtime.
+separate operational step. Consumers use the compatible range
+`flowtask-permission-gate@^2.0.0`, so a patch or minor release is picked up
+without pinning an exact version and without another installer change. Because
+the gate is loaded from npm, the first OpenCode start after installation or
+after a version change needs access to the registry; later starts use the
+package already resolved by OpenCode.
 
 Graphify is queried through `graphify_query_graph` via MCP. `flowtask graphify query --query <query>` only tests the deprecated shim and exits without querying locally.
 

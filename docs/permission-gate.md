@@ -5,12 +5,22 @@ The migration from the historical gate was consolidated into a single plugin:
 `[FlowTask Permission Gate]`.
 
 `flowtask-permission-gate` is the only runtime control for FlowTask-specific
-permissions. It is installed once per user as a managed package in
-`<global-config>/flowtask/plugins/flowtask-permission-gate` after `flowtask
-install` or `flowtask update`, and the OpenCode user configuration registers it
-once as an absolute `{"package": "...", "options": {"configDir": "...",
-"runtimeRoot": "..."}}` entry; the package entrypoint is `dist/index.js`. The
-change takes effect when OpenCode restarts. There is no native fallback.
+permissions. It is distributed as the npm package `flowtask-permission-gate` and
+registered once per user by `flowtask install` or `flowtask update` with the
+compatible range `flowtask-permission-gate@^2.0.0` and the `configDir` and
+`runtimeRoot` options; the package entrypoint is `dist/index.js`. OpenCode
+resolves the package from the npm registry on the first load (or after a version
+change), so that load needs network access; the change takes effect when OpenCode
+restarts. There is no native fallback.
+
+The installer does not copy the gate into the project or into
+`<global-config>/flowtask/plugins/`. An installation created before this
+distribution keeps a local managed copy and an absolute `{"package": "...",
+"options": {...}}` entry; `install` and `update` replace that entry with the npm
+spec and remove the copy only when it carries the FlowTask ownership marker. A
+directory without the marker is preserved. The context checkpoint remains a
+local user plugin registered from
+`<global-config>/flowtask/plugins/flowtask-context-checkpoint`.
 
 ## Policies
 
@@ -361,33 +371,34 @@ to the manager and is not admitted through bash.
 
 ## Diagnostics
 
-After updating, verify that
-`.opencode/plugins/flowtask-permission-gate/dist/index.js` exists, that the
-configuration registers the package once as
-`{"package":"./plugins/flowtask-permission-gate"}`, and that it does not keep an
-entry pointing to `plugins/flowtask-permission-gate/dist/index.js`, the previous
-name, or `agent.flowtask-runner.permission`. Restart OpenCode and test an
+After updating, verify that the OpenCode user configuration registers the gate
+once as `{"package":"flowtask-permission-gate@^2.0.0","options":{...}}`, that it
+keeps no entry pointing to `<global-config>/flowtask/plugins/flowtask-permission-gate`
+or `./plugins/flowtask-permission-gate`, and that the local gate directory does
+not remain unless it lacked the FlowTask marker. Confirm that the context
+checkpoint is registered from its local package path, and that the previous name
+and `agent.flowtask-runner.permission` do not exist. Restart OpenCode and test an
 allowed Runner operation, a denied one, and the commit gate with and without a stamp.
 
 ## Post-install/update and restart runtime smoke
 
-This procedure must be executed by the developer; the Constructor does not restart
-OpenCode or run `flowtask update` against the root repository during this
-correction. The plan requires the real smoke after the update and restart;
-fixture tests only verify the script and do not replace this test.
+This procedure must be executed by the developer; it includes an OpenCode restart
+and a real `flowtask update` against the root repository. Fixture tests only
+verify the script and do not replace this test.
 
 1. From the installed target root, run `node .flowtask/bin/flowtask.js
    update` (or `node .flowtask/bin/flowtask.js install` for a new installation).
    Do not edit `.opencode/opencode.json` manually.
-2. Verify that
-   `.opencode/plugins/flowtask-permission-gate/dist/index.js` exists and that the
-   `plugins` array registers the gate once as
-   `{"package":"./plugins/flowtask-permission-gate"}`. Confirm that no entry
-   points to `plugins/flowtask-permission-gate/dist/index.js`, and that the
-   historical gate entrypoint and `agent.flowtask-runner.permission` do not exist.
+2. Verify that the OpenCode user configuration registers the gate once as
+   `{"package":"flowtask-permission-gate@^2.0.0","options":{...}}`. Confirm that
+   no entry points to `<global-config>/flowtask/plugins/flowtask-permission-gate`,
+   that the local gate directory does not remain, and that the historical gate
+   entrypoint and `agent.flowtask-runner.permission` do not exist. Confirm that
+   the context checkpoint remains registered from
+   `<global-config>/flowtask/plugins/flowtask-context-checkpoint`.
 3. Close and restart OpenCode using the developer's usual procedure.
-   Expected result: the new package loads from `.opencode/plugins/` and
-   the old plugin does not load.
+   Expected result: OpenCode resolves and loads the gate from npm, the context
+   checkpoint loads from its local path, and the old local plugin does not load.
 4. In a Runner session, run `${FLOWTASK_SCRIPTS}/worktree.sh list`,
    `git status --short`, and an uncatalogued inspection such as `pwd` or
    `find . -maxdepth 1`. For Graphify, use the MCP integration; the historical

@@ -6,7 +6,8 @@ the permissions layer check, and the context budget for read tools.
 
 ## Installation
 
-The plugin is installed and updated as a managed user-scope copy by FlowTask:
+The plugin is distributed as the npm package `flowtask-permission-gate` and
+registered by FlowTask for the OpenCode user:
 
 ```bash
 flowtask install
@@ -14,8 +15,15 @@ flowtask update
 ```
 
 Consumers do not copy the package into a project and do not install it
-directly. The OpenCode user configuration registers it once with its absolute
-package path and the `configDir` and `runtimeRoot` options.
+directly. The OpenCode user configuration registers it once with the compatible
+range `flowtask-permission-gate@^2.0.0` and the `configDir` and `runtimeRoot`
+options. OpenCode resolves the package from the npm registry on the first load
+and after a version change; later starts use the resolved package.
+
+An installation that kept a local managed copy is migrated by `flowtask install`
+or `flowtask update`: the absolute entry is replaced by the npm range and the
+copy is removed only when it carries the FlowTask ownership marker. A directory
+without the marker is preserved.
 
 ## What it enforces
 
