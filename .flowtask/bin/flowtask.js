@@ -549,7 +549,74 @@ function runFlowsVerify(commandArgs) {
   if (report.verdict !== "pass") process.exit(1);
 }
 
+function printHelp() {
+  console.log(`
+FlowTask CLI
+
+Usage:
+  flowtask install    Install FlowTask in the current project
+  flowtask install --global
+                      Install only the user-level runtime and global surfaces
+  flowtask install --target <opencode|claude|vscode|standalone>
+                      Select targets explicitly; repeat the flag or use commas
+  flowtask install --persona <training|mid|senior|custom>
+                      Select the agent personality explicitly
+  flowtask install --autonomy <assistant|autonomous-dev>
+                      Select how much initiative FlowTask takes on this machine
+  flowtask install --allow-engram-tools
+                      Pre-approve the Engram MCP tools in the user allowlist
+  flowtask update     Update FlowTask files (delta-only sync)
+  flowtask update --global
+                      Update only the user-level runtime and global surfaces
+  flowtask update --persona <training|mid|senior|custom>
+  flowtask update --autonomy <assistant|autonomous-dev>
+  flowtask update --allow-engram-tools
+                      Pre-approve the Engram MCP tools in the user allowlist
+  flowtask update --verbose
+                      Show the per-step diagnostic output
+  flowtask uninstall  Remove the user-level runtime and registered projects
+  flowtask uninstall --global
+                      Same as the default: remove the user-level installation
+  flowtask uninstall --project
+                      Remove only the current project registration
+  flowtask uninstall --yes
+                      Skip the interactive confirmation
+  flowtask layers resolve --target <opencode|claude|vscode|standalone>
+                      Show the resolved persona, autonomy and permissions layers
+  flowtask layers resolve --json
+                      Show the resolved layers as JSON
+  flowtask authority status [--json]
+                      Show whether the authority configuration is healthy
+  flowtask repair [--json]
+                      Restore the safe authority configuration and verify it
+  flowtask flows verify [--flowtask-dir <path>] [--baseline <ref>]
+                      Verify the permanent core, its flows and the target deliveries
+  flowtask flows verify --baseline <ref>
+                      Apply the versioned .flowtask/config/runner-parity-allowlist.json by default
+  flowtask flows verify --allow-deltas <json> --report <path>
+                      Override the default allowlist and write the report outside the versioned tree
+  flowtask flows verify --json
+                      Print the report as JSON without writing files
+  flowtask graphify query --query <q>  Deprecated shim; no local query is executed
+  flowtask --help     Show this help message
+  flowtask --version  Show version
+
+Examples:
+  flowtask install --target claude --persona senior
+  flowtask install --target opencode,claude --autonomy autonomous-dev
+  flowtask update --autonomy assistant
+  flowtask uninstall --project --yes
+  flowtask layers resolve --target claude
+  flowtask graphify query --query UserService  Deprecated; use Graphify MCP
+    `);
+}
+
 async function main() {
+  if (args.slice(1).includes("--help") || args.slice(1).includes("-h")) {
+    printHelp();
+    return;
+  }
+
 let options;
 try {
   options = parseOptions(args.slice(1));
@@ -698,65 +765,7 @@ switch (command) {
 
   case "--help":
   case "-h":
-    console.log(`
-FlowTask CLI
-
-Usage:
-  flowtask install    Install FlowTask in the current project
-  flowtask install --global
-                      Install only the user-level runtime and global surfaces
-  flowtask install --target <opencode|claude|vscode|standalone>
-                      Select targets explicitly; repeat the flag or use commas
-  flowtask install --persona <training|mid|senior|custom>
-                      Select the agent personality explicitly
-  flowtask install --autonomy <assistant|autonomous-dev>
-                      Select how much initiative FlowTask takes on this machine
-  flowtask install --allow-engram-tools
-                      Pre-approve the Engram MCP tools in the user allowlist
-  flowtask update     Update FlowTask files (delta-only sync)
-  flowtask update --global
-                      Update only the user-level runtime and global surfaces
-  flowtask update --persona <training|mid|senior|custom>
-  flowtask update --autonomy <assistant|autonomous-dev>
-  flowtask update --allow-engram-tools
-                      Pre-approve the Engram MCP tools in the user allowlist
-  flowtask update --verbose
-                      Show the per-step diagnostic output
-  flowtask uninstall  Remove the user-level runtime and registered projects
-  flowtask uninstall --global
-                      Same as the default: remove the user-level installation
-  flowtask uninstall --project
-                      Remove only the current project registration
-  flowtask uninstall --yes
-                      Skip the interactive confirmation
-  flowtask layers resolve --target <opencode|claude|vscode|standalone>
-                      Show the resolved persona, autonomy and permissions layers
-  flowtask layers resolve --json
-                      Show the resolved layers as JSON
-  flowtask authority status [--json]
-                      Show whether the authority configuration is healthy
-  flowtask repair [--json]
-                      Restore the safe authority configuration and verify it
-  flowtask flows verify [--flowtask-dir <path>] [--baseline <ref>]
-                      Verify the permanent core, its flows and the target deliveries
-  flowtask flows verify --baseline <ref>
-                      Apply the versioned .flowtask/config/runner-parity-allowlist.json by default
-  flowtask flows verify --allow-deltas <json> --report <path>
-                      Override the default allowlist and write the report outside the versioned tree
-  flowtask flows verify --json
-                      Print the report as JSON without writing files
-  flowtask graphify query --query <q>  Deprecated shim; no local query is executed
-  flowtask --help     Show this help message
-  flowtask --version  Show version
-
-Examples:
-  flowtask install --target claude --persona senior
-  flowtask install --target opencode,claude --autonomy autonomous-dev
-  flowtask update --autonomy assistant
-  flowtask uninstall --project --yes
-  flowtask layers resolve --target claude
-  flowtask graphify query --query UserService  Deprecated; use Graphify MCP
-    `);
+    printHelp();
     break;
 
   case "--version":
