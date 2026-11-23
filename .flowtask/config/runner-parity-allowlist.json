@@ -212,7 +212,7 @@
     "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
   },
   {
-    "line": "aporta el fallback en español si no hay fuente. Usá `worktree.sh complete",
+    "sha256": "1dd91ee76ddcec20d515cd05314e5f24b890d56ea38bb17869ec7ca56d4d042a",
     "reason": "CA-worktree-gate-decoupling (94d82e3): línea de la política de worktrees basada en adapter, reemplazada por el consumo directo del MCP worktree_manager."
   },
   {
@@ -402,5 +402,29 @@
   {
     "sha256": "c66c63bd146833389a33b8d26a45b5085365dafbd55469669597d86d11508b8a",
     "reason": "HF-worktree-mcp-alignment: línea reemplazada por el consumo MCP (.flowtask/skills/runner-flow-ejecucion-ca/SKILL.md)"
+  },
+  {
+    "sha256": "46e0f84fa9a07db54ca1cd5c7a4ab889b5fb9a370205237e4e116305b136e908",
+    "reason": "HF-closure-message-english: plantilla de cierre en inglés (.flowtask/skills/runner-flow-ejecucion-ca/SKILL.md)"
+  },
+  {
+    "sha256": "50a5a51bb857d00077f59b0dd6b4db315a7997b490297e2dc2dc4408de08ed0d",
+    "reason": "HF-closure-message-english: plantilla de cierre en inglés (.flowtask/skills/runner-flow-ejecucion-ca/SKILL.md)"
+  },
+  {
+    "sha256": "f577b2aea084c4da6bd4a6ed0b1f7e6abda5bf0a5ca941b3a57d2facd633b1af",
+    "reason": "HF-closure-message-english: plantilla de cierre en inglés (.flowtask/skills/runner-flow-ejecucion-ca/SKILL.md)"
+  },
+  {
+    "sha256": "6a5abf1c35b0d48a3509b25a2e15f8339a17b748a633b6e7065d1e9d7ac7628f",
+    "reason": "HF-closure-message-english: plantilla de cierre en inglés (.flowtask/skills/runner-flow-ejecucion-ca/SKILL.md)"
+  },
+  {
+    "sha256": "fbe81e4bd22b5bc4d702852217b5e420886072f9341cf63dc4a7678c1ad06267",
+    "reason": "HF-closure-message-english: plantilla de cierre en inglés (.flowtask/skills/runner-flow-ejecucion-ca/SKILL.md)"
+  },
+  {
+    "sha256": "bb29868953553c47ad577171c14f3a5bd49b214cb61bf5db0e3bba5bbc53d72a",
+    "reason": "HF-closure-message-english: plantilla de cierre en inglés (.flowtask/skills/runner-flow-ejecucion-ca/SKILL.md)"
   }
 ]
