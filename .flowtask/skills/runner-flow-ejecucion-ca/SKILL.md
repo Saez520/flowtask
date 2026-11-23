@@ -211,8 +211,16 @@ journals, locks, backups o lógica de recuperación propia.
 
 1. **Selección antes de mutación:** determina `repo_root` como ruta absoluta
    existente del repositorio objetivo (nunca lo sustituyas por `cwd`), detecta
-   la base local en orden `development → main → trunk → main` salvo que el
-   usuario indique una base explícita, y resuelve un `work_id` genérico; nunca
+   la base local según la regla: 1) base explícita del usuario: prevalece;
+   2) primera rama local que exista entre `development`, `main` y `trunk` en
+   ese orden (sin cambios: no altera ningún repositorio que hoy funciona);
+   3) rama local a la que apunta `origin/HEAD` (resuelta con
+   `git symbolic-ref --short refs/remotes/origin/HEAD`, sin el prefijo
+   `origin/`), si existe localmente; 4) `main` como valor final por defecto
+   (si nada existe, el gestor rechaza la base inexistente con un mensaje
+   claro). Otras ramas no se nombran: decisión del desarrollador en
+   CA-worktree-base-branch (#2236); la detección solo considera ramas
+   locales existentes y no crea ramas. Resuelve un `work_id` genérico; nunca
    lo conviertas en un CA ID. El gestor valida `repo`, `base` y `work_id`.
 2. **Vía primaria y alternativa:** el servidor MCP directo es la vía primaria.
    Si no está registrado o no responde, el Runner informa la indisponibilidad
