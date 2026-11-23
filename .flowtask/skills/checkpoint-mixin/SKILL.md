@@ -128,6 +128,8 @@ mem_save(
 ```
 
 > `state: "completed"` marca el cierre y conserva la observación como traza consultable. No se elimina.
+>
+> El cierre se escribe solo después de confirmar por lectura el artifact. El propio cierre se confirma por lectura con la misma clave, el `sequence` incrementado y `state: "completed"`, según `memory-contract` (Confirmación de escritura). Si no se confirma tras un único reintento, se pausa con `persistence_unconfirmed`: el checkpoint conserva su último estado confirmado y no se cierra.
 
 ### Unicidad del payload y secuencia
 
@@ -135,6 +137,7 @@ mem_save(
 - `sequence` se incrementa sobre el checkpoint previo más reciente: `(checkpoint previo).sequence + 1`. Si no existe checkpoint previo, `sequence` es `1`.
 - La traza legible del trabajo vive en otra clave (por ejemplo, el artifact del CA). No sustituye ni sobrescribe el payload de continuidad.
 - El payload de cierre conserva `topic_signature` y `resume_ref` del payload activo: sin ellos, el cierre pierde la validación de tema y la referencia de reanudación.
+- Cada actualización del checkpoint (`sequence + 1`) se confirma por lectura antes de continuar con la siguiente, según `memory-contract` (Confirmación de escritura).
 
 ### Tratamiento ligero (inspector, constructor, validator, tester, review-orchestrator, logger, initializer)
 
@@ -229,6 +232,8 @@ mem_save(
   }
 )
 ```
+
+> El cierre se escribe solo después de confirmar por lectura el artifact. El propio cierre se confirma por lectura con la misma clave, el `sequence` incrementado y `state: "completed"`, según `memory-contract` (Confirmación de escritura). Si no se confirma tras un único reintento, se pausa con `persistence_unconfirmed`: el checkpoint conserva su último estado confirmado y no se cierra.
 
 ## Namespaces de topic_key
 

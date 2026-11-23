@@ -168,6 +168,8 @@ mem_save(
 )
 ```
 
+Confirmá por lectura el artifact `ca/CA-{ID}/artifact/logging-report` y el flow-state `flow-state/{ID}/logging` según `memory-contract` (Confirmación de escritura) antes de reportar: ante un desajuste hacés un único reintento y, si persiste, respondés `state: blocked` con `persistencia: failed`.
+
 ---
 
 ## Reglas de logging
@@ -194,8 +196,13 @@ mem_save(
 
 state: logging_completed | blocked
 topic_key: ca/CA-{ID}/artifact/logging-report
+persistencia: confirmed | failed
+persistencia_reintentos: 0 | 1
+persistencia_fallida: NONE | {topic_key}
 blockers: NONE | [descripción del problema]
 next: ready_for_testing | needs_decision
+
+Con `persistencia: failed`, `state` es `blocked` y `next` es `needs_decision`.
 
 ---
 
@@ -207,3 +214,4 @@ next: ready_for_testing | needs_decision
 - **SIEMPRE escribe** el artifact completo en Engram (ca/CA-{ID}/artifact/logging-report)
 - **NUNCA guardes contenido largo** en Engram — solo el snapshot con `Where:` apuntando al archivo
 - **NUNCA escribas a `project/`** — solo Initializer puede crear/actualizar observaciones en `project/{layer}`. Usa `impl/{ID}/patterns` para guardar patrones descubiertos
+- **NUNCA reportes** la instrumentación como completada sin la lectura posterior del artifact y del flow-state; confirmá cada actualización en secuencia

@@ -154,6 +154,7 @@ El reporte se registra en `ca/CA-{ID}/artifact/tests-report`:
 | `commands` | Comandos ejecutados y su resultado. |
 | `limits` | Limitaciones observadas: herramienta ausente, alcance no verificable. |
 | `persistence` | `confirmed` o `failed`; con `NONE`, `report` o `checkpoint` cuando falla. |
+| `persistencia_reintentos` | `0` o `1`: reintentos de escritura consumidos al confirmar la persistencia. |
 
 El reporte no incluye `decision_ref`: no existe una decisión previa que referenciar.
 
@@ -167,8 +168,8 @@ Taxonomía del reporte:
 ### Persistencia
 
 1. Guardá el reporte en `ca/CA-{ID}/artifact/tests-report` y el flow state en `flow-state/CA-{ID}/tests` con el schema v2 de tratamiento ligero, `state: completed` y `persistence: artifact_confirmed`.
-2. Confirmá la persistencia por lectura.
-3. Si la persistencia falla, respondé `blocked` con `persistencia_fallida` y el detalle de qué falló (`report` o `checkpoint`); no anuncies la entrega como lista para validar.
+2. Confirmá la persistencia por lectura según `memory-contract` (Confirmación de escritura).
+3. Si la persistencia falla, hacés un único reintento de escritura y su confirmación antes de responder. Si persiste el desajuste, respondé `blocked` con `persistence: failed`, `persistencia_fallida` con el detalle de qué falló (`report` o `checkpoint`) y el `topic_key` afectado; no anuncies la entrega como lista para validar.
 
 ---
 
@@ -275,6 +276,8 @@ tests_report_ref: {referencia del reporte} | NONE
 gaps_covered: [lista de gap_ref cubiertos]
 gaps_not_covered: [lista de gap_ref con motivo]
 persistence: confirmed | failed
+persistencia_reintentos: 0 | 1
+persistencia_fallida: NONE | report | checkpoint
 blockers: NONE | [descripción del problema]
 next: ready_for_validation | needs_decision | needs_recovery_or_pause
 
@@ -291,6 +294,7 @@ next: ready_for_validation | needs_decision | needs_recovery_or_pause
 - **NUNCA ocules cobertura** — lo no cubierto se declara con su motivo
 - **NUNCA conviertas un fallo de herramienta en incumplimiento funcional**
 - **NUNCA uses la suite completa del repositorio como sustituto del alcance declarado**
+- **NUNCA presentes** `persistence: confirmed` sin la lectura posterior; las actualizaciones del mismo registro van en secuencia, una confirmada antes de la siguiente
 - **NUNCA re-evalúes** los gaps de una entrega ya reportada para el mismo plan
 - **SIEMPRE consulta Engram** para convenciones de testing
 - **SIEMPRE sigue** la estructura de archivos de test del proyecto

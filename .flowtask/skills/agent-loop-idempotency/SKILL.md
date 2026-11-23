@@ -256,6 +256,7 @@ Payload canónico completo. Se escribe en una sola observación de Engram y se r
 **Escritura.** Cada actualización reescribe el payload completo e incrementa `record_version` en 1. El historial no se trunca.
 
 **Confirmación de persistencia.** Una escritura solo se considera guardada cuando una lectura de verificación posterior coincide en `schema`, `execution.id`, `integrity.record_version` e `integrity.last_operation_id`. Si no coincide, no se avanza: se reporta `persistence_unconfirmed` y se conserva `last_confirmed_operation_id`.
+La confirmación sigue la norma de `memory-contract` (Confirmación de escritura): un único reintento de escritura más confirmación antes de reportar `persistence_unconfirmed`.
 
 **Registro ausente, ilegible o contradictorio.** Se reporta `record_unavailable` o `record_contradictory`. No se inventa estado, no se reinician conteos y no se avanza sobre datos no verificados.
 
@@ -269,6 +270,7 @@ Payload canónico completo. Se escribe en una sola observación de Engram y se r
 - `last_writer` incompatible con el estado de la última operación.
 
 **Escritura concurrente.** Antes de escribir, el actor compara `integrity.last_writer` y el estado de la última operación. Si sospecha una escritura concurrente, se detiene con `concurrent_write_suspected` y no sobrescribe. La deduplicación en carrera simultánea queda fuera de alcance.
+Las actualizaciones del ledger se escriben y confirman una por una antes de lanzar la siguiente.
 
 **Degradación sin Engram.** Si el proveedor de memoria no está disponible, se sigue el contrato de memoria compartido: detener, informar y no persistir en archivos locales ni fuentes paralelas.
 

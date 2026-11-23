@@ -136,6 +136,8 @@ bloqueo. Registra esos datos en el checkpoint de `flow-state/{execution_id}/cons
 con schema v2, estado y secuencia vigentes. No repitas acciones no idempotentes
 cuyo efecto anterior sea incierto; detente y escala para decidir.
 
+Cada actualización de ese checkpoint se confirma por lectura, con la misma clave, el `sequence` y el `state` esperados, según `memory-contract` (Confirmación de escritura), antes de continuar.
+
 La continuidad automática solo es válida si se reanuda la misma sesión con
 identidad y `task_id` disponibles y el checkpoint es restaurable. Un hilo nuevo
 por relevo o rechazo es una restauración explícita, no continuidad técnica.
@@ -272,6 +274,7 @@ Al finalizar:
         Learned: {gotcha técnico si aplica — omitir si no}
     )
    ```
+5. Confirmá por lectura el flow-state `flow-state/{execution_id}/construct` según `memory-contract` (Confirmación de escritura) antes de reportar.
 
 ---
 
@@ -343,6 +346,8 @@ Cuando el runner te invoca con Evolution Mode activo:
     )
    ```
 
+   El flow-state de la evolución se confirma por lectura según `memory-contract` (Confirmación de escritura) antes de reportar.
+
 8. En Evolution Mode, modifica únicamente los archivos que el plan enumera;
    cualquier archivo no incluido requiere detenerse y escalar al Runner.
 9. En el gestor como submódulo, trabaja en la rama local `worktree-manager/<work-id>`,
@@ -360,8 +365,13 @@ bloqueo. No llames continuidad a una sesión nueva. Incluye siempre
 con tarea, SHA y asunto.
 
 state: implemented | blocked
+persistencia: confirmed | failed
+persistencia_reintentos: 0 | 1
+persistencia_fallida: NONE | {topic_key}
 blockers: NONE | [error o decisión pendiente]
 next: ready_for_verification | needs_decision
+
+Con `persistencia: failed`, `state` es `blocked` y `next` es `needs_decision`.
 
 El runner traduce `state` a lenguaje llano; el valor queda en el registro técnico.
 
@@ -376,6 +386,7 @@ El runner traduce `state` a lenguaje llano; el valor queda en el registro técni
 - **SIEMPRE sigue las convenciones** indicadas en el plan
 - **SIEMPRE sigue el orden** de dependencias del plan
 - **SIEMPRE guarda** el flow state en Engram al finalizar
+- **NUNCA reportes** `persistencia: confirmed` sin la lectura posterior del flow-state y del checkpoint; confirmá cada actualización en secuencia antes de la siguiente
 - **NUNCA saltes capas** — si el plan dice primero Entity, luego DTO, luego Service, así debe ser
 - **NUNCA implementes features** que no están en el plan
 - **SIEMPRE mantengas el código funcional libre de referencias prohibidas** — la lista única y su alcance viven en `.flowtask/skills/higiene-de-codigo/SKILL.md` (§ Referencias prohibidas), salvo la cadena literal que el dominio exija

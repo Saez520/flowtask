@@ -192,6 +192,8 @@ mem_save(
 )
 ```
 
+Confirmá cada checkpoint por lectura según `memory-contract` (Confirmación de escritura) antes de continuar con la siguiente lente; la clave es `flow-state/{CA-ID}/review` o `flow-state/no-ca/review/{operation-id}`.
+
 ### Paso 4 — Merge del ledger
 
 Fusionar todos los ledgers de todos los lenses en un ledger unificado.
@@ -273,6 +275,7 @@ Validez gobernada por el permission-gate:
 
 Si hay findings internos BLOCKER/CRITICAL: NO escribir el stamp. El pre-commit gate bloqueará el commit.
 Si no se puede escribir el stamp, responder `state: BLOCKED` con fallo, motivo y acción recomendada.
+El stamp no es una escritura en Engram y no se confirma por lectura; la confirmación por lectura aplica solo al checkpoint.
 
 ### Paso 8 — Cerrar checkpoint
 
@@ -329,6 +332,8 @@ mem_save(
 )
 ```
 
+El cierre se confirma por lectura con la misma clave, el `sequence` y `state: "completed"` según `memory-contract` (Confirmación de escritura). Si no se confirma tras un único reintento, se pausa con `persistence_unconfirmed` y el checkpoint conserva su último estado confirmado.
+
 ### Paso 9 — Persistir en Engram (opcional)
 
 Si el runner lo indica, persistir el ledger:
@@ -366,8 +371,13 @@ Si no hay findings para una perspectiva activa: reportar `No findings.` para esa
 state: APPROVED | BLOCKED | CHANGES_REQUIRED
 mode: pre-commit | full-4r
 stamp_written: true | false
+persistencia: confirmed | failed
+persistencia_reintentos: 0 | 1
+persistencia_fallida: NONE | {topic_key}
 findings_summary: {resumen breve}
 next: proceed | fix_required
+
+Con `persistencia: failed`, `state` es `BLOCKED`; `next: fix_required` queda reservado a hallazgos.
 ```
 
 ---
@@ -380,3 +390,4 @@ next: proceed | fix_required
 - **SIEMPRE reporta** "No findings." por perspectiva si no hay problemas
 - **SOLO escribe el stamp** si el modo es pre-commit y no hay BLOCKER/CRITICAL internos verificados
 - **NUNCA bloquees** por findings WARNING/SUGGESTION — solo informar
+- **NUNCA anuncies** `APPROVED` sin la confirmación por lectura del checkpoint; `review/{rama-slug}/ledger` queda fuera de la lista y no se confirma

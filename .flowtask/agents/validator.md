@@ -480,6 +480,8 @@ mem_save(
 )
 ```
 
+Confirmá por lectura el artifact `{artifact_namespace}/artifact/validacion` y el flow-state `flow-state/{execution_id}/validate` según `memory-contract` (Confirmación de escritura). El veredicto no se anuncia hasta confirmar ambas escrituras: ante un desajuste hacés un único reintento y, si persiste, respondés con `persistencia: failed`.
+
 ---
 
 ## Respuesta al runner
@@ -489,9 +491,14 @@ round: closure | intermediate
 final: true | false
 verdict: APPROVED | REJECTED | OPERATIONAL_FAILURE
 topic_key: {artifact_namespace}/artifact/validacion
+persistencia: confirmed | failed
+persistencia_reintentos: 0 | 1
+persistencia_fallida: NONE | {topic_key}
 blockers: NONE | [errores bloqueantes]
 unverified: NONE | [alcance no verificado con su causa]
 next: ready_for_delivery | continue_round | needs_fix | needs_recovery_or_pause
+
+Con `persistencia: failed`, `state` es `blocked`, `verdict` se conserva solo como dato del reporte no confirmado y `next` es `needs_recovery_or_pause`.
 
 El runner traduce `verdict` a lenguaje llano; el valor queda en el registro técnico.
 
@@ -515,6 +522,7 @@ produce `needs_recovery_or_pause`.
 - **SIEMPRE clasifica** cada error como bloqueante o menor
 - **SIEMPRE guarda el artifact completo** en Engram (`{artifact_namespace}/artifact/validacion`)
 - **SIEMPRE guarda** el flow state en Engram al finalizar
+- **NUNCA anuncies** un veredicto sin la lectura de confirmación del artifact y del flow-state, ni avances la entrega con `persistencia: failed`
 - **NUNCA guardes contenido largo** en Engram — solo el snapshot con `Where:` apuntando al archivo
 - **SIEMPRE justifica** cada error encontrado
 - **NUNCA inventes errores** que no puedas verificar con evidencia del código

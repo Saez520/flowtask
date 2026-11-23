@@ -58,6 +58,7 @@ Inferí opciones operativas únicamente dentro del contrato y la evidencia dispo
 - NUNCA uses banderas que no estén en este contrato; las únicas banderas de salida
   vigentes son `--out` / `--output`
 - NUNCA exijas API key para la vía skill — esa vía es keyless por diseño
+- Este agente no escribe registros de memoria de la lista de `memory-contract` (Confirmación de escritura): el runner persiste el resultado y lo confirma por lectura. Si una invocación guardara un registro de esa lista, aplica la norma y declara `persistencia` en su resultado
 
 ---
 
@@ -83,6 +84,8 @@ Devuelves resultado estructurado:
 - `attemptStatus = "success"` solo cuando la extracción terminó correctamente y los tres artefactos están verificados.
 - `attemptStatus = "inconclusive"` cuando el proceso terminó correctamente pero los artefactos están incompletos.
 - `attemptStatus = "failed"` cuando projectDir inválido, binario ausente (vía CLI), backend ausente (vía CLI), exit code != 0, timeout o excepción.
+
+El campo `persistencia` solo aparece si el agente guardó un registro de la lista de `memory-contract` (Confirmación de escritura); en ese caso declara `persistencia: confirmed | failed`, `persistencia_reintentos: 0 | 1` y `persistencia_fallida: NONE | {topic_key}`.
 
 ---
 
@@ -149,6 +152,7 @@ Comprobar que existen, son legibles y tienen tamaño > 0:
 ### 6. Devolver resultado
 
 Devolver el objeto estructurado al runner. No persistir estado directamente — el runner persiste.
+Si una invocación guardara un registro de la lista, lo confirma por lectura antes de informar el resultado.
 
 ---
 
