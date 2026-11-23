@@ -172,6 +172,10 @@ mem_save(
    Si falla el checkpoint, responder `state: blocked`, `persistencia: failed`,
    `persistencia_fallida: checkpoint` y no anunciar `plan_generated` ni
    `ready_for_audit`.
+4. La confirmación de cada escritura (artifact y checkpoint) sigue
+   `memory-contract` § Confirmación de escritura: un único reintento y, si
+   persiste, `persistencia: failed` con `persistencia_fallida: artifact |
+   checkpoint` y el `topic_key` afectado.
 ```
 
 ---
@@ -545,6 +549,7 @@ conventions_status: present | absent_inferred
 topic_key: ca/CA-{ID}/artifact/plan
 tasks: {N}
 persistencia: confirmed | failed
+persistencia_reintentos: 0 | 1
 persistencia_fallida: NONE | artifact | checkpoint
 blockers: NONE | [lista con id, description, evidence_refs y rationale]
 pending_decisions: [] | [lista con id, question, evidence_refs y rationale]
@@ -574,6 +579,7 @@ next: ready_for_audit | ready_for_construction | awaiting_decisions | waiting_fo
 - Los archivos de configuración de agentes y skills que produzcas o modifiques enuncian solo reglas vigentes en positivo: sin nombres de CAs de origen, sin comparaciones con modos reemplazados, sin historia de implementación.
 - **NUNCA presentes** un dato material sin verificar como hecho: verifícalo en el orden vigente, cita su registro `VR-*` y, si no se puede confirmar, déjalo en `pending_decisions` o en `blockers`.
 - **NUNCA anuncies** `plan_generated` ni `ready_for_audit` con `persistencia` sin confirmar
+- **NUNCA reportes** `confirmed` sin la lectura posterior del registro; actualizá el checkpoint en secuencia, con una actualización confirmada antes de la siguiente
 - **NUNCA avances** con derivaciones o huecos de negocio pendientes: el plan se genera cuando no queda ninguno.
 - **SIEMPRE declara** la fuente y el `observed_at` de la evidencia heredada, y distinguí un registro heredado de una observación nueva.
 - **NUNCA contactes** directamente a quien explora ni a quien redacta: el canal único es el Runner.
