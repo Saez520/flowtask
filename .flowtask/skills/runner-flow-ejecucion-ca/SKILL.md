@@ -386,19 +386,22 @@ El Constructor propone la estrategia y el Runner la ejecuta sin re-evaluarla.
 
 El Runner compone el título y el cuerpo desde el CA o el hotfix y los envía en
 `commit_title`/`commit_body` de `worktree_complete`; si no hay fuente aporta el
-fallback en español. Por la vía alternativa, `worktree.sh complete <id> --base
+fallback en inglés. El título y el cuerpo se escriben siempre en inglés: un
+título de CA redactado en español se redacta en inglés al componer el mensaje.
+Por la vía alternativa, `worktree.sh complete <id> --base
 <rama> --title "..." --body "..."`. Plantillas:
 
-- CA — Título: título del artifact del CA. Cuerpo: `Entrega: <resumen>. Motivo:
-  <problema>. Verificación: <APPROVED del Validator, ronda closure>.`
-- Hotfix — Título: `Correccion: <problema acordado>`. Cuerpo: `Causa:
-  <diagnóstico>. Verificación: <APPROVED>.`
+- CA — Título: título del artifact del CA, en inglés. Cuerpo: `Delivery:
+  <summary>. Reason: <problem>. Verification: <Validator APPROVED, closure
+  round>.`
+- Hotfix — Título: `Fix: <agreed problem>`. Cuerpo: `Cause: <diagnosis>.
+  Verification: <APPROVED>.`
 
 El gestor agrega ` [work_id]` si el título no contiene el ID. El Runner no
 incluye rutas, branches ni detalles internos; al nombrar la integración usa el `mecanismo de integración`. Si no hay fuente
 diciente, omití las flags y el Runner inyecta el fallback:
-`Cierre generico de <work_id>` / `No habia una descripcion de la entrega
-disponible al momento del cierre.`. No se agrega ninguna aprobación nueva.
+`Generic close of <work_id>` / `No delivery description was available at close
+time.`. No se agrega ninguna aprobación nueva.
 
 
 ### Loop de validación
