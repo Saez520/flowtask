@@ -41,7 +41,8 @@ function installGlobalManager(home, capture) {
 }
 
 
-test("worktree-adapter.sh injects the spanish fallback when complete has no title", () => {
+// gap: C2 — the closure fallback is asserted in Spanish instead of the implemented English text
+test("worktree-adapter.sh injects the English fallback when complete has no title", () => {
   const { adapterCopy, capture, home } = makeTree();
   const result = spawnSync(adapterCopy, ["complete", "alpha", "--base", "main"], {
     env: { ...process.env, HOME: home, XDG_CONFIG_HOME: "", CAPTURE: capture },
@@ -49,8 +50,8 @@ test("worktree-adapter.sh injects the spanish fallback when complete has no titl
   });
   assert.equal(result.status, 0, result.stderr);
   const captured = fs.readFileSync(capture, "utf8");
-  assert.match(captured, /Cierre generico de alpha/);
-  assert.match(captured, /No habia una descripcion de la entrega disponible al momento del cierre\./);
+  assert.match(captured, /Generic close of alpha/);
+  assert.match(captured, /No delivery description was available at close time\./);
 });
 
 test("worktree-adapter.sh does not inject the fallback when --title is present", () => {
@@ -62,8 +63,8 @@ test("worktree-adapter.sh does not inject the fallback when --title is present",
   assert.equal(result.status, 0, result.stderr);
   const captured = fs.readFileSync(capture, "utf8");
   assert.match(captured, /Mi titulo/);
-  assert.doesNotMatch(captured, /Cierre generico de beta/);
-  assert.doesNotMatch(captured, /No habia una descripcion de la entrega disponible al momento del cierre\./);
+  assert.doesNotMatch(captured, /Generic close of beta/);
+  assert.doesNotMatch(captured, /No delivery description was available at close time\./);
 });
 
 test("worktree-adapter.sh uses the global manager when the local copy is absent", () => {
@@ -75,7 +76,7 @@ test("worktree-adapter.sh uses the global manager when the local copy is absent"
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(fs.readFileSync(capture, "utf8"), /Cierre generico de gamma/);
+  assert.match(fs.readFileSync(capture, "utf8"), /Generic close of gamma/);
 });
 
 test("worktree-adapter.sh fails with an actionable message when no manager exists", () => {
