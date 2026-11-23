@@ -90,7 +90,7 @@ flowchart TB
     R -- "skill()" --> S["SKILLS<br/>on-demand"]
     R -- "mem_* (Engram)" --> E["ENGRAM<br/>persistent memory"]
 
-    A -- "edit code in isolation" --> W["PHYSICAL WORKSPACE<br/>.worktrees/&lt;ID&gt;/ · branch worktree/&lt;ID&gt;<br/>commit → complete (squash or preserve-history) → base branch (development → main → trunk; fallback main)"]
+    A -- "edit code in isolation" --> W["PHYSICAL WORKSPACE<br/>.worktrees/&lt;ID&gt;/ · branch worktree/&lt;ID&gt;<br/>commit → complete (squash or preserve-history) → base branch (development → main → trunk; then the local branch pointed by origin/HEAD; fallback main)"]
 
     P["PLUGINS — runtime hooks that watch the runner (block E)<br/>permission-gate · context-checkpoint · model-selector"]
     R -.-> P
@@ -155,7 +155,7 @@ RUNNER classifies ── does the CA exist in Engram?
               │
               ▼
         [6] WORKTREE ── worktree_create (MCP: dry_run → plan_hash → execute) --base {detected base}
-            (order: development → main → trunk; fallback main)
+            (order: development → main → trunk; then the local branch pointed by origin/HEAD; fallback main)
             → .worktrees/CA-{ID} · branch worktree/CA-{ID}
               │
               ▼
@@ -258,7 +258,7 @@ invoke `ca-writer`/`planner`/`plan-auditor`.
                  hotfix/{id}/artifact/plan (affected files, agreed
                  changes, verifiable acceptance criteria)
 [3] WORKTREE ── worktree_create (MCP) hotfix/{id} --base {detected base}
-    (order: development → main → trunk; fallback main)
+    (order: development → main → trunk; then the local branch pointed by origin/HEAD; fallback main)
     → .worktrees/hotfix/{id} · branch worktree/hotfix/{id}
 [4] CONSTRUCTOR ── implements the minimal plan (execution_id=hotfix/{id})
 [5] VALIDATOR ── → hotfix/{id}/artifact/validacion (does not go through plan-auditor)
