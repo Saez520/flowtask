@@ -212,7 +212,7 @@ if [[ "$operation" == "recover" && $target_direct -eq 0 && -n "$repo" && -n "$re
   fi
 fi
 
-# The consumer supplies the Spanish fallback when complete has no title flag.
+# The consumer supplies the English fallback when complete has no title flag.
 if [[ "$operation" == "complete" ]]; then
   has_title=0
   for token in "${args[@]}"; do
@@ -221,7 +221,7 @@ if [[ "$operation" == "complete" ]]; then
     esac
   done
   if [[ $has_title -eq 0 && -n "${work_id:-}" && "${work_id}" != -* ]]; then
-    args+=(--title "Cierre generico de ${work_id}" --body "No habia una descripcion de la entrega disponible al momento del cierre.")
+    args+=(--title "Generic close of ${work_id}" --body "No delivery description was available at close time.")
   fi
 fi
 
