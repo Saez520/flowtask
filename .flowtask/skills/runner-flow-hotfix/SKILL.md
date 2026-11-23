@@ -33,7 +33,13 @@ Una vez fijado, reutiliza exactamente el mismo ID en los artifacts completos
 
 ### Paso 2 — Worktree y Constructor
 
-Detecta la base en orden `development → main → trunk → main`. El servidor MCP
+Detecta la base según la regla: 1) base explícita del usuario; 2) primera rama
+local que exista entre `development`, `main` y `trunk` en ese orden; 3) rama
+local a la que apunta `origin/HEAD` (`git symbolic-ref --short
+refs/remotes/origin/HEAD`, sin el prefijo `origin/`), si existe localmente;
+4) `main` como valor final por defecto. Otras ramas no se nombran: decisión
+del desarrollador en CA-worktree-base-branch (#2236); la detección solo
+considera ramas locales existentes y no crea ramas. El servidor MCP
 `worktree_manager` es la vía primaria: usá `worktree_create` con `repo`,
 `work_id = hotfix/{id}`, `base = {base_branch}` y `dry_run: true`; leé
 `data.plan_hash` y ejecutá con los mismos campos más `plan_hash`. Habilitá
