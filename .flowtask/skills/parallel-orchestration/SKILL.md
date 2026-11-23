@@ -254,8 +254,10 @@ de error nuevo.
 | Notificación de segundo plano ausente o resultado ilegible | `progress_unavailable` | Se pausa ese trabajo. | Su checkpoint y su último resultado confirmado. | El resultado vuelve a estar disponible. |
 | Cerrojo ocupado | `resource_locked` | Se espera o el lote degrada a secuencial. | Worktree, rama y artifacts. | Cerrojo liberado. |
 | Escritura simultánea sospechada | `concurrent_write_suspected` | Se detiene al afectado. | Último estado confirmado. | La sospecha se resuelve. |
-| Escritura del registro de lote sin confirmar por lectura | `persistence_unconfirmed` | Se reintenta la confirmación; no se avanza con la escritura no confirmada. | La última versión confirmada del registro. | La lectura de verificación coincide con la escritura. |
+| Escritura del registro de lote sin confirmar por lectura | `persistence_unconfirmed` | Un único reintento de escritura más confirmación (norma de `memory-contract`, Confirmación de escritura); si persiste, se pausa y no se avanza con la escritura no confirmada. | La última versión confirmada del registro. | La lectura de verificación coincide con la escritura. |
 | Referencia heredada rota o superficie ilegible | `progress_unavailable` | Se detiene y se informa la causa. | Todo lo confirmado hasta ese punto. | La superficie vuelve a estar legible. |
+
+Las actualizaciones del registro de lote se hacen en secuencia; las que apunten a un mismo registro desde distintos trabajos no se lanzan en paralelo.
 
 **La independencia no comprobable y la capacidad no declarada no son pausas.** Producen
 un lote secuencial con su causa visible y su condición de reevaluación.
