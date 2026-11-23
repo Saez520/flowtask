@@ -69,9 +69,14 @@ stops the flow.
 
 The map is stored in Engram with `topic_key`
 `flow-state/{ca_id}/instances`. The `BaseName` is provided by the orchestrator; it is not
-hardcoded in the skill. The base branch is detected when creating the worktree in
-the order `development → main → trunk`; if none exists, `main` is used as a
-fallback, and it is persisted together with its context.
+hardcoded in the skill. The base branch is detected when creating the worktree:
+1) an explicit base given by the user; 2) the first local branch that exists
+among `development`, `main`, `trunk` in that order; 3) the local branch that
+`origin/HEAD` points to (`git symbolic-ref --short refs/remotes/origin/HEAD`,
+without the `origin/` prefix), if it exists locally; 4) `main` as a final
+default fallback, and it is persisted together with its context. Other values
+are not named: the developer's decision in CA-worktree-base-branch (#2236);
+detection only considers existing local branches and never creates them.
 
 ```json
 {
