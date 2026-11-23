@@ -55,7 +55,9 @@
     ],
     "entrypoint": "dist/index.js",
     "managedPackage": true,
-    "scope": "user"
+    "scope": "user",
+    "distribution": "npm",
+    "npm": "flowtask-permission-gate@^2.0.0"
   },
   {
     "name": "flowtask-context-checkpoint",

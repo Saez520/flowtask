@@ -617,6 +617,17 @@ test("a second update of the allowlisted plugin changes nothing", () => {
   assert.equal(treeDigest(root), digest);
 });
 
+test("the repository manifest declares the permission gate npm distribution", () => {
+  const manifest = readJson(new URL("../../plugins/flowtask-plugins.json", import.meta.url));
+  const gate = manifest.find((item) => item.name === "flowtask-permission-gate");
+  assert.ok(gate);
+  assert.equal(gate.distribution, "npm");
+  assert.equal(gate.npm, "flowtask-permission-gate@^2.0.0");
+  assert.equal(gate.scope, "user");
+  assert.equal(gate.managedPackage, true);
+  assert.equal(gate.entrypoint, "dist/index.js");
+});
+
 test("the repository manifest declares the submodule selector and not the legacy entry", () => {
   const manifest = readJson(new URL("../../plugins/flowtask-plugins.json", import.meta.url));
   const entry = manifest.find((item) => item.name === "agent-model-selector-opencode");
