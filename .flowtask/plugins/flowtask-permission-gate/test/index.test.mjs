@@ -543,6 +543,41 @@ test("identidad V2: la sesión runner registrada se reutiliza cuando el evento n
   );
 });
 
+test("identidad V2: un agente explícito distinto del runner no hereda allowlist ni budget", async () => {
+  const gate = await createGate();
+  const sessionID = "s-agent-switch";
+  await gate.before({
+    tool: "bash",
+    sessionID,
+    agent: "flowtask-runner",
+    input: { command: "git status --short" },
+  });
+
+  await gate.before({ tool: "bash", sessionID, agent: "flowtask-inspector", input: { command: "rm -rf build" } });
+  await gate.before({ tool: "glob", sessionID, agent: "flowtask-inspector", input: { pattern: "**/*" } });
+  const result = { output: "x".repeat(60000), metadata: {} };
+  await gate.after({ tool: "read", sessionID, agent: "flowtask-inspector", result });
+  assert.equal(result.output.length, 60000, "el no-runner no recibe presupuesto de contexto");
+
+  await assert.rejects(
+    gate.before({ tool: "bash", sessionID, agent: undefined, input: { command: "rm -rf build" } }),
+    (error) => error instanceof Error && error.message === RUNNER_DELEGATION_MESSAGE,
+    "sin agent, la sesión vuelve al runner registrado",
+  );
+});
+
+test("identidad V2: un no-runner explícito no registra la sesión como runner", async () => {
+  const gate = await createGate();
+  const sessionID = "s-nonrunner-first";
+  await gate.before({ tool: "glob", sessionID, agent: "flowtask-inspector", input: { pattern: "**/*" } });
+  await gate.before({
+    tool: "bash",
+    sessionID,
+    agent: undefined,
+    input: { command: "rm -rf build" },
+  });
+});
+
 // --- Gate universal de commits: stamp estructurado ---
 
 /**

@@ -44,15 +44,16 @@ function isRunner(agent) {
     return typeof agent === "string" && normalizeAgent(agent) === "flowtask-runner";
 }
 /**
- * Resolves the identity exposed by the V2 event. The runner is registered per
- * session so later phases without an identity can reuse it; any other identity
- * keeps the session fallback without contaminating the recorded runner.
+ * Resolves the identity exposed by the V2 event. An explicit non-empty agent
+ * wins as-is: only the runner is registered per session for later phases that
+ * arrive without an identity. The session fallback applies only when the event
+ * carries no agent, so a non-runner cannot inherit the recorded runner.
  */
 function resolveSessionAgent(sessionID, eventAgent) {
-    if (isRunner(eventAgent)) {
-        const agent = eventAgent;
-        SESSION_AGENTS.set(sessionID, agent);
-        return agent;
+    if (typeof eventAgent === "string" && eventAgent.trim()) {
+        if (isRunner(eventAgent))
+            SESSION_AGENTS.set(sessionID, eventAgent);
+        return eventAgent;
     }
     return SESSION_AGENTS.get(sessionID);
 }
