@@ -4,7 +4,7 @@ import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, isAuthorityCommand, isWorktreeManagerMcpTool, } from "./authorizer.js";
 import { buildLayerBlockMessage, readOperationalLayers, readOperationalLayersAt } from "./layers.js";
-import { evaluateOpencodeActivation } from "./registration.js";
+import { evaluateOpencodeActivation, findOpencodeRegistration, } from "./registration.js";
 import { applyReducedDelivery, buildAttachmentDelivery, buildDegradationMetadata, buildNarrowingNotice, buildReducedDelivery, isImageOrPdfOutput, loadContextBudgetConfig, readDeliveredText, readRequestedPath, registerNarrowingNotice, resetNarrowingNotices, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
 /**
  * Candidate configuration paths, tried in order within each directory.
@@ -193,43 +193,48 @@ function gateError(operation, cause, action) {
         `Cause: ${detail}.\n` +
         `Recommended action: ${action}`);
 }
+/** Structural validation: an unusable file is reported, never silently ignored. */
 function parseReviewConfig(raw, path) {
     let value;
     try {
         value = JSON.parse(raw);
     }
     catch {
-        console.warn(`[FlowTask Permission Gate] invalid JSON in ${path}; continuing without blocking.`);
-        return null;
+        return { ok: false, cause: "the file is not parseable JSON" };
     }
-    if (!value || typeof value !== "object" ||
-        typeof value.enabled !== "boolean" ||
-        typeof value.stampPath !== "string" ||
-        !value.stampPath) {
-        console.warn(`[FlowTask Permission Gate] invalid configuration in ${path}; continuing without blocking.`);
-        return null;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return { ok: false, cause: "the file does not contain a JSON object" };
     }
     const config = value;
+    if (typeof config.enabled !== "boolean") {
+        return { ok: false, cause: 'the "enabled" field is missing or is not boolean' };
+    }
+    if (typeof config.stampPath !== "string" || !config.stampPath) {
+        return { ok: false, cause: 'the "stampPath" field is missing or empty' };
+    }
     let stampTtlMinutes = DEFAULT_STAMP_TTL_MINUTES;
     if (config.stampTtlMinutes !== undefined) {
         if (typeof config.stampTtlMinutes === "number" && Number.isFinite(config.stampTtlMinutes) && config.stampTtlMinutes > 0) {
             stampTtlMinutes = config.stampTtlMinutes;
         }
         else {
-            console.warn(`[FlowTask Permission Gate] invalid stampTtlMinutes in ${path}; using the default (${DEFAULT_STAMP_TTL_MINUTES} min).`);
+            return { ok: false, cause: 'the "stampTtlMinutes" field is not a positive number' };
         }
     }
     return {
-        enabled: config.enabled,
-        stampPath: config.stampPath,
-        stampTtlMinutes,
-        sourcePath: path,
+        ok: true,
+        config: {
+            enabled: config.enabled,
+            stampPath: config.stampPath,
+            stampTtlMinutes,
+            sourcePath: path,
+        },
     };
 }
 /**
  * Looks for review.json in `directory` by trying the canonical paths in order.
- * Returns `undefined` if no candidate exists (allows moving to the next
- * directory) and `null` if one exists but is unreadable or invalid (observable fail-open).
+ * Missing lets the caller continue to the next directory; an existing but
+ * unreadable or invalid file is returned as such so the gate can fail closed.
  */
 function findConfigIn(directory) {
     for (const candidate of CONFIG_CANDIDATES) {
@@ -241,12 +246,14 @@ function findConfigIn(directory) {
         catch (error) {
             if (error.code === "ENOENT")
                 continue;
-            console.warn(`[FlowTask Permission Gate] could not read ${path}; continuing without blocking.`);
-            return null;
+            return { status: "invalid", path, cause: "the file could not be read" };
         }
-        return parseReviewConfig(raw, path);
+        const parsed = parseReviewConfig(raw, path);
+        if (!parsed.ok)
+            return { status: "invalid", path, cause: parsed.cause };
+        return { status: "found", config: parsed.config };
     }
-    return undefined;
+    return { status: "missing" };
 }
 /**
  * Documented precedence: workdir-first (the two known paths); the fallback
@@ -257,11 +264,10 @@ function readConfig(workdir, fallbackCwd) {
     const directories = [workdir, fallbackCwd].filter((directory, index, values) => Boolean(directory) && values.indexOf(directory) === index);
     for (const directory of directories) {
         const found = findConfigIn(directory);
-        if (found !== undefined)
+        if (found.status !== "missing")
             return found;
     }
-    console.warn(`[FlowTask Permission Gate] review.json not found in ${directories.join(" or ")}; continuing without blocking.`);
-    return null;
+    return { status: "missing" };
 }
 function getCurrentBranch(cwd) {
     try {
@@ -358,6 +364,33 @@ function buildGateMessage(stats) {
         "→ Runner: assess whether this change requires pre-commit review.",
         "  - If it is trivial (gitignore, docs, chore ≤ 5 lines): re-run the commit with --no-verify.",
         "  - If not: invoke flowtask-review-orchestrator and generate the stamp before retrying.",
+    ].join("\n");
+}
+function buildMissingConfigMessage(workdir, fallbackCwd, registrationPath, stats) {
+    const directories = [workdir, fallbackCwd].filter((directory, index, values) => Boolean(directory) && values.indexOf(directory) === index);
+    const searched = directories
+        .flatMap((directory) => CONFIG_CANDIDATES.map((candidate) => resolve(directory, candidate)))
+        .join(" or ");
+    return [
+        "[FlowTask Permission Gate] Commit blocked.",
+        "",
+        "Cause: review config missing; run flowtask update.",
+        `Searched: ${searched}`,
+        ...(registrationPath ? [`Registration: ${registrationPath}`] : []),
+        "",
+        `📊 Diff: ${stats.files} file(s), ${stats.lines} line(s) pending.`,
+        "",
+        "→ The project is registered, so the gate fails closed instead of allowing an unreviewed commit.",
+    ].join("\n");
+}
+function buildInvalidConfigMessage(path, cause, stats) {
+    return [
+        "[FlowTask Permission Gate] Commit blocked.",
+        "",
+        `Cause: invalid review config at ${path}: ${cause}.`,
+        "Recommended action: fix the file or run flowtask update.",
+        "",
+        `📊 Diff: ${stats.files} file(s), ${stats.lines} line(s) pending.`,
     ].join("\n");
 }
 function buildStampBlockMessage(cause, stampPath, configPath, stats) {
@@ -478,9 +511,18 @@ export default Plugin.define({
                     return; // trivial → legitimate bypass
                 throw new Error(buildGateMessage(stats)); // non-trivial → bypass denied, review required
             }
-            const config = readConfig(workdir, sessionDir);
-            if (!config)
+            const configLookup = readConfig(workdir, sessionDir);
+            if (configLookup.status === "invalid") {
+                throw new Error(buildInvalidConfigMessage(configLookup.path, configLookup.cause, getDiffStats(workdir)));
+            }
+            if (configLookup.status === "missing") {
+                const registration = findOpencodeRegistration(workdir);
+                if (registration.status === "active") {
+                    throw new Error(buildMissingConfigMessage(workdir, sessionDir, registration.path, getDiffStats(workdir)));
+                }
                 return;
+            }
+            const config = configLookup.config;
             if (!config.enabled)
                 return;
             // Unified resolution: the relative stampPath is ALWAYS resolved against

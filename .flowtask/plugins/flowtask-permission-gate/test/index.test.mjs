@@ -105,6 +105,13 @@ function makeRepo(root, branch = "main") {
   return root;
 }
 
+/** Registra el proyecto para el gate de activación de OpenCode. */
+function writeRegistration(root, { schema = 1, projectPath = fs.realpathSync(root) } = {}) {
+  const dir = path.join(root, ".opencode/flowtask");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "project.json"), JSON.stringify({ schema, projectPath }));
+}
+
 /** Escribe review.json en el layout indicado y devuelve el stampPath absoluto declarado. */
 function writeConfig(root, layout, extra = {}) {
   const configDir = path.join(root, layout === "opencode" ? ".opencode/flowtask/config" : ".flowtask/config");
@@ -693,6 +700,56 @@ test("commit gate V2: .opencode tiene precedencia sobre .flowtask", async () => 
       error.message.includes("Cause: missing stamp") &&
       error.message.includes(`Stamp looked up at: ${opencodeStamp}`),
     "el candidato .opencode se evalúa primero",
+  );
+});
+
+test("commit gate V2: un proyecto registrado sin review.json bloquea con acción", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-registered-missing-"));
+  writeRegistration(root);
+
+  await assert.rejects(
+    runGate(await createGate(root), root, "s-registered-missing"),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.ok(error.message.includes("Cause: review config missing; run flowtask update."), error.message);
+      assert.ok(error.message.includes("Registration: "), error.message);
+      assert.ok(error.message.includes("fails closed"), error.message);
+      return true;
+    },
+  );
+});
+
+test("commit gate V2: enabled:false es el opt-out explícito en un proyecto registrado", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-enabled-false-"));
+  writeRegistration(root);
+  writeConfig(root, "opencode", { enabled: false });
+  await runGate(await createGate(root), root, "s-enabled-false");
+});
+
+test("commit gate V2: un proyecto no registrado sin review.json no se gatea", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-unregistered-"));
+  await runGate(await createGate(root), root, "s-unregistered");
+});
+
+test("commit gate V2: una config inválida bloquea aunque el proyecto no esté registrado", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-invalid-config-"));
+  const configDir = path.join(root, ".opencode/flowtask/config");
+  fs.mkdirSync(configDir, { recursive: true });
+  const configPath = path.join(configDir, "review.json");
+  fs.writeFileSync(configPath, "{invalid", "utf8");
+
+  await assert.rejects(
+    runGate(await createGate(root), root, "s-invalid-json"),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes(`invalid review config at ${configPath}`) &&
+      error.message.includes("not parseable JSON"),
+  );
+
+  fs.writeFileSync(configPath, JSON.stringify({ enabled: true }), "utf8");
+  await assert.rejects(
+    runGate(await createGate(root), root, "s-invalid-shape"),
+    (error) => error instanceof Error && error.message.includes('"stampPath" field is missing'),
   );
 });
 

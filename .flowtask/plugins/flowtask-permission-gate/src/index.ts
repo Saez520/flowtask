@@ -10,7 +10,11 @@ import {
   isWorktreeManagerMcpTool,
 } from "./authorizer.js";
 import { buildLayerBlockMessage, readOperationalLayers, readOperationalLayersAt } from "./layers.js";
-import { evaluateOpencodeActivation, type ActivationResult } from "./registration.js";
+import {
+  evaluateOpencodeActivation,
+  findOpencodeRegistration,
+  type ActivationResult,
+} from "./registration.js";
 import {
   applyReducedDelivery,
   buildAttachmentDelivery,
@@ -239,50 +243,59 @@ function gateError(operation: string, cause: unknown, action: string): Error {
   );
 }
 
-function parseReviewConfig(raw: string, path: string): ReviewConfig | null {
+type ReviewConfigParse = { ok: true; config: ReviewConfig } | { ok: false; cause: string };
+
+type ReviewConfigLookup =
+  | { status: "found"; config: ReviewConfig }
+  | { status: "missing" }
+  | { status: "invalid"; path: string; cause: string };
+
+/** Structural validation: an unusable file is reported, never silently ignored. */
+function parseReviewConfig(raw: string, path: string): ReviewConfigParse {
   let value: unknown;
   try {
     value = JSON.parse(raw);
   } catch {
-    console.warn(`[FlowTask Permission Gate] invalid JSON in ${path}; continuing without blocking.`);
-    return null;
+    return { ok: false, cause: "the file is not parseable JSON" };
   }
 
-  if (
-    !value || typeof value !== "object" ||
-    typeof (value as Record<string, unknown>).enabled !== "boolean" ||
-    typeof (value as Record<string, unknown>).stampPath !== "string" ||
-    !(value as Record<string, unknown>).stampPath
-  ) {
-    console.warn(`[FlowTask Permission Gate] invalid configuration in ${path}; continuing without blocking.`);
-    return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ok: false, cause: "the file does not contain a JSON object" };
   }
 
   const config = value as Record<string, unknown>;
+  if (typeof config.enabled !== "boolean") {
+    return { ok: false, cause: 'the "enabled" field is missing or is not boolean' };
+  }
+  if (typeof config.stampPath !== "string" || !config.stampPath) {
+    return { ok: false, cause: 'the "stampPath" field is missing or empty' };
+  }
+
   let stampTtlMinutes = DEFAULT_STAMP_TTL_MINUTES;
   if (config.stampTtlMinutes !== undefined) {
     if (typeof config.stampTtlMinutes === "number" && Number.isFinite(config.stampTtlMinutes) && config.stampTtlMinutes > 0) {
       stampTtlMinutes = config.stampTtlMinutes;
     } else {
-      console.warn(
-        `[FlowTask Permission Gate] invalid stampTtlMinutes in ${path}; using the default (${DEFAULT_STAMP_TTL_MINUTES} min).`,
-      );
+      return { ok: false, cause: 'the "stampTtlMinutes" field is not a positive number' };
     }
   }
   return {
-    enabled: config.enabled as boolean,
-    stampPath: config.stampPath as string,
-    stampTtlMinutes,
-    sourcePath: path,
+    ok: true,
+    config: {
+      enabled: config.enabled,
+      stampPath: config.stampPath,
+      stampTtlMinutes,
+      sourcePath: path,
+    },
   };
 }
 
 /**
  * Looks for review.json in `directory` by trying the canonical paths in order.
- * Returns `undefined` if no candidate exists (allows moving to the next
- * directory) and `null` if one exists but is unreadable or invalid (observable fail-open).
+ * Missing lets the caller continue to the next directory; an existing but
+ * unreadable or invalid file is returned as such so the gate can fail closed.
  */
-function findConfigIn(directory: string): ReviewConfig | null | undefined {
+function findConfigIn(directory: string): ReviewConfigLookup {
   for (const candidate of CONFIG_CANDIDATES) {
     const path = resolve(directory, candidate);
     let raw: string;
@@ -290,12 +303,13 @@ function findConfigIn(directory: string): ReviewConfig | null | undefined {
       raw = readFileSync(path, "utf8");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-      console.warn(`[FlowTask Permission Gate] could not read ${path}; continuing without blocking.`);
-      return null;
+      return { status: "invalid", path, cause: "the file could not be read" };
     }
-    return parseReviewConfig(raw, path);
+    const parsed = parseReviewConfig(raw, path);
+    if (!parsed.ok) return { status: "invalid", path, cause: parsed.cause };
+    return { status: "found", config: parsed.config };
   }
-  return undefined;
+  return { status: "missing" };
 }
 
 /**
@@ -303,18 +317,15 @@ function findConfigIn(directory: string): ReviewConfig | null | undefined {
  * to sessionDir/main contributes only the other settings (enabled, TTL). The
  * resulting `stampPath` is ALWAYS resolved against the commit workdir.
  */
-function readConfig(workdir: string, fallbackCwd?: string): ReviewConfig | null {
+function readConfig(workdir: string, fallbackCwd?: string): ReviewConfigLookup {
   const directories = [workdir, fallbackCwd].filter(
     (directory, index, values): directory is string => Boolean(directory) && values.indexOf(directory) === index,
   );
   for (const directory of directories) {
     const found = findConfigIn(directory);
-    if (found !== undefined) return found;
+    if (found.status !== "missing") return found;
   }
-  console.warn(
-    `[FlowTask Permission Gate] review.json not found in ${directories.join(" or ")}; continuing without blocking.`,
-  );
-  return null;
+  return { status: "missing" };
 }
 
 function getCurrentBranch(cwd: string): string {
@@ -422,6 +433,42 @@ function buildGateMessage(stats: { lines: number; files: number }): string {
     "→ Runner: assess whether this change requires pre-commit review.",
     "  - If it is trivial (gitignore, docs, chore ≤ 5 lines): re-run the commit with --no-verify.",
     "  - If not: invoke flowtask-review-orchestrator and generate the stamp before retrying.",
+  ].join("\n");
+}
+
+function buildMissingConfigMessage(
+  workdir: string,
+  fallbackCwd: string,
+  registrationPath: string | null,
+  stats: { lines: number; files: number },
+): string {
+  const directories = [workdir, fallbackCwd].filter(
+    (directory, index, values) => Boolean(directory) && values.indexOf(directory) === index,
+  );
+  const searched = directories
+    .flatMap((directory) => CONFIG_CANDIDATES.map((candidate) => resolve(directory, candidate)))
+    .join(" or ");
+  return [
+    "[FlowTask Permission Gate] Commit blocked.",
+    "",
+    "Cause: review config missing; run flowtask update.",
+    `Searched: ${searched}`,
+    ...(registrationPath ? [`Registration: ${registrationPath}`] : []),
+    "",
+    `📊 Diff: ${stats.files} file(s), ${stats.lines} line(s) pending.`,
+    "",
+    "→ The project is registered, so the gate fails closed instead of allowing an unreviewed commit.",
+  ].join("\n");
+}
+
+function buildInvalidConfigMessage(path: string, cause: string, stats: { lines: number; files: number }): string {
+  return [
+    "[FlowTask Permission Gate] Commit blocked.",
+    "",
+    `Cause: invalid review config at ${path}: ${cause}.`,
+    "Recommended action: fix the file or run flowtask update.",
+    "",
+    `📊 Diff: ${stats.files} file(s), ${stats.lines} line(s) pending.`,
   ].join("\n");
 }
 
@@ -549,8 +596,22 @@ export default Plugin.define({
         throw new Error(buildGateMessage(stats)); // non-trivial → bypass denied, review required
       }
 
-      const config = readConfig(workdir, sessionDir);
-      if (!config) return;
+      const configLookup = readConfig(workdir, sessionDir);
+      if (configLookup.status === "invalid") {
+        throw new Error(
+          buildInvalidConfigMessage(configLookup.path, configLookup.cause, getDiffStats(workdir)),
+        );
+      }
+      if (configLookup.status === "missing") {
+        const registration = findOpencodeRegistration(workdir);
+        if (registration.status === "active") {
+          throw new Error(
+            buildMissingConfigMessage(workdir, sessionDir, registration.path, getDiffStats(workdir)),
+          );
+        }
+        return;
+      }
+      const config = configLookup.config;
       if (!config.enabled) return;
       // Unified resolution: the relative stampPath is ALWAYS resolved against
       // the commit workdir (per-flow isolation: worktrees read/write their own stamps).
