@@ -120,6 +120,11 @@ function runnerToolAllowed(tool: string, args: Record<string, unknown>): boolean
 
 function runnerBlocked(): never { throw new Error(RUNNER_DELEGATION_MESSAGE); }
 
+/** A V2 content part that carries an attachment payload instead of text. */
+function isFilePart(part: unknown): boolean {
+  return Boolean(part) && typeof part === "object" && (part as Record<string, unknown>).type === "file";
+}
+
 function gateError(operation: string, cause: unknown, action: string): Error {
   const detail = cause instanceof Error ? cause.message : String(cause);
   return new Error(
@@ -500,7 +505,13 @@ export default Plugin.define({
         const metadata = { ...(result.metadata ?? {}) };
         delete metadata.attachment;
         result.metadata = metadata;
-        applyReducedDelivery(result, buildAttachmentDelivery(budgetTool, actual), "attachment_delegated", {
+        const delivery = buildAttachmentDelivery(budgetTool, actual);
+        if (Array.isArray(result.content)) {
+          const kept = result.content.filter((part) => !isFilePart(part));
+          kept.push({ type: "text", text: delivery });
+          result.content = kept;
+        }
+        applyReducedDelivery(result, delivery, "attachment_delegated", {
           omittedChars: actual,
         });
         return;

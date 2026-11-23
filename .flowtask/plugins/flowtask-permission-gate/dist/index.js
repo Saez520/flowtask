@@ -77,6 +77,10 @@ function runnerToolAllowed(tool, args) {
     return false;
 }
 function runnerBlocked() { throw new Error(RUNNER_DELEGATION_MESSAGE); }
+/** A V2 content part that carries an attachment payload instead of text. */
+function isFilePart(part) {
+    return Boolean(part) && typeof part === "object" && part.type === "file";
+}
 function gateError(operation, cause, action) {
     const detail = cause instanceof Error ? cause.message : String(cause);
     return new Error(`[FlowTask Permission Gate] Commit blocked.\n` +
@@ -421,7 +425,13 @@ export default Plugin.define({
                 const metadata = { ...(result.metadata ?? {}) };
                 delete metadata.attachment;
                 result.metadata = metadata;
-                applyReducedDelivery(result, buildAttachmentDelivery(budgetTool, actual), "attachment_delegated", {
+                const delivery = buildAttachmentDelivery(budgetTool, actual);
+                if (Array.isArray(result.content)) {
+                    const kept = result.content.filter((part) => !isFilePart(part));
+                    kept.push({ type: "text", text: delivery });
+                    result.content = kept;
+                }
+                applyReducedDelivery(result, delivery, "attachment_delegated", {
                     omittedChars: actual,
                 });
                 return;

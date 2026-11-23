@@ -171,6 +171,8 @@ try {
   const filePart = { content: [{ type: "file", mime: "application/pdf" }], metadata: {} };
   await gate.after({ tool: "read", sessionID: "smoke-file-part", agent: runner, result: filePart });
   assert.equal(filePart.metadata.degradation.level, "attachment_delegated", "file part PDF delegado");
+  assert.equal(filePart.content.some((part) => part.type === "file"), false, "el file part no llega al modelo");
+  assert.ok(filePart.content.some((part) => part.type === "text"), "el texto de delegación reemplaza al archivo");
 
   // 6) Medición no disponible: la salida se entrega intacta, deja traza y no lanza.
   const warnings = [];

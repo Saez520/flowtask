@@ -1008,7 +1008,7 @@ test("context-budget: imagen PNG (Image read successfully) se delega y no entreg
   assert.equal(result.metadata.degradation.level, "attachment_delegated");
 });
 
-test("context-budget V2: content con file part image/pdf también se delega", async () => {
+test("context-budget V2: content con file part image/pdf se delega sin dejar el archivo", async () => {
   const gate = await createGate();
   const result = {
     content: [{ type: "file", mime: "application/pdf", data: "JVBERi0=" }],
@@ -1017,6 +1017,30 @@ test("context-budget V2: content con file part image/pdf también se delega", as
   await callAfter(gate, "read", result, "s-attachment-content");
   assert.equal(result.metadata.degradation.level, "attachment_delegated");
   assert.equal(result.metadata.truncated, true);
+  assert.equal(result.content.some((part) => part.type === "file"), false, "no queda ningún file part");
+  assert.ok(
+    result.content.some((part) => part.type === "text" && part.text === buildAttachmentDelivery("read", 0)),
+    "el texto de delegación queda en content",
+  );
+});
+
+test("context-budget V2: content mixto conserva el texto y elimina los file parts", async () => {
+  const gate = await createGate();
+  const result = {
+    output: "Image read successfully",
+    content: [
+      { type: "text", text: "captura" },
+      { type: "file", mime: "image/png", data: "iVBORw0KGgo=" },
+    ],
+    metadata: { attachment: "data:image/png;base64,iVBORw0KGgo=" },
+  };
+  await callAfter(gate, "read", result, "s-attachment-mixed");
+  assert.equal(result.output, buildAttachmentDelivery("read", 23));
+  assert.equal(result.metadata.attachment, undefined);
+  assert.equal(result.content.length, 2, "conserva el texto y agrega la delegación");
+  assert.equal(result.content[0].text, "captura");
+  assert.equal(result.content.some((part) => part.type === "file"), false);
+  assert.ok(result.content.some((part) => part.text === buildAttachmentDelivery("read", 23)));
 });
 
 test("context-budget: glob **/* sin path acotado avisa la acotación en before", async () => {
