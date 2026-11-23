@@ -130,7 +130,8 @@ export function installUserPlugins({ flowtaskDir, manifest, runtimeRoot = null }
   const root = runtimeRoot ?? resolveUserRuntimePaths().runtimeRoot;
   const paths = resolveUserRuntimePaths({ runtimeRoot: root });
   const entries = (Array.isArray(manifest) ? manifest : [])
-    .filter((entry) => entry && entry.scope === "user" && entry.destinations?.includes("opencode"));
+    .filter((entry) => entry && entry.scope === "user" && entry.destinations?.includes("opencode"))
+    .filter((entry) => entry.distribution !== "npm");
   const installed = [];
   const replaced = [];
   const unchanged = [];
