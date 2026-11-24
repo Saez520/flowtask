@@ -724,17 +724,13 @@ function toEmbeddedPath(value) {
 }
 
 /**
- * Replace the three project-relative references of the canonical runner with
- * the absolute runtime paths. It fails if any reference is missing: a silent
+ * Replace the project-relative references of the canonical runner with the
+ * absolute runtime paths. It fails if any reference is missing: a silent
  * partial adaptation would leave the runtime pointing at a project directory.
  */
 export function adaptRunnerForRuntime(runnerBody, runtimeRoot) {
   const root = toEmbeddedPath(runtimeRoot);
   const replacements = [
-    {
-      from: 'FLOWTASK_SCRIPTS="./.flowtask/scripts"',
-      to: `FLOWTASK_SCRIPTS="${root}/scripts"`,
-    },
     { from: ".flowtask/skills/", to: `${root}/skills/` },
     { from: ".flowtask/bin/lib/", to: `${root}/bin/lib/` },
   ];
@@ -875,10 +871,4 @@ export function injectAutonomyIntoRunner(targetDir, descriptor) {
   const content = fs.readFileSync(runnerPath, "utf8");
   fs.writeFileSync(runnerPath, injectAutonomyIntoRunnerContent(content, descriptor), "utf8");
   logSuccess(`Autonomy injected into runner.md of ${targetDir}.`);
-}
-
-/** Replace the project-relative scripts directory used by non-Claude targets. */
-export function configureRunnerScriptsContent(content, targetSubDir) {
-  const scriptsDir = `${targetSubDir.replace(/\\/g, "/")}/scripts`;
-  return content.replace('FLOWTASK_SCRIPTS="./.flowtask/scripts"', `FLOWTASK_SCRIPTS="./${scriptsDir}"`);
 }

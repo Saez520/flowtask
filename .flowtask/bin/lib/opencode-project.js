@@ -22,6 +22,7 @@ import {
   resolveUserRuntimePaths,
   writeFileAtomic,
 } from "./user-runtime.js";
+import { isFlowTaskWorktreeManagerEntry } from "./worktree-mcp-registration.js";
 
 const LEGACY_LAYERS = Object.freeze([
   { name: "profile", file: LAYER_FILES.persona, validate: validatePersonaLayer },
@@ -191,6 +192,15 @@ export function cleanConfigFile(configPath, { flowtaskDir, removeEngram = true }
       else delete config.mcp;
       removed.push("mcp.engram");
     }
+  }
+
+  if (config.mcp && typeof config.mcp === "object" && !Array.isArray(config.mcp)
+    && isFlowTaskWorktreeManagerEntry(config.mcp.worktree_manager, "opencode")) {
+    const mcp = { ...config.mcp };
+    delete mcp.worktree_manager;
+    if (Object.keys(mcp).length > 0) config.mcp = mcp;
+    else delete config.mcp;
+    removed.push("mcp.worktree_manager");
   }
 
   if (removed.length === 0) return { changed: false, removed };

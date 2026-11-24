@@ -19,10 +19,12 @@ import {
   prepareWorktreeManagerForRun,
   reportWorktreeManagerCapabilities,
   detectWorktreeManagerCapabilities,
+  install,
+  migrateWorktreeManagerMcpForOpenCode,
   ASSETS,
 } from "./installer.js";
 import { showInteractiveSelector } from "./ui.js";
-import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
+import { buildWorktreeManagerMcpEntry, removeWorktreeManagerMcp } from "./worktree-mcp-registration.js";
 import { resolvePythonRuntime } from "./python-runtime.js";
 import { registerPluginArrayEntry, mergeOpencodeConfig } from "./opencode.js";
 import { generateClaudeCommands } from "./claude.js";
@@ -916,7 +918,7 @@ test("Claude generation produces current commands and never re-creates retired o
   assert.equal(fs.existsSync(path.join(destDir, "run.md")), true);
 });
 
-test("update integrates config and cleans legacy scripts into an installed target", () => {
+test("update integrates config without distributing the retired worktree shell", () => {
   const { root, flowtaskDir } = createFixture();
   fs.mkdirSync(path.join(flowtaskDir, "scripts"), { recursive: true });
   fs.writeFileSync(path.join(flowtaskDir, "scripts", "worktree.sh"), "#!/bin/sh\n", "utf8");
@@ -964,9 +966,8 @@ test("update integrates config and cleans legacy scripts into an installed targe
   assert.equal(Object.hasOwn(updatedConfig.agents["flowtask-runner"], "permissions"), false);
   assert.equal(Object.hasOwn(updatedConfig.agents["flowtask-runner"], "permission"), false);
   const installedScript = path.join(root, ".opencode", "flowtask", "scripts", "worktree.sh");
-  assert.ok(fs.existsSync(installedScript));
-  assert.equal(fs.statSync(installedScript).mode & 0o111, 0o111);
-  assert.equal(fs.existsSync(path.join(root, ".flowtask", "scripts")), false);
+  assert.equal(fs.existsSync(installedScript), false, "the shell entrypoint is no longer distributed");
+  assert.equal(fs.existsSync(path.join(root, ".opencode", "flowtask", "scripts", "worktree-adapter.sh")), false);
 });
 
 /**
@@ -1501,37 +1502,7 @@ test("canonical TUI bytes remain identical on a second regeneration", () => {
   assert.deepEqual(fs.readFileSync(path.join(flowtaskDir, "tui.json")), first);
 });
 
-test("scripts distribution carries the wrapper and adapter without legacy implementations", () => {
-  const source = path.resolve(path.dirname(FLOWTASK_CLI), "..");
-  assert.ok(
-    ASSETS.opencode.some(({ src, dest }) => src === "scripts" && dest === "scripts"),
-    "opencode debe distribuir scripts/"
-  );
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-scripts-dist-"));
-  fixtures.push(root);
-  const flowtaskDir = path.join(root, "flowtask");
-  copyDirectoryDelta(path.join(source, "scripts"), path.join(flowtaskDir, "scripts"));
-
-  const wrapper = path.join(flowtaskDir, "scripts", "worktree.sh");
-  const adapter = path.join(flowtaskDir, "scripts", "worktree-adapter.sh");
-  assert.ok(fs.existsSync(wrapper), "el wrapper público debe distribuirse");
-  assert.ok(fs.existsSync(adapter), "el adapter debe distribuirse junto al wrapper");
-  assert.equal(fs.existsSync(path.join(flowtaskDir, "scripts", "lib", "worktree-manager-core.sh")), false);
-  assert.equal(fs.existsSync(path.join(flowtaskDir, "scripts", "lib", "worktree-manager-target-direct.sh")), false);
-  assert.equal(fs.existsSync(path.join(flowtaskDir, "scripts", "worktree-manager")), false,
-    "el gitlink se materializa desde la fuente canónica, no como una copia del payload");
-
-  const emptyHome = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-scripts-home-"));
-  fixtures.push(emptyHome);
-  const usage = spawnSync(wrapper, ["--help"], {
-    encoding: "utf8",
-    env: { ...process.env, HOME: emptyHome, XDG_CONFIG_HOME: "" },
-  });
-  assert.notEqual(usage.status, 0);
-  assert.match(usage.stderr, /Worktree Manager is not installed/);
-});
-
-// ─── Worktree Manager installation, capabilities and gitlink ──────────────────
+// ─── Worktree Manager installation and capabilities ───────────────────────────
 
 const MANAGER_MCP_SERVER_SOURCE = `import json
 import sys
@@ -1577,8 +1548,6 @@ def main(argv=None):
 
 function writeManagerFixture(dir, { withPackage = true, withMcp = true, brokenCli = false, brokenMcp = false } = {}) {
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "worktree.sh"), "#!/bin/sh\nexit 0\n", "utf8");
-  fs.chmodSync(path.join(dir, "worktree.sh"), 0o755);
   if (!withPackage) return;
   const packageDir = path.join(dir, "worktree_manager");
   fs.mkdirSync(packageDir, { recursive: true });
@@ -1631,6 +1600,84 @@ function managerFixtureOptions() {
 }
 
 let fixtureFlowtaskDir = "";
+
+test("install --global registers the worktree manager in the OpenCode user configuration", async () => {
+  const fixture = createManagerFixture();
+  const npmRoot = path.join(fixture.root, "npm");
+  fs.mkdirSync(npmRoot, { recursive: true });
+  const npm = writeNpmFixture(npmRoot, fixture.sourceDir);
+  const xdg = path.join(fixture.root, "xdg");
+  const opencodeDir = path.join(xdg, "opencode");
+  fs.mkdirSync(opencodeDir, { recursive: true });
+  writeJson(path.join(opencodeDir, "opencode.json"), {
+    mcp: { foreign: { type: "local", command: ["foreign"], enabled: true } },
+    plugins: ["user-plugin"],
+  });
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  process.env.XDG_CONFIG_HOME = xdg;
+  try {
+    const flowtaskDir = path.resolve(path.dirname(FLOWTASK_CLI), "..");
+    const globalManagerDir = path.join(xdg, "flowtask", "worktree-manager");
+    const result = await install(flowtaskDir, {
+      global: true,
+      target: ["opencode"],
+      npmBin: npm,
+      workDir: path.join(fixture.root, "work"),
+      globalManagerDir,
+      pythonBin: "python3",
+    });
+
+    assert.equal(result.ok, true);
+    const config = readJson(path.join(opencodeDir, "opencode.json"));
+    assert.equal(config.mcp.worktree_manager.type, "local");
+    assert.equal(config.mcp.worktree_manager.command[1], "-m");
+    assert.equal(config.mcp.worktree_manager.command[2], "worktree_manager.mcp_transport");
+    assert.equal(path.isAbsolute(config.mcp.worktree_manager.command[0]), true, "the interpreter path is absolute");
+    assert.deepEqual(config.mcp.worktree_manager.environment, { PYTHONPATH: globalManagerDir });
+    assert.deepEqual(config.mcp.foreign, { type: "local", command: ["foreign"], enabled: true });
+    assert.ok(config.plugins.includes("user-plugin"));
+    assert.equal(fs.existsSync(path.join(globalManagerDir, "worktree.sh")), false);
+    assert.equal(fs.existsSync(path.join(globalManagerDir, "worktree_manager", "mcp_transport.py")), true);
+  } finally {
+    if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previousXdg;
+  }
+});
+
+test("install --global continues when the worktree manager is unavailable", async () => {
+  const flowtaskDir = path.resolve(path.dirname(FLOWTASK_CLI), "..");
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  try {
+    for (const scenario of ["download", "python"]) {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), `flowtask-global-${scenario}-`));
+      fixtures.push(root);
+      const xdg = path.join(root, "xdg");
+      process.env.XDG_CONFIG_HOME = xdg;
+      const npmRoot = path.join(root, "npm");
+      fs.mkdirSync(npmRoot, { recursive: true });
+      const fixture = createManagerFixture();
+      const npm = writeNpmFixture(npmRoot, fixture.sourceDir);
+
+      const result = await install(flowtaskDir, {
+        global: true,
+        target: ["opencode"],
+        npmBin: npm,
+        workDir: path.join(root, "work"),
+        globalManagerDir: path.join(xdg, "flowtask", "worktree-manager"),
+        pythonBin: scenario === "python" ? path.join(root, "missing-python") : "python3",
+        env: { ...process.env, FAKE_NPM_PACKAGE: fixture.sourceDir, FAKE_NPM_FAIL: scenario === "download" ? "1" : "" },
+      });
+
+      assert.equal(result.ok, true, `${scenario}: the global installation continues`);
+      const config = readJson(path.join(xdg, "opencode", "opencode.json"));
+      assert.equal(config.mcp.worktree_manager, undefined, `${scenario}: no manager entry is registered`);
+      assert.ok(config.mcp.engram, `${scenario}: the remaining surfaces are installed`);
+    }
+  } finally {
+    if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previousXdg;
+  }
+});
 
 test("both transports are detected when the manager answers the CLI and MCP probes", () => {
   const fixture = createManagerFixture();
@@ -1816,41 +1863,39 @@ test("repeating the preparation preserves unrelated configuration, work state an
 });
 
 /**
- * gap_ref: G2 (C3)
- * criterio: el instalador registra el servidor `worktree_manager` en
- *   `.opencode/opencode.json` y en `.mcp.json` por proyecto, preserva claves
+ * gap_ref: C3
+ * criterio: el instalador retira la entrada `worktree_manager` gestionada de
+ *   `.opencode/opencode.json` y de `.mcp.json` por proyecto, preserva claves
  *   ajenas y no pisa una entrada ajena.
- * defecto: si el registro se omite o se escribe con otra forma, las
- *   herramientas directas nunca aparecen y toda operación de worktree queda
- *   indisponible; una escritura sobre una entrada ajena corrompe la config del
- *   usuario.
- * why_not_detected: ninguna prueba existente inspecciona `mcp.worktree_manager`
- *   ni `mcpServers.worktree_manager`; la prueba de merge solo verifica la
- *   plantilla.
- * comportamiento observable: ambos formatos reciben la entrada canónica con
+ * defecto: si la migración se omite, el proyecto conserva un duplicado del
+ *   servidor global; una escritura sobre una entrada ajena corrompe la config
+ *   del usuario.
+ * why_not_detected: la prueba anterior afirmaba el registro por proyecto, que
+ *   ya no es la vía vigente.
+ * comportamiento observable: ambos formatos pierden la entrada canónica con
  *   `PYTHONPATH` del directorio gestionado, las claves ajenas sobreviven y un
  *   JSON inválido o una entrada ajena quedan byte a byte iguales.
  */
-test("registers the manager MCP server in both project formats and preserves foreign configuration", () => {
+test("retires the manager MCP server from both project formats and preserves foreign configuration", () => {
   const fixture = createManagerFixture();
   const managerDir = fixture.sourceDir;
   const projectDir = path.join(fixture.root, "project");
+  const entryOpenCode = buildWorktreeManagerMcpEntry("opencode", managerDir, "python3");
+  const entryClaude = buildWorktreeManagerMcpEntry("claude", managerDir, "python3");
 
   const opencodePath = path.join(projectDir, ".opencode", "opencode.json");
   writeJson(opencodePath, {
     $schema: "https://custom/schema.json",
-    mcp: { "unrelated-server": { type: "local", command: ["unrelated"], enabled: true } },
+    mcp: {
+      "unrelated-server": { type: "local", command: ["unrelated"], enabled: true },
+      worktree_manager: entryOpenCode,
+    },
     agent: { existing: { description: "manual" } },
   });
-  const opencodeResult = registerWorktreeManagerMcp({ configPath: opencodePath, format: "opencode", managerDir });
-  assert.equal(opencodeResult.status, "registered");
+  const opencodeResult = removeWorktreeManagerMcp({ configPath: opencodePath, format: "opencode" });
+  assert.equal(opencodeResult.status, "removed");
   const opencodeConfig = readJson(opencodePath);
-  assert.deepEqual(opencodeConfig.mcp.worktree_manager, {
-    type: "local",
-    command: ["python3", "-m", "worktree_manager.mcp_transport"],
-    environment: { PYTHONPATH: managerDir },
-    enabled: true,
-  });
+  assert.equal(Object.hasOwn(opencodeConfig.mcp, "worktree_manager"), false);
   assert.deepEqual(opencodeConfig.mcp["unrelated-server"], {
     type: "local",
     command: ["unrelated"],
@@ -1860,23 +1905,23 @@ test("registers the manager MCP server in both project formats and preserves for
   assert.deepEqual(opencodeConfig.agent, { existing: { description: "manual" } });
 
   const claudePath = path.join(projectDir, ".mcp.json");
-  writeJson(claudePath, { mcpServers: { keep: { type: "stdio", command: "keep-server" } } });
-  const claudeResult = registerWorktreeManagerMcp({ configPath: claudePath, format: "claude", managerDir });
-  assert.equal(claudeResult.status, "registered");
-  const claudeConfig = readJson(claudePath);
-  assert.deepEqual(claudeConfig.mcpServers.worktree_manager, {
-    type: "stdio",
-    command: "python3",
-    args: ["-m", "worktree_manager.mcp_transport"],
-    env: { PYTHONPATH: managerDir },
+  writeJson(claudePath, {
+    mcpServers: {
+      keep: { type: "stdio", command: "keep-server" },
+      worktree_manager: entryClaude,
+    },
   });
+  const claudeResult = removeWorktreeManagerMcp({ configPath: claudePath, format: "claude" });
+  assert.equal(claudeResult.status, "removed");
+  const claudeConfig = readJson(claudePath);
+  assert.equal(Object.hasOwn(claudeConfig.mcpServers, "worktree_manager"), false);
   assert.deepEqual(claudeConfig.mcpServers.keep, { type: "stdio", command: "keep-server" });
 
   const invalidPath = path.join(projectDir, "invalid", "opencode.json");
   fs.mkdirSync(path.dirname(invalidPath), { recursive: true });
   fs.writeFileSync(invalidPath, "{invalid", "utf8");
   const invalidBefore = fs.readFileSync(invalidPath, "utf8");
-  const invalidResult = registerWorktreeManagerMcp({ configPath: invalidPath, format: "opencode", managerDir });
+  const invalidResult = removeWorktreeManagerMcp({ configPath: invalidPath, format: "opencode" });
   assert.equal(invalidResult.status, "preserved");
   assert.equal(fs.readFileSync(invalidPath, "utf8"), invalidBefore, "el JSON inválido no se reescribe");
 
@@ -1890,10 +1935,61 @@ test("registers the manager MCP server in both project formats and preserves for
   ]) {
     writeJson(configPath, foreign);
     const before = fs.readFileSync(configPath, "utf8");
-    const result = registerWorktreeManagerMcp({ configPath, format, managerDir });
+    const result = removeWorktreeManagerMcp({ configPath, format });
     assert.equal(result.status, "preserved", `${format}: la entrada ajena no se pisa`);
     assert.equal(fs.readFileSync(configPath, "utf8"), before, `${format}: el archivo queda igual`);
   }
+});
+
+test("retires the OpenCode project entry only after the user-scope registration is managed", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-opencode-worktree-migration-"));
+  fixtures.push(root);
+  const projectDir = path.join(root, "project");
+  const configPath = path.join(projectDir, ".opencode", "opencode.json");
+  const managerDir = path.join(root, "manager");
+  const managed = buildWorktreeManagerMcpEntry("opencode", managerDir, "python3");
+
+  writeJson(configPath, { mcp: { keep: { type: "local", command: ["keep"], enabled: true }, worktree_manager: managed } });
+  const removed = migrateWorktreeManagerMcpForOpenCode(projectDir, ".opencode", { capabilities: { mcp: { available: true } } }, true);
+  assert.equal(removed.status, "removed");
+  assert.deepEqual(readJson(configPath).mcp, { keep: { type: "local", command: ["keep"], enabled: true } });
+
+  writeJson(configPath, { mcp: { worktree_manager: managed } });
+  const before = fs.readFileSync(configPath, "utf8");
+  const preserved = migrateWorktreeManagerMcpForOpenCode(projectDir, ".opencode", { capabilities: { mcp: { available: true } } }, false);
+  assert.equal(preserved.status, "preserved");
+  assert.equal(fs.readFileSync(configPath, "utf8"), before, "a failed user-scope registration keeps the project entry");
+
+  const unavailable = migrateWorktreeManagerMcpForOpenCode(projectDir, ".opencode", null, true);
+  assert.equal(unavailable, null);
+  assert.equal(fs.readFileSync(configPath, "utf8"), before);
+});
+
+test("a later managed OpenCode registration retries the project migration idempotently", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-opencode-worktree-retry-"));
+  fixtures.push(root);
+  const projectDir = path.join(root, "project");
+  const configPath = path.join(projectDir, ".opencode", "opencode.json");
+  const managed = buildWorktreeManagerMcpEntry("opencode", path.join(root, "manager"), "python3");
+  writeJson(configPath, { mcp: { worktree_manager: managed } });
+
+  const first = migrateWorktreeManagerMcpForOpenCode(projectDir, ".opencode", { capabilities: { mcp: { available: true } } }, true);
+  assert.equal(first.status, "removed");
+  const second = migrateWorktreeManagerMcpForOpenCode(projectDir, ".opencode", { capabilities: { mcp: { available: true } } }, true);
+  assert.equal(second.status, "absent");
+});
+
+test("a foreign OpenCode project entry is preserved even when the user scope is managed", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "flowtask-opencode-worktree-foreign-"));
+  fixtures.push(root);
+  const projectDir = path.join(root, "project");
+  const configPath = path.join(projectDir, ".opencode", "opencode.json");
+  writeJson(configPath, { mcp: { worktree_manager: { type: "local", command: ["python-wrapper", "-m", "worktree_manager.mcp_transport"], enabled: true } } });
+  const before = fs.readFileSync(configPath, "utf8");
+
+  const result = migrateWorktreeManagerMcpForOpenCode(projectDir, ".opencode", { capabilities: { mcp: { available: true } } }, true);
+  assert.equal(result.status, "preserved");
+  assert.equal(fs.readFileSync(configPath, "utf8"), before);
 });
 
 /** A local npm replacement that installs a prepared package into the prefix. */
@@ -1904,6 +2000,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 const args = process.argv.slice(2);
+if (process.env.FAKE_NPM_FAIL) {
+  process.stderr.write("npm ERR! code ENOTFOUND\\nnpm ERR! network request to the registry failed\\n");
+  process.exit(1);
+}
 const prefix = args[args.indexOf("--prefix") + 1];
 const target = path.join(prefix, "node_modules", "worktree-for-agents");
 fs.mkdirSync(target, { recursive: true });
@@ -2063,11 +2163,11 @@ test("the manager is never copied into an installation target", () => {
   const source = path.join(root, "source");
   const target = path.join(root, "target");
   fs.mkdirSync(path.join(source, "worktree-manager"), { recursive: true });
-  fs.writeFileSync(path.join(source, "worktree-manager", "worktree.sh"), "#!/bin/sh\n", "utf8");
-  fs.writeFileSync(path.join(source, "worktree.sh"), "#!/bin/sh\n", "utf8");
+  fs.writeFileSync(path.join(source, "worktree-manager", "worktree_manager.py"), "pass\n", "utf8");
+  fs.writeFileSync(path.join(source, "buffer-sync.ps1"), "Write-Output ok\n", "utf8");
   copyDirectoryDelta(source, target);
   assert.equal(fs.existsSync(path.join(target, "worktree-manager")), false);
-  assert.equal(fs.existsSync(path.join(target, "worktree.sh")), true);
+  assert.equal(fs.existsSync(path.join(target, "buffer-sync.ps1")), true);
 });
 
 test("the manager is not registered as a consumer server and no permission is widened", () => {

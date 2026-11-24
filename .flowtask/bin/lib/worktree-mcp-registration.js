@@ -83,16 +83,6 @@ export function isFlowTaskWorktreeManagerEntry(entry, format) {
   return false;
 }
 
-function managerDirectoryCause(managerDir) {
-  if (typeof managerDir !== "string" || !path.isAbsolute(managerDir)) {
-    return "the managed Worktree Manager directory is not an absolute path";
-  }
-  if (!fs.existsSync(path.join(managerDir, "worktree_manager", "mcp_transport.py"))) {
-    return `the MCP entrypoint is missing from ${managerDir}`;
-  }
-  return null;
-}
-
 /** Write with a temporary file, rename, re-read and deep comparison. */
 function writeJsonVerified(configPath, value) {
   const original = fs.existsSync(configPath) ? fs.readFileSync(configPath) : null;
@@ -116,18 +106,11 @@ function writeJsonVerified(configPath, value) {
 }
 
 /**
- * Register the Worktree Manager MCP server in one project configuration.
- *
- * Returns one of: `registered`, `unchanged`, `preserved` (a foreign entry or an
- * unreadable document stays untouched), `unavailable` (the manager has no MCP
- * entrypoint) or `failed` (the write could not be verified).
+ * Remove only the managed `worktree_manager` entry from one project
+ * configuration. A foreign entry, an unreadable document or a non-object
+ * section is preserved. Repeating the call is safe.
  */
-export function registerWorktreeManagerMcp({
-  configPath,
-  format,
-  managerDir,
-  pythonBin = DEFAULT_PYTHON_BIN,
-}) {
+export function removeWorktreeManagerMcp({ configPath, format }) {
   const sectionKey = SECTION_BY_FORMAT[format];
   if (!sectionKey) {
     return { status: "failed", cause: `unsupported MCP configuration format: ${format}` };
@@ -135,51 +118,46 @@ export function registerWorktreeManagerMcp({
   if (typeof configPath !== "string" || !configPath) {
     return { status: "failed", cause: "the configuration path is missing" };
   }
-  const managerCause = managerDirectoryCause(managerDir);
-  if (managerCause) return { status: "unavailable", cause: managerCause };
+  if (!fs.existsSync(configPath)) return { status: "absent", configPath };
 
-  let config = {};
-  if (fs.existsSync(configPath)) {
-    let raw;
-    try {
-      raw = fs.readFileSync(configPath, "utf8");
-    } catch (error) {
-      return { status: "preserved", cause: `the existing configuration is unreadable: ${error.message}` };
-    }
-    if (raw.trim()) {
-      try {
-        config = JSON.parse(raw);
-      } catch (error) {
-        return { status: "preserved", cause: `the existing configuration is not valid JSON: ${error.message}` };
-      }
-    }
-    if (!isPlainObject(config)) {
-      return { status: "preserved", cause: "the existing configuration is not a JSON object" };
-    }
+  let raw;
+  try {
+    raw = fs.readFileSync(configPath, "utf8");
+  } catch (error) {
+    return { status: "preserved", cause: `the existing configuration is unreadable: ${error.message}` };
   }
+  if (!raw.trim()) return { status: "absent", configPath };
 
+  let config;
+  try {
+    config = JSON.parse(raw);
+  } catch (error) {
+    return { status: "preserved", cause: `the existing configuration is not valid JSON: ${error.message}` };
+  }
+  if (!isPlainObject(config)) {
+    return { status: "preserved", cause: "the existing configuration is not a JSON object" };
+  }
   const section = config[sectionKey];
-  if (section !== undefined && !isPlainObject(section)) {
+  if (section === undefined) return { status: "absent", configPath };
+  if (!isPlainObject(section)) {
     return { status: "preserved", cause: `the existing ${sectionKey} section is not a JSON object` };
   }
-  const current = section?.[WORKTREE_MANAGER_MCP_SERVER];
-  if (current !== undefined && !isFlowTaskWorktreeManagerEntry(current, format)) {
+  const current = section[WORKTREE_MANAGER_MCP_SERVER];
+  if (current === undefined) return { status: "absent", configPath };
+  if (!isFlowTaskWorktreeManagerEntry(current, format)) {
     return { status: "preserved", cause: `the existing ${WORKTREE_MANAGER_MCP_SERVER} entry belongs to the user` };
   }
 
-  const entry = buildWorktreeManagerMcpEntry(format, managerDir, pythonBin);
-  if (current !== undefined && sameJson(current, entry)) {
-    return { status: "unchanged", configPath, entry };
-  }
+  const nextSection = { ...section };
+  delete nextSection[WORKTREE_MANAGER_MCP_SERVER];
+  const next = { ...config };
+  if (Object.keys(nextSection).length > 0) next[sectionKey] = nextSection;
+  else delete next[sectionKey];
 
-  const next = {
-    ...config,
-    [sectionKey]: { ...(section ?? {}), [WORKTREE_MANAGER_MCP_SERVER]: entry },
-  };
   try {
     writeJsonVerified(configPath, next);
   } catch (error) {
     return { status: "failed", cause: error.message };
   }
-  return { status: "registered", configPath, entry };
+  return { status: "removed", configPath };
 }

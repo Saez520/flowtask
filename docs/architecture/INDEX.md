@@ -12,7 +12,7 @@ This index contains current references, not a Repomix snapshot. Retired designs 
 - [conditional-tests.md](./conditional-tests.md) — gap-driven tests, 1/3/0 budget, and report inheritance; compare with `.flowtask/agents/tester.md`, `.flowtask/agents/runner.md`, and `.flowtask/agents/validator.md`.
 - [material-verification.md](./material-verification.md) — material verification, citable evidence, and inheritance across roles; compare with `.flowtask/skills/zero-assumptions/SKILL.md`.
 - [context-degradation.md](./context-degradation.md) — degradation by levels, rules by moment, and verifiable recovery; compare with `.flowtask/skills/context-degradation/SKILL.md` and `.flowtask/agents/runner.md`.
-- [worktree.md](./worktree.md) — create, complete, cleanup, recover, prune, list, and target-direct; compare with `.flowtask/scripts/worktree.sh` and the global copy published from npm.
+- [worktree.md](./worktree.md) — create, complete, cleanup, recover, prune, list, and target-direct; compare with the user-scope MCP registration and the global copy published from npm.
 - [skills-integration.md](./skills-integration.md) — direct loading from `.flowtask/skills` through `skill({ name: ... })`.
 - [adr-0001-harness-broker.md](./adr-0001-harness-broker.md) — ADR for the delegation broker shape (CLI delegate, decoupled supervisor, SQLite ledger, MCP as a second front) and its implementation language (Node/TS); accepted by delegated decision, pending developer ratification.
 - [Worktree Manager documentation](../worktree-manager/README.md) — English architecture and release documentation for the implemented manager.

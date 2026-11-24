@@ -24,8 +24,8 @@ import {
   removeClaudeProject,
 } from "./claude-projects.js";
 import { readProjectRegistration, reconcileProjectsIndex } from "./project-registration.js";
-import { ensureUserEngram, removeUserEngram } from "./claude-mcp.js";
-import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
+import { ensureUserEngram, ensureUserWorktreeManager, removeUserEngram, removeUserWorktreeManager } from "./claude-mcp.js";
+import { removeWorktreeManagerMcp } from "./worktree-mcp-registration.js";
 import { CUSTOM_PERSONA_TEXT, buildRuntimeRunnerBody } from "./runner-content.js";
 import {
   LAYER_FILES,
@@ -85,6 +85,7 @@ function persistMcpState(runtimeRoot, result) {
   const previous = manifest.mcp?.engram ?? null;
   const managed = result.managed === true || previous?.managed === true;
   manifest.mcp = {
+    ...(manifest.mcp ?? {}),
     engram: {
       scope: "user",
       managed,
@@ -94,39 +95,82 @@ function persistMcpState(runtimeRoot, result) {
   writeFileAtomic(manifestPath, JSON.stringify(manifest, null, 2));
 }
 
+function persistWorktreeMcpState(runtimeRoot, result) {
+  if (!result) return;
+  const manifestPath = path.join(runtimeRoot, "runtime.json");
+  if (!fileExists(manifestPath)) return;
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const previous = manifest.mcp?.worktree_manager ?? null;
+  const managed = result.managed === true || previous?.managed === true;
+  manifest.mcp = {
+    ...(manifest.mcp ?? {}),
+    worktree_manager: {
+      scope: "user",
+      managed,
+      addedAt: managed ? previous?.addedAt ?? new Date().toISOString() : null,
+    },
+  };
+  writeFileAtomic(manifestPath, JSON.stringify(manifest, null, 2));
+}
+
 /**
- * Register the manager server in the project's `.mcp.json`. A manager that was
- * not downloaded already produced its own notice; a downloaded manager whose
- * MCP probe failed is reported with its cause and the config stays untouched.
+ * Register the manager server in the Claude user scope. The project no longer
+ * owns the entry: each project consumes the single user-scope registration.
  */
-function registerWorktreeManagerMcpForClaude(paths, worktreeManager) {
+function ensureUserWorktreeManagerForClaude(paths, worktreeManager, runtimeManifest) {
   if (!worktreeManager) return null;
   const mcp = worktreeManager.capabilities?.mcp;
   if (mcp?.available !== true) {
-    logWarn(`Worktree Manager MCP is not registered in ${paths.projectMcpPath}: ${mcp?.cause ?? "the MCP probe did not succeed"}. Worktrees are not available in this target.`);
+    logWarn(`Worktree Manager MCP is not registered in the Claude user scope: ${mcp?.cause ?? "the MCP probe did not succeed"}. Worktrees are not available in this target.`);
     return null;
   }
-  const result = registerWorktreeManagerMcp({
-    configPath: paths.projectMcpPath,
-    format: "claude",
+  const result = ensureUserWorktreeManager({
+    claudeUserDir: paths.claudeUserDir,
     managerDir: worktreeManager.managerDir,
     pythonBin: worktreeManager.capabilities?.python?.executable,
+    runtimeManifest,
   });
+  if (!result.ok) {
+    logWarn(`Worktree Manager MCP could not be registered in the Claude user scope: ${result.error}. Retry with flowtask update.`);
+    return result;
+  }
+  persistWorktreeMcpState(paths.runtimeRoot, result);
+  if (result.action === "added") logSuccess("Worktree Manager MCP registered in the Claude user scope.");
+  else if (result.action === "present") logInfo("Worktree Manager MCP is already registered in the Claude user scope.");
+  else if (result.action === "preserved") logWarn("The Claude user-scope worktree_manager entry belongs to the user and was preserved.");
+  return result;
+}
+
+/**
+ * Remove the managed manager entry from the project's `.mcp.json` only when the
+ * user-scope registration is confirmed as managed by FlowTask. A failed or
+ * foreign user-scope registration, a foreign project entry and an unreadable
+ * document stay untouched. Repeating the migration is safe.
+ */
+export function migrateProjectWorktreeMcpForClaude({ paths, worktreeMcp, runtimeManifest = null }) {
+  if (!worktreeMcp) return null;
+  const confirmedManaged = worktreeMcp.ok === true
+    && (worktreeMcp.action === "added"
+      || (worktreeMcp.action === "present" && runtimeManifest?.mcp?.worktree_manager?.managed === true));
+  if (!confirmedManaged) {
+    logWarn(
+      `The Worktree Manager MCP entry in ${paths.projectMcpPath} was preserved because the user-scope registration is not managed by FlowTask.`,
+    );
+    return { status: "preserved", cause: "user-scope registration not confirmed as managed" };
+  }
+  const result = removeWorktreeManagerMcp({ configPath: paths.projectMcpPath, format: "claude" });
   switch (result.status) {
-    case "registered":
-      logSuccess(`Worktree Manager MCP registered in ${paths.projectMcpPath}.`);
-      break;
-    case "unchanged":
-      logInfo(`Worktree Manager MCP already registered in ${paths.projectMcpPath}.`);
+    case "removed":
+      logSuccess(`Worktree Manager MCP moved to the Claude user scope from ${paths.projectMcpPath}.`);
       break;
     case "preserved":
-      logWarn(`Worktree Manager MCP was not registered in ${paths.projectMcpPath}: ${result.cause}. The existing configuration was preserved.`);
+      logWarn(`The Worktree Manager MCP entry in ${paths.projectMcpPath} was preserved: ${result.cause}.`);
       break;
-    case "unavailable":
-      logWarn(`Worktree Manager MCP is not available: ${result.cause}. Worktrees are not available in ${paths.projectMcpPath}.`);
+    case "failed":
+      logWarn(`The Worktree Manager MCP entry in ${paths.projectMcpPath} could not be removed: ${result.cause ?? "unknown cause"}.`);
       break;
     default:
-      logWarn(`Worktree Manager MCP could not be registered in ${paths.projectMcpPath}: ${result.cause ?? "unknown cause"}. Retry with flowtask update.`);
+      break;
   }
   return result;
 }
@@ -589,6 +633,7 @@ function ensureGlobalSurfaces({
   replaceAutonomy = false,
   allowEngramTools = false,
   userConfig = null,
+  worktreeManager = null,
 }) {
   const paths = resolveClaudePaths(projectDir);
   const version = readVersion(flowtaskDir);
@@ -671,8 +716,9 @@ function ensureGlobalSurfaces({
     throw error;
   }
   persistMcpState(paths.runtimeRoot, mcp);
+  const worktreeMcp = ensureUserWorktreeManagerForClaude(paths, worktreeManager, manifest);
 
-  return { paths, version, runtime, config, hook: settings, mcp, runnerAgent };
+  return { paths, version, runtime, config, hook: settings, mcp, worktreeMcp, runnerAgent };
 }
 
 function collectRestoredPaths({ runtime, runnerAgent, materialized }) {
@@ -697,6 +743,7 @@ export function installClaudeUserSurface({
   autonomyProfile = null,
   replaceAutonomy = false,
   userConfig = null,
+  worktreeManager = null,
 }) {
   return ensureGlobalSurfaces({
     flowtaskDir,
@@ -707,6 +754,7 @@ export function installClaudeUserSurface({
     replaceAutonomy,
     allowEngramTools: options.allowEngramTools === true,
     userConfig,
+    worktreeManager,
   });
 }
 
@@ -734,6 +782,7 @@ export function installClaudeTarget({
     replaceAutonomy,
     allowEngramTools: options.allowEngramTools === true,
     userConfig,
+    worktreeManager,
   });
   const runtimeManifest = readClaudeRuntimeManifest(surfaces.paths.runtimeRoot);
   const registration = registerClaudeProject({
@@ -743,7 +792,11 @@ export function installClaudeTarget({
     baseName: surfaces.config.identity.value.baseName,
     runnerAgentStatus: surfaces.runnerAgent.status,
   });
-  const worktreeMcp = registerWorktreeManagerMcpForClaude(surfaces.paths, worktreeManager);
+  const worktreeMcp = migrateProjectWorktreeMcpForClaude({
+    paths: surfaces.paths,
+    worktreeMcp: surfaces.worktreeMcp,
+    runtimeManifest,
+  });
 
   logSuccess(`Claude Code target ready (runtime ${surfaces.version}).`);
   return {
@@ -755,6 +808,7 @@ export function installClaudeTarget({
     mcp: surfaces.mcp,
     hook: surfaces.hook,
     worktreeMcp,
+    worktreeUserMcp: surfaces.worktreeMcp,
     runnerAgent: surfaces.runnerAgent,
     settingsAgent: registration.settingsAgent,
     restoredPaths: collectRestoredPaths({
@@ -855,6 +909,23 @@ export function uninstallClaudeGlobal({ runtimeRoot, claudeUserDir, flowtaskDir 
     );
   }
 
+  let worktreeMcp = { ok: true, action: "manual", managed: false, error: null };
+  if (manifest?.mcp?.worktree_manager?.managed === true) {
+    worktreeMcp = removeUserWorktreeManager({ claudeUserDir, runtimeManifest: manifest });
+    if (!worktreeMcp.ok) {
+      return {
+        ok: false,
+        error: `The Worktree Manager could not be removed from the user scope: ${worktreeMcp.error}`,
+        mcp,
+        worktreeMcp,
+        removed: [],
+        preserved: [],
+        failures: [],
+        manualReview,
+      };
+    }
+  }
+
   const failures = [];
   const projects = [];
   const settingsAgents = [];
@@ -919,6 +990,7 @@ export function uninstallClaudeGlobal({ runtimeRoot, claudeUserDir, flowtaskDir 
   return {
     ok: true,
     mcp,
+    worktreeMcp,
     hook,
     projects,
     failures,
@@ -954,6 +1026,7 @@ export function updateClaudeTarget({
     replaceAutonomy,
     allowEngramTools: options.allowEngramTools === true,
     userConfig,
+    worktreeManager,
   });
   const paths = surfaces.paths;
   const registered = fileExists(paths.registryPath);
@@ -986,7 +1059,11 @@ export function updateClaudeTarget({
     baseName: surfaces.config.identity.value.baseName,
     runnerAgentStatus: surfaces.runnerAgent.status,
   });
-  const worktreeMcp = registerWorktreeManagerMcpForClaude(paths, worktreeManager);
+  const worktreeMcp = migrateProjectWorktreeMcpForClaude({
+    paths,
+    worktreeMcp: surfaces.worktreeMcp,
+    runtimeManifest,
+  });
   logSuccess("FlowTask project registration refreshed.");
   return {
     ok: true,
@@ -997,6 +1074,7 @@ export function updateClaudeTarget({
     registration,
     options,
     worktreeMcp,
+    worktreeUserMcp: surfaces.worktreeMcp,
     runnerAgent: surfaces.runnerAgent,
     settingsAgent: registration.settingsAgent,
     restoredPaths: collectRestoredPaths({

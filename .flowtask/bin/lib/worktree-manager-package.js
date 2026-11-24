@@ -8,7 +8,6 @@ export const WORKTREE_MANAGER_PACKAGE_TAG = "latest";
 export const WORKTREE_MANAGER_DOWNLOAD_TIMEOUT_MS = 120000;
 
 const WORKTREE_MANAGER_REQUIRED_ENTRIES = Object.freeze([
-  "worktree.sh",
   "worktree_manager/__main__.py",
   "worktree_manager/mcp_transport.py",
 ]);
@@ -125,7 +124,6 @@ export function downloadWorktreeManagerPackage({ npmBin, timeoutMs, workDir, env
 
     const packageDir = path.join(root, "node_modules", WORKTREE_MANAGER_PACKAGE);
     const manifest = readPackageManifest(packageDir);
-    fs.chmodSync(path.join(packageDir, "worktree.sh"), 0o755);
     return { dir: packageDir, version: manifest.version, cleanup };
   } catch (error) {
     cleanup();

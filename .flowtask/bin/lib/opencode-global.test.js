@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { applyOpencodeGlobalSurface, removeOpencodeGlobalSurface } from "./opencode-global.js";
+import { WORKTREE_MANAGER_MCP_MODULE } from "./worktree-mcp-registration.js";
 import { resolveUserPayloadPaths } from "./user-runtime.js";
 
 const RUNTIME_MANIFEST = Object.freeze({
@@ -27,13 +28,21 @@ function createFixture() {
   return { root, flowtaskDir, runtimeRoot };
 }
 
-function apply(config, { flowtaskDir, runtimeRoot }) {
+function apply(config, { flowtaskDir, runtimeRoot, worktreeManager = null }) {
   return applyOpencodeGlobalSurface(config, {
     flowtaskDir,
     runtimeManifest: RUNTIME_MANIFEST,
     runtimeRoot,
     commandSource: { agents: {}, commands: {} },
+    worktreeManager,
   });
+}
+
+function createWorktreeManager(root, name = "manager") {
+  const managerDir = path.join(root, name);
+  fs.mkdirSync(path.join(managerDir, "worktree_manager"), { recursive: true });
+  fs.writeFileSync(path.join(managerDir, "worktree_manager", "mcp_transport.py"), "", "utf8");
+  return managerDir;
 }
 
 test("the global surface registers the gate by npm spec and keeps the checkpoint local", () => {
@@ -265,6 +274,122 @@ test("removing the global surface also cleans the legacy agent entries", () => {
       agent: { "third-party": { model: "other/model", variant: "low" } },
       agents: { "third-party-agents": { model: "foreign/model" } },
     });
+  } finally {
+    if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previousXdg;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the global surface registers the worktree manager with the absolute interpreter", () => {
+  const { root, flowtaskDir, runtimeRoot } = createFixture();
+  const managerDir = createWorktreeManager(root);
+  const pythonBin = "/opt/homebrew/bin/python3.12";
+  try {
+    const result = apply({}, { flowtaskDir, runtimeRoot, worktreeManager: { managerDir, pythonBin } });
+
+    assert.equal(result.worktreeManagerManaged, true);
+    assert.deepEqual(result.config.mcp.worktree_manager, {
+      type: "local",
+      command: [pythonBin, "-m", WORKTREE_MANAGER_MCP_MODULE],
+      environment: { PYTHONPATH: managerDir },
+      enabled: true,
+    });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the global surface preserves a foreign worktree manager entry", () => {
+  const { root, flowtaskDir, runtimeRoot } = createFixture();
+  const managerDir = createWorktreeManager(root);
+  const foreign = { type: "remote", url: "https://example.test/mcp", enabled: true };
+  try {
+    const result = apply(
+      { mcp: { worktree_manager: foreign } },
+      { flowtaskDir, runtimeRoot, worktreeManager: { managerDir, pythonBin: "/usr/bin/python3" } },
+    );
+
+    assert.equal(result.worktreeManagerManaged, false);
+    assert.deepEqual(result.config.mcp.worktree_manager, foreign);
+    assert.ok(result.warnings.some((warning) => warning.includes("worktree_manager")));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("reapplying the worktree manager refreshes only the managed PYTHONPATH", () => {
+  const { root, flowtaskDir, runtimeRoot } = createFixture();
+  const firstManager = createWorktreeManager(root, "manager-a");
+  const secondManager = createWorktreeManager(root, "manager-b");
+  try {
+    const first = apply({}, { flowtaskDir, runtimeRoot, worktreeManager: { managerDir: firstManager, pythonBin: "/usr/bin/python3" } });
+    const second = apply(first.config, { flowtaskDir, runtimeRoot, worktreeManager: { managerDir: secondManager, pythonBin: "/usr/bin/python3" } });
+    const third = apply(second.config, { flowtaskDir, runtimeRoot, worktreeManager: { managerDir: secondManager, pythonBin: "/usr/bin/python3" } });
+
+    assert.deepEqual(second.config.mcp.worktree_manager.environment, { PYTHONPATH: secondManager });
+    assert.deepEqual(third.config, second.config);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("removing the global surface drops the managed worktree entry only", () => {
+  const { root, flowtaskDir, runtimeRoot } = createFixture();
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  const xdg = path.join(root, "xdg");
+  process.env.XDG_CONFIG_HOME = xdg;
+  const managerDir = createWorktreeManager(root);
+  const template = { type: "local", command: ["engram", "mcp"], enabled: true };
+  const foreign = { type: "local", command: ["other"], enabled: true };
+  try {
+    const configPath = path.join(xdg, "opencode", "opencode.json");
+    writeJson(configPath, {
+      mcp: {
+        engram: template,
+        worktree_manager: {
+          type: "local",
+          command: ["/usr/bin/python3", "-m", WORKTREE_MANAGER_MCP_MODULE],
+          environment: { PYTHONPATH: managerDir },
+          enabled: true,
+        },
+        foreign,
+      },
+    });
+
+    const result = removeOpencodeGlobalSurface({
+      flowtaskDir,
+      runtimeRoot,
+      commandSource: { agents: {}, commands: {}, mcp: { engram: template } },
+    });
+
+    assert.ok(result.removed.includes("mcp.worktree_manager"));
+    assert.deepEqual(readJson(configPath).mcp, { foreign });
+  } finally {
+    if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+    else process.env.XDG_CONFIG_HOME = previousXdg;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("removing the global surface preserves a foreign worktree entry", () => {
+  const { root, flowtaskDir, runtimeRoot } = createFixture();
+  const previousXdg = process.env.XDG_CONFIG_HOME;
+  const xdg = path.join(root, "xdg");
+  process.env.XDG_CONFIG_HOME = xdg;
+  const foreign = { type: "remote", url: "https://example.test/mcp" };
+  try {
+    const configPath = path.join(xdg, "opencode", "opencode.json");
+    writeJson(configPath, { mcp: { worktree_manager: foreign } });
+
+    const result = removeOpencodeGlobalSurface({
+      flowtaskDir,
+      runtimeRoot,
+      commandSource: { agents: {}, commands: {}, mcp: {} },
+    });
+
+    assert.equal(result.removed.includes("mcp.worktree_manager"), false);
+    assert.deepEqual(readJson(configPath).mcp, { worktree_manager: foreign });
   } finally {
     if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
     else process.env.XDG_CONFIG_HOME = previousXdg;

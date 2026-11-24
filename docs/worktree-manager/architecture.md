@@ -58,14 +58,13 @@ The standalone manager owns:
 
 FlowTask owns:
 
-- `.flowtask/scripts/worktree.sh`, the consumer entrypoint;
-- `.flowtask/scripts/worktree-adapter.sh`, the compatibility adapter;
-- npm package acquisition, global publication and the per-project MCP
-  registration of the manager server.
+- npm package acquisition and global publication;
+- the user-scope MCP registration of the manager server.
 
-The adapter does not commit, merge, or push for a consumer repository. The
-standalone manager does not inspect the paths, refs or variables of the
-consumer, and it does not know that the consumer exists.
+FlowTask does not ship a consumer entrypoint or an adapter, and it does not
+commit, merge, or push for a consumer repository. The standalone manager does
+not inspect the paths, refs or variables of the consumer, and it does not know
+that the consumer exists.
 
 ## Parent-only lifecycle
 
@@ -101,17 +100,16 @@ support, so a broken copy never replaces a valid one.
 
 ## Direct consumption boundary
 
-FlowTask registers the manager's MCP server per project in the destination
-configuration and the agent consumes its seven tools directly. Each mutating
-call is planned with a dry run and replayed with the plan digest and the
-planned transaction identifier; the manager owns the plan, the locks, the
-journal, the transaction state and the reconciliation.
+FlowTask registers the manager's MCP server once in the user scope and the
+agent consumes its seven tools directly. Each mutating call is planned with a
+dry run and replayed with the plan digest and the planned transaction
+identifier; the manager owns the plan, the locks, the journal, the transaction
+state and the reconciliation.
 
 FlowTask does not translate requests, does not choose a transport and does not
-retry a delivered request on another path. `${FLOWTASK_SCRIPTS}/worktree.sh`,
-the compatibility adapter and the standalone `--request-json` command line
-remain an alternative declared by the consumer. A rejection, a contract error,
-lock contention, a timeout and a lost answer are reported as uncertain and are
+retry a delivered request on another path. The shell entrypoint is retired; the
+MCP server is the only consumption path. A rejection, a contract error, lock
+contention, a timeout and a lost answer are reported as uncertain and are
 reconciled before a new attempt.
 
 ## Distribution boundary

@@ -1,6 +1,6 @@
 {
   "name": "flowtask-permission-gate",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "OpenCode permission gate for FlowTask: runner allowlist, review stamps, and context budget.",
   "type": "module",
   "main": "./dist/index.js",

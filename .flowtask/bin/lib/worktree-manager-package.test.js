@@ -49,7 +49,7 @@ for line in sys.stdin:
     sys.stdout.flush()
 `;
 
-/** A package shaped like the published tarball: manifest plus the three entrypoints. */
+/** A package shaped like the published tarball: manifest plus the MCP entrypoints. */
 function writePackage(root, { version = "9.9.9", omitMcpTransport = false } = {}) {
   const packageDir = path.join(root, "package");
   fs.mkdirSync(path.join(packageDir, "worktree_manager"), { recursive: true });
@@ -135,16 +135,15 @@ test("the npm package is verified before the global copy is published with an np
   assert.equal(report.source, "global");
   assert.equal(report.sourceKind, "npm");
   assert.equal(report.version, "9.9.9");
-  assert.equal(fs.existsSync(path.join(globalDir, "worktree.sh")), true);
+  assert.equal(fs.existsSync(path.join(globalDir, "worktree.sh")), false, "the shell entrypoint is not published");
   assert.equal(fs.existsSync(path.join(globalDir, "worktree_manager", "mcp_transport.py")), true);
-  assert.equal(fs.statSync(path.join(globalDir, "worktree.sh")).mode & 0o777, 0o755, "the entrypoint stays executable");
   assert.equal(fs.existsSync(path.join(globalDir, "package.json")), false, "the manager is published without npm metadata");
 
   const marker = JSON.parse(fs.readFileSync(path.join(globalDir, WORKTREE_MANAGER_OWNER_FILE), "utf8"));
   assert.equal(marker.source, "npm");
   assert.equal(marker.sourceCommit, null);
   assert.equal(marker.version, "9.9.9");
-  assert.ok(marker.files.includes("worktree.sh"));
+  assert.equal(marker.files.includes("worktree.sh"), false);
   assert.ok(marker.files.includes("worktree_manager/mcp_transport.py"));
   assert.deepEqual(fs.readdirSync(workDir), [], "the temporary npm prefix is removed");
 
@@ -196,7 +195,7 @@ test("the npm download works from paths that contain spaces", () => {
   const args = JSON.parse(fs.readFileSync(capture, "utf8"));
   const prefix = args[args.indexOf("--prefix") + 1];
   assert.ok(prefix.startsWith(workDir), "the prefix keeps the directory with spaces");
-  assert.equal(fs.existsSync(path.join(globalDir, "worktree.sh")), true);
+  assert.equal(fs.existsSync(path.join(globalDir, "worktree_manager", "mcp_transport.py")), true);
 });
 
 test("the Windows branch builds one command string instead of shelling an argument array", () => {

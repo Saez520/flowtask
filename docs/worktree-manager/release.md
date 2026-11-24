@@ -29,8 +29,8 @@ recorded as a gap.
   `https://github.com/Saez520/worktree-manager`.
 - [ ] Confirm every source consulted for the comparison is available in the
   installed package or in the standalone repository: the entrypoint, the package,
-  the manager contracts and the transition history, the consumer entrypoint, the
-  adapter and the integration document.
+  the manager contracts and the transition history, the user-scope registration
+  and the integration document.
 - [ ] Record every unavailable source as a named gap instead of replacing it
   with an inferred behavior.
 

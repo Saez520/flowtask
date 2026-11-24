@@ -271,15 +271,6 @@ nested shells. Windows-specific command forms are verified separately.
 
 Existing safe administrative forms keep their restrictions:
 
-- `${FLOWTASK_SCRIPTS}/worktree.sh list`
-- `${FLOWTASK_SCRIPTS}/worktree.sh create <id> --base <branch>`
-- `${FLOWTASK_SCRIPTS}/worktree.sh prune`
-- `${FLOWTASK_SCRIPTS}/worktree.sh complete <id>` or with optional `--base <branch>`
-- `${FLOWTASK_SCRIPTS}/worktree.sh complete <id> --base <branch> --title "..." --body "..."` (title and body of the close commit)
-- `${FLOWTASK_SCRIPTS}/worktree.sh complete <id> --preserve-dirty` or with
-  `--base <branch> --preserve-dirty`, only after human consent
-- `${FLOWTASK_SCRIPTS}/worktree.sh cleanup <id>` or with `--discard` and/or
-  `--base <branch>` in that canonical order; `--discard` requires authorization
 - `git status` and `git status` with flags (for example, `git status --short`);
   it does not accept arguments other than flags.
 - `git worktree list` with optional flags.
@@ -342,7 +333,7 @@ git status && git log --max-count=11  # blocked: limit > 10
 git status; git diff     # ; is not an authorized separator
 git status | git diff    # pipe is not an authorized separator
 git log                  # blocked: no limit
-${FLOWTASK_SCRIPTS}/worktree.sh create id --base  # missing <branch>
+./.flowtask/scripts/worktree.sh create id --base main  # the shell path is retired
 echo ok > output.txt     # redirect to a real file
 ```
 
@@ -365,7 +356,7 @@ without applying and the universal commit gate remains.
 The gate does not expose a tool for the worktree manager and does not require a
 runner identity to use isolated worktrees. The Runner consumes the seven tools
 published by the `worktree_manager` MCP server, which the installer registers
-per project. Any `worktree_manager_*` name outside that exact set is rejected;
+once in the user scope. Any `worktree_manager_*` name outside that exact set is rejected;
 the retired consumer tool does not exist and the direct tools are its
 replacement. The compatibility matrix records the retired name and its removal.
 
@@ -386,18 +377,13 @@ manager's contract and travel in each call. `complete`, `cleanup`, `prune` and
 `discard_consent: true`. Manager authorization is not preserved between
 requests.
 
-### Administrative shell forms
+### Shell surface
 
-The `${FLOWTASK_SCRIPTS}/worktree.sh` forms with `list`, `create`, `prune`,
-`complete`, and `cleanup` remain administrative and are a compatibility
-alternative: they run the same canonical manager. They are not the primary
-path and the gate does not expand the bash allowlist.
-
-### Shell request protocol
-
-`--request-json` is not authorized through the shell: `${FLOWTASK_SCRIPTS}/worktree.sh`
-is rejected when it includes that flag. The canonical request protocol belongs
-to the manager and is not admitted through bash.
+The gate does not authorize a worktree shell entrypoint. Any command whose
+executable is a `.sh` file is rejected with the delegation message, including
+the retired consumer entrypoint and any `--request-json` form. The Runner
+reaches the manager only through the `worktree_manager` MCP tools or the
+literal `tools.worktree_manager.<capability>` form in `execute`.
 
 ## Diagnostics
 
@@ -429,8 +415,8 @@ verify the script and do not replace this test.
 3. Close and restart OpenCode using the developer's usual procedure.
    Expected result: OpenCode resolves and loads the gate from npm, the context
    checkpoint loads from its local path, and the old local plugin does not load.
-4. In a Runner session, run `${FLOWTASK_SCRIPTS}/worktree.sh list`,
-   `git status --short`, and an uncatalogued inspection such as `pwd` or
+4. In a Runner session, run `worktree_list` through the `worktree_manager` MCP
+   server, `git status --short`, and an uncatalogued inspection such as `pwd` or
    `find . -maxdepth 1` through the host `shell` tool. Run an `execute` script
    with a literal `tools.engram.<tool>` call. For Graphify, use the MCP
    integration; the historical

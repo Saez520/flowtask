@@ -133,85 +133,28 @@ snapshot and journal and stop on ambiguous drift. An incomplete target-direct
 recovery is reported as `intervention_required` with exit code `6`, and the
 descriptor and the snapshot are retained for human intervention.
 
-## FlowTask adapter behavior
+## FlowTask consumption
 
-The consumer entrypoint `.flowtask/scripts/worktree.sh` delegates to
-`.flowtask/scripts/worktree-adapter.sh`, which resolves the global copy
-published from npm and runs `python3 -m worktree_manager`. There is a single
-lifecycle in that chain. The adapter publishes the output of the manager
-unchanged, and its compatibility notices go to stderr without any content of the
-backups.
+FlowTask registers the `worktree_manager` MCP server once in the user scope and
+consumes the seven tools directly. There is no FlowTask shell entrypoint and no
+adapter: the standalone CLI and its compatibility contract are documented in
+the package and are not a FlowTask consumption path.
 
-The adapter translates a legacy setting or a legacy transaction only when the
-request asks for it explicitly, and it declares the compatibility it applies.
-It never writes a legacy artifact.
-
-### Legacy configuration translation
-
-The legacy configuration `.flowtask/config/worktree.json` is read only for a
-`complete --preserve-dirty` request that carries no `--config`.
-
-- `preserveDirty` set to `true` applies `preserve_dirty=true` through a
-  temporary configuration file that the adapter passes with `--config`, and the
-  adapter publishes `Compatibility: legacy FlowTask preserveDirty setting applied.`
-- `preserveDirty` set to `false` changes nothing and publishes no notice.
-- An invalid document or a value that is not a boolean is rejected with
-  `The legacy configuration is invalid; no operation was started.` and exit
-  code `3`, without any mutation.
-- Reading the legacy document requires `node`; without it the operation is
-  rejected with `The legacy configuration cannot be read without node; no operation was started.`
-  and exit code `3`.
-- An explicit `--config` never reads the legacy document; the adapter publishes
-  `Compatibility: legacy FlowTask configuration ignored because --config was provided.`
-  and the operation is not blocked.
-
-### Legacy transaction import
-
-A legacy transaction is imported only by an explicit parent-only `recover` that
-names a transaction identifier. The identifier of a recovery request that
-carries the `td-` prefix is translated to the `wt-` prefix before the request
-reaches the manager.
-
-The canonical location of a transaction is `<git-dir>/<state_dir>/transactions/<transaction>`,
-where `state_dir` is the configured state directory. The legacy location is
-`.flowtask/backups/<transaction>`.
-
-- When both locations exist, the work identifier of each record is compared. A
-  missing identity or a different identity blocks the operation with exit code
-  `5` and nothing is changed; both records are preserved. When the identities
-  match, the adapter publishes
-  `Compatibility: canonical transaction <transaction> is authoritative; legacy copy left unchanged.`
-- When only the legacy location exists, it is imported once: the legacy
-  directory is copied into the canonical location, and the legacy backup
-  references `refs/flowtask/backups/<transaction>` and
-  `refs/flowtask/backups/<transaction>-untracked` are published as
-  `refs/<backup_ref_prefix>/<transaction>` and
-  `refs/<backup_ref_prefix>/<transaction>-untracked` when the canonical
-  reference does not exist yet. A canonical reference that exists with a
-  different object ID blocks the operation with exit code `5` and nothing is
-  changed. The adapter publishes `Compatibility: legacy FlowTask transaction <transaction> imported for recovery.`
-- The canonical state is never copied back to the legacy location.
-
-### Legacy state and environment
-
-No operation writes `.flowtask/backups` and no operation writes
-`refs/flowtask/backups`; both are read only in the explicit import described
-above. The variables `FLOWTASK_*` are inert: they change neither the
-configuration, nor the authorization, nor the execution. The controls of the
-standalone tests are `WORKTREE_MANAGER_TEST_*`.
+The `.flowtask/config/worktree.json` file is read-only data for the Runner. Its
+`preserveDirty` value decides whether `worktree_complete` receives
+`preserve_dirty: true`; FlowTask never writes the file. Legacy transaction
+import and configuration translation belong to the standalone CLI contract.
 
 ## Direct consumption failures
 
 The consumer reaches the manager through the `worktree_manager` MCP server,
-registered per project. A mutating operation is planned with `dry_run: true` and
+registered once in the user scope. A mutating operation is planned with `dry_run: true` and
 executed with the same fields plus `plan_hash` and, when it applies,
 `transaction_id`; `list` and `status` use a single call. A `plan_mismatch` is
 replanned and an `uncertain` outcome is reconciled before a new attempt.
 
-The compatibility entrypoint and the adapter remain a declared alternative and
-never become an automatic fallback: a rejection, a contract error, lock
-contention, a timeout and a lost answer are reported as uncertain and are not
-retried on another path. The report of every phase names the operation, the
+A rejection, a contract error, lock contention, a timeout and a lost answer are
+reported as uncertain and are not retried on another path. The report of every phase names the operation, the
 work, the repository, the way, the result, the cause and the next action, and
 it never invents a transaction identifier.
 
@@ -220,4 +163,4 @@ before any mutation. A worktree that was created and whose association could
 not be confirmed is reported as blocked with the effect confirmed and the
 resource preserved, so that the operator can reconcile it.
 
-Closure commits use `commit_title`/`commit_body` (or `--title`/`--body`); the Runner composes the Spanish generic fallback when they are absent.
+Closure commits use `commit_title`/`commit_body` (or `--title`/`--body`); the Runner composes the English generic fallback when they are absent.

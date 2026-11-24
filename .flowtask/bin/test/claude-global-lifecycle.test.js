@@ -88,6 +88,7 @@ const args = process.argv.slice(2);
 const log = process.env.FAKE_CLAUDE_LOG;
 if (log) fs.appendFileSync(log, JSON.stringify(args) + "\\n");
 const state = process.env.FAKE_CLAUDE_STATE;
+const worktreeState = \`\${state}-worktree\`;
 
 if (args[0] === "mcp" && args[1] === "get" && args[2] === "engram") {
   if (fs.existsSync(state)) {
@@ -97,13 +98,21 @@ if (args[0] === "mcp" && args[1] === "get" && args[2] === "engram") {
   process.stderr.write("No MCP server named engram\\n");
   process.exit(1);
 }
+if (args[0] === "mcp" && args[1] === "get" && args[2] === "worktree_manager") {
+  if (fs.existsSync(worktreeState)) {
+    process.stdout.write("worktree_manager:\\n  Scope: user\\n");
+    process.exit(0);
+  }
+  process.stderr.write("No MCP server named worktree_manager\\n");
+  process.exit(1);
+}
 if (args[0] === "mcp" && args[1] === "add") {
   fs.mkdirSync(path.dirname(state), { recursive: true });
-  fs.writeFileSync(state, JSON.stringify(args));
+  fs.writeFileSync(args.includes("worktree_manager") ? worktreeState : state, JSON.stringify(args));
   process.exit(0);
 }
 if (args[0] === "mcp" && args[1] === "remove") {
-  fs.rmSync(state, { force: true });
+  fs.rmSync(args.includes("worktree_manager") ? worktreeState : state, { force: true });
   process.exit(0);
 }
 if (args.includes("--version")) {
@@ -229,13 +238,10 @@ function writeMinimalRuntimeSource(root) {
     fs.writeFileSync(path.join(dir, "SKILL.md"), `---\nname: ${skill}\n---\n`, "utf8");
   }
   fs.mkdirSync(path.join(flowtaskDir, "scripts"), { recursive: true });
-  fs.writeFileSync(path.join(flowtaskDir, "scripts", "worktree.sh"), "#!/bin/sh\n", "utf8");
+  fs.writeFileSync(path.join(flowtaskDir, "scripts", "buffer-sync.ps1"), "Write-Output ok\n", "utf8");
   fs.mkdirSync(path.join(flowtaskDir, "bin", "lib"), { recursive: true });
   for (const file of [
     "target-direct-transport.js",
-    "worktree-consumer-adapter.js",
-    "worktree-consumer-contract.js",
-    "worktree-commit-message.js",
   ]) {
     fs.writeFileSync(path.join(flowtaskDir, "bin", "lib", file), `// ${file}\n`, "utf8");
   }
@@ -257,7 +263,6 @@ function minimalRuntimeRunner(marker) {
     "---",
     `# Runtime runner ${marker}`,
     "",
-    'FLOWTASK_SCRIPTS="./.flowtask/scripts"',
     "Skills live in `.flowtask/skills/`.",
     "Transport: `.flowtask/bin/lib/target-direct-transport.js`.",
     "",
@@ -318,7 +323,7 @@ describe("Claude global lifecycle", () => {
         assert.equal(sha256File(path.join(active.payloadDir, file.path)), file.sha256, `hash mismatch for ${file.path}`);
       }
       assert.equal(sha256File(path.join(runtimeRoot, "bin", "session-start.mjs")), manifest.payloads.claude.launcher.sha256);
-      for (const relative of ["runner.md", "session-start.md", "skills/investigacion/SKILL.md", "scripts/worktree.sh", "bin/lib/target-direct-transport.js"]) {
+      for (const relative of ["runner.md", "session-start.md", "skills/investigacion/SKILL.md", "scripts/buffer-sync.ps1", "bin/lib/target-direct-transport.js"]) {
         assert.ok(fs.existsSync(path.join(active.payloadDir, relative)), `payload is missing ${relative}`);
       }
       assert.equal(Buffer.byteLength(fs.readFileSync(active.sessionStartPath, "utf8"), "utf8") < 10000, true);
@@ -363,10 +368,21 @@ describe("Claude global lifecycle", () => {
       const projectMcp = readJson(path.join(projectA, ".mcp.json"));
       assert.deepEqual(projectMcp.mcpServers.graphify, { type: "stdio", command: "graphify", args: ["mcp"] }, "the user's MCP servers are untouched");
       assert.equal(projectMcp.userOwned, true, "unknown project MCP keys are preserved");
-      assert.ok(projectMcp.mcpServers.worktree_manager, "the Worktree Manager MCP server is registered for the project");
+      assert.equal(
+        Object.hasOwn(projectMcp.mcpServers, "worktree_manager"),
+        false,
+        "the Worktree Manager MCP server is not registered per project",
+      );
+      const worktreeCall = fs.readFileSync(fake.log, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line))
+        .find((args) => args.includes("worktree_manager") && args.includes("add"));
+      assert.ok(worktreeCall, "the Worktree Manager is registered in the Claude user scope");
+      const pythonPath = worktreeCall[worktreeCall.indexOf("-e") + 1];
       assert.match(
-        projectMcp.mcpServers.worktree_manager.env.PYTHONPATH,
-        new RegExp(`${path.join("xdg", "flowtask", "worktree-manager").replaceAll("\\", "\\\\")}$`),
+        pythonPath,
+        new RegExp(`^PYTHONPATH=.*${path.join("xdg", "flowtask", "worktree-manager").replaceAll("\\", "\\\\")}$`),
       );
       assert.equal(fs.existsSync(path.join(projectC, ".claude")), false, "an unregistered project receives no artifacts");
 
@@ -397,8 +413,9 @@ describe("Claude global lifecycle", () => {
       assert.equal(flowTaskGroup.hooks.find((hook) => hook.command.includes("session-start.mjs")).timeout, 10);
       assert.ok(fs.existsSync(fake.state), "Engram is registered in the user scope");
       const calls = fs.readFileSync(fake.log, "utf8").trim().split("\n").map((line) => JSON.parse(line));
-      assert.equal(calls.filter((args) => args[0] === "mcp" && args[1] === "add").length, 1);
+      assert.equal(calls.filter((args) => args[0] === "mcp" && args[1] === "add").length, 2);
       assert.ok(calls.some((args) => args.join(" ") === "mcp add --scope user engram -- engram mcp"));
+      assert.ok(calls.some((args) => args[0] === "mcp" && args[1] === "add" && args.includes("worktree_manager")));
 
       const indexPath = path.join(runtimeRoot, "projects.json");
       const index = readJson(indexPath);
@@ -562,7 +579,7 @@ describe("Claude global lifecycle", () => {
         skills: snapshotTree(user.skillsDir),
         addCalls: fs.readFileSync(fake.log, "utf8").trim().split("\n").filter((line) => JSON.parse(line)[1] === "add").length,
       };
-      assert.equal(before.addCalls, 1, "the second install must reuse the user-scope MCP registration");
+      assert.equal(before.addCalls, 2, "the second install must reuse the user-scope MCP registrations");
 
       assertExit(runCli(projectA, env, ["update"]), "update A");
       assertExit(runCli(projectA, env, ["update"]), "update A again");
@@ -582,8 +599,8 @@ describe("Claude global lifecycle", () => {
       assert.deepEqual(snapshotTree(user.skillsDir), before.skills, "update must preserve the user skills");
       assert.equal(
         fs.readFileSync(fake.log, "utf8").trim().split("\n").filter((line) => JSON.parse(line)[1] === "add").length,
-        1,
-        "update must not duplicate the user-scope MCP registration",
+        2,
+        "update must not duplicate the user-scope MCP registrations",
       );
 
       fs.rmSync(path.join(projectB, ".claude", "flowtask"), { recursive: true, force: true });
@@ -674,10 +691,9 @@ describe("Claude global lifecycle", () => {
       assert.ok(fs.existsSync(thirdActive.payloadDir));
 
       const adaptedRunner = fs.readFileSync(thirdActive.runnerPath, "utf8");
-      assert.ok(adaptedRunner.includes(`${thirdActive.payloadDir}/scripts`));
       assert.ok(adaptedRunner.includes(`${thirdActive.payloadDir}/skills/`));
       assert.ok(adaptedRunner.includes(`${thirdActive.payloadDir}/bin/lib/`));
-      assert.equal(adaptedRunner.includes('FLOWTASK_SCRIPTS="./.flowtask/scripts"'), false);
+      assert.equal(adaptedRunner.includes("FLOWTASK_SCRIPTS"), false);
       assert.equal(adaptedRunner.includes(".flowtask/skills/"), false);
       assert.equal(adaptedRunner.includes(".flowtask/bin/lib/"), false);
       const startup = fs.readFileSync(thirdActive.sessionStartPath, "utf8");
@@ -925,11 +941,13 @@ describe("Claude global lifecycle", () => {
       const settingsAfter = readJson(user.settingsPath);
       assert.equal(userHookCount(settingsAfter).length, 6);
       assert.equal(fs.existsSync(fake.state), false, "the Engram registration added by FlowTask is removed");
+      assert.equal(fs.existsSync(`${fake.state}-worktree`), false, "the Worktree Manager registration added by FlowTask is removed");
       const removeCalls = fs.readFileSync(fake.log, "utf8").trim().split("\n")
         .map((line) => JSON.parse(line))
         .filter((args) => args[0] === "mcp" && args[1] === "remove");
-      assert.equal(removeCalls.length, 1);
-      assert.equal(removeCalls[0].join(" "), "mcp remove --scope user engram");
+      assert.equal(removeCalls.length, 2);
+      assert.ok(removeCalls.some((args) => args.join(" ") === "mcp remove --scope user engram"));
+      assert.ok(removeCalls.some((args) => args.join(" ") === "mcp remove --scope user worktree_manager"));
 
       const settingsBeforeSecondUninstall = fs.readFileSync(user.settingsPath, "utf8");
       const idempotent = runCli(other, env, ["uninstall", "--yes"]);

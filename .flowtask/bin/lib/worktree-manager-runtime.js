@@ -12,7 +12,7 @@ export const GLOBAL_MANAGER_OWNERSHIP = Object.freeze({
   component: "worktree-manager",
   source: "npm",
 });
-export const WORKTREE_MANAGER_RUNTIME_ENTRIES = Object.freeze(["worktree.sh", "worktree_manager"]);
+export const WORKTREE_MANAGER_RUNTIME_ENTRIES = Object.freeze(["worktree_manager"]);
 
 export const OWNERSHIP = Object.freeze({
   ABSENT: "ABSENT",
@@ -225,9 +225,6 @@ export function publishGlobalWorktreeManager({ sourceDir, destinationDir, source
       files: managedFiles,
     };
     fs.writeFileSync(path.join(stage, WORKTREE_MANAGER_OWNER_FILE), `${JSON.stringify(marker, null, 2)}\n`, "utf8");
-
-    const worktreeSh = path.join(stage, "worktree.sh");
-    if (fs.existsSync(worktreeSh)) fs.chmodSync(worktreeSh, 0o755);
 
     if (faultInjector) faultInjector("STAGE-PUBLISH");
 

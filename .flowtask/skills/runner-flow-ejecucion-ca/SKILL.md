@@ -222,13 +222,13 @@ journals, locks, backups o lógica de recuperación propia.
    CA-worktree-base-branch (#2236); la detección solo considera ramas
    locales existentes y no crea ramas. Resuelve un `work_id` genérico; nunca
    lo conviertas en un CA ID. El gestor valida `repo`, `base` y `work_id`.
-2. **Vía primaria y alternativa:** el servidor MCP directo es la vía primaria.
-   Si no está registrado o no responde, el Runner informa la indisponibilidad
-   con su causa y solo entonces puede usar `${FLOWTASK_SCRIPTS}/worktree.sh`
-   como alternativa declarada. Nunca hace fallback automático después de una
-   solicitud entregada: un rechazo, un error de contrato, un lock ocupado, un
-   timeout o una respuesta perdida se reportan como resultado incierto y el
-   siguiente paso es reconciliar.
+2. **Vía única:** el servidor MCP directo es la única vía. Si no está
+   registrado o no responde, el Runner informa la indisponibilidad con su causa,
+   repara el registro con `flowtask update` y reanuda; no hay vía shell
+   alternativa. Nunca hace fallback automático después de una solicitud
+   entregada: un rechazo, un error de contrato, un lock ocupado, un timeout o
+   una respuesta perdida se reportan como resultado incierto y el siguiente paso
+   es reconciliar.
 3. **Mutaciones en dos fases:** `create`, `complete`, `cleanup`, `prune` y
    `recover` se planean con `dry_run: true`; el Runner lee `data.plan_hash` y
    `data.transaction_id` y ejecuta con los mismos campos más `plan_hash` y,
@@ -272,9 +272,7 @@ journals, locks, backups o lógica de recuperación propia.
    Un conflicto no limpia el worktree; un destino sucio se escala al
    desarrollador. `preserveDirty` se lee de `.flowtask/config/worktree.json` y
    se pasa como `preserve_dirty: true`; el archivo nunca se escribe.
-8. **Recuperación:** usá `worktree_recover` con `transaction_id` cuando exista;
-   `${FLOWTASK_SCRIPTS}/worktree.sh recover [<tx-id>]` es la alternativa
-   declarada.
+8. **Recuperación:** usá `worktree_recover` con `transaction_id` cuando exista.
 9. **Retiro:** si una sesión o el operador nombra `flowtask_worktree_consume`,
    respondé que esa vía ya no existe y nombrales las siete herramientas
    directas; no intentes invocarla.
@@ -362,9 +360,9 @@ gestor standalone ejecuta el lifecycle; antes de completarlo:
 2. La base es la registrada en la asociación; no la re-detectes al cerrar.
 3. Si completa bien, el gestor integra con `merge_strategy` y limpia el worktree/branch.
 4. Si `complete` falla por conflicto, **no limpies** el worktree.
-5. Si `complete` rechaza porque **el destino tiene cambios sin commitear**, no intentes limpiar el destino ni crear stashes: el rechazo es seguro y dejó todo intacto. Escala al desarrollador con el motivo; solo si el desarrollador consiente explícitamente, reintenta con `preserve_dirty: true` o con `--preserve-dirty` por la vía `.sh`.
+5. Si `complete` rechaza porque **el destino tiene cambios sin commitear**, no intentes limpiar el destino ni crear stashes: el rechazo es seguro y dejó todo intacto. Escala al desarrollador con el motivo; solo si el desarrollador consiente explícitamente, reintenta con `preserve_dirty: true`.
 6. `preserve_dirty` es una transacción opt-in: captura los cambios elegibles del destino en refs privadas, registra cada fase en el journal del gestor y restaura el estado fino al final. Ofrecélo **SOLO ante instrucción humana explícita** — jamás por defecto ni en flujos automáticos. La config persistida (`.flowtask/config/worktree.json` con `"preserveDirty": true`) cuenta como consentimiento humano explícito y ningún guion la escribe.
-7. Si un cierre con preservación se interrumpe, reanudalo con `worktree_recover` usando el `transaction_id` (o `worktree.sh recover [<tx-id>]` por la vía alternativa); repetirlo es seguro e idempotente. Si la restauración quedó pendiente-manual, mostrale al desarrollador las instrucciones seguras impresas por el gestor: la resolución manual nunca se automatiza.
+7. Si un cierre con preservación se interrumpe, reanudalo con `worktree_recover` usando el `transaction_id`; repetirlo es seguro e idempotente. Si la restauración quedó pendiente-manual, mostrale al desarrollador las instrucciones seguras impresas por el gestor: la resolución manual nunca se automatiza.
 8. El Runner sólo solicita las opciones expresamente habilitadas por el consentimiento aplicable. No deriva ni ejecuta comandos Git o de lifecycle por fuera del gestor; `--auto` no sustituye consentimiento para preservar o descartar. El cierre con destino sucio se escala al desarrollador sin limpiar el destino.
 9. Re-escala al constructor original con el conflicto mínimo necesario para que explique brevemente por qué se resolvió así y pregunte si el desarrollador quiere implementarlo o solo analizarlo.
 
@@ -388,8 +386,7 @@ El Runner compone el título y el cuerpo desde el CA o el hotfix y los envía en
 `commit_title`/`commit_body` de `worktree_complete`; si no hay fuente aporta el
 fallback en inglés. El título y el cuerpo se escriben siempre en inglés: un
 título de CA redactado en español se redacta en inglés al componer el mensaje.
-Por la vía alternativa, `worktree.sh complete <id> --base
-<rama> --title "..." --body "..."`. Plantillas:
+Plantillas:
 
 - CA — Título: título del artifact del CA, en inglés. Cuerpo: `Delivery:
   <summary>. Reason: <problem>. Verification: <Validator APPROVED, closure

@@ -334,54 +334,6 @@ export function isAuthorizedRunnerCommand(command: string): boolean {
     if (!tokens?.length) return false;
     if (authorityTokens(tokens)) return true;
     if (tokens[0] === "node" && tokens[1] === ".flowtask/bin/flowtask.js" && tokens[2] === "graphify") return tokens.length > 3;
-    const worktreeScript = tokens[0].replaceAll("\\", "/");
-    if (worktreeScript === "./.flowtask/scripts/worktree.sh" || worktreeScript.endsWith("/flowtask/scripts/worktree.sh")) {
-      // The request protocol is reserved for the consumer: the runner never
-      // publishes a canonical request through the shell.
-      if (tokens.includes("--request-json")) return false;
-      if (tokens.length === 2 && ["list", "prune"].includes(tokens[1])) return true;
-      if (tokens[1] === "recover" && tokens.length <= 3) return true; // recover | recover <tx-id>
-      if (tokens[1] === "create") {
-        return tokens.length === 5 && Boolean(tokens[2]) && tokens[3] === "--base" && Boolean(tokens[4]);
-      }
-      if (tokens[1] === "complete") {
-        if (!Boolean(tokens[2]) || tokens[2] === "--base" || tokens[2].startsWith("--")) return false;
-        const args = tokens.slice(3);
-        const seen = new Set();
-        let i = 0;
-        while (i < args.length) {
-          const flag = args[i];
-          if (flag === "--preserve-dirty") {
-            if (seen.has(flag)) return false;
-            seen.add(flag);
-            i += 1;
-            continue;
-          }
-          if (flag === "--base" || flag === "--title" || flag === "--body") {
-            if (seen.has(flag)) return false;
-            if (i + 1 >= args.length) return false;
-            const value = args[i + 1];
-            if (!value || value.startsWith("--")) return false;
-            seen.add(flag);
-            i += 2;
-            continue;
-          }
-          return false;
-        }
-        return true;
-      }
-      if (tokens[1] === "cleanup") {
-        if (!Boolean(tokens[2]) || tokens[2] === "--base" || tokens[2].startsWith("--")) return false;
-        const args = tokens.slice(3);
-        const ownFlag = "--discard";
-        if (args.length === 0) return true;
-        if (args.length === 1 && args[0] === ownFlag) return true;
-        if (args.length === 2 && args[0] === "--base" && Boolean(args[1])) return true;
-        if (args.length === 3 && args[0] === "--base" && Boolean(args[1]) && args[2] === ownFlag) return true;
-        return false;
-      }
-      return false;
-    }
     if (tokens[0] === "ls") return hasFlagsAndPaths(tokens.slice(1));
     if (tokens[0] === "cat") return tokens.length >= 2; // read-only file access for runner diagnostics
     if (tokens[0] === "echo") return true;

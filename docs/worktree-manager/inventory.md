@@ -3,9 +3,8 @@
 This inventory is the review index for the Worktree Manager documentation. The
 published npm package `worktree-for-agents` is the source of truth for the
 lifecycle, the configuration, the transactions, the target-direct behavior and
-the CLI and MCP contracts. FlowTask owns only the compatibility entrypoint, npm
-package acquisition, global publication and the per-project MCP registration of
-the manager server.
+the CLI and MCP contracts. FlowTask owns only npm package acquisition, global
+publication and the user-scope MCP registration of the manager server.
 
 Every topic below names one owning document, one owning maintainer group, the
 source status of that topic and a checklist that a reviewer can execute
@@ -20,12 +19,12 @@ without undocumented knowledge.
 | Configuration | Worktree Manager maintainers | [interfaces.md](interfaces.md) | Verified against the configuration loader of the package | Check the twelve keys, their defaults, the duplicate and unknown-key rejection and the path constraints |
 | Closure strategy (`merge_strategy`) | Worktree Manager maintainers | [operations.md](operations.md) | Verified against the lifecycle, the recovery manager and the consumer fallback | Confirm squash default, preserve-history opt-in with `--no-ff`, hygiene, conflict handling and dual recovery |
 | MCP transport and request protocol | Worktree Manager maintainers | [interfaces.md](interfaces.md) | Verified against the [MCP contract](https://github.com/Saez520/worktree-manager/blob/main/docs/mcp-contract.md) and the strict request validator | Compare the seven published tools, their fields, the request protocol and the nine-key envelope with the contract |
-| Consent and destructive operations | Worktree Manager maintainers | [operations.md](operations.md) | Verified against the lifecycle, the request validator and the compatibility adapter | Review the discard and the preservation consent and confirm that no destructive command is run during a review |
+| Consent and destructive operations | Worktree Manager maintainers | [operations.md](operations.md) | Verified against the lifecycle, the request validator and the standalone contract | Review the discard and the preservation consent and confirm that no destructive command is run during a review |
 | Pre-lock validation, plan and execution | Worktree Manager maintainers | [operations.md](operations.md) | Verified against the lifecycle and the contract sources | Check that a rejection leaves no marker, lock, journal, ref or worktree |
 | Recovery, transactions and reconciliation | Worktree Manager maintainers | [operations.md](operations.md) | Verified against the recovery manager and the transaction journal | Check locks, journals, backups, conflicts and the intervention states |
 | Standalone isolation | Worktree Manager maintainers | [architecture.md](architecture.md), [compatibility.md](compatibility.md) | Verified: the package answers the version and the seven tools without a consumer checkout | Confirm that the package reads no path, ref or variable of the consumer |
 | Target-direct | Worktree Manager maintainers | [architecture.md](architecture.md), [interfaces.md](interfaces.md), [operations.md](operations.md) | Verified for the `staged-only` boundary and for the descriptor identity checks | Confirm that the target and the parent repository remain distinct and that the descriptor identity is compared with the request |
-| Direct consumption and compatibility path | FlowTask maintainers | [architecture.md](architecture.md), [operations.md](operations.md), [compatibility.md](compatibility.md) | Verified against the per-project MCP registration, the [consumer entrypoint](../../.flowtask/scripts/worktree.sh) and the [adapter](../../.flowtask/scripts/worktree-adapter.sh) | Check the seven direct tools, the two-phase calls, the declared compatibility and that no commit, merge or push is claimed |
+| Direct MCP consumption | FlowTask maintainers | [architecture.md](architecture.md), [operations.md](operations.md), [compatibility.md](compatibility.md) | Verified against the user-scope MCP registration and the seven direct tools | Check the seven direct tools, the two-phase calls, the absence of a FlowTask shell path and that no commit, merge or push is claimed |
 | Compatibility and deprecation | Release maintainers | [compatibility.md](compatibility.md) | Verified where the contract has evidence; every gap is named instead of qualified | Review the standalone and the consumer matrices independently |
 | Release | Release maintainers | [release.md](release.md) | Verified as a documentation-only procedure | Run the scope, source, contract, safety, compatibility, editorial, evidence, publication and version checks |
 | Transition history | Worktree Manager maintainers | [history-bash-to-python.md](https://github.com/Saez520/worktree-manager/blob/main/docs/history-bash-to-python.md) | Verified against the current package layout and the published tags | Confirm the single historical account and that it does not duplicate the contracts |

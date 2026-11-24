@@ -59,12 +59,10 @@ se toman de la respuesta del gestor. Reutilizá un worktree existente en
 reanudaciones solo con identidad exacta.
 
 Si el MCP no está registrado o no responde, informá la indisponibilidad con su
-causa y solo entonces podés usar
-`${FLOWTASK_SCRIPTS}/worktree.sh create hotfix/{id} --base {base_branch} [--init-submodules]`
-como alternativa declarada. No hay fallback automático después de una solicitud
-entregada: un rechazo, un error de contrato, un lock ocupado, un timeout o una
-respuesta perdida se reportan como resultado incierto y el siguiente paso es
-reconciliar.
+causa y no avances con el gestor: repará el registro con `flowtask update` y
+reanudá. No hay vía shell alternativa. Después de una solicitud entregada, un
+rechazo, un error de contrato, un lock ocupado, un timeout o una respuesta
+perdida se reportan como resultado incierto y el siguiente paso es reconciliar.
 
 Despachá el Constructor con `execution_id=hotfix/{id}`,
 `artifact_namespace=hotfix/{id}`, path, branch y base branch.
@@ -91,13 +89,11 @@ por base, aunque los trabajos sean independientes.
 
 Un conflicto conserva worktree y branch y se escala sin limpiar; un destino con
 cambios sin commitear también conserva todo intacto y se escala. Si el MCP no
-está disponible, informá la causa y solo entonces usá
-`${FLOWTASK_SCRIPTS}/worktree.sh complete hotfix/{id} --base {base_branch} [--init-submodules] [--merge-strategy {estrategia}] [--title TEXTO] [--body TEXTO]`
-como alternativa declarada.
+está disponible, informá la causa y repará el registro con `flowtask update`
+antes de reintentar; no hay vía shell alternativa.
 
 Para recuperar una transacción interrumpida usá `worktree_recover` con
-`transaction_id`; `${FLOWTASK_SCRIPTS}/worktree.sh recover [<tx-id>]` es la
-alternativa declarada. `worktree_list` y `worktree_prune` cruzan los worktrees
+`transaction_id`. `worktree_list` y `worktree_prune` cruzan los worktrees
 hotfix con `flow-state/hotfix/{id}/instances` y reportan huérfanos; `prune`
 requiere `authorization` y `confirm: true`.
 
@@ -107,7 +103,7 @@ El Constructor propone la estrategia y el Runner la ejecuta sin re-evaluarla.
 
 - Leé `commit_strategy`, `commit_strategy_rationale`, `commit_count` y `commits` del reporte del Constructor.
 - Propuesta faltante → squash; propuesta inválida → pausa con `authority_block`; nunca re-evalúes la estrategia. El default del manager solo aplica cuando falta la propuesta.
-- Pasá `merge_strategy` a `worktree_complete` con la misma identidad y base registradas; en la vía alternativa `.sh`, `--merge-strategy`.
+- Pasá `merge_strategy` a `worktree_complete` con la misma identidad y base registradas.
 - Registrá `merge_strategy`, `merge_commit`, `commit_count` y el fundamento en `flow-state/hotfix/{id}/instances` y en el reporte final.
 - La transacción del gestor es la fuente autoritativa de lo aplicado.
 

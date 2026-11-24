@@ -15,6 +15,11 @@ import {
   resolveUserRuntimePaths,
   writeFileAtomic,
 } from "./user-runtime.js";
+import {
+  DEFAULT_PYTHON_BIN,
+  buildWorktreeManagerMcpEntry,
+  isFlowTaskWorktreeManagerEntry,
+} from "./worktree-mcp-registration.js";
 
 const FLOWTASK_AGENT_PREFIX = "flowtask-";
 const FLOWTASK_NPM_PLUGIN_NAMES = Object.freeze(["flowtask-permission-gate"]);
@@ -154,6 +159,21 @@ function isFlowTaskAgent(name) {
 }
 
 /**
+ * Normalize the manager descriptor into the two values the MCP entry needs.
+ * A report whose MCP probe failed is not registered.
+ */
+function worktreeManagerEntryInput(worktreeManager) {
+  if (!isPlainObject(worktreeManager)) return null;
+  if (worktreeManager.capabilities?.mcp?.available === false) return null;
+  const managerDir = worktreeManager.managerDir;
+  if (typeof managerDir !== "string" || managerDir.length === 0) return null;
+  const pythonBin = worktreeManager.pythonBin
+    ?? worktreeManager.capabilities?.python?.executable
+    ?? DEFAULT_PYTHON_BIN;
+  return { managerDir, pythonBin };
+}
+
+/**
  * Apply the FlowTask-owned surface to the user-level OpenCode configuration.
  *
  * Only FlowTask keys are added or replaced; the consumer keeps custom agents,
@@ -164,6 +184,7 @@ export function applyOpencodeGlobalSurface(config, {
   runtimeManifest,
   runtimeRoot,
   commandSource = null,
+  worktreeManager = null,
 } = {}) {
   const root = runtimeRoot ?? resolveUserRuntimePaths().runtimeRoot;
   const canonical = commandSource ?? canonicalConfig(flowtaskDir);
@@ -227,16 +248,41 @@ export function applyOpencodeGlobalSurface(config, {
     mcp.engram = isPlainObject(canonical.mcp?.engram) ? canonical.mcp.engram : { ...DEFAULT_ENGRAM };
     engramManaged = true;
   }
+
+  // The worktree manager is a user-scope server: it is registered once for
+  // every project, never per project. A foreign entry is preserved.
+  let worktreeManagerManaged = false;
+  const managerInput = worktreeManagerEntryInput(worktreeManager);
+  if (managerInput) {
+    const entry = buildWorktreeManagerMcpEntry("opencode", managerInput.managerDir, managerInput.pythonBin);
+    const current = mcp.worktree_manager;
+    if (current === undefined) {
+      mcp.worktree_manager = entry;
+      worktreeManagerManaged = true;
+    } else if (isFlowTaskWorktreeManagerEntry(current, "opencode")) {
+      worktreeManagerManaged = true;
+      if (!stableEqual(current, entry)) mcp.worktree_manager = entry;
+    } else {
+      warnings.push(
+        "mcp.worktree_manager in the OpenCode user configuration is preserved because the entry belongs to the user.",
+      );
+    }
+  }
   if (Object.keys(mcp).length > 0) next.mcp = mcp;
 
-  return { config: next, engramManaged, warnings };
+  return { config: next, engramManaged, worktreeManagerManaged, warnings };
 }
 
 /**
  * Ensure the user-level OpenCode surface. The function reads, applies, compares
  * and writes only when the serialized configuration changed.
  */
-export function ensureOpencodeGlobalSurface({ flowtaskDir, runtimeRoot = null, commandSource = null } = {}) {
+export function ensureOpencodeGlobalSurface({
+  flowtaskDir,
+  runtimeRoot = null,
+  commandSource = null,
+  worktreeManager = null,
+} = {}) {
   const root = runtimeRoot ?? resolveUserRuntimePaths().runtimeRoot;
   const userPaths = resolveOpencodeUserPaths();
   const read = readOpencodeGlobalConfig({ configDir: userPaths.configDir });
@@ -248,6 +294,7 @@ export function ensureOpencodeGlobalSurface({ flowtaskDir, runtimeRoot = null, c
       reason: read.reason,
       config: null,
       engramManaged: false,
+      worktreeManagerManaged: false,
     };
   }
 
@@ -257,6 +304,7 @@ export function ensureOpencodeGlobalSurface({ flowtaskDir, runtimeRoot = null, c
     runtimeManifest,
     runtimeRoot: root,
     commandSource,
+    worktreeManager,
   });
   for (const warning of applied.warnings) logWarn(warning);
   const written = writeOpencodeGlobalConfig(applied.config, { paths: userPaths });
@@ -271,6 +319,7 @@ export function ensureOpencodeGlobalSurface({ flowtaskDir, runtimeRoot = null, c
     path: written.path,
     config: applied.config,
     engramManaged: applied.engramManaged,
+    worktreeManagerManaged: applied.worktreeManagerManaged,
     warnings: applied.warnings,
   };
 }
@@ -343,6 +392,14 @@ export function removeOpencodeGlobalSurface({
   if (next.default_agent === "flowtask-runner") {
     delete next.default_agent;
     removed.push("default_agent");
+  }
+
+  if (isPlainObject(next.mcp) && isFlowTaskWorktreeManagerEntry(next.mcp.worktree_manager, "opencode")) {
+    const mcp = { ...next.mcp };
+    delete mcp.worktree_manager;
+    if (Object.keys(mcp).length > 0) next.mcp = mcp;
+    else delete next.mcp;
+    removed.push("mcp.worktree_manager");
   }
 
   const template = isPlainObject(canonical.mcp?.engram) ? canonical.mcp.engram : DEFAULT_ENGRAM;

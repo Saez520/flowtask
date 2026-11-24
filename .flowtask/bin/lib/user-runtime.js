@@ -34,7 +34,6 @@ const PAYLOAD_SOURCES = Object.freeze(["skills", "scripts", "agents", "commands"
 /** Library files copied into every payload. */
 const BIN_LIB_ALLOWLIST = Object.freeze([
   "target-direct-transport.js",
-  "worktree-commit-message.js",
 ]);
 
 /** Runner and startup document are generated after the payload id is known. */

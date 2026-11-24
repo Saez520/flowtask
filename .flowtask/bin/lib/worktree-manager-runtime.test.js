@@ -28,7 +28,7 @@ test("clean publish creates runtime and marker", () => {
   makeSource(src);
   const res = publishGlobalWorktreeManager({ sourceDir: src, destinationDir: dest, sourceCommit: "abc", version: "1.0.0" });
   assert.equal(res.version, "1.0.0");
-  assert.ok(fs.existsSync(path.join(dest, "worktree.sh")));
+  assert.equal(fs.existsSync(path.join(dest, "worktree.sh")), false, "the shell entrypoint is not published");
   assert.ok(fs.existsSync(path.join(dest, "worktree_manager", "__init__.py")));
   assert.equal(readManagerVersion(dest), "1.0.0");
   const marker = JSON.parse(fs.readFileSync(path.join(dest, ".flowtask-worktree-manager-owner.json"), "utf8"));
@@ -147,7 +147,7 @@ test("ownership classification distinguishes absent, managed, external and ambig
     source: "submodule",
     sourceCommit: null,
     version: "1.0.0",
-    files: ["worktree.sh"],
+    files: ["worktree_manager/__main__.py"],
   }));
   assert.equal(classifyGlobalManagerOwnership(dest).state, "MANAGED");
 
@@ -158,7 +158,7 @@ test("ownership classification distinguishes absent, managed, external and ambig
     source: "submodule",
     sourceCommit: null,
     version: "1.0.0",
-    files: ["worktree.sh"],
+    files: ["worktree_manager/__main__.py"],
   }));
   assert.equal(classifyGlobalManagerOwnership(dest).state, "AMBIGUOUS");
 });
@@ -166,11 +166,10 @@ test("ownership classification distinguishes absent, managed, external and ambig
 test("a missing source runtime entry fails before the destination is created", () => {
   const src = mkTmp();
   const dest = path.join(mkTmp(), "worktree-manager");
-  fs.mkdirSync(path.join(src, "worktree_manager"), { recursive: true });
-  fs.writeFileSync(path.join(src, "worktree_manager", "__init__.py"), '__version__ = "1.0.0"\n');
+  fs.writeFileSync(path.join(src, "worktree.sh"), "#!/bin/sh\n");
   assert.throws(
     () => publishGlobalWorktreeManager({ sourceDir: src, destinationDir: dest, version: "1.0.0" }),
-    /source runtime entry missing: worktree\.sh/,
+    /source runtime entry missing: worktree_manager/,
   );
   assert.equal(fs.existsSync(dest), false);
 });
@@ -227,6 +226,7 @@ test("a managed submodule marker becomes npm on update and keeps non-managed fil
   assert.equal(report.previousVersion, "1.0.1");
   assert.equal(report.versionChanged, true);
   assert.equal(fs.readFileSync(path.join(dest, "custom.txt"), "utf8"), "preserve-me");
+  assert.equal(fs.existsSync(path.join(dest, "worktree.sh")), false, "the obsolete managed entrypoint is dropped");
 });
 
 test("readManagerVersion returns null without a readable package", () => {

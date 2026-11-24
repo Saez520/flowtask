@@ -32,7 +32,6 @@ function minimalRuntimeRunner() {
     "---",
     "# Runtime runner",
     "",
-    'FLOWTASK_SCRIPTS="./.flowtask/scripts"',
     "Skills live in `.flowtask/skills/`.",
     "Transport: `.flowtask/bin/lib/target-direct-transport.js`.",
     "",
@@ -55,9 +54,9 @@ function writeMinimalRuntimeSource(root) {
     fs.writeFileSync(path.join(dir, "SKILL.md"), `---\nname: ${skill}\n---\n`, "utf8");
   }
   fs.mkdirSync(path.join(flowtaskDir, "scripts"), { recursive: true });
-  fs.writeFileSync(path.join(flowtaskDir, "scripts", "worktree.sh"), "#!/bin/sh\n", "utf8");
+  fs.writeFileSync(path.join(flowtaskDir, "scripts", "buffer-sync.ps1"), "Write-Output ok\n", "utf8");
   fs.mkdirSync(path.join(flowtaskDir, "bin", "lib"), { recursive: true });
-  for (const file of ["target-direct-transport.js", "worktree-commit-message.js"]) {
+  for (const file of ["target-direct-transport.js"]) {
     fs.writeFileSync(path.join(flowtaskDir, "bin", "lib", file), `// ${file}\n`, "utf8");
   }
   fs.mkdirSync(path.join(flowtaskDir, "claude"), { recursive: true });

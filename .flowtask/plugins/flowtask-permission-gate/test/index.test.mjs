@@ -289,19 +289,7 @@ test("C3 V2: la inspección permitida se ejecuta y el efecto externo se deniega 
 
 test("matches canonical Runner commands structurally", () => {
   for (const command of [
-    "./.flowtask/scripts/worktree.sh create wt-1 --base main",
-    "./.opencode/flowtask/scripts/worktree.sh create wt-1 --base main",
-    "./.claude/flowtask/scripts/worktree.sh complete wt-1 --base main",
-    "./.flowtask/scripts/worktree.sh complete wt-1 --base main",
-    './.flowtask/scripts/worktree.sh complete wt-1 --base main --title "Cierre" --body "Motivo"',
-    './.flowtask/scripts/worktree.sh complete wt-1 --title "Cierre" --body "Motivo" --base main',
-    "./.flowtask/scripts/worktree.sh complete wt-1 --preserve-dirty",
-    "./.flowtask/scripts/worktree.sh complete wt-1 --base main --preserve-dirty",
-    "./.flowtask/scripts/worktree.sh cleanup wt-1",
-    "./.flowtask/scripts/worktree.sh cleanup wt-1 --discard",
-    "./.flowtask/scripts/worktree.sh cleanup wt-1 --base main --discard",
-    "./.flowtask/scripts/worktree.sh list", "./.flowtask/scripts/worktree.sh prune",
-    "./.flowtask/scripts/worktree.sh complete wt-1", "git status --short", "git add file.ts",
+    "git status --short", "git add file.ts",
     "git restore --staged file.ts", 'git commit -m "mensaje de prueba"', "git push origin branch",
     "git worktree list --porcelain", "git diff --stat path/to/file", "git diff 2>/dev/null",
     "ls -la .worktrees/", "echo \"---\"", "echo ok >/dev/null", "echo ok &>/dev/null",
@@ -440,10 +428,12 @@ test("rejects malformed, mixed and dangerous commands", () => {
     './.flowtask/scripts/worktree.sh create wt-1 --title "x"',
     "./.flowtask/scripts/worktree.sh complete wt-1 --title",
     "./.flowtask/scripts/worktree.sh create wt-1 --base main --prepare",
-    // El protocolo de request es exclusivo del consumidor: el runner no lo publica.
     "./.flowtask/scripts/worktree.sh --request-json -",
     "./.flowtask/scripts/worktree.sh list --request-json /tmp/request.json",
     "./.opencode/flowtask/scripts/worktree.sh --request-json /tmp/request.json",
+    "./.flowtask/scripts/worktree.sh list",
+    "./.flowtask/scripts/worktree.sh prune",
+    "./.flowtask/scripts/worktree.sh complete wt-1 --base main",
   ]) {
     assert.equal(isAuthorizedRunnerCommand(command), false, command);
   }

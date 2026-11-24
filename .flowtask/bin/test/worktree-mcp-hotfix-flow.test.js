@@ -1,4 +1,4 @@
-// gap: G-1 — el flujo hotfix vuelve a presentar `.sh` como vía principal o pierde una operación, un consentimiento o la recuperación del cierre MCP.
+// gap: G-1 — el flujo hotfix vuelve a presentar `.sh` como vía alternativa o pierde una operación, un consentimiento o la recuperación del cierre MCP.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,7 +11,7 @@ function read(relativePath) {
   return fs.readFileSync(path.join(ROOT, relativePath), "utf8");
 }
 
-test("the hotfix flow publishes the MCP worktree lifecycle as the primary path", () => {
+test("the hotfix flow publishes the MCP worktree lifecycle as the only path", () => {
   const flow = read(".flowtask/skills/runner-flow-hotfix/SKILL.md");
 
   for (const operation of [
@@ -24,13 +24,8 @@ test("the hotfix flow publishes the MCP worktree lifecycle as the primary path",
     assert.ok(flow.includes(operation), `the hotfix flow declares ${operation}`);
   }
 
-  const primaryCreate = flow.indexOf("worktree_create");
-  const alternativeCreate = flow.indexOf("worktree.sh create hotfix");
-  assert.notEqual(alternativeCreate, -1, "the hotfix flow keeps the declared .sh alternative");
-  assert.ok(
-    primaryCreate < alternativeCreate,
-    "worktree_create precedes the declared .sh alternative",
-  );
+  assert.doesNotMatch(flow, /worktree\.sh/, "the hotfix flow does not offer the retired shell entrypoint");
+  assert.doesNotMatch(flow, /FLOWTASK_SCRIPTS/, "the hotfix flow does not depend on the retired scripts constant");
 
   const closingStart = flow.indexOf("### Paso 3 — Validator y cierre");
   const closingEnd = flow.indexOf("#### Estrategia de cierre dual");
@@ -50,4 +45,8 @@ test("the hotfix flow publishes the MCP worktree lifecycle as the primary path",
   const handshake = read(".flowtask/skills/handshake-protocol/SKILL.md");
   assert.ok(handshake.includes("worktree_create"), "the handshake names the MCP creation");
   assert.doesNotMatch(handshake, /worktree\.sh create/, "the handshake does not instruct the .sh creation");
+
+  const caFlow = read(".flowtask/skills/runner-flow-ejecucion-ca/SKILL.md");
+  assert.doesNotMatch(caFlow, /worktree\.sh/, "the CA flow does not offer the retired shell entrypoint");
+  assert.doesNotMatch(caFlow, /FLOWTASK_SCRIPTS/, "the CA flow does not depend on the retired scripts constant");
 });

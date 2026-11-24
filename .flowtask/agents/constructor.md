@@ -350,9 +350,6 @@ Cuando el runner te invoca con Evolution Mode activo:
 
 8. En Evolution Mode, modifica únicamente los archivos que el plan enumera;
    cualquier archivo no incluido requiere detenerse y escalar al Runner.
-9. En el gestor como submódulo, trabaja en la rama local `worktree-manager/<work-id>`,
-   commitea allí los cambios del gestor y registra el gitlink actualizado en el commit
-   de la tarea padre, sin publicar ni mover trabajo a remoto.
 
 ---
 

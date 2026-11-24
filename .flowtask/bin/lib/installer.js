@@ -43,12 +43,10 @@ import {
   PERSONA_END_MARKER,
   PERSONA_START_MARKER,
   buildRuntimeRunnerBody,
-  configureRunnerScriptsContent,
   injectAutonomyIntoRunnerContent,
   injectPersonaIntoRunnerContent,
 } from "./runner-content.js";
 export {
-  configureRunnerScriptsContent,
   injectAutonomyIntoRunnerContent,
   injectPersonaIntoRunnerContent,
 } from "./runner-content.js";
@@ -67,7 +65,7 @@ import { assertRunnerCanon } from "./runner-flows.js";
 import { ensureGlobalWorktreeManager, formatWorktreeManagerVersionNotice, removeGlobalWorktreeManager } from "./worktree-manager-runtime.js";
 import { downloadWorktreeManagerPackage } from "./worktree-manager-package.js";
 import { resolvePythonRuntime } from "./python-runtime.js";
-import { registerWorktreeManagerMcp } from "./worktree-mcp-registration.js";
+import { removeWorktreeManagerMcp } from "./worktree-mcp-registration.js";
 import { ensureCanonicalSubmodule } from "./submodule-publication.js";
 import {
   AUTONOMY_PROFILES,
@@ -337,41 +335,37 @@ export function reportWorktreeManagerCapabilities(report, { quiet } = {}) {
   logWarn(`Worktree Manager is not operational: ${[cli?.cause, mcp?.cause].filter(Boolean).join("; ")}`);
 }
 
-function reportWorktreeMcpRegistration(result, configPath) {
+function reportWorktreeMcpMigration(result, configPath) {
   switch (result.status) {
-    case "registered":
-      logSuccess(`Worktree Manager MCP registered in ${configPath}.`);
-      return;
-    case "unchanged":
-      logInfo(`Worktree Manager MCP already registered in ${configPath}.`);
+    case "removed":
+      logSuccess(`Worktree Manager MCP moved to the user scope from ${configPath}.`);
       return;
     case "preserved":
-      logWarn(`Worktree Manager MCP was not registered in ${configPath}: ${result.cause}. The existing configuration was preserved.`);
+      logWarn(`The Worktree Manager MCP entry in ${configPath} was preserved: ${result.cause}.`);
       return;
-    case "unavailable":
-      logWarn(`Worktree Manager MCP is not available: ${result.cause}. Worktrees are not available in ${configPath}.`);
+    case "failed":
+      logWarn(`The Worktree Manager MCP entry in ${configPath} could not be removed: ${result.cause ?? "unknown cause"}.`);
       return;
     default:
-      logWarn(`Worktree Manager MCP could not be registered in ${configPath}: ${result.cause ?? "unknown cause"}. Retry with flowtask update.`);
+      return;
   }
 }
 
-/** Register the manager server in the project's OpenCode config. */
-function registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager) {
-  if (!worktreeManager) return null;
+/**
+ * Retire the per-project manager server once the user-scope surface is
+ * available. The global registration is written before this migration.
+ */
+export function migrateWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager, globalManaged = false) {
+  if (!worktreeManager || worktreeManager.capabilities?.mcp?.available !== true) return null;
   const configPath = path.join(projectDir, ideDir, "opencode.json");
-  const mcp = worktreeManager.capabilities?.mcp;
-  if (mcp?.available !== true) {
-    logWarn(`Worktree Manager MCP is not registered in ${configPath}: ${mcp?.cause ?? "the MCP probe did not succeed"}. Worktrees are not available in this target.`);
-    return null;
+  if (!globalManaged) {
+    logWarn(
+      `The Worktree Manager MCP entry in ${configPath} was preserved because the user-scope registration is not managed by FlowTask.`,
+    );
+    return { status: "preserved", cause: "user-scope registration not confirmed as managed" };
   }
-  const result = registerWorktreeManagerMcp({
-    configPath,
-    format: "opencode",
-    managerDir: worktreeManager.managerDir,
-    pythonBin: worktreeManager.capabilities?.python?.executable,
-  });
-  reportWorktreeMcpRegistration(result, configPath);
+  const result = removeWorktreeManagerMcp({ configPath, format: "opencode" });
+  reportWorktreeMcpMigration(result, configPath);
   return result;
 }
 
@@ -686,13 +680,6 @@ export function injectAutonomyIntoRunner(targetDir, descriptor) {
   logSuccess(`Autonomy injected into runner.md of ${targetDir}.`);
 }
 
-function configureRunnerScripts(targetDir, targetSubDir) {
-  const runnerPath = path.join(targetDir, "agents", "runner.md");
-  if (!fileExists(runnerPath)) return;
-  const content = fs.readFileSync(runnerPath, "utf8");
-  fs.writeFileSync(runnerPath, configureRunnerScriptsContent(content, targetSubDir), "utf8");
-}
-
 function readOptionalText(filePath) {
   try {
     return fs.readFileSync(filePath, "utf8");
@@ -717,9 +704,9 @@ function stripRunnerInjectedBlocks(content) {
 }
 
 /** A runner differs from the canonical one only outside its injected blocks. */
-function runnerContentDrifted(before, canonical, targetSubDir) {
+function runnerContentDrifted(before, canonical) {
   if (typeof before !== "string" || typeof canonical !== "string") return false;
-  return stripRunnerInjectedBlocks(before) !== stripRunnerInjectedBlocks(configureRunnerScriptsContent(canonical, targetSubDir));
+  return stripRunnerInjectedBlocks(before) !== stripRunnerInjectedBlocks(canonical);
 }
 
 function toProjectPath(projectDir, absolutePath) {
@@ -1632,8 +1619,17 @@ async function installGlobalSurfaces(flowtaskDir, options, mode) {
     stats: { version: runtime.version, payloads: Object.keys(runtime.payloads).join(" + ") },
   }];
 
+  // The manager is optional: a missing registry or interpreter warns and the
+  // rest of the global installation continues.
+  let worktreeManager = null;
+  try {
+    worktreeManager = prepareWorktreeManagerForRun(options, { mode });
+  } catch (error) {
+    logWarn(`Worktree Manager could not be prepared: ${error.message}`);
+  }
+
   if (requested.includes("opencode")) {
-    const surface = ensureOpencodeGlobalSurface({ flowtaskDir });
+    const surface = ensureOpencodeGlobalSurface({ flowtaskDir, worktreeManager });
     if (!surface.ok) {
       const error = new Error(
         `The OpenCode user configuration could not be updated: ${surface.reason ?? surface.status}.`,
@@ -1652,6 +1648,7 @@ async function installGlobalSurfaces(flowtaskDir, options, mode) {
       personaContent,
       options,
       userConfig,
+      worktreeManager,
     });
     results.push({ target: "claude", status: "Success", stats: { surface: "ready" } });
   }
@@ -1678,6 +1675,7 @@ export async function install(flowtaskDir, options = {}) {
     assertRunnerCanon({ flowtaskDir });
     if (options.global) return await installGlobalSurfaces(flowtaskDir, options, "install");
     const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "install" });
+    let opencodeWorktreeManagerManaged = false;
     console.log(`
 ${COLORS.blue}╔═══════════════════════════════════════════╗
 ║        FlowTask Installation Wizard       ║
@@ -1759,10 +1757,11 @@ ${COLORS.blue}╔═════════════════════
       ? buildUserRuntime(flowtaskDir, { targets: nonClaudeTargets, userConfig, personaContent })
       : null;
     if (nonClaudeTargets.some(({ id }) => id === "opencode")) {
-      const surface = ensureOpencodeGlobalSurface({ flowtaskDir });
+      const surface = ensureOpencodeGlobalSurface({ flowtaskDir, worktreeManager });
       if (!surface.ok) {
         throw new Error(`The OpenCode user configuration could not be updated: ${surface.reason ?? surface.status}.`);
       }
+      opencodeWorktreeManagerManaged = surface.worktreeManagerManaged === true;
     }
 
     const targetDirs = nonClaudeTargets.map(({ targetSubDir }) => path.join(projectDir, targetSubDir));
@@ -1831,7 +1830,6 @@ ${COLORS.blue}╔═════════════════════
         }
 
         // ── Target config: generated review plus the user-level layers ──
-        configureRunnerScripts(TARGET_DIR, targetSubDir);
         const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
           userConfig,
         });
@@ -1839,7 +1837,7 @@ ${COLORS.blue}╔═════════════════════
         // OpenCode: the engine lives in the user runtime; the project keeps
         // only its registration and the generated review configuration.
         if (id === "opencode") {
-          registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
+          migrateWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager, opencodeWorktreeManagerManaged);
         }
 
         // ── Step 5: Install plugins from manifest (OpenCode only) ────────────
@@ -2077,6 +2075,7 @@ async function runUpdate(flowtaskDir, options, report) {
   }
 
   const worktreeManager = prepareWorktreeManagerForRun(options, { mode: "update" });
+  let opencodeWorktreeManagerManaged = false;
   if (worktreeManager) {
     const versionNotice = formatWorktreeManagerVersionNotice({ previousVersion: worktreeManager.previousVersion, version: worktreeManager.version });
     if (versionNotice) logInfo(versionNotice);
@@ -2172,10 +2171,11 @@ async function runUpdate(flowtaskDir, options, report) {
       ? buildUserRuntime(flowtaskDir, { targets: nonClaudeTargets, userConfig, personaContent })
       : null;
     if (nonClaudeTargets.some(({ id }) => id === "opencode")) {
-      const surface = ensureOpencodeGlobalSurface({ flowtaskDir });
+      const surface = ensureOpencodeGlobalSurface({ flowtaskDir, worktreeManager });
       if (!surface.ok) {
         throw new Error(`The OpenCode user configuration could not be updated: ${surface.reason ?? surface.status}.`);
       }
+      opencodeWorktreeManagerManaged = surface.worktreeManagerManaged === true;
     }
 
     // ── Step 2: Delta sync each target ──────────────────────────────────────
@@ -2221,7 +2221,7 @@ async function runUpdate(flowtaskDir, options, report) {
             flowtaskDir,
             runtimeRoot: userRuntimePaths.runtimeRoot,
           });
-          registerWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager);
+          migrateWorktreeManagerMcpForOpenCode(projectDir, ideDir, worktreeManager, opencodeWorktreeManagerManaged);
         } else {
           migrateLegacyTargetProject({
             projectDir,
@@ -2234,7 +2234,6 @@ async function runUpdate(flowtaskDir, options, report) {
         logSuccess(`Updated ${totalCopied} files, ${totalSkipped} unchanged`);
 
         // ── Target config: generated review plus the user-level layers ──
-        configureRunnerScripts(TARGET_DIR, subDir);
         const targetConfig = syncTargetConfig(flowtaskDir, TARGET_DIR, personaChoice, {
           userConfig,
         });
@@ -2273,7 +2272,7 @@ async function runUpdate(flowtaskDir, options, report) {
             classify(path.join(projectDir, ".opencode", "plugins", pluginName));
           }
         }
-        if (runnerContentDrifted(runnerBeforeByTarget.get(id), canonicalRunnerContent, subDir)) {
+        if (runnerContentDrifted(runnerBeforeByTarget.get(id), canonicalRunnerContent)) {
           classification.restoredPaths.add(path.posix.join(targetPrefix, "agents", "runner.md"));
         }
         if (targetConfig.review?.restored) classification.restoredPaths.add(toProjectPath(projectDir, targetConfig.review.path));

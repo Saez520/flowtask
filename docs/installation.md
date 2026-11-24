@@ -599,22 +599,34 @@ installation requires `worktree_manager/__main__.py` and
 the operation fails with a message that names the expected global path and the
 `flowtask install` action.
 
-When the MCP probe succeeds, `install` and `update` register the server per
-project: `mcp.worktree_manager` in `.opencode/opencode.json` for OpenCode and
-`mcpServers.worktree_manager` in `.mcp.json` for Claude Code. The entry uses the
+When the MCP probe succeeds, `install` and `update` register the server once in
+the user scope: `mcp.worktree_manager` in the OpenCode user configuration and
+the `worktree_manager` user-scope entry in Claude Code. The entry uses the
 Python interpreter resolved on the machine — `py -3`, `python3`, or `python` on
 Windows, and `python3` or `python` on macOS and Linux — with
 `-m worktree_manager.mcp_transport` and the managed global directory on
-`PYTHONPATH`. The registration writes the absolute path of the interpreter, so
+`PYTHONPATH`. The OpenCode entry writes the absolute path of the interpreter, so
 the server does not depend on `PATH` or on the working directory. A Store app
 execution alias is never accepted as Python: it is probed first, and only a
-real 3.9+ interpreter is registered. A foreign `worktree_manager` entry is
-preserved with a warning; an unreadable or invalid document is not modified.
+real 3.9+ interpreter is registered. When the Claude Code CLI is unavailable,
+the entry is merged into the user state file with a backup and a read-back
+verification. A foreign `worktree_manager` entry is preserved with a warning;
+an unreadable or invalid document is not modified.
+
+`install --global` and `update --global` prepare the manager and register the
+user-scope MCP without writing any project file. A project `install` or `update`
+ensures the same user-scope registration and then removes the managed
+`worktree_manager` entry from the project's `.opencode/opencode.json` and
+`.mcp.json`. The project entry is removed only when the user-scope entry is
+confirmed as managed by FlowTask; a failed registration or a preserved foreign
+entry keeps the project entry and emits the corresponding warning. The
+migration is idempotent and a later `update` retries it.
 
 The standalone manager is published on npm as `worktree-for-agents`; it does not
 expose a bin or `npx`. Its MCP publishes the seven operations and the guide in
-`initialize.instructions`. The Runner consumes those seven tools directly;
-`${FLOWTASK_SCRIPTS}/worktree.sh` remains the compatibility alternative.
+`initialize.instructions`. The Runner consumes those seven tools directly. The
+standalone CLI remains an external contract of the package; FlowTask does not
+ship or consume a shell entrypoint for it.
 
 If the download fails because the registry is unreachable or the package is
 incomplete, `install` and `update` continue with the rest of the installation
@@ -630,26 +642,21 @@ available, with the cause and the required action: install Python 3.9+ and run
 respond, so a broken copy never replaces a valid one; an update leaves the
 previous copy untouched.
 
-### Compatibility with previous installations
+### Standalone compatibility
 
-The `worktree.sh` entry point and the compatibility adapter remain available.
-The generic configuration prevails: the path passed with `--config` and the
-`.worktree-manager.conf` file are applied in that order, and the explicit path
-excludes any read of the previous configuration.
+FlowTask ships no consumer `worktree.sh` entrypoint and no adapter. The
+standalone CLI and its compatibility contract are documented in the package;
+they are not a FlowTask consumption path.
 
-The `.flowtask/config/worktree.json` file is read-only data. It is interpreted
-only in two requests: a `complete --preserve-dirty` without `--config`, which
-translates its `preserveDirty` value to `preserve_dirty=true` and declares the
-applied compatibility through stderr; and an explicit `recover`, which imports a
-previous transaction into the canonical state only once. An invalid previous
-configuration blocks the operation with code 3 and mutates nothing. Recovery
-never copies the canonical state back.
+The `.flowtask/config/worktree.json` file stays read-only data: the Runner reads
+its `preserveDirty` value to decide whether to pass `preserve_dirty: true` to
+`worktree_complete`. It never writes the file. Legacy transaction import and
+configuration translation belong to the standalone CLI contract and are not
+performed by FlowTask.
 
-An identity conflict between the canonical transaction and the previous one blocks
-the operation with code 5 and preserves both records. New installations do not
-activate any previous path: no backup mirrors or inherited references are created.
-No publication, definitive removal of the entry point, or unlimited compatibility
-is announced; the deprecation phase comes later.
+Windows is a release gate: the manager acquisition, the user-scope registration
+in OpenCode and Claude Code, and the removal of the per-project entry must be
+verified on a Windows machine before publishing.
 
 Installation does not expand permissions. The Runner consumes the manager through the
 seven tools of its MCP server; the manager's request protocol is not

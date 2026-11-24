@@ -193,11 +193,13 @@ RUNNER classifies ── does the CA exist in Engram?
 
 ### Portable manager and safe close
 
-The MCP server is the primary path; `worktree.sh` remains the compatibility
-entrypoint for administration and for when the server is not registered or
-does not respond. It can operate on a generic repository with `--repo` and a
-`key=value` configuration file passed with `--config`; it does not need a CA,
-Engram, or FlowTask. The configuration is not executed as a shell and only accepts
+The MCP server is the only consumption path. When it is not registered or does
+not respond, the Runner reports the cause, repairs the registration with
+`flowtask update` and resumes; there is no shell alternative. The standalone
+CLI can operate on a generic repository with `--repo` and a `key=value`
+configuration file passed with `--config`; it does not need a CA, Engram, or
+FlowTask. That CLI is an external contract of the package, not a FlowTask
+consumption path. The configuration is not executed as a shell and only accepts
 the keys documented in the README. `create` does not install dependencies or
 run tests by detection: `--prepare` and `--verify` are opt-in, require declared
 commands, and run in that order.
@@ -311,7 +313,7 @@ malformed `source` or `sourceCommit` remain rejected.
 - loads as a user-scope package registered once with an absolute package path and its options
 - gates the FlowTask surface: without an active project registration it removes the `flowtask-*` agents and payload skills; a broken runtime or an unsupported registration emits one actionable line
 - authorizes the runner's tools (`read`/`glob`/`grep`/`skill`/`mem_*`/`graphify`)
-- authorizes the seven `worktree_manager` MCP tools; `bash` keeps the administrative `worktree.sh` forms, read-only git and commit
+- authorizes the seven `worktree_manager` MCP tools; `bash` keeps read-only git and commit
 - blocks `task()` to subagents outside the list → *"delegate to the subagent"*
 - commit gate: requires a current `.review-stamp` (30 min TTL; bypass ≤5 lines)
 - context budget: degrades by levels (warning, reduced delivery, per-turn omission) and blocks attachments to the runner

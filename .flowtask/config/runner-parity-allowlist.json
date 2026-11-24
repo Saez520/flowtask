@@ -426,5 +426,9 @@
   {
     "sha256": "bb29868953553c47ad577171c14f3a5bd49b214cb61bf5db0e3bba5bbc53d72a",
     "reason": "HF-closure-message-english: plantilla de cierre en inglés (.flowtask/skills/runner-flow-ejecucion-ca/SKILL.md)"
+  },
+  {
+    "sha256": "6c07cbc464c10036d49c4fbe8108f74aec59fd11848403c42cb41f70d3380d60",
+    "reason": "HF-worktree-manager-global-mcp: the FLOWTASK_SCRIPTS constant is retired; the Runner reaches the manager only through MCP."
   }
 ]

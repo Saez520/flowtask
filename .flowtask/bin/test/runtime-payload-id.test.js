@@ -40,7 +40,7 @@ function writeRuntimeSource(root) {
     fs.writeFileSync(path.join(dir, "SKILL.md"), `---\nname: ${skill}\n---\n`, "utf8");
   }
   fs.mkdirSync(path.join(flowtaskDir, "scripts"), { recursive: true });
-  fs.writeFileSync(path.join(flowtaskDir, "scripts", "worktree.sh"), "#!/bin/sh\n", "utf8");
+  fs.writeFileSync(path.join(flowtaskDir, "scripts", "buffer-sync.ps1"), "Write-Output ok\n", "utf8");
   fs.mkdirSync(path.join(flowtaskDir, "agents"), { recursive: true });
   fs.writeFileSync(
     path.join(flowtaskDir, "agents", "runner.md"),
@@ -48,8 +48,7 @@ function writeRuntimeSource(root) {
       "---",
       "name: runner",
       "---",
-      'FLOWTASK_SCRIPTS="./.flowtask/scripts"',
-      "Skills live in `.flowtask/skills/`.",
+        "Skills live in `.flowtask/skills/`.",
       "Transport: `.flowtask/bin/lib/target-direct-transport.js`.",
       "",
       "## Skills disponibles",
