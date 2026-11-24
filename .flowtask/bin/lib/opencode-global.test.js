@@ -533,3 +533,105 @@ test("no earlier-file notice appears without FlowTask entries or outside Windows
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("a JSONC file alone is left byte for byte intact and the JSON file is created without a default agent", () => {
+  const { root, flowtaskDir, runtimeRoot } = createFixture();
+  const xdg = path.join(root, "xdg");
+  const messages = [];
+  try {
+    writeRuntimeManifest(runtimeRoot);
+    const jsoncPath = path.join(xdg, "opencode", "opencode.jsonc");
+    fs.mkdirSync(path.dirname(jsoncPath), { recursive: true });
+    const original = '{\n  // my settings\n  "theme": "dark", /* inline */\n}\n';
+    fs.writeFileSync(jsoncPath, original, "utf8");
+    setLogSink((entry) => messages.push(entry.message));
+    const result = withEnv({ XDG_CONFIG_HOME: xdg }, () => ensureOpencodeGlobalSurface({
+      flowtaskDir,
+      runtimeRoot,
+      commandSource: { agents: {}, commands: {} },
+    }));
+
+    assert.equal(result.ok, true);
+    assert.equal(result.status, "created");
+    assert.equal(fs.readFileSync(jsoncPath, "utf8"), original);
+    const written = readJson(path.join(xdg, "opencode", "opencode.json"));
+    assert.equal(Object.prototype.hasOwnProperty.call(written, "default_agent"), false);
+    assert.ok(messages.some((message) => message.includes(jsoncPath) && message.includes("not modified")));
+  } finally {
+    setLogSink(null);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a JSONC file next to a JSON file preserves foreign entries and the JSONC bytes", () => {
+  const { root, flowtaskDir, runtimeRoot } = createFixture();
+  const xdg = path.join(root, "xdg");
+  try {
+    writeRuntimeManifest(runtimeRoot);
+    const dir = path.join(xdg, "opencode");
+    const foreign = { type: "local", command: ["other"], enabled: true };
+    writeJson(path.join(dir, "opencode.json"), { theme: "dark", mcp: { foreign } });
+    const jsoncPath = path.join(dir, "opencode.jsonc");
+    const original = '{ // mine\n  "default_agent": "build" }\n';
+    fs.writeFileSync(jsoncPath, original, "utf8");
+    const result = withEnv({ XDG_CONFIG_HOME: xdg }, () => ensureOpencodeGlobalSurface({
+      flowtaskDir,
+      runtimeRoot,
+      commandSource: { agents: {}, commands: {} },
+    }));
+
+    assert.equal(result.ok, true);
+    const written = readJson(path.join(dir, "opencode.json"));
+    assert.equal(written.theme, "dark");
+    assert.deepEqual(written.mcp.foreign, foreign);
+    assert.equal(Object.prototype.hasOwnProperty.call(written, "default_agent"), false);
+    assert.equal(fs.readFileSync(jsoncPath, "utf8"), original);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an invalid JSON file still fails closed when a JSONC file exists", () => {
+  const { root, flowtaskDir, runtimeRoot } = createFixture();
+  const xdg = path.join(root, "xdg");
+  try {
+    writeRuntimeManifest(runtimeRoot);
+    const dir = path.join(xdg, "opencode");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "opencode.json"), "{ not json", "utf8");
+    fs.writeFileSync(path.join(dir, "opencode.jsonc"), "{}", "utf8");
+    const result = withEnv({ XDG_CONFIG_HOME: xdg }, () => ensureOpencodeGlobalSurface({
+      flowtaskDir,
+      runtimeRoot,
+      commandSource: { agents: {}, commands: {} },
+    }));
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "invalid");
+    assert.equal(fs.readFileSync(path.join(dir, "opencode.json"), "utf8"), "{ not json");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("removing the global surface works with a JSONC file next to the JSON file", () => {
+  const { root, flowtaskDir, runtimeRoot } = createFixture();
+  const xdg = path.join(root, "xdg");
+  try {
+    const dir = path.join(xdg, "opencode");
+    writeJson(path.join(dir, "opencode.json"), { theme: "dark", default_agent: "flowtask-runner" });
+    const jsoncPath = path.join(dir, "opencode.jsonc");
+    fs.writeFileSync(jsoncPath, "{}", "utf8");
+    const result = withEnv({ XDG_CONFIG_HOME: xdg }, () => removeOpencodeGlobalSurface({
+      flowtaskDir,
+      runtimeRoot,
+      commandSource: { agents: {}, commands: {} },
+    }));
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(readJson(path.join(dir, "opencode.json")), { theme: "dark" });
+    assert.equal(fs.readFileSync(jsoncPath, "utf8"), "{}");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

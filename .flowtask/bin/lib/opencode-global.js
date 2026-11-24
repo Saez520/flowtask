@@ -80,29 +80,20 @@ function hasFlowTaskEntries(filePath) {
 }
 
 /**
- * Read the user-level OpenCode configuration. Only JSON is managed: a JSONC
- * file, alone or next to the JSON file, fails closed without writing.
+ * Read the user-level OpenCode configuration. Only `opencode.json` is managed.
+ * A JSONC file next to it is never read or written: it is reported through
+ * `siblingJsonc` so the caller can leave the user's own settings alone.
  */
 export function readOpencodeGlobalConfig(options = {}) {
   const paths = resolveOpencodeUserPaths(options);
   const hasJson = fileExists(paths.configPath);
-  const hasJsonc = fileExists(paths.jsoncPath);
-  if (hasJsonc) {
-    return {
-      status: "jsonc_unmanaged",
-      config: null,
-      path: paths.configPath,
-      jsoncPath: paths.jsoncPath,
-      paths,
-      reason: `unmanaged JSONC configuration at ${paths.jsoncPath}`,
-    };
-  }
-  if (!hasJson) return { status: "absent", config: {}, path: paths.configPath, paths };
+  const siblingJsonc = fileExists(paths.jsoncPath);
+  if (!hasJson) return { status: "absent", config: {}, path: paths.configPath, paths, siblingJsonc };
 
   try {
-    return { status: "ok", config: readJsonObject(paths.configPath), path: paths.configPath, paths };
+    return { status: "ok", config: readJsonObject(paths.configPath), path: paths.configPath, paths, siblingJsonc };
   } catch (error) {
-    return { status: "invalid", config: null, path: paths.configPath, paths, reason: error.message };
+    return { status: "invalid", config: null, path: paths.configPath, paths, siblingJsonc, reason: error.message };
   }
 }
 
@@ -209,6 +200,7 @@ export function applyOpencodeGlobalSurface(config, {
   runtimeRoot,
   commandSource = null,
   worktreeManager = null,
+  siblingJsonc = false,
 } = {}) {
   const root = runtimeRoot ?? resolveUserRuntimePaths().runtimeRoot;
   const canonical = commandSource ?? canonicalConfig(flowtaskDir);
@@ -262,7 +254,7 @@ export function applyOpencodeGlobalSurface(config, {
     next.commands = commands;
   }
 
-  if (!Object.prototype.hasOwnProperty.call(next, "default_agent")) {
+  if (!siblingJsonc && !Object.prototype.hasOwnProperty.call(next, "default_agent")) {
     next.default_agent = canonical.default_agent ?? "flowtask-runner";
   }
 
@@ -314,7 +306,7 @@ export function ensureOpencodeGlobalSurface({
     logInfo(`The OpenCode configuration now lives at ${userPaths.configPath}; the earlier file at ${legacyPath} was left untouched.`);
   }
   const read = readOpencodeGlobalConfig({ configDir: userPaths.configDir });
-  if (read.status === "jsonc_unmanaged" || read.status === "invalid") {
+  if (read.status === "invalid") {
     return {
       ok: false,
       status: read.status,
@@ -333,7 +325,11 @@ export function ensureOpencodeGlobalSurface({
     runtimeRoot: root,
     commandSource,
     worktreeManager,
+    siblingJsonc: read.siblingJsonc,
   });
+  if (read.siblingJsonc) {
+    logInfo(`Found ${userPaths.jsoncPath}: it was not modified. The FlowTask runner is available in the agent selector; select it there or set default_agent in your own file.`);
+  }
   for (const warning of applied.warnings) logWarn(warning);
   const written = writeOpencodeGlobalConfig(applied.config, { paths: userPaths });
   if (written.changed) {
