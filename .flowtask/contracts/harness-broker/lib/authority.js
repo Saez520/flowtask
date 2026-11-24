@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDocument, visit } from "yaml";
-import { getValidator } from "./schemas.js";
+import { getValidator, readSchema } from "./schemas.js";
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PLACEHOLDERS = [
@@ -231,4 +231,107 @@ export function matchPath(pattern, path) {
     }
   }
   return new RegExp(`^(?:${source})(?:/.*)?$`, "s").test(path);
+}
+
+const PROFILE_NAME = new RegExp(readSchema("common").$defs.authority_profile_name.pattern);
+
+export function resolveProfile(name, sources) {
+  if (typeof name !== "string" || !PROFILE_NAME.test(name)) {
+    return { ok: false, code: "invalid_name", layer: null, fields: [] };
+  }
+  for (const layer of readAuthorityContract().resolution.order) {
+    const source = sources?.[layer];
+    if (source === undefined || source === null) continue;
+    if (typeof source !== "function") {
+      throw new TypeError(`the ${layer} source must be a function`);
+    }
+    const text = source(name);
+    if (text === undefined || text === null) continue;
+    return loadProfileText(name, layer, text);
+  }
+  return { ok: false, code: "not_found", layer: null, fields: [] };
+}
+
+function loadProfileText(name, layer, text) {
+  const parsed = parseProfileYaml(text);
+  if (!parsed.ok) return { ok: false, code: "invalid", layer, fields: parsed.fields };
+  const verdict = validateProfile(parsed.document);
+  if (!verdict.ok) return { ok: false, code: "invalid", layer, fields: verdict.fields };
+  if (parsed.document.name !== name) {
+    return { ok: false, code: "invalid", layer, fields: [{ field: "name", problem: "name_mismatch" }] };
+  }
+  return { ok: true, layer, document: parsed.document, fingerprint: fingerprintOf(parsed.document) };
+}
+
+export function delegateErrorFor(resolution, name) {
+  if (resolution.ok) {
+    throw new TypeError("a resolved profile has no delegation error");
+  }
+  return profileError(resolutionProblem(resolution, name));
+}
+
+function resolutionProblem(resolution, name) {
+  if (resolution.code === "not_found") return `profile "${name}" was not found`;
+  if (resolution.code === "invalid_name") return "invalid profile name";
+  const fields = resolution.fields.map((item) => item.field).join(", ");
+  return `profile "${name}" is invalid in the ${resolution.layer} layer: ${fields}`;
+}
+
+export function missingProfileError() {
+  return profileError("required");
+}
+
+function profileError(problem) {
+  return {
+    error: {
+      code: "validation_error",
+      message: "The request is invalid.",
+      fields: [{ field: "authority_profile", problem }]
+    }
+  };
+}
+
+export function checkDelegationAuthority({ permissions, autonomy, explicit_order: explicitOrder }) {
+  const { layers } = readAuthorityContract();
+  if (permissions === null || permissions === undefined) {
+    return refusal("authority_layers_missing", "The permissions layer is missing.");
+  }
+  if (!isLayerValid(permissions, layers.permissions.version, "envelope", layers.permissions.envelopes)) {
+    return refusal("authority_layers_invalid", "The permissions layer is invalid.");
+  }
+  if (autonomy === null || autonomy === undefined) {
+    return refusal("authority_layers_missing", "The autonomy layer is missing.");
+  }
+  if (!isLayerValid(autonomy, layers.autonomy.version, "profile", layers.autonomy.profiles)) {
+    return refusal("authority_layers_invalid", "The autonomy layer is invalid.");
+  }
+  if (layers.autonomy.explicit_order_required_for.includes(autonomy.profile) && explicitOrder !== true) {
+    return refusal(
+      "authority_explicit_order_required",
+      "This autonomy profile delegates only on an explicit order from the operator."
+    );
+  }
+  return { ok: true };
+}
+
+function isLayerValid(layer, version, valueKey, allowed) {
+  if (layer === null || typeof layer !== "object" || Array.isArray(layer)) return false;
+  const keys = Object.keys(layer).sort().join(",");
+  if (keys !== ["version", valueKey].sort().join(",")) return false;
+  return layer.version === version && allowed.includes(layer[valueKey]);
+}
+
+function refusal(reason, detail) {
+  return { ok: false, reason, detail };
+}
+
+export function checkEnforceable(enforcement) {
+  const missing = readAuthorityContract().required_enforcement.filter((rule) => enforcement?.[rule] !== true);
+  if (missing.length === 0) return { ok: true };
+  return {
+    ok: false,
+    reason: "authority_rule_unenforceable",
+    detail: `The adapter does not declare enforcement for: ${missing.join(", ")}.`,
+    missing
+  };
 }
