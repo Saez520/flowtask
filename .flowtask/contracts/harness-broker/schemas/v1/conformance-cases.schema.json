@@ -53,11 +53,12 @@
           },
           "requires": {
             "type": "string",
-            "description": "What the case needs to run: none, a running broker, or a real adapter.",
+            "description": "What the case needs to run: none, a running broker, a real adapter, or gate: the FlowTask permission gate.",
             "enum": [
               "none",
               "broker",
-              "adapter"
+              "adapter",
+              "gate"
             ]
           },
           "capability": {
@@ -79,13 +80,13 @@
           },
           "criteria": {
             "type": "array",
-            "description": "Acceptance criteria of the contract that the case covers, from C1 to C33.",
+            "description": "Acceptance criteria of the contract that the case covers, from C1 to C33 and from A1 to A18.",
             "minItems": 1,
             "uniqueItems": true,
             "items": {
               "type": "string",
               "description": "One criterion identifier.",
-              "pattern": "^C([1-9]|[12][0-9]|3[0-3])$"
+              "pattern": "^(C([1-9]|[12][0-9]|3[0-3])|A([1-9]|1[0-8]))$"
             }
           },
           "scenario": {

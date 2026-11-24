@@ -59,6 +59,40 @@
         "native_agent_list",
         "none"
       ]
+    },
+    "enforcement": {
+      "type": "object",
+      "description": "Authority rules the adapter can make effective. When absent, the adapter declares none of them.",
+      "additionalProperties": false,
+      "required": [
+        "filesystem",
+        "shell",
+        "network",
+        "tools",
+        "direct_harness_denial"
+      ],
+      "properties": {
+        "filesystem": {
+          "type": "boolean",
+          "description": "The adapter, with its enforcement layer, makes the filesystem rules of an authority profile effective."
+        },
+        "shell": {
+          "type": "boolean",
+          "description": "The adapter, with its enforcement layer, makes the shell rules of an authority profile effective."
+        },
+        "network": {
+          "type": "boolean",
+          "description": "The adapter, with its enforcement layer, makes the network rules of an authority profile effective."
+        },
+        "tools": {
+          "type": "boolean",
+          "description": "The adapter, with its enforcement layer, makes the tool rules of an authority profile effective."
+        },
+        "direct_harness_denial": {
+          "type": "boolean",
+          "description": "The adapter denies a direct invocation of a harness by the child."
+        }
+      }
     }
   }
 }

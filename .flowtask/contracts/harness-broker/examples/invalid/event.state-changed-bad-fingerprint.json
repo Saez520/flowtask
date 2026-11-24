@@ -1,0 +1,14 @@
+{
+  "run_id": "run-0001",
+  "cursor": 2,
+  "timestamp": "2026-11-23T20:00:01Z",
+  "type": "state_changed",
+  "payload": {
+    "from": "submitted",
+    "to": "working",
+    "authority_profile": {
+      "name": "standard",
+      "fingerprint": "not-a-sha256-digest"
+    }
+  }
+}
