@@ -1,0 +1,10 @@
+{
+  "run_id": "run-0001",
+  "cursor": 6,
+  "timestamp": "2026-11-23T20:00:08Z",
+  "type": "tool_call_update",
+  "payload": {
+    "tool_call_id": "tool-1",
+    "status": "completed"
+  }
+}

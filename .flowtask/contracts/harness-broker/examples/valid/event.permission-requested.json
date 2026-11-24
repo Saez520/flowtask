@@ -1,0 +1,26 @@
+{
+  "run_id": "run-0001",
+  "cursor": 7,
+  "timestamp": "2026-11-23T20:00:09Z",
+  "type": "permission_requested",
+  "payload": {
+    "request_id": "request-1",
+    "tool_call_id": "tool-2",
+    "tool": {
+      "kind": "execute",
+      "title": "Run command"
+    },
+    "options": [
+      {
+        "option_id": "allow_once",
+        "kind": "allow_once",
+        "name": "Allow once"
+      },
+      {
+        "option_id": "reject_once",
+        "kind": "reject_once",
+        "name": "Reject once"
+      }
+    ]
+  }
+}

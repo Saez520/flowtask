@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "run_id": "run-0001",
+  "state": "working",
+  "events": [
+    {
+      "run_id": "run-0001",
+      "cursor": 1,
+      "timestamp": "2026-11-23T20:00:00Z",
+      "type": "heartbeat",
+      "payload": {}
+    }
+  ],
+  "next_cursor": 1,
+  "last_cursor": 1
+}

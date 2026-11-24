@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:events-page",
+  "title": "EventsPage",
+  "description": "Page of events returned when reading a run log from a cursor. Reading from the last cursor returns an empty events list and the same cursor; that rule is enforced by the reference model, not by this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "state",
+    "events",
+    "next_cursor",
+    "last_cursor"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/schema_version",
+      "description": "Contract version. Must be 1."
+    },
+    "run_id": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id",
+      "description": "Run whose log is read."
+    },
+    "state": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/state",
+      "description": "State of the run at the moment of the read."
+    },
+    "events": {
+      "type": "array",
+      "description": "Events after the requested cursor, in cursor order.",
+      "items": {
+        "$ref": "urn:flowtask:harness-broker:v1:event",
+        "description": "One event of the run log."
+      }
+    },
+    "next_cursor": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/cursor",
+      "description": "Cursor to pass to continue reading. Equals the requested cursor when there are no new events."
+    },
+    "last_cursor": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/cursor",
+      "description": "Cursor of the last event that exists in the run log, 0 when the log is empty."
+    }
+  }
+}

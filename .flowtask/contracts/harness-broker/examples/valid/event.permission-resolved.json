@@ -1,0 +1,12 @@
+{
+  "run_id": "run-0001",
+  "cursor": 8,
+  "timestamp": "2026-11-23T20:00:10Z",
+  "type": "permission_resolved",
+  "payload": {
+    "request_id": "request-1",
+    "option_id": "allow_once",
+    "option_kind": "allow_once",
+    "decided_by": "parent"
+  }
+}

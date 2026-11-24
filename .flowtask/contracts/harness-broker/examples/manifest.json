@@ -139,5 +139,154 @@
     "error_paths": [
       "usage_reporting"
     ]
+  },
+  {
+    "file": "valid/event.state-changed-submitted.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.state-changed-working.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.state-changed-input-required.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.state-changed-failed.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.state-changed-rejected.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.agent-message.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.agent-thought.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.tool-call.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.tool-call-update.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.permission-requested.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.permission-resolved.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.usage.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.diagnostic.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "invalid/event.state-changed-failed-without-reason.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "reason"
+    ]
+  },
+  {
+    "file": "invalid/event.state-changed-failed-unknown-reason.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "reason"
+    ]
+  },
+  {
+    "file": "invalid/event.state-changed-input-required-without-cause.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "cause"
+    ]
+  },
+  {
+    "file": "invalid/event.state-changed-auth-required-wrong-cause.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "cause"
+    ]
+  },
+  {
+    "file": "invalid/event.state-changed-rejected-without-detail.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "detail"
+    ]
+  },
+  {
+    "file": "invalid/event.unknown-type.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "type"
+    ]
+  },
+  {
+    "file": "valid/events-page.read-page.json",
+    "schema": "events-page",
+    "valid": true
+  },
+  {
+    "file": "invalid/events-page.unknown-event-type.json",
+    "schema": "events-page",
+    "valid": false,
+    "error_paths": [
+      "type"
+    ]
+  },
+  {
+    "file": "valid/run-status.working.json",
+    "schema": "run-status",
+    "valid": true
+  },
+  {
+    "file": "valid/run-status.input-required-permission.json",
+    "schema": "run-status",
+    "valid": true
+  },
+  {
+    "file": "valid/run-status.terminal-failed.json",
+    "schema": "run-status",
+    "valid": true
+  },
+  {
+    "file": "invalid/run-status.source-out-of-enum.json",
+    "schema": "run-status",
+    "valid": false,
+    "error_paths": [
+      "last_activity_source"
+    ]
   }
 ]

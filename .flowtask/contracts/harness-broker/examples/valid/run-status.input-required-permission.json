@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "run_id": "run-0001",
+  "state": "input_required",
+  "pause": {
+    "kind": "input_required",
+    "cause": "permission_pending"
+  },
+  "reason": null,
+  "detail": null,
+  "harness": "opencode",
+  "limits": {
+    "first_event_timeout": 60000,
+    "idle_timeout": 120000,
+    "wall_timeout": 1800000
+  },
+  "last_activity_at": "2026-11-23T20:00:09Z",
+  "last_activity_source": "agent_update",
+  "active_limits": [
+    {
+      "name": "wall_timeout",
+      "remaining_ms": 1000000
+    }
+  ],
+  "last_cursor": 7
+}

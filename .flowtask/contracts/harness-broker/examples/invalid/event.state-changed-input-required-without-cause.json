@@ -1,0 +1,10 @@
+{
+  "run_id": "run-0001",
+  "cursor": 6,
+  "timestamp": "2026-11-23T20:00:20Z",
+  "type": "state_changed",
+  "payload": {
+    "from": "working",
+    "to": "input_required"
+  }
+}

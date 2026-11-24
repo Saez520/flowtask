@@ -1,0 +1,15 @@
+{
+  "run_id": "run-0001",
+  "cursor": 5,
+  "timestamp": "2026-11-23T20:00:07Z",
+  "type": "tool_call",
+  "payload": {
+    "tool_call_id": "tool-1",
+    "kind": "read",
+    "title": "Read file",
+    "input": {
+      "path": "/example/file.md"
+    },
+    "diff": null
+  }
+}

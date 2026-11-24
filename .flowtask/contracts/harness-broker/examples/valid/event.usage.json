@@ -1,0 +1,11 @@
+{
+  "run_id": "run-0001",
+  "cursor": 9,
+  "timestamp": "2026-11-23T20:00:11Z",
+  "type": "usage",
+  "payload": {
+    "input_tokens": null,
+    "output_tokens": 0,
+    "cost": null
+  }
+}

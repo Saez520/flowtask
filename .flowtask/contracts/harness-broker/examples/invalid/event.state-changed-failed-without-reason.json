@@ -1,0 +1,10 @@
+{
+  "run_id": "run-0001",
+  "cursor": 3,
+  "timestamp": "2026-11-23T20:02:00Z",
+  "type": "state_changed",
+  "payload": {
+    "from": "working",
+    "to": "failed"
+  }
+}

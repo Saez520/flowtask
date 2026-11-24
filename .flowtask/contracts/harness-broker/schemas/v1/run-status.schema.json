@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:run-status",
+  "title": "RunStatus",
+  "description": "Current status of a run, including its liveness signal and the limits that apply now with the time left on each. The liveness source is observed by the broker; the child cannot write it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "state",
+    "pause",
+    "reason",
+    "detail",
+    "harness",
+    "limits",
+    "last_activity_at",
+    "last_activity_source",
+    "active_limits",
+    "last_cursor"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/schema_version",
+      "description": "Contract version. Must be 1."
+    },
+    "run_id": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id",
+      "description": "Run described by this status."
+    },
+    "state": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/state",
+      "description": "Current state of the run."
+    },
+    "pause": {
+      "description": "Pause in progress, or null when the run is not paused.",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "cause"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "description": "Pause state the run is in.",
+              "enum": [
+                "input_required",
+                "auth_required"
+              ]
+            },
+            "cause": {
+              "type": "string",
+              "description": "Cause of the pause, from the vocabulary of its kind."
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "input_required",
+                    "description": "Condition: input pause."
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "then": {
+                "required": [
+                  "cause"
+                ],
+                "properties": {
+                  "cause": {
+                    "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/input_required_cause",
+                    "description": "Cause of the input pause."
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "const": "auth_required",
+                    "description": "Condition: authentication pause."
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "then": {
+                "required": [
+                  "cause"
+                ],
+                "properties": {
+                  "cause": {
+                    "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/auth_required_cause",
+                    "description": "Cause of the authentication pause."
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "reason": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+      "description": "Reason of the current state when it is failed or rejected; null otherwise."
+    },
+    "detail": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+      "description": "Human-readable detail of the current state; null when there is none."
+    },
+    "harness": {
+      "type": "string",
+      "description": "Harness that runs the delegation.",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "limits": {
+      "type": "object",
+      "description": "Limits in effect for the run, in milliseconds, as resolved from the request or the broker configuration.",
+      "additionalProperties": false,
+      "required": [
+        "first_event_timeout",
+        "idle_timeout",
+        "wall_timeout"
+      ],
+      "properties": {
+        "first_event_timeout": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/limit_ms",
+          "description": "Milliseconds allowed until the first valid event."
+        },
+        "idle_timeout": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/limit_ms",
+          "description": "Milliseconds allowed without activity after the first event, outside pauses."
+        },
+        "wall_timeout": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/limit_ms",
+          "description": "Milliseconds allowed for the whole run, pauses included."
+        }
+      }
+    },
+    "last_activity_at": {
+      "description": "Instant of the last observed activity, or null when there has been none.",
+      "anyOf": [
+        {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "last_activity_source": {
+      "description": "Source of the last observed activity, or null when there has been none.",
+      "anyOf": [
+        {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/activity_source"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "active_limits": {
+      "type": "array",
+      "description": "Limits that are running now with the milliseconds left on each. Non-terminal runs always include wall_timeout; terminal runs have none.",
+      "items": {
+        "type": "object",
+        "description": "One running limit.",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "remaining_ms"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Limit that is running.",
+            "enum": [
+              "first_event_timeout",
+              "idle_timeout",
+              "wall_timeout"
+            ]
+          },
+          "remaining_ms": {
+            "type": "integer",
+            "description": "Milliseconds left before the limit expires, 0 or more.",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "last_cursor": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/cursor",
+      "description": "Cursor of the last event of the run, to continue reading from it."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/terminal_state",
+            "description": "Condition: the run is terminal."
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "active_limits": {
+            "type": "array",
+            "description": "Terminal runs have no running limits.",
+            "maxItems": 0
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "active_limits": {
+            "type": "array",
+            "description": "Non-terminal runs include wall_timeout among their running limits.",
+            "contains": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "const": "wall_timeout",
+                  "description": "The wall timeout limit."
+                }
+              },
+              "required": [
+                "name"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "const": "input_required",
+            "description": "Condition: the run waits for input."
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "pause"
+        ],
+        "properties": {
+          "pause": {
+            "type": "object",
+            "description": "The pause of an input_required run is an input pause.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "input_required",
+                "description": "Input pause kind."
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "const": "auth_required",
+            "description": "Condition: the run waits for authentication or balance."
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "pause"
+        ],
+        "properties": {
+          "pause": {
+            "type": "object",
+            "description": "The pause of an auth_required run is an authentication pause.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "auth_required",
+                "description": "Authentication pause kind."
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
