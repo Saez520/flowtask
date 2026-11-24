@@ -3,7 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { applyOpencodeGlobalSurface, removeOpencodeGlobalSurface } from "./opencode-global.js";
+import {
+  applyOpencodeGlobalSurface,
+  ensureOpencodeGlobalSurface,
+  removeOpencodeGlobalSurface,
+  resolveOpencodeUserPaths,
+} from "./opencode-global.js";
+import { setLogSink } from "./logger.js";
 import { WORKTREE_MANAGER_MCP_MODULE } from "./worktree-mcp-registration.js";
 import { resolveUserPayloadPaths } from "./user-runtime.js";
 
@@ -393,6 +399,137 @@ test("removing the global surface preserves a foreign worktree entry", () => {
   } finally {
     if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
     else process.env.XDG_CONFIG_HOME = previousXdg;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+function writeRuntimeManifest(runtimeRoot) {
+  fs.mkdirSync(path.join(runtimeRoot, "versions", "1.0.0-test"), { recursive: true });
+  writeJson(path.join(runtimeRoot, "runtime.json"), {
+    schema: 2,
+    payloads: { canonical: { payloadId: "1.0.0-test", files: [] } },
+  });
+}
+
+function withEnv(values, fn) {
+  const previous = {};
+  for (const [key, value] of Object.entries(values)) {
+    previous[key] = process.env[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  try {
+    return fn();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+function withPlatform(platform, fn) {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: platform });
+  try {
+    return fn();
+  } finally {
+    Object.defineProperty(process, "platform", descriptor);
+  }
+}
+
+test("the default OpenCode directory is ~/.config/opencode on every platform", () => {
+  for (const platform of ["win32", "darwin", "linux"]) {
+    const paths = withPlatform(platform, () => withEnv(
+      { XDG_CONFIG_HOME: undefined, APPDATA: "C:/Users/x/AppData/Roaming" },
+      () => resolveOpencodeUserPaths({ homeDir: "C:/Users/x" }),
+    ));
+    assert.equal(paths.configDir, path.join("C:/Users/x", ".config", "opencode"), platform);
+    assert.equal(paths.configPath, path.join("C:/Users/x", ".config", "opencode", "opencode.json"), platform);
+  }
+});
+
+test("XDG_CONFIG_HOME takes precedence over the home directory", () => {
+  const paths = withPlatform("win32", () => withEnv(
+    { XDG_CONFIG_HOME: "/custom/xdg" },
+    () => resolveOpencodeUserPaths({ homeDir: "/home/x" }),
+  ));
+  assert.equal(paths.configDir, path.join("/custom/xdg", "opencode"));
+});
+
+test("an explicit configDir overrides the platform default", () => {
+  assert.equal(resolveOpencodeUserPaths({ configDir: "/explicit" }).configDir, "/explicit");
+});
+
+test("ensuring the global surface merges into an existing file and keeps foreign entries", () => {
+  const { root, flowtaskDir, runtimeRoot } = createFixture();
+  const xdg = path.join(root, "xdg");
+  try {
+    writeRuntimeManifest(runtimeRoot);
+    const configPath = path.join(xdg, "opencode", "opencode.json");
+    const foreign = { type: "local", command: ["other"], enabled: true };
+    writeJson(configPath, { theme: "dark", mcp: { foreign }, agents: { mine: { mode: "primary" } } });
+    const result = withEnv({ XDG_CONFIG_HOME: xdg }, () => ensureOpencodeGlobalSurface({
+      flowtaskDir,
+      runtimeRoot,
+      commandSource: { agents: {}, commands: {} },
+    }));
+
+    assert.equal(result.ok, true);
+    assert.equal(result.path, configPath);
+    const written = readJson(configPath);
+    assert.equal(written.theme, "dark");
+    assert.deepEqual(written.mcp.foreign, foreign);
+    assert.deepEqual(written.agents.mine, { mode: "primary" });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a Windows install announces once that the earlier APPDATA file was left untouched", () => {
+  const { root, flowtaskDir, runtimeRoot } = createFixture();
+  const xdg = path.join(root, "xdg");
+  const appData = path.join(root, "AppData");
+  const legacy = path.join(appData, "opencode", "opencode.json");
+  const messages = [];
+  try {
+    writeRuntimeManifest(runtimeRoot);
+    writeJson(legacy, { agents: { "flowtask-runner": {} } });
+    const before = fs.readFileSync(legacy, "utf8");
+    setLogSink((entry) => messages.push(entry.message));
+    withPlatform("win32", () => withEnv({ XDG_CONFIG_HOME: xdg, APPDATA: appData }, () => {
+      ensureOpencodeGlobalSurface({ flowtaskDir, runtimeRoot, commandSource: { agents: {}, commands: {} } });
+    }));
+
+    const notices = messages.filter((message) => message.includes(legacy));
+    assert.equal(notices.length, 1);
+    assert.equal(fs.readFileSync(legacy, "utf8"), before);
+  } finally {
+    setLogSink(null);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("no earlier-file notice appears without FlowTask entries or outside Windows", () => {
+  const { root, flowtaskDir, runtimeRoot } = createFixture();
+  const xdg = path.join(root, "xdg");
+  const appData = path.join(root, "AppData");
+  const legacy = path.join(appData, "opencode", "opencode.json");
+  const messages = [];
+  try {
+    writeRuntimeManifest(runtimeRoot);
+    writeJson(legacy, { agents: { mine: {} } });
+    setLogSink((entry) => messages.push(entry.message));
+    const run = (platform) => withPlatform(platform, () => withEnv({ XDG_CONFIG_HOME: xdg, APPDATA: appData }, () => {
+      ensureOpencodeGlobalSurface({ flowtaskDir, runtimeRoot, commandSource: { agents: {}, commands: {} } });
+    }));
+    run("win32");
+    writeJson(legacy, { agents: { "flowtask-runner": {} } });
+    run("linux");
+
+    assert.equal(messages.some((message) => message.includes(legacy)), false);
+  } finally {
+    setLogSink(null);
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
