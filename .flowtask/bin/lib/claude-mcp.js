@@ -70,6 +70,23 @@ function stateHasUserEngram(claudeUserDir) {
 }
 
 /**
+ * Classify the user-scope worktree manager entry in the Claude state file.
+ * `absent` means there is no entry to preserve; `managed` means FlowTask owns
+ * the entry shape; `foreign` means the entry belongs to the user.
+ */
+function readUserWorktreeManagerState(claudeUserDir) {
+  const read = readStateObject(resolveStateFile(claudeUserDir));
+  if (!read.ok) return read;
+  const state = read.value;
+  if (!isPlainObject(state) || (state.mcpServers !== undefined && !isPlainObject(state.mcpServers))) {
+    return { ok: true, kind: "absent" };
+  }
+  const current = state.mcpServers?.[WORKTREE_MANAGER_MCP_SERVER];
+  if (current === undefined) return { ok: true, kind: "absent" };
+  return { ok: true, kind: isFlowTaskWorktreeManagerEntry(current, "claude") ? "managed" : "foreign" };
+}
+
+/**
  * Ensure Engram is registered in the user scope through the official CLI.
  * A missing or failing CLI never edits `~/.claude.json`: the exact command is
  * returned instead.
@@ -357,6 +374,14 @@ export function ensureUserWorktreeManager({
   const managerCause = managerDirectoryCause(managerDir);
   if (managerCause) return { ok: false, action: "unavailable", managed: false, error: managerCause, command };
 
+  const stateBefore = readUserWorktreeManagerState(claudeUserDir);
+  if (stateBefore.ok && stateBefore.kind === "managed") {
+    return { ok: true, action: "present", managed: false, error: null, command };
+  }
+  if (stateBefore.ok && stateBefore.kind === "foreign") {
+    return { ok: true, action: "preserved", managed: false, error: null, command };
+  }
+
   let getResult;
   try {
     getResult = runClaude(claudeBin, ["mcp", "get", WORKTREE_MANAGER_MCP_SERVER], { claudeUserDir, spawn });
@@ -399,6 +424,15 @@ export function ensureUserWorktreeManager({
       `Could not add the Worktree Manager to the user scope: ${String(addResult?.stderr ?? addResult?.error?.message ?? "unknown error").trim()}. ` +
         `Run manually: ${command}`,
     );
+  }
+
+  const stateAfterAdd = readUserWorktreeManagerState(claudeUserDir);
+  if (stateAfterAdd.ok && stateAfterAdd.kind === "managed") {
+    const managed = runtimeManifest?.mcp?.worktree_manager?.managed !== false;
+    return { ok: true, action: "added", managed, error: null, command };
+  }
+  if (stateAfterAdd.ok && stateAfterAdd.kind === "foreign") {
+    return { ok: true, action: "preserved", managed: false, error: null, command };
   }
 
   const verify = runClaude(claudeBin, ["mcp", "get", WORKTREE_MANAGER_MCP_SERVER], { claudeUserDir, spawn });
