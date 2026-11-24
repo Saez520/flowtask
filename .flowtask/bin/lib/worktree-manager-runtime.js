@@ -154,8 +154,39 @@ function copyRuntimeEntry(src, dest, relative, fileSet) {
   }
 }
 
-export function publishGlobalWorktreeManager({ sourceDir, destinationDir, sourceCommit, version, source = "submodule", faultInjector } = {}) {
+const TRANSIENT_RENAME_CODES = Object.freeze(["EPERM", "EBUSY", "EACCES"]);
+const RENAME_MAX_ATTEMPTS = 6;
+const RENAME_BASE_DELAY_MS = 100;
+
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Rename a path, retrying while the operating system reports it as locked
+ * (EPERM, EBUSY, EACCES), as Windows does while a process holds a handle.
+ * Waits 100 ms, growing by 100 ms per attempt, for at most six attempts.
+ * Any other error is thrown at once.
+ */
+export function renameWithRetry(from, to, { renameSync = fs.renameSync, sleep = sleepSync } = {}) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      renameSync(from, to);
+      return;
+    } catch (error) {
+      if (!TRANSIENT_RENAME_CODES.includes(error?.code)) throw error;
+      if (attempt >= RENAME_MAX_ATTEMPTS) {
+        error.message += `; the path stayed locked after ${RENAME_MAX_ATTEMPTS} attempts. Close OpenCode and any Python process that uses the worktree manager, then retry`;
+        throw error;
+      }
+      sleep(RENAME_BASE_DELAY_MS * attempt);
+    }
+  }
+}
+
+export function publishGlobalWorktreeManager({ sourceDir, destinationDir, sourceCommit, version, source = "submodule", faultInjector, renameSync, sleep } = {}) {
   if (!sourceDir || !destinationDir) throw new Error("sourceDir and destinationDir are required");
+  const rename = (from, to) => renameWithRetry(from, to, { renameSync, sleep });
   if (!WORKTREE_MANAGER_SOURCES.includes(source)) {
     const err = new Error(`invalid Worktree Manager source: ${source}`);
     err.code = "WORKTREE_MANAGER_SOURCE_INVALID";
@@ -228,8 +259,8 @@ export function publishGlobalWorktreeManager({ sourceDir, destinationDir, source
 
     if (faultInjector) faultInjector("STAGE-PUBLISH");
 
-    if (fs.existsSync(destinationDir)) fs.renameSync(destinationDir, backup);
-    fs.renameSync(stage, destinationDir);
+    if (fs.existsSync(destinationDir)) rename(destinationDir, backup);
+    rename(stage, destinationDir);
 
     if (faultInjector) faultInjector("CONFIG");
 
@@ -251,7 +282,7 @@ export function publishGlobalWorktreeManager({ sourceDir, destinationDir, source
       fs.rmSync(stage, { recursive: true, force: true });
       if (fs.existsSync(backup)) {
         fs.rmSync(destinationDir, { recursive: true, force: true });
-        fs.renameSync(backup, destinationDir);
+        rename(backup, destinationDir);
       }
     } catch (rollbackError) {
       error.message += `; rollback failed: ${rollbackError.message}`;
