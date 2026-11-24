@@ -11,7 +11,7 @@ import {
 } from "./user-runtime.js";
 
 const FLOWTASK_AGENT_PREFIX = "flowtask-";
-const FLOWTASK_PLUGINS = Object.freeze(["flowtask-permission-gate", "flowtask-context-checkpoint"]);
+const FLOWTASK_NPM_PLUGIN_NAMES = Object.freeze(["flowtask-permission-gate"]);
 const DEFAULT_ENGRAM = Object.freeze({
   type: "local",
   command: Object.freeze(["engram", "mcp"]),
@@ -123,10 +123,22 @@ function flowTaskPluginEntry(runtimePaths, name, options) {
   };
 }
 
+function flowTaskNpmPluginEntry(name, spec, options) {
+  return {
+    package: `${name}@${spec}`,
+    options,
+  };
+}
+
+function isFlowTaskNpmPackage(entryPath) {
+  return FLOWTASK_NPM_PLUGIN_NAMES.some((name) => entryPath === name || entryPath.startsWith(`${name}@`));
+}
+
 function isOurPluginEntry(entry, runtimeRoot) {
   const entryPath = pluginEntryPath(entry);
   if (typeof entryPath !== "string") return false;
   const normalized = entryPath.replaceAll("\\", "/");
+  if (isFlowTaskNpmPackage(normalized)) return true;
   const runtime = runtimeRoot.replaceAll("\\", "/");
   return normalized.startsWith(`${runtime}/plugins/`) || normalized.includes("/flowtask/plugins/");
 }
@@ -176,7 +188,7 @@ export function applyOpencodeGlobalSurface(config, {
   const runtimePaths = resolveUserRuntimePaths({ runtimeRoot: root });
   const keptPlugins = plugins.filter((entry) => !isOurPluginEntry(entry, root));
   keptPlugins.push(
-    flowTaskPluginEntry(runtimePaths, "flowtask-permission-gate", {
+    flowTaskNpmPluginEntry("flowtask-permission-gate", "^2.0.0", {
       configDir: runtimePaths.configDir,
       runtimeRoot: root,
     }),

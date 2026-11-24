@@ -211,6 +211,19 @@ describe("OpenCode user-level lifecycle", () => {
     assert.equal(config.default_agent, "flowtask-runner");
     assert.equal(config.skills.length, 1, "the skills array must point at a single payload");
     assert.equal(config.plugins.length, 2, "the gate and the context-checkpoint are installed once");
+    assert.ok(
+      config.plugins.some((entry) => entry?.package === "flowtask-permission-gate@^2.0.0"),
+      "the permission gate is registered by npm spec",
+    );
+    assert.ok(
+      config.plugins.some((entry) => entry?.package === path.join(paths.runtimeRoot, "plugins", "flowtask-context-checkpoint")),
+      "the context checkpoint keeps its local package path",
+    );
+    assert.equal(
+      fs.existsSync(path.join(paths.runtimeRoot, "plugins", "flowtask-permission-gate")),
+      false,
+      "the npm-distributed gate is not copied into the user runtime",
+    );
     const runnerPayload = config.agents["flowtask-runner"].system.match(/versions\/([^/]+)\//);
     assert.ok(runnerPayload, "the runner agent points at a versioned payload");
     assert.equal(

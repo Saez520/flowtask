@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { logSuccess, logWarn, fileExists } from "./logger.js";
+import { logInfo, logSuccess, logWarn, fileExists } from "./logger.js";
 import {
   resolveUserRuntimePaths,
   writeFileAtomic,
@@ -122,8 +122,9 @@ function updateManifestPlugins(runtimeRoot, plugins) {
 
 /**
  * Install the manifest entries declared with `scope: "user"` once per account.
- * Each plugin lives under `<runtime>/plugins/<name>` with an ownership marker.
- * A directory without the marker is preserved and reported; an owned one is
+ * Local plugins live under `<runtime>/plugins/<name>` with an ownership marker;
+ * npm-distributed plugins are registered by package spec and never copied. A
+ * directory without the marker is preserved and reported; an owned one is
  * replaced atomically. Tests and repository metadata are not copied.
  */
 export function installUserPlugins({ flowtaskDir, manifest, runtimeRoot = null } = {}) {
@@ -135,9 +136,31 @@ export function installUserPlugins({ flowtaskDir, manifest, runtimeRoot = null }
   const replaced = [];
   const unchanged = [];
   const preserved = [];
+  const migrated = [];
   const plugins = {};
 
   for (const entry of entries) {
+    if (entry.distribution === "npm") {
+      const spec = typeof entry.npm === "string" ? entry.npm.trim() : "";
+      if (!spec) {
+        logWarn(`User plugin ${entry.name} declares no npm package, skipping.`);
+        continue;
+      }
+      const destinationDir = path.join(paths.pluginsDir, entry.name);
+      if (fileExists(destinationDir)) {
+        if (isOwned(destinationDir, entry.name)) {
+          fs.rmSync(destinationDir, { recursive: true, force: true });
+          migrated.push(destinationDir);
+          logInfo(`Removed the previous local copy of ${entry.name}: it is distributed as an npm package.`);
+        } else {
+          preserved.push(destinationDir);
+          logWarn(`Preserved ${destinationDir}: it has no FlowTask ownership marker.`);
+        }
+      }
+      plugins[entry.name] = { source: "npm", package: spec, managed: true };
+      continue;
+    }
+
     const sourceDir = path.join(flowtaskDir, "plugins", entry.path);
     if (!fileExists(sourceDir)) {
       logWarn(`User plugin source not found, skipping: ${sourceDir}`);
@@ -173,7 +196,7 @@ export function installUserPlugins({ flowtaskDir, manifest, runtimeRoot = null }
   if (installed.length > 0 || replaced.length > 0) {
     logSuccess(`FlowTask user plugins ready: ${installed.length} installed, ${replaced.length} replaced.`);
   }
-  return { installed, replaced, unchanged, preserved, plugins };
+  return { installed, replaced, unchanged, preserved, migrated, plugins };
 }
 
 /** Remove only user plugin directories that carry the FlowTask marker. */
