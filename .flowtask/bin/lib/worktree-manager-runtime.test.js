@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   publishGlobalWorktreeManager,
+  renameWithRetry,
   ensureGlobalWorktreeManager,
   classifyGlobalManagerOwnership,
   readManagerVersion,
@@ -237,3 +238,50 @@ test("readManagerVersion returns null without a readable package", () => {
   assert.equal(readManagerVersion(dir), null);
 });
 
+
+function transient(code) {
+  return Object.assign(new Error(`${code}: operation not permitted, rename`), { code });
+}
+
+test("renameWithRetry succeeds on the third attempt after transient errors", () => {
+  const delays = [];
+  let calls = 0;
+  const renameSync = () => {
+    calls += 1;
+    if (calls < 3) throw transient(calls === 1 ? "EPERM" : "EBUSY");
+  };
+  renameWithRetry("a", "b", { renameSync, sleep: (ms) => delays.push(ms) });
+  assert.equal(calls, 3);
+  assert.deepEqual(delays, [100, 200]);
+});
+
+test("renameWithRetry gives up after six attempts and tells how to unblock", () => {
+  let calls = 0;
+  const renameSync = () => { calls += 1; throw transient("EACCES"); };
+  assert.throws(
+    () => renameWithRetry("a", "b", { renameSync, sleep: () => {} }),
+    (error) => error.code === "EACCES" && /Close OpenCode/.test(error.message) && /Python/.test(error.message),
+  );
+  assert.equal(calls, 6);
+});
+
+test("renameWithRetry does not retry a non transient error", () => {
+  let calls = 0;
+  const renameSync = () => { calls += 1; throw Object.assign(new Error("missing"), { code: "ENOENT" }); };
+  assert.throws(() => renameWithRetry("a", "b", { renameSync, sleep: () => {} }), /missing/);
+  assert.equal(calls, 1);
+});
+
+test("publish survives a transient lock on the stage rename", () => {
+  const src = mkTmp();
+  const dest = path.join(mkTmp(), "worktree-manager");
+  makeSource(src);
+  let failures = 2;
+  const renameSync = (from, to) => {
+    if (failures > 0) { failures -= 1; throw transient("EPERM"); }
+    fs.renameSync(from, to);
+  };
+  const res = publishGlobalWorktreeManager({ sourceDir: src, destinationDir: dest, version: "1.0.0", renameSync, sleep: () => {} });
+  assert.equal(res.version, "1.0.0");
+  assert.ok(fs.existsSync(path.join(dest, WORKTREE_MANAGER_OWNER_FILE)));
+});
