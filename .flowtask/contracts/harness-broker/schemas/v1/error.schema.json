@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:error",
+  "title": "Error",
+  "description": "Error returned by a core operation. Its code is one of a closed list; each code carries the fields that let the caller correct the request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "error"
+  ],
+  "properties": {
+    "error": {
+      "type": "object",
+      "description": "Error detail.",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Closed error code.",
+          "enum": [
+            "validation_error",
+            "invalid_cursor",
+            "unknown_run"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable explanation. Not a contract surface: callers branch on code.",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "array",
+          "description": "Invalid fields of a validation_error, one entry per field. Required and non-empty for validation_error.",
+          "items": {
+            "type": "object",
+            "description": "One invalid field.",
+            "additionalProperties": false,
+            "required": [
+              "field",
+              "problem"
+            ],
+            "properties": {
+              "field": {
+                "type": "string",
+                "description": "Name of the invalid field in the request.",
+                "minLength": 1
+              },
+              "problem": {
+                "type": "string",
+                "description": "Reason the field is invalid, in a closed vocabulary defined by the broker.",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "last_valid_cursor": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/cursor",
+          "description": "Last cursor that exists in the run log. Required for invalid_cursor."
+        },
+        "run_id": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id",
+          "description": "Run that was not found. Required for unknown_run."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "const": "validation_error",
+                "description": "Condition: the error is a validation error."
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "required": [
+              "fields"
+            ],
+            "properties": {
+              "fields": {
+                "type": "array",
+                "description": "Non-empty list of invalid fields.",
+                "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "const": "invalid_cursor",
+                "description": "Condition: the cursor is invalid."
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "required": [
+              "last_valid_cursor"
+            ],
+            "properties": {
+              "last_valid_cursor": {
+                "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/cursor",
+                "description": "Last cursor that exists in the run log."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "const": "unknown_run",
+                "description": "Condition: the run does not exist."
+              }
+            },
+            "required": [
+              "code"
+            ]
+          },
+          "then": {
+            "required": [
+              "run_id"
+            ],
+            "properties": {
+              "run_id": {
+                "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id",
+                "description": "Identifier of the run that was not found."
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:adapter-capabilities",
+  "title": "AdapterCapabilities",
+  "description": "Capabilities that an adapter declares before launching a child. A capability the request requires and the adapter does not declare is rejected or ends in launch_failed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "harness_name",
+    "harness_version",
+    "supports",
+    "agent_selection_mode"
+  ],
+  "properties": {
+    "harness_name": {
+      "type": "string",
+      "description": "Identifier of the harness the adapter drives: lowercase identifier starting with a letter.",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "harness_version": {
+      "type": "string",
+      "description": "Version of the harness as reported by the harness itself.",
+      "minLength": 1
+    },
+    "supports": {
+      "type": "object",
+      "description": "Capabilities the adapter offers.",
+      "additionalProperties": false,
+      "required": [
+        "agent_selection",
+        "interactive_permissions",
+        "cancellation",
+        "usage_reporting"
+      ],
+      "properties": {
+        "agent_selection": {
+          "type": "boolean",
+          "description": "The adapter can select an agent per launch."
+        },
+        "interactive_permissions": {
+          "type": "boolean",
+          "description": "The harness asks for permissions that the adapter can answer."
+        },
+        "cancellation": {
+          "type": "boolean",
+          "description": "The adapter can cancel the live turn of the child."
+        },
+        "usage_reporting": {
+          "type": "boolean",
+          "description": "The harness reports token usage and cost."
+        }
+      }
+    },
+    "agent_selection_mode": {
+      "type": "string",
+      "description": "How the harness selects an agent: a per-launch primary override, a native agent list, or no selection.",
+      "enum": [
+        "primary_override_per_launch",
+        "native_agent_list",
+        "none"
+      ]
+    }
+  }
+}

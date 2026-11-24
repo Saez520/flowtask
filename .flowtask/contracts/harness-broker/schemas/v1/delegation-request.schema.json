@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:delegation-request",
+  "title": "DelegationRequest",
+  "description": "Request that a parent sends to delegate work to another harness. The broker assigns run_id and span_id; a request that supplies them is rejected.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "harness",
+    "agent",
+    "prompt",
+    "cwd",
+    "model",
+    "provider"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/schema_version",
+      "description": "Contract version of the request. Must be 1."
+    },
+    "harness": {
+      "type": "string",
+      "description": "Destination harness: lowercase identifier starting with a letter. Registration of the harness is checked by the broker.",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "agent": {
+      "type": "string",
+      "description": "Agent the harness runs for this delegation, for example flowtask-constructor.",
+      "minLength": 1
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Text of the single turn sent to the agent.",
+      "minLength": 1
+    },
+    "cwd": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/abs_path",
+      "description": "Absolute working directory in which the agent runs."
+    },
+    "model": {
+      "type": "string",
+      "description": "Model identifier. Always explicit; the contract does not infer a default.",
+      "minLength": 1
+    },
+    "provider": {
+      "type": "string",
+      "description": "Provider of the model. Always explicit.",
+      "minLength": 1
+    },
+    "first_event_timeout": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/limit_ms",
+      "description": "Milliseconds allowed until the first valid event of the agent. When omitted, the broker configuration applies; the effective value is recorded on the run."
+    },
+    "idle_timeout": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/limit_ms",
+      "description": "Milliseconds allowed without activity after the first event, outside pauses. When omitted, the broker configuration applies."
+    },
+    "wall_timeout": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/limit_ms",
+      "description": "Milliseconds allowed for the whole run, pauses included. When omitted, the broker configuration applies."
+    },
+    "parent_harness": {
+      "type": "string",
+      "description": "Harness of the parent, when the parent runs in a harness.",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "parent_session_id": {
+      "type": "string",
+      "description": "Identifier of the parent session, when the parent has one.",
+      "minLength": 1
+    },
+    "parent_run_id": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id",
+      "description": "Run of the parent that requests this delegation, when the parent is itself a delegated run."
+    },
+    "ca_id": {
+      "type": "string",
+      "description": "Identifier of the work item the delegation belongs to, when there is one.",
+      "minLength": 1
+    },
+    "trace_id": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/trace_id",
+      "description": "Trace identifier the run joins. When omitted, the broker generates one."
+    },
+    "parent_span_id": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/span_id",
+      "description": "Span of the parent operation the run is a child of, when present."
+    }
+  }
+}

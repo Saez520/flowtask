@@ -1,0 +1,143 @@
+[
+  {
+    "file": "valid/delegation-request.minimal.json",
+    "schema": "delegation-request",
+    "valid": true
+  },
+  {
+    "file": "valid/delegation-request.full.json",
+    "schema": "delegation-request",
+    "valid": true
+  },
+  {
+    "file": "invalid/delegation-request.missing-model.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "model"
+    ]
+  },
+  {
+    "file": "invalid/delegation-request.relative-cwd.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "cwd"
+    ]
+  },
+  {
+    "file": "invalid/delegation-request.zero-limit.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "first_event_timeout"
+    ]
+  },
+  {
+    "file": "invalid/delegation-request.negative-limit.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "idle_timeout"
+    ]
+  },
+  {
+    "file": "invalid/delegation-request.bad-harness-format.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "harness"
+    ]
+  },
+  {
+    "file": "invalid/delegation-request.run-id-supplied.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "run_id"
+    ]
+  },
+  {
+    "file": "valid/delegate-response.submitted.json",
+    "schema": "delegate-response",
+    "valid": true
+  },
+  {
+    "file": "valid/delegate-response.validation-error.json",
+    "schema": "delegate-response",
+    "valid": true
+  },
+  {
+    "file": "invalid/delegate-response.state-working.json",
+    "schema": "delegate-response",
+    "valid": false,
+    "error_paths": [
+      "state"
+    ]
+  },
+  {
+    "file": "valid/error.validation-error.json",
+    "schema": "error",
+    "valid": true
+  },
+  {
+    "file": "valid/error.invalid-cursor.json",
+    "schema": "error",
+    "valid": true
+  },
+  {
+    "file": "valid/error.unknown-run.json",
+    "schema": "error",
+    "valid": true
+  },
+  {
+    "file": "invalid/error.validation-error-without-fields.json",
+    "schema": "error",
+    "valid": false,
+    "error_paths": [
+      "fields"
+    ]
+  },
+  {
+    "file": "invalid/error.invalid-cursor-without-last-valid.json",
+    "schema": "error",
+    "valid": false,
+    "error_paths": [
+      "last_valid_cursor"
+    ]
+  },
+  {
+    "file": "invalid/error.unknown-run-without-run-id.json",
+    "schema": "error",
+    "valid": false,
+    "error_paths": [
+      "run_id"
+    ]
+  },
+  {
+    "file": "valid/permission-response.allow-once.json",
+    "schema": "permission-response",
+    "valid": true
+  },
+  {
+    "file": "invalid/permission-response.unknown-decider.json",
+    "schema": "permission-response",
+    "valid": false,
+    "error_paths": [
+      "decided_by"
+    ]
+  },
+  {
+    "file": "valid/adapter-capabilities.opencode.json",
+    "schema": "adapter-capabilities",
+    "valid": true
+  },
+  {
+    "file": "invalid/adapter-capabilities.missing-usage-reporting.json",
+    "schema": "adapter-capabilities",
+    "valid": false,
+    "error_paths": [
+      "usage_reporting"
+    ]
+  }
+]

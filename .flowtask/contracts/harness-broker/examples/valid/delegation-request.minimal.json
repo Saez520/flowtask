@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "harness": "opencode",
+  "agent": "flowtask-constructor",
+  "prompt": "Implement the first task of the plan.",
+  "cwd": "/Users/example/project",
+  "model": "example-model",
+  "provider": "example-provider"
+}
