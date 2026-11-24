@@ -8,11 +8,15 @@ import { getValidator } from "../lib/schemas.js";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const catalogue = JSON.parse(readFileSync(join(ROOT, "conformance", "cases.v1.json"), "utf8"));
 const cases = catalogue.cases;
-const CRITERIA = Array.from({ length: 33 }, (_, index) => `C${index + 1}`);
+const CRITERIA = [
+  ...Array.from({ length: 33 }, (_, index) => `C${index + 1}`),
+  ...Array.from({ length: 18 }, (_, index) => `A${index + 1}`)
+];
 
 const REASONS = {
   broker: "requires a running delegation broker, which this package does not contain",
   adapter: "requires a real harness adapter, which this package does not contain",
+  gate: "requires the FlowTask permission gate, which this package does not contain and which does not enforce the denial of direct harness invocation yet",
   harness: "requires the real harness, which this package does not contain"
 };
 
@@ -45,7 +49,7 @@ describe("catalogue file", () => {
     assert.equal(new Set(ids).size, ids.length);
   });
 
-  it("covers every acceptance criterion C1 to C33 with at least one case", () => {
+  it("covers every criterion C1 to C33 and A1 to A18 with at least one case", () => {
     const covered = new Set(cases.flatMap((item) => item.criteria));
     const missing = CRITERIA.filter((criterion) => !covered.has(criterion));
     assert.deepEqual(missing, [], `criteria without a case: ${missing.join(", ")}`);

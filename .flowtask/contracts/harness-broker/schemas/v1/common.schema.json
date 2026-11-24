@@ -123,6 +123,91 @@
       ],
       "description": "Non-empty string, or null when the value is not available. Null is distinct from an empty string and from zero.",
       "minLength": 1
+    },
+    "authority_profile_name": {
+      "type": "string",
+      "description": "Name of an authority profile: lowercase kebab case starting with a letter.",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "sha256_hex": {
+      "type": "string",
+      "description": "SHA-256 digest as 64 lowercase hexadecimal characters.",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "authority_profile_applied": {
+      "type": "object",
+      "description": "Authority profile that governed a run: its name and the fingerprint of the validated document.",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "fingerprint"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/authority_profile_name",
+          "description": "Name of the profile applied to the run."
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/sha256_hex",
+          "description": "Fingerprint of the validated profile document, defined in the package README."
+        }
+      }
+    },
+    "authority_denial": {
+      "type": "object",
+      "description": "Denial made by the enforcement layer of an authority profile. It is not a permission request and is not counted in permissions.",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "operation",
+        "target",
+        "rule",
+        "enforcer"
+      ],
+      "properties": {
+        "category": {
+          "type": "string",
+          "description": "Authority category that denied the action.",
+          "enum": [
+            "filesystem",
+            "shell",
+            "network",
+            "tools"
+          ]
+        },
+        "operation": {
+          "type": "string",
+          "description": "Operation that was denied.",
+          "enum": [
+            "read",
+            "write",
+            "execute",
+            "connect",
+            "invoke"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "description": "Path, command, host with port, or tool name the denial applies to. It never holds environment values.",
+          "minLength": 1
+        },
+        "rule": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Rule of the profile document that decided the denial, or null when the action was not covered by any rule.",
+          "minLength": 1
+        },
+        "enforcer": {
+          "type": "string",
+          "description": "Layer that made the denial.",
+          "enum": [
+            "os",
+            "hook"
+          ]
+        }
+      }
     }
   }
 }

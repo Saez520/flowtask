@@ -1,0 +1,119 @@
+[
+  {
+    "file": "valid/authority-profile.standard.yaml",
+    "valid": true
+  },
+  {
+    "file": "valid/authority-profile.read-only.yaml",
+    "valid": true
+  },
+  {
+    "file": "valid/authority-profile.ask-parent.yaml",
+    "valid": true
+  },
+  {
+    "file": "invalid/authority-profile.missing-section.yaml",
+    "valid": false,
+    "error_paths": [
+      "network"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.unknown-field.yaml",
+    "valid": false,
+    "error_paths": [
+      "sandbox"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.unknown-version.yaml",
+    "valid": false,
+    "error_paths": [
+      "version"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.relative-path.yaml",
+    "valid": false,
+    "error_paths": [
+      "filesystem.readable_roots.0"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.two-writable-roots.yaml",
+    "valid": false,
+    "error_paths": [
+      "filesystem.writable_roots"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.wildcard-total-shell.yaml",
+    "valid": false,
+    "error_paths": [
+      "shell.allow.0"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.wildcard-total-path.yaml",
+    "valid": false,
+    "error_paths": [
+      "filesystem.readable_roots.0"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.pattern-in-both.yaml",
+    "valid": false,
+    "error_paths": [
+      "shell.deny.0"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.writable-root-denied.yaml",
+    "valid": false,
+    "error_paths": [
+      "filesystem.writable_roots.0"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.invalid-uncovered-policy.yaml",
+    "valid": false,
+    "error_paths": [
+      "on_uncovered.shell"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.shell-allows-harness.yaml",
+    "valid": false,
+    "error_paths": [
+      "shell.allow.0"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.network-wildcard-tld.yaml",
+    "valid": false,
+    "error_paths": [
+      "network.allow.0"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.wrong-type.yaml",
+    "valid": false,
+    "error_paths": [
+      "shell"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.duplicate-key.yaml",
+    "valid": false,
+    "error_paths": [
+      "document"
+    ]
+  },
+  {
+    "file": "invalid/authority-profile.alias.yaml",
+    "valid": false,
+    "error_paths": [
+      "document"
+    ]
+  }
+]

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:flowtask:harness-broker:v1:result",
   "title": "Result",
-  "description": "Normalized outcome of a terminal run. Its structure is the same for every harness and every outcome; no field depends on free text produced by the child. Fields without data are null, never absent and never zero.",
+  "description": "Normalized outcome of a terminal run. Its structure is the same for every harness and every outcome; no field depends on free text produced by the child. Fields without data are null, never absent and never zero, except the optional authority block, which is absent when no authority profile governed the run.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -354,6 +354,28 @@
     "last_cursor": {
       "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/cursor",
       "description": "Cursor of the last event of the run, to continue reading the log."
+    },
+    "authority": {
+      "type": "object",
+      "description": "Authority profile applied to the run and the denials made by the enforcement layer, which are not permission requests and are not counted in permissions.",
+      "additionalProperties": false,
+      "required": [
+        "profile",
+        "os_denials"
+      ],
+      "properties": {
+        "profile": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/authority_profile_applied",
+          "description": "Profile that governed the run, with its name and fingerprint."
+        },
+        "os_denials": {
+          "type": "array",
+          "description": "Denials made by the enforcement layer, in the order they happened. Empty when there were none.",
+          "items": {
+            "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/authority_denial"
+          }
+        }
+      }
     }
   },
   "allOf": [

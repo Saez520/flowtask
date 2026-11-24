@@ -262,6 +262,10 @@
           "type": "string",
           "description": "Human-readable detail of the transition. Required for rejected.",
           "minLength": 1
+        },
+        "authority_profile": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/authority_profile_applied",
+          "description": "Profile applied to the run; the broker sets it on the transition into working."
         }
       },
       "allOf": [
@@ -639,7 +643,7 @@
     },
     "diagnostic_payload": {
       "type": "object",
-      "description": "Line of child output that is not a valid protocol message.",
+      "description": "Line of child output that is not a valid protocol message, or the raw line that reported a denial made by the enforcement layer.",
       "additionalProperties": false,
       "required": [
         "stream",
@@ -657,6 +661,10 @@
         "line": {
           "type": "string",
           "description": "Raw line, not interpreted."
+        },
+        "authority_denial": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/authority_denial",
+          "description": "Present when the line reports a denial made by the enforcement layer; such a denial is not a permission request."
         }
       }
     }

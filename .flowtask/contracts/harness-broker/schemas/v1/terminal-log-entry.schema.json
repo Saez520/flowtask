@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:terminal-log-entry",
+  "title": "TerminalLogEntry",
+  "description": "One line of the terminal log of a run: a command the child ran or attempted, with the decision taken and the rule that made it. The log is written as JSON Lines, one object per line, and is only appended to.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "timestamp",
+    "cwd",
+    "command",
+    "decision",
+    "rule",
+    "exit_code"
+  ],
+  "properties": {
+    "run_id": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id",
+      "description": "Run the attempt belongs to."
+    },
+    "timestamp": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/timestamp",
+      "description": "Instant the attempt was decided."
+    },
+    "cwd": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/abs_path",
+      "description": "Absolute working directory in which the command was attempted."
+    },
+    "command": {
+      "type": "string",
+      "description": "Command as attempted. Values of environment assignments and credentials are never recorded; the recorded command carries NAME=<redacted> in their place.",
+      "minLength": 1
+    },
+    "decision": {
+      "type": "string",
+      "description": "Decision taken for the attempt.",
+      "enum": [
+        "allowed",
+        "denied",
+        "asked"
+      ]
+    },
+    "rule": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Rule of the profile document that decided the attempt, or null when no rule covered it.",
+      "minLength": 1
+    },
+    "exit_code": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Exit code when the command ran, null otherwise."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "const": "allowed",
+            "description": "Condition: the attempt was allowed and ran."
+          }
+        },
+        "required": [
+          "decision"
+        ]
+      },
+      "else": {
+        "properties": {
+          "exit_code": {
+            "const": null,
+            "description": "An attempt that was denied or asked for does not run, so it has no exit code."
+          }
+        }
+      }
+    }
+  ]
+}

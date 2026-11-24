@@ -1,0 +1,9 @@
+{
+  "run_id": "run-0001",
+  "timestamp": "2026-11-23T20:00:04Z",
+  "cwd": "/Users/example/project",
+  "command": "git push origin main",
+  "decision": "denied",
+  "rule": "shell.deny[0]",
+  "exit_code": 1
+}

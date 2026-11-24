@@ -1,0 +1,17 @@
+{
+  "run_id": "run-0001",
+  "cursor": 6,
+  "timestamp": "2026-11-23T20:00:07Z",
+  "type": "diagnostic",
+  "payload": {
+    "stream": "stderr",
+    "line": "EACCES: permission denied, open '/Users/example/outside/file.txt'",
+    "authority_denial": {
+      "category": "filesystem",
+      "operation": "write",
+      "target": "/Users/example/outside/file.txt",
+      "rule": null,
+      "enforcer": "os"
+    }
+  }
+}

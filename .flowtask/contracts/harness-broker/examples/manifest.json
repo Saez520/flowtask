@@ -423,5 +423,117 @@
     "error_paths": [
       "final_text"
     ]
+  },
+  {
+    "file": "valid/delegation-request.with-authority-profile.json",
+    "schema": "delegation-request",
+    "valid": true
+  },
+  {
+    "file": "invalid/delegation-request.bad-authority-profile.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "authority_profile"
+    ]
+  },
+  {
+    "file": "valid/result.completed-with-authority.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "invalid/result.authority-without-profile.json",
+    "schema": "result",
+    "valid": false,
+    "error_paths": [
+      "profile"
+    ]
+  },
+  {
+    "file": "invalid/result.authority-bad-category.json",
+    "schema": "result",
+    "valid": false,
+    "error_paths": [
+      "category"
+    ]
+  },
+  {
+    "file": "valid/event.state-changed-working-with-profile.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "invalid/event.state-changed-bad-fingerprint.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "fingerprint"
+    ]
+  },
+  {
+    "file": "valid/event.diagnostic-os-denial.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "invalid/event.diagnostic-bad-enforcer.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "enforcer"
+    ]
+  },
+  {
+    "file": "valid/adapter-capabilities.with-enforcement.json",
+    "schema": "adapter-capabilities",
+    "valid": true
+  },
+  {
+    "file": "invalid/adapter-capabilities.enforcement-incomplete.json",
+    "schema": "adapter-capabilities",
+    "valid": false,
+    "error_paths": [
+      "network"
+    ]
+  },
+  {
+    "file": "valid/terminal-log-entry.allowed.json",
+    "schema": "terminal-log-entry",
+    "valid": true
+  },
+  {
+    "file": "valid/terminal-log-entry.denied.json",
+    "schema": "terminal-log-entry",
+    "valid": true
+  },
+  {
+    "file": "valid/terminal-log-entry.asked.json",
+    "schema": "terminal-log-entry",
+    "valid": true
+  },
+  {
+    "file": "invalid/terminal-log-entry.denied-with-exit-code.json",
+    "schema": "terminal-log-entry",
+    "valid": false,
+    "error_paths": [
+      "exit_code"
+    ]
+  },
+  {
+    "file": "invalid/terminal-log-entry.relative-cwd.json",
+    "schema": "terminal-log-entry",
+    "valid": false,
+    "error_paths": [
+      "cwd"
+    ]
+  },
+  {
+    "file": "invalid/terminal-log-entry.unknown-decision.json",
+    "schema": "terminal-log-entry",
+    "valid": false,
+    "error_paths": [
+      "decision"
+    ]
   }
 ]
