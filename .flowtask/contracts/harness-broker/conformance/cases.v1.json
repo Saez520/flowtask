@@ -460,6 +460,296 @@
       "criteria": ["C33"],
       "scenario": null,
       "check": "test/schemas-valid.test.js: every schema compiles and every declared property has a description"
+    },
+    {
+      "id": "AUTH-PROFILE-VALID",
+      "title": "A valid authority profile is accepted and identified by its name and version",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A1"],
+      "scenario": null,
+      "check": "test/authority-profile.test.js: every valid example is accepted and identified by name and version"
+    },
+    {
+      "id": "AUTH-PROFILE-INVALID-NAMES-FIELDS",
+      "title": "An invalid authority profile is rejected naming each invalid field, with no defaults",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A2"],
+      "scenario": null,
+      "check": "test/authority-profile.test.js: every invalid example is rejected naming exactly its invalid fields; nothing is completed with defaults"
+    },
+    {
+      "id": "AUTH-RESOLUTION-NO-FALLBACK",
+      "title": "An invalid project profile never falls back to a user profile or mixes fields",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A3"],
+      "scenario": null,
+      "check": "test/authority-resolution.test.js: an invalid project profile does not fall back to a valid user profile and fields are never mixed"
+    },
+    {
+      "id": "AUTH-LAYERS-REJECT-REASONS",
+      "title": "A missing or invalid permissions or autonomy layer is refused with a closed reason",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A4"],
+      "scenario": null,
+      "check": "test/authority-resolution.test.js: a missing or invalid permissions or autonomy layer is rejected with a closed reason and no default"
+    },
+    {
+      "id": "AUTH-LAYERS-NO-PROCESS",
+      "title": "Delegation with absent layers starts no process and reports the operational authority message",
+      "level": "contract",
+      "requires": "gate",
+      "capability": null,
+      "criteria": ["A4"],
+      "scenario": null,
+      "check": "With the layers removed, delegating creates no process and the operator receives the operational authority message"
+    },
+    {
+      "id": "AUTH-AUTONOMY-NOT-WIDENING",
+      "title": "Autonomy never widens what the authority profile allows",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A5"],
+      "scenario": null,
+      "check": "test/authority-decision.test.js: the decisions are identical under both autonomy profiles"
+    },
+    {
+      "id": "AUTH-AUTONOMY-SAME-ACTIONS",
+      "title": "The same actions yield the same allowed and denied sets under both autonomy profiles",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["A5"],
+      "scenario": null,
+      "check": "The same set of actions run under both autonomy profiles yields the same allowed and denied sets"
+    },
+    {
+      "id": "AUTH-FILESYSTEM-DECISIONS",
+      "title": "Filesystem requests are allowed only inside the writable root and outside the denylist",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A6", "A18"],
+      "scenario": null,
+      "check": "test/authority-decision.test.js: writes inside the root are allowed; outside the root, inside the denylist, non canonical and protected paths are denied"
+    },
+    {
+      "id": "AUTH-FILESYSTEM-ENFORCED",
+      "title": "A child cannot write outside its root through links, parent segments or the denylist",
+      "level": "contract",
+      "requires": "adapter",
+      "capability": null,
+      "criteria": ["A6", "A18"],
+      "scenario": null,
+      "check": "A child that writes outside the root, through a symbolic link, through .. or into the denylist modifies nothing and the attempts are logged; the authority documents cannot be changed"
+    },
+    {
+      "id": "AUTH-SHELL-DECISIONS",
+      "title": "Shell requests are allowed per segment and a compound with an unauthorised segment is denied whole",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A7"],
+      "scenario": null,
+      "check": "test/authority-decision.test.js: an allowed command is allowed; an uncovered command and a compound with one unauthorized segment are denied as a whole"
+    },
+    {
+      "id": "AUTH-SHELL-ENFORCED",
+      "title": "No segment of a denied compound command is executed",
+      "level": "contract",
+      "requires": "adapter",
+      "capability": null,
+      "criteria": ["A7"],
+      "scenario": null,
+      "check": "No segment of a denied compound command is executed"
+    },
+    {
+      "id": "AUTH-DIRECT-HARNESS-MODEL",
+      "title": "Direct harness invocation is denied under every profile, including one that lists it",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A8"],
+      "scenario": null,
+      "check": "test/authority-decision.test.js: direct harness invocation is denied under every profile, including one that lists it"
+    },
+    {
+      "id": "AUTH-DIRECT-HARNESS-ENFORCED",
+      "title": "A child that invokes a harness directly through the adapter is denied and logged",
+      "level": "contract",
+      "requires": "adapter",
+      "capability": null,
+      "criteria": ["A8"],
+      "scenario": null,
+      "check": "A child that runs opencode run or claude -p through the adapter is denied and the attempt is logged"
+    },
+    {
+      "id": "AUTH-GATE-DENIES-DIRECT-HARNESS",
+      "title": "The permission gate denies direct harness invocation from the runner, a subagent and the child",
+      "level": "contract",
+      "requires": "gate",
+      "capability": null,
+      "criteria": ["A17"],
+      "scenario": null,
+      "check": "This case fails today: the gate allows a plain opencode run or claude -p from the runner, from a subagent and from the child; it passes only when the gate denies it in the three"
+    },
+    {
+      "id": "AUTH-NETWORK-DECISIONS",
+      "title": "Network requests are allowed only to listed destinations and ports",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A9"],
+      "scenario": null,
+      "check": "test/authority-decision.test.js: without destinations nothing is allowed; only a listed destination and port is allowed; numeric destinations are denied"
+    },
+    {
+      "id": "AUTH-NETWORK-ENFORCED",
+      "title": "A connection to an unlisted destination is blocked and logged",
+      "level": "contract",
+      "requires": "adapter",
+      "capability": null,
+      "criteria": ["A9"],
+      "scenario": null,
+      "check": "A connection to an unlisted destination is blocked and logged"
+    },
+    {
+      "id": "AUTH-DENY-FAILS-RUN",
+      "title": "A denied permission request answers reject_once and ends the run as failed",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A10"],
+      "scenario": null,
+      "check": "test/authority-decision.test.js: a deny answers reject_once, counts one rejected request and ends the run failed with permission_rejected"
+    },
+    {
+      "id": "AUTH-DENY-RESULT-COUNTERS",
+      "title": "A run ended by a rejected permission reports failed, permission_rejected and one rejection",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["A10"],
+      "scenario": null,
+      "check": "The result of a run ended by a rejected permission shows failed, permission_rejected and one rejected request"
+    },
+    {
+      "id": "AUTH-ASK-PARENT",
+      "title": "An uncovered request under ask_parent pauses the run and the parent cannot grant what is denied",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A11"],
+      "scenario": null,
+      "check": "test/authority-decision.test.js: ask_parent pauses with permission_pending; the parent cannot grant what is denied; an always grant is not persisted"
+    },
+    {
+      "id": "AUTH-ASK-PARENT-EVENTS",
+      "title": "The parent's answer is recorded as decided by the parent and silence grants nothing",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["A11"],
+      "scenario": null,
+      "check": "The parent answer appears in an event with decided_by parent and no silence grants"
+    },
+    {
+      "id": "AUTH-ALLOW-NO-CONSULT",
+      "title": "A covered request is granted by the authority policy without asking the parent",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A12"],
+      "scenario": null,
+      "check": "test/authority-decision.test.js: a covered request is granted by the authority policy without consulting the parent"
+    },
+    {
+      "id": "AUTH-TERMINAL-LOG-SHAPE",
+      "title": "Each attempt yields one valid terminal log line without environment values",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A13"],
+      "scenario": null,
+      "check": "test/authority-log.test.js: each attempt yields one valid line with the decision and the rule, and no environment value is recorded"
+    },
+    {
+      "id": "AUTH-TERMINAL-LOG-PRODUCED",
+      "title": "A run leaves one terminal log line per attempt, allowed or denied",
+      "level": "contract",
+      "requires": "adapter",
+      "capability": null,
+      "criteria": ["A13"],
+      "scenario": null,
+      "check": "A run with allowed and denied attempts leaves one line per attempt in the terminal log"
+    },
+    {
+      "id": "AUTH-CAPABILITY-UNENFORCEABLE",
+      "title": "An adapter that does not declare a rule is refused, naming the missing rule",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A14"],
+      "scenario": null,
+      "check": "test/authority-resolution.test.js: an adapter that does not declare an enforcement is rejected naming the missing rule"
+    },
+    {
+      "id": "AUTH-CAPABILITY-NO-LAUNCH",
+      "title": "Delegating through an adapter without the capability starts no child",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["A14"],
+      "scenario": null,
+      "check": "Delegating through an adapter without the capability starts no child"
+    },
+    {
+      "id": "AUTH-REQUEST-PROFILE-FIELD",
+      "title": "A request validates with or without a profile reference and a bad reference names the field",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A15"],
+      "scenario": null,
+      "check": "test/authority-resolution.test.js: a request with a profile name validates, one without it stays valid for version 1 consumers, and a missing or unresolvable profile names authority_profile"
+    },
+    {
+      "id": "AUTH-REQUEST-NO-RUN",
+      "title": "A request without a resolvable profile creates no run",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["A15"],
+      "scenario": null,
+      "check": "A request without a resolvable profile creates no run"
+    },
+    {
+      "id": "AUTH-RESULT-PROFILE-AND-DENIALS",
+      "title": "Results and events carry the applied profile and operating system denials without a new event type",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["A16"],
+      "scenario": null,
+      "check": "test/schemas-valid.test.js: the result and the events carry the applied profile and the denials of the enforcement layer without a new event type"
+    },
+    {
+      "id": "AUTH-OS-DENIAL-PRODUCED",
+      "title": "A denial made by the operating system appears in the result and events and is not a permission request",
+      "level": "contract",
+      "requires": "adapter",
+      "capability": null,
+      "criteria": ["A16"],
+      "scenario": null,
+      "check": "A denial made by the operating system layer appears in the result and the events and is not counted as a permission request"
     }
   ]
 }
