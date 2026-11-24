@@ -695,4 +695,6 @@ cat .claude/settings.local.json
 claude mcp get engram
 ```
 
+The OpenCode configuration key for agents is `agents`; `agent` is deprecated upstream. `install` and `update` migrate the `flowtask-*` entries of `agent` into `agents`, keeping the model and variant already chosen as `provider/model#variant`, and `uninstall` removes both keys.
+
 Do not edit `opencode.json` manually to replace `update`. If there is no installation, run `install`; if there is a permissions/space error, fix it and retry `update`.
