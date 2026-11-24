@@ -15,6 +15,16 @@ export function isWorktreeManagerMcpTool(tool) {
     return typeof tool === "string"
         && WORKTREE_MANAGER_MCP_TOOLS.some((name) => tool === `${WORKTREE_MANAGER_MCP_SERVER}_${name}`);
 }
+/**
+ * The MCP surface the runner may invoke: the seven worktree-manager
+ * capabilities, Engram tools with the `engram_` prefix, and the single Graphify
+ * query. Any other MCP server or tool stays outside the surface.
+ */
+export function isAuthorizedRunnerMcpTool(tool) {
+    return isWorktreeManagerMcpTool(tool)
+        || (typeof tool === "string" && tool.startsWith("engram_"))
+        || tool === "graphify_query_graph";
+}
 export const FLOWTASK_SUBAGENTS = new Set([
     "flowtask-ca-writer", "flowtask-planner", "flowtask-plan-auditor", "flowtask-constructor",
     "flowtask-validator", "flowtask-initializer", "flowtask-logger", "flowtask-tester",

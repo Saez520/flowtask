@@ -2,7 +2,8 @@ import { Plugin } from "@opencode/plugin";
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, isAuthorityCommand, isRunnerShellTool, isWorktreeManagerMcpTool, } from "./authorizer.js";
+import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerMcpTool, isAuthorizedRunnerSubagent, isAuthorityCommand, isRunnerShellTool, } from "./authorizer.js";
+import { RUNNER_EXECUTE_TOOL, isAuthorizedRunnerScript } from "./code-mode.js";
 import { buildLayerBlockMessage, readOperationalLayers, readOperationalLayersAt } from "./layers.js";
 import { evaluateOpencodeActivation, findOpencodeRegistration, } from "./registration.js";
 import { applyReducedDelivery, buildAttachmentDelivery, buildDegradationMetadata, buildNarrowingNotice, buildReducedDelivery, isImageOrPdfOutput, loadContextBudgetConfig, readDeliveredText, readRequestedPath, registerNarrowingNotice, resetNarrowingNotices, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
@@ -167,15 +168,13 @@ function isGitCommitCommand(command) {
     return false;
 }
 function runnerToolAllowed(tool, args) {
-    if (isWorktreeManagerMcpTool(tool))
+    if (isAuthorizedRunnerMcpTool(tool))
         return true;
     if (isRunnerShellTool(tool))
         return isAuthorizedRunnerCommand(String(args.command ?? ""));
-    if (tool === "read" || tool === "glob" || tool === "grep" || tool === "skill" || tool.startsWith("engram_"))
-        return true;
-    // MCP Graphify: the only MCP tool authorized for the runner (path 1 of the research chain).
-    // Do not expand to other graphify tools — only the exact enumerated tool.
-    if (tool === "graphify_query_graph")
+    if (tool === RUNNER_EXECUTE_TOOL)
+        return isAuthorizedRunnerScript(args.code);
+    if (tool === "read" || tool === "glob" || tool === "grep" || tool === "skill")
         return true;
     if (tool === "subagent")
         return isAuthorizedRunnerSubagent(args.agent);

@@ -5,11 +5,12 @@ import { isAbsolute, resolve } from "node:path";
 import {
   RUNNER_DELEGATION_MESSAGE,
   isAuthorizedRunnerCommand,
+  isAuthorizedRunnerMcpTool,
   isAuthorizedRunnerSubagent,
   isAuthorityCommand,
   isRunnerShellTool,
-  isWorktreeManagerMcpTool,
 } from "./authorizer.js";
+import { RUNNER_EXECUTE_TOOL, isAuthorizedRunnerScript } from "./code-mode.js";
 import { buildLayerBlockMessage, readOperationalLayers, readOperationalLayersAt } from "./layers.js";
 import {
   evaluateOpencodeActivation,
@@ -217,12 +218,10 @@ function isGitCommitCommand(command: string): boolean {
 }
 
 function runnerToolAllowed(tool: string, args: Record<string, unknown>): boolean {
-   if (isWorktreeManagerMcpTool(tool)) return true;
+   if (isAuthorizedRunnerMcpTool(tool)) return true;
    if (isRunnerShellTool(tool)) return isAuthorizedRunnerCommand(String(args.command ?? ""));
-   if (tool === "read" || tool === "glob" || tool === "grep" || tool === "skill" || tool.startsWith("engram_")) return true;
-   // MCP Graphify: the only MCP tool authorized for the runner (path 1 of the research chain).
-   // Do not expand to other graphify tools — only the exact enumerated tool.
-   if (tool === "graphify_query_graph") return true;
+   if (tool === RUNNER_EXECUTE_TOOL) return isAuthorizedRunnerScript(args.code);
+   if (tool === "read" || tool === "glob" || tool === "grep" || tool === "skill") return true;
    if (tool === "subagent") return isAuthorizedRunnerSubagent(args.agent);
    return false;
 }

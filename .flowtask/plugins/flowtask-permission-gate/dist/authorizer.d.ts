@@ -7,6 +7,12 @@ export declare const WORKTREE_MANAGER_MCP_SERVER = "worktree_manager";
 export declare const WORKTREE_MANAGER_MCP_TOOLS: readonly ["worktree_create", "worktree_complete", "worktree_cleanup", "worktree_recover", "worktree_list", "worktree_prune", "worktree_status"];
 /** The runner may invoke exactly the seven capabilities the manager publishes. */
 export declare function isWorktreeManagerMcpTool(tool: unknown): boolean;
+/**
+ * The MCP surface the runner may invoke: the seven worktree-manager
+ * capabilities, Engram tools with the `engram_` prefix, and the single Graphify
+ * query. Any other MCP server or tool stays outside the surface.
+ */
+export declare function isAuthorizedRunnerMcpTool(tool: unknown): boolean;
 export declare const FLOWTASK_SUBAGENTS: Set<string>;
 /** V2 `subagent` resources the runner may select; the runner itself is never a child. */
 export declare function isAuthorizedRunnerSubagent(agent: unknown): boolean;
