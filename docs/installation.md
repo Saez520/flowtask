@@ -472,14 +472,25 @@ configuration declares the FlowTask agents with their payload paths, the payload
 skills directory, the global permission gate by npm package spec and the local
 context checkpoint plugin, the FlowTask commands, the default agent only when
 absent, and the Engram MCP only when absent. A consumer's own agents, skills,
-plugins, commands, MCP servers, and settings are preserved. A JSONC OpenCode
-configuration fails closed without writing.
+plugins, commands, MCP servers, and settings are preserved.
+
+When `opencode.jsonc` exists next to `opencode.json`, FlowTask manages only
+`opencode.json` and never reads or writes the JSONC file. In that case it does
+not set `default_agent`: the FlowTask runner is available in the agent selector,
+and you can set `default_agent` in your own file if you want it as the default.
+An `opencode.json` that is not valid JSON still stops the install without
+writing.
 
 The OpenCode global configuration is `$XDG_CONFIG_HOME/opencode/opencode.json`
 or `~/.config/opencode/opencode.json` on every platform, Windows included
 (`C:\Users\<user>\.config\opencode\opencode.json`). An earlier Windows install
 may have written `%APPDATA%\opencode\opencode.json`; that file is left
 untouched and the install reports it once when it holds FlowTask entries.
+
+On Windows, publishing the worktree manager can fail with `EPERM` while another
+process holds a handle on its folder. FlowTask retries the rename up to six
+times; if it still fails, close OpenCode and any Python process that uses the
+worktree manager, then run the command again.
 
 The permission gate is registered as the npm package
 `flowtask-permission-gate@^2.0.0`; OpenCode resolves and caches it on the first
