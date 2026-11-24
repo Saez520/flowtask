@@ -1,0 +1,36 @@
+version: 1
+name: standard
+description: Work inside the run worktree with the shell and the registry the plan needs.
+filesystem:
+  writable_roots:
+    - "${run_cwd}"
+  readable_roots:
+    - "${run_cwd}"
+    - /usr/lib
+    - /usr/share
+  deny:
+    - "${home}/.ssh"
+    - "${home}/.aws"
+    - "${home}/.config/flowtask/config"
+    - "${run_cwd}/.flowtask/config"
+shell: allow-all
+network:
+  allow:
+    - registry.npmjs.org
+tools:
+  allow:
+    - read
+    - edit
+    - write
+    - grep
+    - glob
+  deny: []
+  mcp_allow:
+    - server: docs-server
+      tool: "*"
+  mcp_deny: []
+on_uncovered:
+  filesystem: deny
+  shell: deny
+  network: deny
+  tools: deny

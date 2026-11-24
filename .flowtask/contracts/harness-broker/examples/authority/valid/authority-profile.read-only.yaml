@@ -1,0 +1,24 @@
+version: 1
+name: read-only
+description: Read the run worktree and change nothing.
+filesystem:
+  writable_roots: []
+  readable_roots:
+    - "${run_cwd}"
+  deny: []
+shell:
+  allow: []
+  deny: []
+network:
+  allow: []
+tools:
+  allow:
+    - read
+  deny: []
+  mcp_allow: []
+  mcp_deny: []
+on_uncovered:
+  filesystem: deny
+  shell: deny
+  network: deny
+  tools: deny
