@@ -1,5 +1,4 @@
 import {
-  commandName,
   expandPlaceholders,
   isEnvAssignment,
   matchPath,
@@ -256,6 +255,8 @@ function decodeWord(raw) {
         }
       }
       i++;
+    } else if (char === "$" && raw[i + 1] === '"') {
+      i++;
     } else if (char === "$" && raw[i + 1] === "'") {
       i += 2;
       while (i < raw.length && raw[i] !== "'") {
@@ -290,14 +291,76 @@ function decodeAnsiEscape(rest) {
   return [ANSI_SIMPLE[rest[0]] ?? rest[0], 1];
 }
 
-function effectiveWords(segment, wrappers) {
-  const raw = splitWords(segment);
-  const values = raw.map(decodeWord);
+const EXECUTABLE_SUFFIX = /\.(?:exe|cmd|bat|com)$/;
+
+function foldWord(word) {
+  return word.normalize("NFKC").toLowerCase();
+}
+
+function canonicalName(folded) {
+  return folded.split("/").pop().replace(EXECUTABLE_SUFFIX, "");
+}
+
+function wordNames(word) {
+  return foldWord(word)
+    .split(/\s+/)
+    .filter((token) => token !== "")
+    .map(canonicalName);
+}
+
+// A raw word is dynamic when the shell expands or globs any part of it at run time.
+function isDynamicWord(raw) {
+  let quote = null;
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw[i];
+    const next = raw[i + 1];
+    if (quote === "'") {
+      if (char === "'") quote = null;
+      continue;
+    }
+    if (quote === "$'") {
+      if (char === "\\") i++;
+      else if (char === "'") quote = null;
+      continue;
+    }
+    if (char === "\\") {
+      i++;
+      continue;
+    }
+    if (quote === '"') {
+      if (char === '"') quote = null;
+      else if (char === "$" || char === "`") return true;
+      continue;
+    }
+    if (char === "$" && next === "'") {
+      quote = "$'";
+      i++;
+      continue;
+    }
+    if (char === "$" && next === '"') {
+      quote = '"';
+      i++;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === "$" || char === "`" || char === "*" || char === "?" || char === "[") return true;
+  }
+  return false;
+}
+
+// Skips assignments and wrappers, with their options and durations, to find the executable word.
+// `wrapper` is the index of the first wrapper word, or -1 when none precedes the executable.
+function leadingWords(raw, values, wrappers) {
   let index = 0;
+  let wrapper = -1;
   while (index < raw.length) {
     if (isEnvAssignment(raw[index])) {
       index++;
-    } else if (wrappers.includes(commandName(values[index]))) {
+    } else if (wrappers.includes(canonicalName(foldWord(values[index])))) {
+      if (wrapper < 0) wrapper = index;
       index++;
       while (
         index < raw.length &&
@@ -309,28 +372,36 @@ function effectiveWords(segment, wrappers) {
       break;
     }
   }
-  return { words: values.slice(index), values };
+  return { index, wrapper };
 }
 
 function decideSegment(profile, text) {
   const contract = readAuthorityContract();
-  const { words, values } = effectiveWords(text, contract.command_wrappers);
-  const executable = words.length > 0 ? commandName(words[0]) : "";
+  const harnesses = contract.always_denied_executables.map((name) => name.toLowerCase());
+  const raw = splitWords(text);
+  const values = raw.map(decodeWord);
+  const harnessDenial = () =>
+    segmentVerdict(text, "deny", "contract.direct_harness_denial", "direct_harness_invocation");
+  const ambiguous = () => segmentVerdict(text, "deny", null, "ambiguous_syntax");
 
-  const naiveWords = text.split(" ");
-  const invokesHarness = [...values, ...naiveWords].some((value) =>
-    contract.always_denied_executables.includes(commandName(value))
-  );
-  if (invokesHarness) {
-    return segmentVerdict(text, "deny", "contract.direct_harness_denial", "direct_harness_invocation");
+  if (values.some((value) => wordNames(value).some((name) => harnesses.includes(name)))) {
+    return harnessDenial();
   }
 
+  const { index, wrapper } = leadingWords(raw, values, contract.command_wrappers);
+  if (wrapper >= 0) {
+    if (values.slice(wrapper + 1).some((value) => harnesses.some((name) => foldWord(value).includes(name)))) {
+      return harnessDenial();
+    }
+    if (raw.slice(wrapper + 1).some(isDynamicWord)) return ambiguous();
+  }
+  if (index < raw.length && isDynamicWord(raw[index])) return ambiguous();
+
+  const executable = index < raw.length ? canonicalName(foldWord(values[index])) : "";
   const interpreted =
     contract.command_interpreters.includes(executable) &&
-    words.slice(1).some((arg) => arg === "-c" || INTERPRETER_FLAG.test(arg));
-  if (interpreted || executable === "eval") {
-    return segmentVerdict(text, "deny", null, "ambiguous_syntax");
-  }
+    values.slice(index + 1).some((arg) => arg === "-c" || INTERPRETER_FLAG.test(arg));
+  if (interpreted || executable === "eval") return ambiguous();
 
   const denyIndex = profile.shell.deny.findIndex((pattern) => matchText(pattern, text));
   if (denyIndex >= 0) return segmentVerdict(text, "deny", `shell.deny[${denyIndex}]`, "denied_by_rule");

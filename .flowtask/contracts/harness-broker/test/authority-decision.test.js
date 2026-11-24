@@ -229,6 +229,71 @@ describe("direct harness invocation", () => {
     }
   });
 
+  it("denies a harness name written in locale-translated double quotes", () => {
+    for (const command of ['$"claude" -p z', '$"opencode" run x']) {
+      assert.equal(shell(command, ASK_PARENT).reason, "direct_harness_invocation", command);
+    }
+  });
+
+  it("denies a harness name whatever its letter case or executable suffix", () => {
+    const commands = [
+      "CLAUDE -p z",
+      "Claude -p z",
+      "./CLAUDE -p z",
+      "OPENCODE run x",
+      "CL''AUDE -p z",
+      "/USR/BIN/CLAUDE -p z",
+      "claude.exe -p z",
+      "Claude.CMD -p z"
+    ];
+    for (const command of commands) {
+      assert.equal(shell(command, ASK_PARENT).reason, "direct_harness_invocation", command);
+    }
+  });
+
+  it("denies a harness name in upper case under a profile that allows an assignment prefix", () => {
+    const permissive = { ...STANDARD, shell: { allow: ["A=* *"], deny: [] } };
+    assert.equal(shell("A=1 CLAUDE -p z", permissive).decision, "deny");
+  });
+
+  it("denies a harness name carried by a wrapper option or by an attached argument", () => {
+    const commands = [
+      "env -Sclaude -p z",
+      'env -S"claude -p" z',
+      "env --split-string=claude",
+      'env --split-string="claude -p"',
+      "env -S 'claude -p x'"
+    ];
+    for (const command of commands) {
+      assert.equal(shell(command, ASK_PARENT).reason, "direct_harness_invocation", command);
+    }
+  });
+
+  it("denies a dynamic executable word as ambiguous syntax", () => {
+    const commands = [
+      "$C -p x",
+      "C=claude;$C -p x",
+      '"$C" -p',
+      "$0 -p",
+      "$a$b -p",
+      "cl*ude -p",
+      "[c]laude -p",
+      "C=claude;$C",
+      'timeout 5 node --test "$f"'
+    ];
+    for (const command of commands) {
+      const verdict = shell(command, ASK_PARENT);
+      assert.equal(verdict.decision, "deny", command);
+      assert.equal(verdict.reason, "ambiguous_syntax", command);
+    }
+  });
+
+  it("denies a harness name after a wrapper whatever comes before it", () => {
+    for (const command of ["env $X claude -p z", "nice -n $x claude", "timeout 5 claude -p z"]) {
+      assert.equal(shell(command, ASK_PARENT).decision, "deny", command);
+    }
+  });
+
   it("lists the always denied executables from the contract", () => {
     assert.deepEqual(CONTRACT.always_denied_executables, ["opencode", "claude"]);
   });
