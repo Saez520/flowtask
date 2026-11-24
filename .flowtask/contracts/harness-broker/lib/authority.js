@@ -154,8 +154,16 @@ function samePair(a, b) {
 
 function startsWithDeniedExecutable(command, executables) {
   const tokens = command.trim().split(/\s+/);
-  while (tokens.length > 0 && ENV_ASSIGNMENT.test(tokens[0])) tokens.shift();
-  return tokens.length > 0 && executables.includes(tokens[0].split("/").pop());
+  while (tokens.length > 0 && isEnvAssignment(tokens[0])) tokens.shift();
+  return tokens.length > 0 && executables.includes(commandName(tokens[0]));
+}
+
+export function isEnvAssignment(token) {
+  return ENV_ASSIGNMENT.test(token);
+}
+
+export function commandName(token) {
+  return token.replace(/["'\\]/g, "").split("/").pop();
 }
 
 function uniqueFields(fields) {
