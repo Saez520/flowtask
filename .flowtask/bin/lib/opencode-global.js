@@ -1,8 +1,14 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { logInfo, fileExists } from "./logger.js";
-import { findOpencodeConfig, mergeAgentEntries, pluginEntryPath } from "./opencode.js";
+import { logInfo, logWarn, fileExists } from "./logger.js";
+import {
+  findOpencodeConfig,
+  mergeAgentEntries,
+  migrateLegacyAgentEntries,
+  pluginEntryPath,
+  removeLegacyFlowTaskAgents,
+} from "./opencode.js";
 import {
   readUserRuntimeManifest,
   resolveUserPayloadPaths,
@@ -162,7 +168,9 @@ export function applyOpencodeGlobalSurface(config, {
   const root = runtimeRoot ?? resolveUserRuntimePaths().runtimeRoot;
   const canonical = commandSource ?? canonicalConfig(flowtaskDir);
   const payloadPaths = resolveUserPayloadPaths(root, runtimeManifest, "canonical");
-  const next = isPlainObject(config) ? { ...config } : {};
+  const migrated = migrateLegacyAgentEntries(isPlainObject(config) ? { ...config } : {});
+  const next = migrated.config;
+  const warnings = migrated.warnings;
   if (!next.$schema) next.$schema = "https://opencode.ai/config.json";
 
   // Agents: FlowTask owns its own entries; user entries are untouched.
@@ -221,7 +229,7 @@ export function applyOpencodeGlobalSurface(config, {
   }
   if (Object.keys(mcp).length > 0) next.mcp = mcp;
 
-  return { config: next, engramManaged };
+  return { config: next, engramManaged, warnings };
 }
 
 /**
@@ -250,6 +258,7 @@ export function ensureOpencodeGlobalSurface({ flowtaskDir, runtimeRoot = null, c
     runtimeRoot: root,
     commandSource,
   });
+  for (const warning of applied.warnings) logWarn(warning);
   const written = writeOpencodeGlobalConfig(applied.config, { paths: userPaths });
   if (written.changed) {
     logInfo(read.status === "absent"
@@ -262,6 +271,7 @@ export function ensureOpencodeGlobalSurface({ flowtaskDir, runtimeRoot = null, c
     path: written.path,
     config: applied.config,
     engramManaged: applied.engramManaged,
+    warnings: applied.warnings,
   };
 }
 
@@ -280,8 +290,9 @@ export function removeOpencodeGlobalSurface({
   const canonical = commandSource ?? (() => {
     try { return canonicalConfig(flowtaskDir); } catch { return {}; }
   })();
-  const next = { ...read.config };
-  const removed = [];
+  const legacyCleanup = removeLegacyFlowTaskAgents({ ...read.config });
+  const next = legacyCleanup.config;
+  const removed = [...legacyCleanup.removed];
 
   if (isPlainObject(next.agents)) {
     const agents = { ...next.agents };

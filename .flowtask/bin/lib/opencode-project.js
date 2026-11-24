@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { logInfo, logSuccess, logWarn, fileExists } from "./logger.js";
-import { findOpencodeConfig } from "./opencode.js";
+import { findOpencodeConfig, removeLegacyFlowTaskAgents } from "./opencode.js";
 import {
   classifyOwnership,
   OWNERSHIP,
@@ -130,14 +130,16 @@ function flowTaskPluginName(entry) {
   return match ? match[1] : null;
 }
 
-function cleanConfigFile(configPath, { flowtaskDir, removeEngram = true } = {}) {
+/** Remove the FlowTask entries of a project configuration file; other settings stay. */
+export function cleanConfigFile(configPath, { flowtaskDir, removeEngram = true } = {}) {
   if (!fileExists(configPath)) return { changed: false, removed: [] };
   const parsed = readJson(configPath);
   if (!parsed.ok || !parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
     return { changed: false, removed: [], preserved: configPath };
   }
-  const config = { ...parsed.value };
-  const removed = [];
+  const legacyCleanup = removeLegacyFlowTaskAgents({ ...parsed.value });
+  const config = legacyCleanup.config;
+  const removed = [...legacyCleanup.removed];
 
   if (config.agents && typeof config.agents === "object" && !Array.isArray(config.agents)) {
     const agents = { ...config.agents };

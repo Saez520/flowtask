@@ -329,6 +329,7 @@ malformed `source` or `sourceCommit` remain rejected.
 - copies only `dist`, `package.json`, and `README.md` according to the manifest's `files` allowlist
 - registers the entrypoint `dist/tui.js` in `.opencode/cli.json`
 - removes the legacy `flowtask-model-selector` installation (directory and configuration entries) after copying and validating the replacement
+- `agents` is the current OpenCode configuration key for agent definitions and `agent` is deprecated upstream. When both hold a `flowtask-*` entry, OpenCode discards the legacy one with the message "retained native value over legacy value", so the chosen model would be lost. `install` and `update` therefore move each `agent.flowtask-*` model and variant to `agents.flowtask-*.model` as `provider/model#variant` (an existing `agents` model wins), drop the legacy entry, report legacy permission rules that cannot be translated as warnings, and leave foreign entries untouched; `uninstall` removes both keys
 
 #### `agent-model-selector-claude-code` (detail)
 

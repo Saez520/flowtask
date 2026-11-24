@@ -156,6 +156,76 @@ export function mergeAgentEntries(target, source) {
   return result;
 }
 
+function legacyEntryModel(entry) {
+  const { model, variant } = entry;
+  if (typeof model !== "string") return model ?? undefined;
+  if (typeof variant !== "string" || variant === "" || model.includes("#")) return model;
+  return `${model}#${variant}`;
+}
+
+function isNonEmptyValue(value) {
+  if (value === undefined || value === null) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (isPlainObject(value)) return Object.keys(value).length > 0;
+  return true;
+}
+
+/**
+ * Move the FlowTask entries of the deprecated `agent` section into `agents`.
+ *
+ * The consumer's model choice survives as `provider/model#variant`; an existing
+ * `agents.<name>.model` wins. Legacy `permission` rules are not translated: they
+ * are reported in `warnings` and then dropped together with the legacy entry.
+ * Entries that are not FlowTask-owned stay untouched, and `agent` is removed
+ * when it ends up empty. The input is not mutated.
+ */
+export function migrateLegacyAgentEntries(config) {
+  const warnings = [];
+  if (!isPlainObject(config) || !isPlainObject(config.agent)) return { config, warnings };
+
+  const next = { ...config };
+  const legacy = { ...config.agent };
+  let agents = isPlainObject(config.agents) ? { ...config.agents } : null;
+
+  for (const [name, entry] of Object.entries(config.agent)) {
+    if (!isFlowTaskAgent(name)) continue;
+    delete legacy[name];
+    if (!isPlainObject(entry)) continue;
+
+    const model = legacyEntryModel(entry);
+    if (model !== undefined) {
+      agents ??= {};
+      const current = isPlainObject(agents[name]) ? agents[name] : {};
+      if (current.model === undefined) agents[name] = { ...current, model };
+    }
+    if (isNonEmptyValue(entry.permission)) {
+      warnings.push(`agent.${name}.permission has rules that cannot be translated to agents; review them manually: ${JSON.stringify(entry.permission)}`);
+    }
+  }
+
+  if (agents) next.agents = agents;
+  if (Object.keys(legacy).length > 0) next.agent = legacy;
+  else delete next.agent;
+  return { config: next, warnings };
+}
+
+/** Remove the FlowTask entries of the deprecated `agent` section; returns the removed names. */
+export function removeLegacyFlowTaskAgents(config) {
+  const removed = [];
+  if (!isPlainObject(config) || !isPlainObject(config.agent)) return { config, removed };
+  const legacy = { ...config.agent };
+  for (const name of Object.keys(legacy)) {
+    if (isFlowTaskAgent(name)) {
+      delete legacy[name];
+      removed.push(`agent.${name}`);
+    }
+  }
+  const next = { ...config };
+  if (Object.keys(legacy).length > 0) next.agent = legacy;
+  else delete next.agent;
+  return { config: next, removed };
+}
+
 function removeLegacyAgentPermission(agents) {
   if (!isPlainObject(agents)) return;
   for (const [name, entry] of Object.entries(agents)) {
