@@ -2,7 +2,7 @@ import { Plugin } from "@opencode/plugin";
 import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, isAuthorityCommand, isWorktreeManagerMcpTool, } from "./authorizer.js";
+import { RUNNER_DELEGATION_MESSAGE, isAuthorizedRunnerCommand, isAuthorizedRunnerSubagent, isAuthorityCommand, isRunnerShellTool, isWorktreeManagerMcpTool, } from "./authorizer.js";
 import { buildLayerBlockMessage, readOperationalLayers, readOperationalLayersAt } from "./layers.js";
 import { evaluateOpencodeActivation, findOpencodeRegistration, } from "./registration.js";
 import { applyReducedDelivery, buildAttachmentDelivery, buildDegradationMetadata, buildNarrowingNotice, buildReducedDelivery, isImageOrPdfOutput, loadContextBudgetConfig, readDeliveredText, readRequestedPath, registerNarrowingNotice, resetNarrowingNotices, shouldPreventiveBlockGlob, shouldPreventiveBlockGrep, shouldPreventiveBlockRead, } from "./context-budget.js";
@@ -169,7 +169,7 @@ function isGitCommitCommand(command) {
 function runnerToolAllowed(tool, args) {
     if (isWorktreeManagerMcpTool(tool))
         return true;
-    if (tool === "bash")
+    if (isRunnerShellTool(tool))
         return isAuthorizedRunnerCommand(String(args.command ?? ""));
     if (tool === "read" || tool === "glob" || tool === "grep" || tool === "skill" || tool.startsWith("engram_"))
         return true;
@@ -478,7 +478,7 @@ export default Plugin.define({
                     ? readOperationalLayersAt(ctx.options.configDir)
                     : readOperationalLayers([workdir, sessionDir]);
                 if (!operationalLayers.ok) {
-                    const authorityBypass = event.tool === "bash" && isAuthorityCommand(command);
+                    const authorityBypass = isRunnerShellTool(event.tool) && isAuthorityCommand(command);
                     if (!authorityBypass)
                         throw new Error(buildLayerBlockMessage(operationalLayers));
                 }
@@ -501,7 +501,7 @@ export default Plugin.define({
                     throw new Error(buildNarrowingNotice(budgetTool, input));
                 }
             }
-            if (event.tool !== "bash" || !isGitCommitCommand(command))
+            if (!isRunnerShellTool(event.tool) || !isGitCommitCommand(command))
                 return;
             if (command.includes("--no-verify") || command.includes("--no-review")) {
                 // The bypass is only legitimate for trivial changes (≤ TRIVIAL_CHANGE_LINES).

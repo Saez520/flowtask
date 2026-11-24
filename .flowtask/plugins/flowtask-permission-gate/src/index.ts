@@ -7,6 +7,7 @@ import {
   isAuthorizedRunnerCommand,
   isAuthorizedRunnerSubagent,
   isAuthorityCommand,
+  isRunnerShellTool,
   isWorktreeManagerMcpTool,
 } from "./authorizer.js";
 import { buildLayerBlockMessage, readOperationalLayers, readOperationalLayersAt } from "./layers.js";
@@ -217,7 +218,7 @@ function isGitCommitCommand(command: string): boolean {
 
 function runnerToolAllowed(tool: string, args: Record<string, unknown>): boolean {
    if (isWorktreeManagerMcpTool(tool)) return true;
-   if (tool === "bash") return isAuthorizedRunnerCommand(String(args.command ?? ""));
+   if (isRunnerShellTool(tool)) return isAuthorizedRunnerCommand(String(args.command ?? ""));
    if (tool === "read" || tool === "glob" || tool === "grep" || tool === "skill" || tool.startsWith("engram_")) return true;
    // MCP Graphify: the only MCP tool authorized for the runner (path 1 of the research chain).
    // Do not expand to other graphify tools — only the exact enumerated tool.
@@ -563,7 +564,7 @@ export default Plugin.define({
           ? readOperationalLayersAt(ctx.options.configDir)
           : readOperationalLayers([workdir, sessionDir]);
         if (!operationalLayers.ok) {
-          const authorityBypass = event.tool === "bash" && isAuthorityCommand(command);
+          const authorityBypass = isRunnerShellTool(event.tool) && isAuthorityCommand(command);
           if (!authorityBypass) throw new Error(buildLayerBlockMessage(operationalLayers));
         }
         if (!runnerToolAllowed(event.tool, input)) runnerBlocked();
@@ -587,7 +588,7 @@ export default Plugin.define({
         }
       }
 
-      if (event.tool !== "bash" || !isGitCommitCommand(command)) return;
+      if (!isRunnerShellTool(event.tool) || !isGitCommitCommand(command)) return;
       if (command.includes("--no-verify") || command.includes("--no-review")) {
         // The bypass is only legitimate for trivial changes (≤ TRIVIAL_CHANGE_LINES).
         // If the diff cannot be measured (getDiffStats throws), the error propagates and the commit is blocked (deny-by-default).

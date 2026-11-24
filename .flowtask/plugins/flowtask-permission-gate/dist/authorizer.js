@@ -1,4 +1,10 @@
 export const RUNNER_DELEGATION_MESSAGE = "Remember that you must delegate this operation to the corresponding subagent.";
+/** Host shell names that share one command analysis and one result per command. */
+export const RUNNER_SHELL_TOOLS = Object.freeze(["bash", "shell"]);
+/** Both host shell names receive exactly the same command analysis. */
+export function isRunnerShellTool(tool) {
+    return typeof tool === "string" && RUNNER_SHELL_TOOLS.some((name) => name === tool);
+}
 export const WORKTREE_MANAGER_MCP_SERVER = "worktree_manager";
 export const WORKTREE_MANAGER_MCP_TOOLS = Object.freeze([
     "worktree_create", "worktree_complete", "worktree_cleanup",

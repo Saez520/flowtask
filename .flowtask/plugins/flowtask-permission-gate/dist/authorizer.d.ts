@@ -1,4 +1,8 @@
 export declare const RUNNER_DELEGATION_MESSAGE = "Remember that you must delegate this operation to the corresponding subagent.";
+/** Host shell names that share one command analysis and one result per command. */
+export declare const RUNNER_SHELL_TOOLS: readonly ["bash", "shell"];
+/** Both host shell names receive exactly the same command analysis. */
+export declare function isRunnerShellTool(tool: unknown): boolean;
 export declare const WORKTREE_MANAGER_MCP_SERVER = "worktree_manager";
 export declare const WORKTREE_MANAGER_MCP_TOOLS: readonly ["worktree_create", "worktree_complete", "worktree_cleanup", "worktree_recover", "worktree_list", "worktree_prune", "worktree_status"];
 /** The runner may invoke exactly the seven capabilities the manager publishes. */
