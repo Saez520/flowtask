@@ -1,0 +1,31 @@
+{
+  "name": "late-cancel-aborts-next-prompt",
+  "description": "A child that records every message and applies a cancellation that arrived after its turn ended to the next prompt.",
+  "session_id": "session-1",
+  "behavior": {
+    "on_cancel": "stop_turn",
+    "on_stdin_end": "ignore",
+    "start_after_stdin_end": false,
+    "record_messages_to": "messages.ndjson"
+  },
+  "new_session_error": null,
+  "steps": [
+    {
+      "emit_update": {
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "Done"
+          }
+        }
+      }
+    },
+    {
+      "end_turn": {
+        "stop_reason": "end_turn",
+        "usage": null
+      }
+    }
+  ]
+}

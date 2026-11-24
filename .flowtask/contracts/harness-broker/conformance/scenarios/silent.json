@@ -1,0 +1,17 @@
+{
+  "name": "silent",
+  "description": "A child that never emits a valid event.",
+  "session_id": "session-1",
+  "behavior": {
+    "on_cancel": "ignore",
+    "on_stdin_end": "ignore",
+    "start_after_stdin_end": false,
+    "record_messages_to": null
+  },
+  "new_session_error": null,
+  "steps": [
+    {
+      "hang": true
+    }
+  ]
+}

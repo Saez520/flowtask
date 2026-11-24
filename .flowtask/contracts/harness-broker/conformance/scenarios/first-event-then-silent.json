@@ -1,0 +1,28 @@
+{
+  "name": "first-event-then-silent",
+  "description": "A child that emits one valid event and then stops responding.",
+  "session_id": "session-1",
+  "behavior": {
+    "on_cancel": "ignore",
+    "on_stdin_end": "ignore",
+    "start_after_stdin_end": false,
+    "record_messages_to": null
+  },
+  "new_session_error": null,
+  "steps": [
+    {
+      "emit_update": {
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "Starting"
+          }
+        }
+      }
+    },
+    {
+      "hang": true
+    }
+  ]
+}

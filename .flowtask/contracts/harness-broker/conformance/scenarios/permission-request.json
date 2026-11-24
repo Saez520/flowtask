@@ -1,0 +1,71 @@
+{
+  "name": "permission-request",
+  "description": "A child that asks for a permission and continues according to the option the client picks.",
+  "session_id": "session-1",
+  "behavior": {
+    "on_cancel": "ignore",
+    "on_stdin_end": "ignore",
+    "start_after_stdin_end": false,
+    "record_messages_to": null
+  },
+  "new_session_error": null,
+  "steps": [
+    {
+      "request_permission": {
+        "tool": {
+          "kind": "execute",
+          "title": "Run command"
+        },
+        "options": [
+          {
+            "option_id": "allow_once",
+            "kind": "allow_once",
+            "name": "Allow once"
+          },
+          {
+            "option_id": "allow_always",
+            "kind": "allow_always",
+            "name": "Allow always"
+          },
+          {
+            "option_id": "reject_once",
+            "kind": "reject_once",
+            "name": "Reject once"
+          },
+          {
+            "option_id": "reject_always",
+            "kind": "reject_always",
+            "name": "Reject always"
+          }
+        ],
+        "on_allow_once": [
+          {
+            "emit_update": {
+              "update": {
+                "sessionUpdate": "agent_message_chunk",
+                "content": {
+                  "type": "text",
+                  "text": "Command allowed"
+                }
+              }
+            }
+          },
+          {
+            "end_turn": {
+              "stop_reason": "end_turn",
+              "usage": null
+            }
+          }
+        ],
+        "on_reject_once": [
+          {
+            "end_turn": {
+              "stop_reason": "end_turn",
+              "usage": null
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

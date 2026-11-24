@@ -1,0 +1,23 @@
+{
+  "name": "launch-error-agent-not-found",
+  "description": "The harness rejects session creation because the requested agent does not exist.",
+  "session_id": "session-1",
+  "behavior": {
+    "on_cancel": "ignore",
+    "on_stdin_end": "ignore",
+    "start_after_stdin_end": false,
+    "record_messages_to": null
+  },
+  "new_session_error": {
+    "code": -32602,
+    "message": "Agent not found"
+  },
+  "steps": [
+    {
+      "end_turn": {
+        "stop_reason": "end_turn",
+        "usage": null
+      }
+    }
+  ]
+}

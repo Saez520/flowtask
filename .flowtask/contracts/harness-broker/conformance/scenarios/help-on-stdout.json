@@ -1,0 +1,26 @@
+{
+  "name": "help-on-stdout",
+  "description": "A child that prints help text on standard output, which is not a protocol message.",
+  "session_id": "session-1",
+  "behavior": {
+    "on_cancel": "ignore",
+    "on_stdin_end": "ignore",
+    "start_after_stdin_end": false,
+    "record_messages_to": null
+  },
+  "new_session_error": null,
+  "steps": [
+    {
+      "print_raw": "usage: example-harness acp [options]"
+    },
+    {
+      "print_raw": "  --agent <name>  select an agent"
+    },
+    {
+      "print_raw": "  --help          show this help"
+    },
+    {
+      "hang": true
+    }
+  ]
+}
