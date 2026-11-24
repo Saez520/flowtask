@@ -292,8 +292,9 @@ claude mcp add --scope user engram -- engram mcp
 ```
 
 FlowTask verifies the scope before and after adding. If the CLI is unavailable
-or the write fails, it does not edit `~/.claude.json` on its own: it reports the
-exact command. A pre-existing user-scope registration is preserved and is not
+or the write fails, the installation continues with a warning: it does not edit
+`~/.claude.json` on its own and reports the exact command to register Engram
+manually. A pre-existing user-scope registration is preserved and is not
 removed by `uninstall`.
 
 Project-owned servers such as Graphify remain in the project `.mcp.json`.

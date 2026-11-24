@@ -24,7 +24,7 @@ import {
   removeClaudeProject,
 } from "./claude-projects.js";
 import { readProjectRegistration, reconcileProjectsIndex } from "./project-registration.js";
-import { ensureUserEngram, ensureUserWorktreeManager, removeUserEngram, removeUserWorktreeManager } from "./claude-mcp.js";
+import { ensureUserEngramOrWarn, ensureUserWorktreeManager, removeUserEngram, removeUserWorktreeManager } from "./claude-mcp.js";
 import { removeWorktreeManagerMcp } from "./worktree-mcp-registration.js";
 import { CUSTOM_PERSONA_TEXT, buildRuntimeRunnerBody } from "./runner-content.js";
 import {
@@ -703,18 +703,10 @@ function ensureGlobalSurfaces({
   }
 
   const manifest = readClaudeRuntimeManifest(paths.runtimeRoot);
-  const mcp = ensureUserEngram({
+  const mcp = ensureUserEngramOrWarn({
     claudeUserDir: paths.claudeUserDir,
     runtimeManifest: manifest,
   });
-  if (!mcp.ok) {
-    const error = new Error(
-      `Could not register Engram in the user scope: ${mcp.error}. The project was not registered.`,
-    );
-    error.code = "mcp_registration_failed";
-    error.command = mcp.command;
-    throw error;
-  }
   persistMcpState(paths.runtimeRoot, mcp);
   const worktreeMcp = ensureUserWorktreeManagerForClaude(paths, worktreeManager, manifest);
 

@@ -9,6 +9,7 @@ import {
   buildWorktreeManagerMcpEntry,
   isFlowTaskWorktreeManagerEntry,
 } from "./worktree-mcp-registration.js";
+import { logWarn } from "./logger.js";
 
 const MCP_GET_TIMEOUT_MS = 15000;
 const ENGRAM_COMMAND = "engram";
@@ -151,6 +152,29 @@ export function ensureUserEngram({
 
   const managed = runtimeManifest?.mcp?.engram?.managed !== false;
   return { ok: true, action: "added", managed, error: null, command };
+}
+
+/**
+ * Ensure the user-scope Engram registration without aborting the caller. A
+ * missing or failing CLI degrades to a warning that carries the exact manual
+ * command; the Claude surfaces are already usable without it.
+ */
+export function ensureUserEngramOrWarn({
+  claudeUserDir,
+  runtimeManifest = null,
+  claudeBin = "claude",
+  spawn = spawnSync,
+  ensure = ensureUserEngram,
+  warn = logWarn,
+} = {}) {
+  const result = ensure({ claudeUserDir, runtimeManifest, claudeBin, spawn });
+  if (!result.ok) {
+    warn(
+      `Could not register Engram in the Claude user scope: ${result.error}. ` +
+        "The Claude surfaces were updated without the user-scope MCP registration.",
+    );
+  }
+  return result;
 }
 
 /**

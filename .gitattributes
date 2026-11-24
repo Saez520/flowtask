@@ -1,1 +1,3 @@
 graphify-out/graph.json merge=graphify
+# Shell scripts must be LF so they run on Windows (Git Bash/WSL)
+*.sh text eol=lf
