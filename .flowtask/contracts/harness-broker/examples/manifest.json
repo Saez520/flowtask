@@ -1,0 +1,427 @@
+[
+  {
+    "file": "valid/delegation-request.minimal.json",
+    "schema": "delegation-request",
+    "valid": true
+  },
+  {
+    "file": "valid/delegation-request.full.json",
+    "schema": "delegation-request",
+    "valid": true
+  },
+  {
+    "file": "invalid/delegation-request.missing-model.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "model"
+    ]
+  },
+  {
+    "file": "invalid/delegation-request.relative-cwd.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "cwd"
+    ]
+  },
+  {
+    "file": "invalid/delegation-request.zero-limit.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "first_event_timeout"
+    ]
+  },
+  {
+    "file": "invalid/delegation-request.negative-limit.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "idle_timeout"
+    ]
+  },
+  {
+    "file": "invalid/delegation-request.bad-harness-format.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "harness"
+    ]
+  },
+  {
+    "file": "invalid/delegation-request.run-id-supplied.json",
+    "schema": "delegation-request",
+    "valid": false,
+    "error_paths": [
+      "run_id"
+    ]
+  },
+  {
+    "file": "valid/delegate-response.submitted.json",
+    "schema": "delegate-response",
+    "valid": true
+  },
+  {
+    "file": "valid/delegate-response.validation-error.json",
+    "schema": "delegate-response",
+    "valid": true
+  },
+  {
+    "file": "invalid/delegate-response.state-working.json",
+    "schema": "delegate-response",
+    "valid": false,
+    "error_paths": [
+      "state"
+    ]
+  },
+  {
+    "file": "valid/error.validation-error.json",
+    "schema": "error",
+    "valid": true
+  },
+  {
+    "file": "valid/error.invalid-cursor.json",
+    "schema": "error",
+    "valid": true
+  },
+  {
+    "file": "valid/error.unknown-run.json",
+    "schema": "error",
+    "valid": true
+  },
+  {
+    "file": "invalid/error.validation-error-without-fields.json",
+    "schema": "error",
+    "valid": false,
+    "error_paths": [
+      "fields"
+    ]
+  },
+  {
+    "file": "invalid/error.invalid-cursor-without-last-valid.json",
+    "schema": "error",
+    "valid": false,
+    "error_paths": [
+      "last_valid_cursor"
+    ]
+  },
+  {
+    "file": "invalid/error.unknown-run-without-run-id.json",
+    "schema": "error",
+    "valid": false,
+    "error_paths": [
+      "run_id"
+    ]
+  },
+  {
+    "file": "valid/permission-response.allow-once.json",
+    "schema": "permission-response",
+    "valid": true
+  },
+  {
+    "file": "invalid/permission-response.unknown-decider.json",
+    "schema": "permission-response",
+    "valid": false,
+    "error_paths": [
+      "decided_by"
+    ]
+  },
+  {
+    "file": "valid/adapter-capabilities.opencode.json",
+    "schema": "adapter-capabilities",
+    "valid": true
+  },
+  {
+    "file": "invalid/adapter-capabilities.missing-usage-reporting.json",
+    "schema": "adapter-capabilities",
+    "valid": false,
+    "error_paths": [
+      "usage_reporting"
+    ]
+  },
+  {
+    "file": "valid/event.state-changed-submitted.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.state-changed-working.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.state-changed-input-required.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.state-changed-failed.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.state-changed-rejected.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.agent-message.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.agent-thought.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.tool-call.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.tool-call-update.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.permission-requested.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.permission-resolved.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.usage.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "valid/event.diagnostic.json",
+    "schema": "event",
+    "valid": true
+  },
+  {
+    "file": "invalid/event.state-changed-failed-without-reason.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "reason"
+    ]
+  },
+  {
+    "file": "invalid/event.state-changed-failed-unknown-reason.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "reason"
+    ]
+  },
+  {
+    "file": "invalid/event.state-changed-input-required-without-cause.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "cause"
+    ]
+  },
+  {
+    "file": "invalid/event.state-changed-auth-required-wrong-cause.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "cause"
+    ]
+  },
+  {
+    "file": "invalid/event.state-changed-rejected-without-detail.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "detail"
+    ]
+  },
+  {
+    "file": "invalid/event.unknown-type.json",
+    "schema": "event",
+    "valid": false,
+    "error_paths": [
+      "type"
+    ]
+  },
+  {
+    "file": "valid/events-page.read-page.json",
+    "schema": "events-page",
+    "valid": true
+  },
+  {
+    "file": "invalid/events-page.unknown-event-type.json",
+    "schema": "events-page",
+    "valid": false,
+    "error_paths": [
+      "type"
+    ]
+  },
+  {
+    "file": "valid/run-status.working.json",
+    "schema": "run-status",
+    "valid": true
+  },
+  {
+    "file": "valid/run-status.input-required-permission.json",
+    "schema": "run-status",
+    "valid": true
+  },
+  {
+    "file": "valid/run-status.terminal-failed.json",
+    "schema": "run-status",
+    "valid": true
+  },
+  {
+    "file": "invalid/run-status.source-out-of-enum.json",
+    "schema": "run-status",
+    "valid": false,
+    "error_paths": [
+      "last_activity_source"
+    ]
+  },
+  {
+    "file": "valid/result.completed.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.completed.native-session-null.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.completed.adapter-a.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.completed.adapter-b.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.usage-null-vs-zero.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.no_first_event.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.idle_timeout.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.wall_timeout.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.exit_nonzero.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.exit_without_result.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.permission_rejected.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.refusal.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.max_tokens.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.max_turn_requests.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.launch_failed.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.supervisor_lost.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.canceled.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.rejected.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "invalid/result.missing-field.json",
+    "schema": "result",
+    "valid": false,
+    "error_paths": [
+      "telemetry"
+    ]
+  },
+  {
+    "file": "invalid/result.harness-extra-field.json",
+    "schema": "result",
+    "valid": false,
+    "error_paths": [
+      "adapter_pid"
+    ]
+  },
+  {
+    "file": "invalid/result.failed-without-reason.json",
+    "schema": "result",
+    "valid": false,
+    "error_paths": [
+      "reason"
+    ]
+  },
+  {
+    "file": "invalid/result.completed-with-reason.json",
+    "schema": "result",
+    "valid": false,
+    "error_paths": [
+      "reason"
+    ]
+  },
+  {
+    "file": "valid/result-response.not-terminal.json",
+    "schema": "result-response",
+    "valid": true
+  },
+  {
+    "file": "invalid/result-response.partial-result.json",
+    "schema": "result-response",
+    "valid": false,
+    "error_paths": [
+      "final_text"
+    ]
+  }
+]

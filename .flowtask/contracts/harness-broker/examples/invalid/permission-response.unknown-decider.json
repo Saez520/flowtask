@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "run_id": "run-0001",
+  "request_id": "request-1",
+  "option_id": "allow_once",
+  "decided_by": "robot"
+}

@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "run_id": "run-0001",
+  "state": "rejected",
+  "reason": "authority_denied",
+  "detail": "The authority gate denied the delegation.",
+  "canceled_by": null,
+  "stop_reason": null,
+  "final_text": "Done.",
+  "parent_run_id": "run-0000",
+  "harness": "opencode",
+  "harness_version": "example-1.0",
+  "acp_session_id": null,
+  "harness_native_session_id": null,
+  "parent_harness": "claude-code",
+  "parent_session_id": "session-42",
+  "model": "example-model",
+  "provider": "example-provider",
+  "agent": "flowtask-constructor",
+  "submitted_at": "2026-11-23T20:00:00Z",
+  "started_at": null,
+  "ended_at": "2026-11-23T20:05:00Z",
+  "duration_ms": null,
+  "time_to_first_event_ms": null,
+  "limits": {
+    "first_event_timeout": 60000,
+    "idle_timeout": 120000,
+    "wall_timeout": 1800000
+  },
+  "process": {
+    "exit_code": null,
+    "signal": null,
+    "terminated_by_broker": false
+  },
+  "usage": {
+    "input_tokens": null,
+    "output_tokens": null,
+    "cost": null
+  },
+  "permissions": {
+    "requested": 0,
+    "granted": 0,
+    "rejected": 0
+  },
+  "telemetry": {
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "span_id": "00f067aa0ba902b7",
+    "parent_span_id": "1111111111111111",
+    "attributes": {
+      "flowtask.ca_id": "example-item",
+      "flowtask.run_id": "run-0001",
+      "flowtask.agent": "flowtask-constructor"
+    }
+  },
+  "last_cursor": 12
+}

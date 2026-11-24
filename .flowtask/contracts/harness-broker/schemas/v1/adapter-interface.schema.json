@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:adapter-interface",
+  "title": "AdapterInterface",
+  "description": "Data form of the interface every harness adapter implements: its operations, the events each one emits, the behaviours it must exhibit, each tied to the conformance cases that check it, and the mapping from native stop reasons to outcomes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "operations",
+    "stop_reason_mapping"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/schema_version",
+      "description": "Contract version of the adapter interface. Must be 1."
+    },
+    "operations": {
+      "type": "array",
+      "description": "Operations of the adapter, each listed once.",
+      "minItems": 7,
+      "maxItems": 7,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "description": "One operation of the adapter.",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "description",
+          "inputs",
+          "emits",
+          "required_behaviors"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Operation name.",
+            "enum": [
+              "capabilities",
+              "launch",
+              "prompt",
+              "cancel",
+              "respond_permission",
+              "liveness",
+              "terminate"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "description": "What the operation does, in one sentence.",
+            "minLength": 1
+          },
+          "inputs": {
+            "type": "array",
+            "description": "Inputs the operation takes.",
+            "items": {
+              "type": "object",
+              "description": "One input of the operation.",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "type",
+                "required"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Input name, in snake_case.",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Type of the input, a name of the common definitions or a JSON type.",
+                  "minLength": 1
+                },
+                "required": {
+                  "type": "boolean",
+                  "description": "True when the operation cannot run without this input."
+                }
+              }
+            }
+          },
+          "emits": {
+            "type": "array",
+            "description": "Event types the operation can emit.",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "description": "One event type.",
+              "enum": [
+                "state_changed",
+                "agent_message",
+                "agent_thought",
+                "tool_call",
+                "tool_call_update",
+                "permission_requested",
+                "permission_resolved",
+                "usage",
+                "diagnostic"
+              ]
+            }
+          },
+          "required_behaviors": {
+            "type": "array",
+            "description": "Behaviours the adapter must exhibit for this operation.",
+            "items": {
+              "type": "object",
+              "description": "One behaviour the adapter must exhibit.",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "statement",
+                "cases"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Identifier of the behaviour, operation and kebab-case name.",
+                  "pattern": "^[a-z][a-z0-9.-]*$"
+                },
+                "statement": {
+                  "type": "string",
+                  "description": "The behaviour, stated as an observable requirement.",
+                  "minLength": 1
+                },
+                "cases": {
+                  "type": "array",
+                  "description": "Conformance cases that check this behaviour. Each id must exist in the catalogue.",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "description": "Identifier of a conformance case in upper kebab case.",
+                    "pattern": "^[A-Z][A-Z0-9-]*$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "stop_reason_mapping": {
+      "type": "array",
+      "description": "How a native stop reason becomes a state and a reason. The first row whose origin matches wins; a row with origin any applies to every origin.",
+      "items": {
+        "type": "object",
+        "description": "One mapping row.",
+        "additionalProperties": false,
+        "required": [
+          "stop_reason",
+          "origin",
+          "state",
+          "reason"
+        ],
+        "properties": {
+          "stop_reason": {
+            "type": "string",
+            "description": "Native stop reason of the harness, as reported by the protocol.",
+            "minLength": 1
+          },
+          "origin": {
+            "type": "string",
+            "description": "What produced the stop reason: any origin, a parent cancellation, or a reject_once permission answer.",
+            "enum": [
+              "any",
+              "parent_cancel",
+              "reject_once"
+            ]
+          },
+          "state": {
+            "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/terminal_state",
+            "description": "Terminal state the stop reason produces."
+          },
+          "reason": {
+            "description": "Failure reason of the outcome, or null when the state needs none.",
+            "anyOf": [
+              {
+                "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/failed_reason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

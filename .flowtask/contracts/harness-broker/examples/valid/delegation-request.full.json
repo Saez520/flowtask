@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "harness": "opencode",
+  "agent": "flowtask-constructor",
+  "prompt": "Implement the first task of the plan.",
+  "cwd": "/Users/example/project",
+  "model": "example-model",
+  "provider": "example-provider",
+  "first_event_timeout": 60000,
+  "idle_timeout": 120000,
+  "wall_timeout": 1800000,
+  "parent_harness": "claude-code",
+  "parent_session_id": "session-42",
+  "parent_run_id": "run-0001",
+  "ca_id": "example-item",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "parent_span_id": "00f067aa0ba902b7"
+}

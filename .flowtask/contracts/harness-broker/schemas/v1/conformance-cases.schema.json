@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:conformance-cases",
+  "title": "ConformanceCases",
+  "description": "Catalogue of conformance cases. Each case checks one observable behaviour of the contract or of an adapter; cases that need a broker, a real adapter or a real harness are listed and reported as skipped with their reason.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/schema_version",
+      "description": "Contract version of the catalogue. Must be 1."
+    },
+    "cases": {
+      "type": "array",
+      "description": "Conformance cases.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "description": "One conformance case.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "level",
+          "requires",
+          "capability",
+          "criteria",
+          "scenario",
+          "check"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique identifier in upper kebab case.",
+            "pattern": "^[A-Z][A-Z0-9-]*$"
+          },
+          "title": {
+            "type": "string",
+            "description": "What the case verifies, in one sentence.",
+            "minLength": 1
+          },
+          "level": {
+            "type": "string",
+            "description": "contract runs against the simulated child and the reference model; harness runs against a real harness.",
+            "enum": [
+              "contract",
+              "harness"
+            ]
+          },
+          "requires": {
+            "type": "string",
+            "description": "What the case needs to run: none, a running broker, or a real adapter.",
+            "enum": [
+              "none",
+              "broker",
+              "adapter"
+            ]
+          },
+          "capability": {
+            "description": "Capability the adapter must declare for the case to apply, or null when it applies to every adapter.",
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "agent_selection",
+                  "interactive_permissions",
+                  "cancellation",
+                  "usage_reporting"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "criteria": {
+            "type": "array",
+            "description": "Acceptance criteria of the contract that the case covers, from C1 to C33.",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "description": "One criterion identifier.",
+              "pattern": "^C([1-9]|[12][0-9]|3[0-3])$"
+            }
+          },
+          "scenario": {
+            "description": "Simulated child scenario the case uses, by name, or null when it uses none.",
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]*$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "check": {
+            "type": "string",
+            "description": "What is verified: the test file that runs it, or the observable outcome the case requires.",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

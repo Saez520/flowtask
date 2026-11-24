@@ -1,0 +1,9 @@
+{
+  "run_id": "run-0001",
+  "cursor": 4,
+  "timestamp": "2026-11-23T20:00:06Z",
+  "type": "agent_thought",
+  "payload": {
+    "text": "The next step is the schema for the request."
+  }
+}

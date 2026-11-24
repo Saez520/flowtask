@@ -1,0 +1,18 @@
+{
+  "name": "flowtask-harness-broker-contract",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Executable contract for delegating work to another agent harness: schemas, state machine, adapter interface and conformance suite.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=26.12.1"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  }
+}

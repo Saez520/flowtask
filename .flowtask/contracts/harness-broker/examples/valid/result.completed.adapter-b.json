@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "run_id": "run-0002",
+  "state": "completed",
+  "reason": null,
+  "detail": null,
+  "canceled_by": null,
+  "stop_reason": "end_turn",
+  "final_text": "Finished.",
+  "parent_run_id": "run-0000",
+  "harness": "claude-code",
+  "harness_version": "example-2.0",
+  "acp_session_id": "session-b-9",
+  "harness_native_session_id": "native-b-9",
+  "parent_harness": "claude-code",
+  "parent_session_id": "session-42",
+  "model": "example-model-b",
+  "provider": "example-provider-b",
+  "agent": "flowtask-constructor",
+  "submitted_at": "2026-11-23T20:00:00Z",
+  "started_at": "2026-11-23T20:00:01Z",
+  "ended_at": "2026-11-23T20:05:00Z",
+  "duration_ms": 299000,
+  "time_to_first_event_ms": 800,
+  "limits": {
+    "first_event_timeout": 60000,
+    "idle_timeout": 120000,
+    "wall_timeout": 1800000
+  },
+  "process": {
+    "exit_code": 0,
+    "signal": null,
+    "terminated_by_broker": false
+  },
+  "usage": {
+    "input_tokens": 800,
+    "output_tokens": 150,
+    "cost": {
+      "amount": 0.01,
+      "currency": "EUR"
+    }
+  },
+  "permissions": {
+    "requested": 1,
+    "granted": 1,
+    "rejected": 0
+  },
+  "telemetry": {
+    "trace_id": "5bf92f3577b34da6a3ce929d0e0e4737",
+    "span_id": "10f067aa0ba902b8",
+    "parent_span_id": null,
+    "attributes": {
+      "flowtask.ca_id": null,
+      "flowtask.run_id": "run-0002",
+      "flowtask.agent": "flowtask-constructor"
+    }
+  },
+  "last_cursor": 12
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:result-response",
+  "title": "ResultResponse",
+  "description": "Response to a result query. A run that is not terminal answers with its current state and no result; partial results are never returned.",
+  "oneOf": [
+    {
+      "$ref": "urn:flowtask:harness-broker:v1:result",
+      "description": "The run is terminal and this is its normalized result."
+    },
+    {
+      "type": "object",
+      "description": "The run is not terminal yet.",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_id",
+        "terminal",
+        "state"
+      ],
+      "properties": {
+        "schema_version": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/schema_version",
+          "description": "Contract version. Must be 1."
+        },
+        "run_id": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id",
+          "description": "Run that was queried."
+        },
+        "terminal": {
+          "const": false,
+          "description": "Always false in this branch."
+        },
+        "state": {
+          "type": "string",
+          "description": "Current non-terminal state of the run.",
+          "enum": [
+            "submitted",
+            "working",
+            "input_required",
+            "auth_required"
+          ]
+        }
+      }
+    }
+  ]
+}

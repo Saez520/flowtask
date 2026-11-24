@@ -1,0 +1,375 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:scenario",
+  "title": "SimulatedChildScenario",
+  "description": "Program executed by the simulated child. Each scenario describes the behaviour of a child that speaks the agent protocol over standard streams, so the conformance cases run without a real harness.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "description",
+    "session_id",
+    "behavior",
+    "new_session_error",
+    "steps"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Scenario name, in kebab case; matches the file name.",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "description": {
+      "type": "string",
+      "description": "What the scenario reproduces and why.",
+      "minLength": 1
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Session identifier the child returns from session/new.",
+      "minLength": 1
+    },
+    "behavior": {
+      "type": "object",
+      "description": "How the child reacts to cancellation, to the end of its standard input and to the start of its operation.",
+      "additionalProperties": false,
+      "required": [
+        "on_cancel",
+        "on_stdin_end",
+        "start_after_stdin_end",
+        "record_messages_to"
+      ],
+      "properties": {
+        "on_cancel": {
+          "type": "string",
+          "description": "stop_turn ends the live turn with cancelled; a cancellation that arrives with no live turn is applied to the next prompt. ignore keeps the turn running.",
+          "enum": [
+            "stop_turn",
+            "ignore"
+          ]
+        },
+        "on_stdin_end": {
+          "type": "string",
+          "description": "exit_0 exits with code 0 when the standard input closes; ignore keeps running.",
+          "enum": [
+            "exit_0",
+            "ignore"
+          ]
+        },
+        "start_after_stdin_end": {
+          "type": "boolean",
+          "description": "When true, the child answers nothing until its standard input closes, then processes the buffered messages in order."
+        },
+        "record_messages_to": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "File, relative to the working directory of the child, where every received message is appended as one line. Null records nothing.",
+          "minLength": 1
+        }
+      }
+    },
+    "new_session_error": {
+      "description": "Error returned to session/new, or null when the session opens.",
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "description": "Protocol error returned to session/new.",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "message"
+          ],
+          "properties": {
+            "code": {
+              "type": "integer",
+              "description": "Protocol error code."
+            },
+            "message": {
+              "type": "string",
+              "description": "Protocol error message.",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "steps": {
+      "type": "array",
+      "description": "Steps run in order once a session/prompt arrives.",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/step",
+        "description": "One step of the program."
+      }
+    }
+  },
+  "$defs": {
+    "step": {
+      "type": "object",
+      "description": "Exactly one of the step kinds.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "emit_update"
+          ],
+          "properties": {
+            "emit_update": {
+              "type": "object",
+              "description": "Sends a session update notification.",
+              "additionalProperties": false,
+              "required": [
+                "update"
+              ],
+              "properties": {
+                "update": {
+                  "type": "object",
+                  "description": "Update payload, sent as given.",
+                  "required": [
+                    "sessionUpdate"
+                  ],
+                  "properties": {
+                    "sessionUpdate": {
+                      "type": "string",
+                      "description": "Kind of update, as named by the protocol.",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "delay_ms"
+          ],
+          "properties": {
+            "delay_ms": {
+              "type": "integer",
+              "description": "Milliseconds to wait before the next step.",
+              "minimum": 0
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "print_raw"
+          ],
+          "properties": {
+            "print_raw": {
+              "type": "string",
+              "description": "Line written to standard output that is not a protocol message.",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "request_permission"
+          ],
+          "properties": {
+            "request_permission": {
+              "type": "object",
+              "description": "Asks the client for a permission and continues according to the chosen option.",
+              "additionalProperties": false,
+              "required": [
+                "tool",
+                "options",
+                "on_allow_once",
+                "on_reject_once"
+              ],
+              "properties": {
+                "tool": {
+                  "type": "object",
+                  "description": "Tool the permission is about."
+                },
+                "options": {
+                  "type": "array",
+                  "description": "Options offered to the client, at least one.",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "description": "One option offered.",
+                    "additionalProperties": false,
+                    "required": [
+                      "option_id",
+                      "kind",
+                      "name"
+                    ],
+                    "properties": {
+                      "option_id": {
+                        "type": "string",
+                        "description": "Identifier of the option.",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "description": "Effect of the option.",
+                        "enum": [
+                          "allow_once",
+                          "allow_always",
+                          "reject_once",
+                          "reject_always"
+                        ]
+                      },
+                      "name": {
+                        "type": "string",
+                        "description": "Label of the option.",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                },
+                "on_allow_once": {
+                  "type": "array",
+                  "description": "Steps run when the client chooses an allow_once option.",
+                  "items": {
+                    "$ref": "#/$defs/step",
+                    "description": "One step."
+                  }
+                },
+                "on_reject_once": {
+                  "type": "array",
+                  "description": "Steps run when the client chooses a reject_once option.",
+                  "items": {
+                    "$ref": "#/$defs/step",
+                    "description": "One step."
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "spawn_subprocess"
+          ],
+          "properties": {
+            "spawn_subprocess": {
+              "type": "object",
+              "description": "Starts a subprocess in the same process group as the child.",
+              "additionalProperties": false,
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "array",
+                  "description": "Program and arguments.",
+                  "minItems": 1,
+                  "items": {
+                    "type": "string",
+                    "description": "One argument.",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "end_turn"
+          ],
+          "properties": {
+            "end_turn": {
+              "type": "object",
+              "description": "Closes the turn with a stop reason.",
+              "additionalProperties": false,
+              "required": [
+                "stop_reason",
+                "usage"
+              ],
+              "properties": {
+                "stop_reason": {
+                  "type": "string",
+                  "description": "Native stop reason returned to the prompt.",
+                  "minLength": 1
+                },
+                "usage": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "Usage returned with the stop reason, or null when none is reported."
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "exit"
+          ],
+          "properties": {
+            "exit": {
+              "type": "object",
+              "description": "Ends the child with an exit code.",
+              "additionalProperties": false,
+              "required": [
+                "code"
+              ],
+              "properties": {
+                "code": {
+                  "type": "integer",
+                  "description": "Exit code, from 0 to 255.",
+                  "minimum": 0,
+                  "maximum": 255
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "self_signal"
+          ],
+          "properties": {
+            "self_signal": {
+              "type": "string",
+              "description": "Signal the child sends to itself.",
+              "enum": [
+                "SIGKILL",
+                "SIGTERM"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "hang"
+          ],
+          "properties": {
+            "hang": {
+              "const": true,
+              "description": "Stops the program and leaves the turn in flight."
+            }
+          }
+        }
+      ]
+    }
+  }
+}

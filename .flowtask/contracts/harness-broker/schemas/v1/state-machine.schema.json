@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:state-machine",
+  "title": "StateMachine",
+  "description": "Data form of the run state machine: states, terminal states, the only allowed transitions, pause causes, failure reasons, the clocks that run in each state and the cancellation policy per state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "states",
+    "terminal",
+    "initial",
+    "transitions",
+    "pause_causes",
+    "failed_reasons",
+    "clock_descriptions",
+    "clocks",
+    "cancel_policy"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/schema_version",
+      "description": "Contract version of the state machine. Must be 1."
+    },
+    "states": {
+      "type": "array",
+      "description": "Every state of a run, each listed once.",
+      "minItems": 8,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/state",
+        "description": "One state of a run."
+      }
+    },
+    "terminal": {
+      "type": "array",
+      "description": "States with no outgoing transition, each listed once.",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/terminal_state",
+        "description": "One terminal state."
+      }
+    },
+    "initial": {
+      "type": "string",
+      "description": "State of a run right after it is accepted.",
+      "const": "submitted"
+    },
+    "transitions": {
+      "type": "array",
+      "description": "Every allowed transition. Any pair not listed is forbidden.",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "description": "One allowed transition.",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/state",
+            "description": "State the transition leaves."
+          },
+          "to": {
+            "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/state",
+            "description": "State the transition enters."
+          }
+        }
+      }
+    },
+    "pause_causes": {
+      "type": "object",
+      "description": "Causes allowed for each pause state.",
+      "additionalProperties": false,
+      "required": [
+        "input_required",
+        "auth_required"
+      ],
+      "properties": {
+        "input_required": {
+          "type": "array",
+          "description": "Causes allowed for input_required.",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/input_required_cause",
+            "description": "One cause of input_required."
+          }
+        },
+        "auth_required": {
+          "type": "array",
+          "description": "Causes allowed for auth_required.",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/auth_required_cause",
+            "description": "One cause of auth_required."
+          }
+        }
+      }
+    },
+    "failed_reasons": {
+      "type": "array",
+      "description": "Closed list of failure reasons, the same set as the failed_reason definition of the common schema.",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/failed_reason",
+        "description": "One failure reason."
+      }
+    },
+    "clock_descriptions": {
+      "type": "object",
+      "description": "Meaning of each clock, for readers of the table.",
+      "additionalProperties": false,
+      "required": [
+        "first_event",
+        "idle",
+        "wall"
+      ],
+      "properties": {
+        "first_event": {
+          "type": "string",
+          "description": "When the first-event clock runs and what its expiry produces.",
+          "minLength": 1
+        },
+        "idle": {
+          "type": "string",
+          "description": "When the inactivity clock runs and what its expiry produces.",
+          "minLength": 1
+        },
+        "wall": {
+          "type": "string",
+          "description": "When the wall clock runs and what its expiry produces.",
+          "minLength": 1
+        }
+      }
+    },
+    "clocks": {
+      "type": "object",
+      "description": "Clocks that run in each state. Keys are states.",
+      "propertyNames": {
+        "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/state"
+      },
+      "minProperties": 8,
+      "additionalProperties": {
+        "type": "object",
+        "description": "Clocks running in one state.",
+        "additionalProperties": false,
+        "required": [
+          "first_event",
+          "idle",
+          "wall"
+        ],
+        "properties": {
+          "first_event": {
+            "type": "boolean",
+            "description": "True when the first-event clock runs in this state."
+          },
+          "idle": {
+            "type": "boolean",
+            "description": "True when the inactivity clock runs in this state."
+          },
+          "wall": {
+            "type": "boolean",
+            "description": "True when the wall clock runs in this state."
+          }
+        }
+      }
+    },
+    "cancel_policy": {
+      "type": "object",
+      "description": "Cancellation behaviour per state. Keys are states.",
+      "propertyNames": {
+        "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/state"
+      },
+      "minProperties": 8,
+      "additionalProperties": {
+        "type": "object",
+        "description": "Cancellation behaviour of one state.",
+        "additionalProperties": false,
+        "required": [
+          "action",
+          "send_to_child",
+          "on_grace_expiry"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "What a cancel request does in this state.",
+            "enum": [
+              "cancel_without_launch",
+              "cancel_live_turn_only",
+              "noop_return_terminal"
+            ]
+          },
+          "send_to_child": {
+            "type": "string",
+            "description": "When the cancellation is sent to the child: only while its turn is live, or never.",
+            "enum": [
+              "only_if_turn_live",
+              "never"
+            ]
+          },
+          "on_grace_expiry": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What happens when the child ignores the cancellation past the grace period, or null when no grace period applies.",
+            "enum": [
+              "terminate_group_and_cancel",
+              null
+            ]
+          }
+        }
+      }
+    }
+  }
+}

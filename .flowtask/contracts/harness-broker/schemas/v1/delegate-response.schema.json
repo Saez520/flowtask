@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:delegate-response",
+  "title": "DelegateResponse",
+  "description": "Response to a delegation request. A valid request returns the run identifier immediately in the submitted state, without waiting for the child; an invalid request returns an error and creates no run.",
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Accepted request: the run exists in the submitted state.",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "run_id",
+        "state"
+      ],
+      "properties": {
+        "schema_version": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/schema_version",
+          "description": "Contract version. Must be 1."
+        },
+        "run_id": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id",
+          "description": "Identifier assigned by the broker to the new run."
+        },
+        "state": {
+          "const": "submitted",
+          "description": "State of the run at the moment of acceptance."
+        }
+      }
+    },
+    {
+      "$ref": "urn:flowtask:harness-broker:v1:error",
+      "description": "Rejected request: a validation error that names each invalid field."
+    }
+  ]
+}

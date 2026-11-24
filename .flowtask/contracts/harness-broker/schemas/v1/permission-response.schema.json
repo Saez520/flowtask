@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:permission-response",
+  "title": "PermissionResponse",
+  "description": "Decision sent to a run paused in input_required with the permission_pending cause. The core forwards the chosen option to the child and records the decider.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "request_id",
+    "option_id",
+    "decided_by"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/schema_version",
+      "description": "Contract version. Must be 1."
+    },
+    "run_id": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id",
+      "description": "Run that requested the permission."
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Identifier of the permission_requested event being answered.",
+      "minLength": 1
+    },
+    "option_id": {
+      "type": "string",
+      "description": "Identifier of the option chosen among those offered by the permission_requested event.",
+      "minLength": 1
+    },
+    "decided_by": {
+      "type": "string",
+      "description": "Who decided: the authority policy or the parent.",
+      "enum": [
+        "authority_policy",
+        "parent"
+      ]
+    }
+  }
+}

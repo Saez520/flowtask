@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "run_id": "run-0001",
+  "state": "working",
+  "events": [
+    {
+      "run_id": "run-0001",
+      "cursor": 1,
+      "timestamp": "2026-11-23T20:00:00Z",
+      "type": "state_changed",
+      "payload": {
+        "from": null,
+        "to": "submitted"
+      }
+    },
+    {
+      "run_id": "run-0001",
+      "cursor": 2,
+      "timestamp": "2026-11-23T20:00:01Z",
+      "type": "state_changed",
+      "payload": {
+        "from": "submitted",
+        "to": "working"
+      }
+    }
+  ],
+  "next_cursor": 2,
+  "last_cursor": 2
+}

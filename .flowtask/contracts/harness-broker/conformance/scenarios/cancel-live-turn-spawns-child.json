@@ -1,0 +1,25 @@
+{
+  "name": "cancel-live-turn-spawns-child",
+  "description": "A child that starts a subprocess during a live turn and then waits; the subprocess must not survive cancellation.",
+  "session_id": "session-1",
+  "behavior": {
+    "on_cancel": "stop_turn",
+    "on_stdin_end": "ignore",
+    "start_after_stdin_end": false,
+    "record_messages_to": null
+  },
+  "new_session_error": null,
+  "steps": [
+    {
+      "spawn_subprocess": {
+        "command": [
+          "sleep",
+          "60"
+        ]
+      }
+    },
+    {
+      "hang": true
+    }
+  ]
+}

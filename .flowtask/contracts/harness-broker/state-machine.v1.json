@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "states": [
+    "submitted",
+    "working",
+    "input_required",
+    "auth_required",
+    "completed",
+    "failed",
+    "canceled",
+    "rejected"
+  ],
+  "terminal": [
+    "completed",
+    "failed",
+    "canceled",
+    "rejected"
+  ],
+  "initial": "submitted",
+  "transitions": [
+    { "from": "submitted", "to": "working" },
+    { "from": "submitted", "to": "rejected" },
+    { "from": "submitted", "to": "failed" },
+    { "from": "submitted", "to": "canceled" },
+    { "from": "working", "to": "input_required" },
+    { "from": "working", "to": "auth_required" },
+    { "from": "working", "to": "completed" },
+    { "from": "working", "to": "failed" },
+    { "from": "working", "to": "canceled" },
+    { "from": "input_required", "to": "working" },
+    { "from": "input_required", "to": "failed" },
+    { "from": "input_required", "to": "canceled" },
+    { "from": "auth_required", "to": "working" },
+    { "from": "auth_required", "to": "failed" },
+    { "from": "auth_required", "to": "canceled" }
+  ],
+  "pause_causes": {
+    "input_required": [
+      "permission_pending",
+      "authority_block"
+    ],
+    "auth_required": [
+      "auth",
+      "balance"
+    ]
+  },
+  "failed_reasons": [
+    "no_first_event",
+    "idle_timeout",
+    "wall_timeout",
+    "exit_nonzero",
+    "exit_without_result",
+    "permission_rejected",
+    "refusal",
+    "max_tokens",
+    "max_turn_requests",
+    "launch_failed",
+    "supervisor_lost"
+  ],
+  "clock_descriptions": {
+    "first_event": "Runs from entering working until the first valid event of the child. Expiry is failed with no_first_event.",
+    "idle": "Runs after the first valid event and restarts with each observed activity. Suspended in input_required and auth_required; restarts on return to working. Expiry is failed with idle_timeout.",
+    "wall": "Runs from entering working until the run is terminal, pauses included. Expiry is failed with wall_timeout."
+  },
+  "clocks": {
+    "submitted": { "first_event": false, "idle": false, "wall": false },
+    "working": { "first_event": true, "idle": true, "wall": true },
+    "input_required": { "first_event": false, "idle": false, "wall": true },
+    "auth_required": { "first_event": false, "idle": false, "wall": true },
+    "completed": { "first_event": false, "idle": false, "wall": false },
+    "failed": { "first_event": false, "idle": false, "wall": false },
+    "canceled": { "first_event": false, "idle": false, "wall": false },
+    "rejected": { "first_event": false, "idle": false, "wall": false }
+  },
+  "cancel_policy": {
+    "submitted": {
+      "action": "cancel_without_launch",
+      "send_to_child": "never",
+      "on_grace_expiry": null
+    },
+    "working": {
+      "action": "cancel_live_turn_only",
+      "send_to_child": "only_if_turn_live",
+      "on_grace_expiry": "terminate_group_and_cancel"
+    },
+    "input_required": {
+      "action": "cancel_live_turn_only",
+      "send_to_child": "only_if_turn_live",
+      "on_grace_expiry": "terminate_group_and_cancel"
+    },
+    "auth_required": {
+      "action": "cancel_live_turn_only",
+      "send_to_child": "only_if_turn_live",
+      "on_grace_expiry": "terminate_group_and_cancel"
+    },
+    "completed": {
+      "action": "noop_return_terminal",
+      "send_to_child": "never",
+      "on_grace_expiry": null
+    },
+    "failed": {
+      "action": "noop_return_terminal",
+      "send_to_child": "never",
+      "on_grace_expiry": null
+    },
+    "canceled": {
+      "action": "noop_return_terminal",
+      "send_to_child": "never",
+      "on_grace_expiry": null
+    },
+    "rejected": {
+      "action": "noop_return_terminal",
+      "send_to_child": "never",
+      "on_grace_expiry": null
+    }
+  }
+}

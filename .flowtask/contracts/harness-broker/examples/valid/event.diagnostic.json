@@ -1,0 +1,10 @@
+{
+  "run_id": "run-0001",
+  "cursor": 10,
+  "timestamp": "2026-11-23T20:00:12Z",
+  "type": "diagnostic",
+  "payload": {
+    "stream": "stdout",
+    "line": "usage: opencode acp [options]"
+  }
+}

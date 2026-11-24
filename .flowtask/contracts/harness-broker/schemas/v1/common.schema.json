@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:common",
+  "title": "Common definitions",
+  "description": "Shared definitions of the harness delegation contract, version 1. Other schemas reference these entries by URN.",
+  "$defs": {
+    "state": {
+      "type": "string",
+      "description": "Lifecycle state of a delegation run.",
+      "enum": [
+        "submitted",
+        "working",
+        "input_required",
+        "auth_required",
+        "completed",
+        "failed",
+        "canceled",
+        "rejected"
+      ]
+    },
+    "terminal_state": {
+      "type": "string",
+      "description": "Lifecycle state from which a run has no outgoing transition.",
+      "enum": [
+        "completed",
+        "failed",
+        "canceled",
+        "rejected"
+      ]
+    },
+    "failed_reason": {
+      "type": "string",
+      "description": "Closed list of reasons that accompany the failed state.",
+      "enum": [
+        "no_first_event",
+        "idle_timeout",
+        "wall_timeout",
+        "exit_nonzero",
+        "exit_without_result",
+        "permission_rejected",
+        "refusal",
+        "max_tokens",
+        "max_turn_requests",
+        "launch_failed",
+        "supervisor_lost"
+      ]
+    },
+    "input_required_cause": {
+      "type": "string",
+      "description": "Cause that accompanies the input_required pause.",
+      "enum": [
+        "permission_pending",
+        "authority_block"
+      ]
+    },
+    "auth_required_cause": {
+      "type": "string",
+      "description": "Cause that accompanies the auth_required pause.",
+      "enum": [
+        "auth",
+        "balance"
+      ]
+    },
+    "activity_source": {
+      "type": "string",
+      "description": "Observed source of the last liveness signal: an agent update or the child process.",
+      "enum": [
+        "agent_update",
+        "process"
+      ]
+    },
+    "run_id": {
+      "type": "string",
+      "description": "Run identifier assigned by the broker, 1 to 64 characters of letters, digits, underscore or hyphen.",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "W3C-style trace identifier: 32 lowercase hexadecimal characters, not all zeros.",
+      "pattern": "^[0-9a-f]{32}$",
+      "not": {
+        "const": "00000000000000000000000000000000"
+      }
+    },
+    "span_id": {
+      "type": "string",
+      "description": "Span identifier: 16 lowercase hexadecimal characters, not all zeros.",
+      "pattern": "^[0-9a-f]{16}$",
+      "not": {
+        "const": "0000000000000000"
+      }
+    },
+    "timestamp": {
+      "type": "string",
+      "description": "Instant in RFC 3339 date-time format.",
+      "format": "date-time"
+    },
+    "limit_ms": {
+      "type": "integer",
+      "description": "Duration in milliseconds, at least 1.",
+      "minimum": 1
+    },
+    "cursor": {
+      "type": "integer",
+      "description": "Position in a run's event log. Starts at 0 for reading and the first event has cursor 1.",
+      "minimum": 0
+    },
+    "schema_version": {
+      "type": "integer",
+      "description": "Version of the contract the document follows. This contract version is 1.",
+      "const": 1
+    },
+    "abs_path": {
+      "type": "string",
+      "description": "Absolute path: POSIX (leading slash), Windows drive (letter, colon, separator) or UNC (two leading backslashes). Existence is checked by the broker.",
+      "minLength": 1,
+      "pattern": "^(/|[A-Za-z]:[\\\\/]|\\\\\\\\)"
+    },
+    "nullable_string": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Non-empty string, or null when the value is not available. Null is distinct from an empty string and from zero.",
+      "minLength": 1
+    }
+  }
+}

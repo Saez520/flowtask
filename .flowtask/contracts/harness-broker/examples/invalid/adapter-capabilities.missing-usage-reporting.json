@@ -1,0 +1,10 @@
+{
+  "harness_name": "opencode",
+  "harness_version": "example-1.0",
+  "supports": {
+    "agent_selection": true,
+    "interactive_permissions": true,
+    "cancellation": true
+  },
+  "agent_selection_mode": "primary_override_per_launch"
+}

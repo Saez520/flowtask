@@ -1,0 +1,664 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:event",
+  "title": "Event",
+  "description": "One entry of the append-only event log of a run. Cursors are consecutive from 1 with no gaps, and an event is never modified or reordered once delivered.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "cursor",
+    "timestamp",
+    "type",
+    "payload"
+  ],
+  "properties": {
+    "run_id": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id",
+      "description": "Run the event belongs to."
+    },
+    "cursor": {
+      "type": "integer",
+      "description": "Position of the event in the run log, starting at 1.",
+      "minimum": 1
+    },
+    "timestamp": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/timestamp",
+      "description": "Instant at which the broker recorded the event."
+    },
+    "type": {
+      "type": "string",
+      "description": "Kind of event; selects the payload shape.",
+      "enum": [
+        "state_changed",
+        "agent_message",
+        "agent_thought",
+        "tool_call",
+        "tool_call_update",
+        "permission_requested",
+        "permission_resolved",
+        "usage",
+        "diagnostic"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "description": "Data of the event; its shape depends on type."
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "Branch for a state_changed event.",
+      "required": [
+        "type",
+        "payload"
+      ],
+      "properties": {
+        "type": {
+          "const": "state_changed",
+          "description": "Selects the state_changed payload."
+        },
+        "payload": {
+          "$ref": "#/$defs/state_changed_payload",
+          "description": "Transition of the run: from, to and the reason or cause when the target state requires one."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "description": "Branch for an agent_message event.",
+      "required": [
+        "type",
+        "payload"
+      ],
+      "properties": {
+        "type": {
+          "const": "agent_message",
+          "description": "Selects the agent_message payload."
+        },
+        "payload": {
+          "$ref": "#/$defs/text_payload",
+          "description": "Text of the message chunk."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "description": "Branch for an agent_thought event.",
+      "required": [
+        "type",
+        "payload"
+      ],
+      "properties": {
+        "type": {
+          "const": "agent_thought",
+          "description": "Selects the agent_thought payload."
+        },
+        "payload": {
+          "$ref": "#/$defs/text_payload",
+          "description": "Text of the thought chunk."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "description": "Branch for a tool_call event.",
+      "required": [
+        "type",
+        "payload"
+      ],
+      "properties": {
+        "type": {
+          "const": "tool_call",
+          "description": "Selects the tool_call payload."
+        },
+        "payload": {
+          "$ref": "#/$defs/tool_call_payload",
+          "description": "Tool invocation announced by the agent."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "description": "Branch for a tool_call_update event.",
+      "required": [
+        "type",
+        "payload"
+      ],
+      "properties": {
+        "type": {
+          "const": "tool_call_update",
+          "description": "Selects the tool_call_update payload."
+        },
+        "payload": {
+          "$ref": "#/$defs/tool_call_update_payload",
+          "description": "Change of status or content of a tool invocation."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "description": "Branch for a permission_requested event.",
+      "required": [
+        "type",
+        "payload"
+      ],
+      "properties": {
+        "type": {
+          "const": "permission_requested",
+          "description": "Selects the permission_requested payload."
+        },
+        "payload": {
+          "$ref": "#/$defs/permission_requested_payload",
+          "description": "Permission the agent asks for, with the options offered."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "description": "Branch for a permission_resolved event.",
+      "required": [
+        "type",
+        "payload"
+      ],
+      "properties": {
+        "type": {
+          "const": "permission_resolved",
+          "description": "Selects the permission_resolved payload."
+        },
+        "payload": {
+          "$ref": "#/$defs/permission_resolved_payload",
+          "description": "Option chosen for a permission request and who chose it."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "description": "Branch for a usage event.",
+      "required": [
+        "type",
+        "payload"
+      ],
+      "properties": {
+        "type": {
+          "const": "usage",
+          "description": "Selects the usage payload."
+        },
+        "payload": {
+          "$ref": "#/$defs/usage_payload",
+          "description": "Token counts and cost reported by the harness; null means not reported."
+        }
+      }
+    },
+    {
+      "type": "object",
+      "description": "Branch for a diagnostic event.",
+      "required": [
+        "type",
+        "payload"
+      ],
+      "properties": {
+        "type": {
+          "const": "diagnostic",
+          "description": "Selects the diagnostic payload."
+        },
+        "payload": {
+          "$ref": "#/$defs/diagnostic_payload",
+          "description": "Output line of the child that is not a valid protocol message. It never changes the state of the run."
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "text_payload": {
+      "type": "object",
+      "description": "Payload carrying a text chunk.",
+      "additionalProperties": false,
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Text of the chunk, as emitted by the agent."
+        }
+      }
+    },
+    "state_changed_payload": {
+      "type": "object",
+      "description": "Transition of the run state.",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "anyOf": [
+            {
+              "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/state"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "State before the transition; null only for the first event of a run."
+        },
+        "to": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/state",
+          "description": "State after the transition."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason of the transition. For failed it is a failed_reason; for rejected it is a snake_case identifier defined by the authority contract.",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "cause": {
+          "type": "string",
+          "description": "Cause of a pause: a permission_pending or authority_block for input_required, an auth or balance for auth_required."
+        },
+        "detail": {
+          "type": "string",
+          "description": "Human-readable detail of the transition. Required for rejected.",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "to": {
+                "const": "failed",
+                "description": "Condition: the run fails."
+              }
+            },
+            "required": [
+              "to"
+            ]
+          },
+          "then": {
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/failed_reason",
+                "description": "Closed failure reason."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "to": {
+                "const": "input_required",
+                "description": "Condition: the run pauses for input."
+              }
+            },
+            "required": [
+              "to"
+            ]
+          },
+          "then": {
+            "required": [
+              "cause"
+            ],
+            "properties": {
+              "cause": {
+                "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/input_required_cause",
+                "description": "Cause of the input pause."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "to": {
+                "const": "auth_required",
+                "description": "Condition: the run pauses for authentication or balance."
+              }
+            },
+            "required": [
+              "to"
+            ]
+          },
+          "then": {
+            "required": [
+              "cause"
+            ],
+            "properties": {
+              "cause": {
+                "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/auth_required_cause",
+                "description": "Cause of the authentication pause."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": {
+              "to": {
+                "const": "rejected",
+                "description": "Condition: the authority gate rejected the run."
+              }
+            },
+            "required": [
+              "to"
+            ]
+          },
+          "then": {
+            "required": [
+              "reason",
+              "detail"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string",
+                "description": "Rejection reason, a snake_case identifier defined by the authority contract.",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "detail": {
+                "type": "string",
+                "description": "Human-readable reason for the rejection.",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "tool_call_payload": {
+      "type": "object",
+      "description": "Tool invocation announced by the agent.",
+      "additionalProperties": false,
+      "required": [
+        "tool_call_id",
+        "kind",
+        "title",
+        "input",
+        "diff"
+      ],
+      "properties": {
+        "tool_call_id": {
+          "type": "string",
+          "description": "Identifier of the invocation, unique within the session.",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "description": "Category of the tool as reported by the agent.",
+          "minLength": 1
+        },
+        "title": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+          "description": "Title of the invocation, or null when the agent gives none."
+        },
+        "input": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Arguments of the invocation, or null when not available."
+        },
+        "diff": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Diff produced by the invocation, or null when there is none."
+        }
+      }
+    },
+    "tool_call_update_payload": {
+      "type": "object",
+      "description": "Update of a tool invocation previously announced.",
+      "additionalProperties": false,
+      "required": [
+        "tool_call_id",
+        "status"
+      ],
+      "properties": {
+        "tool_call_id": {
+          "type": "string",
+          "description": "Identifier of the invocation being updated.",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "description": "Status of the invocation after the update.",
+          "enum": [
+            "pending",
+            "in_progress",
+            "completed",
+            "failed"
+          ]
+        },
+        "kind": {
+          "type": "string",
+          "description": "Category of the tool, when the update restates it.",
+          "minLength": 1
+        },
+        "input": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Arguments of the invocation, when the update restates them."
+        },
+        "diff": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Diff produced so far, when the update carries one."
+        }
+      }
+    },
+    "permission_requested_payload": {
+      "type": "object",
+      "description": "Permission the agent asks for.",
+      "additionalProperties": false,
+      "required": [
+        "request_id",
+        "tool_call_id",
+        "tool",
+        "options"
+      ],
+      "properties": {
+        "request_id": {
+          "type": "string",
+          "description": "Identifier of this permission request.",
+          "minLength": 1
+        },
+        "tool_call_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Invocation the permission belongs to, or null when none is linked.",
+          "minLength": 1
+        },
+        "tool": {
+          "type": "object",
+          "description": "Tool the permission is about.",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "title"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "description": "Category of the tool.",
+              "minLength": 1
+            },
+            "title": {
+              "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+              "description": "Title of the tool, or null when not given."
+            }
+          }
+        },
+        "options": {
+          "type": "array",
+          "description": "Options the agent offers, at least one.",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "description": "One option of the permission request.",
+            "additionalProperties": false,
+            "required": [
+              "option_id",
+              "kind",
+              "name"
+            ],
+            "properties": {
+              "option_id": {
+                "type": "string",
+                "description": "Identifier used to choose this option.",
+                "minLength": 1
+              },
+              "kind": {
+                "type": "string",
+                "description": "Effect of the option.",
+                "enum": [
+                  "allow_once",
+                  "allow_always",
+                  "reject_once",
+                  "reject_always"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "description": "Label shown for the option.",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "permission_resolved_payload": {
+      "type": "object",
+      "description": "Outcome of a permission request.",
+      "additionalProperties": false,
+      "required": [
+        "request_id",
+        "option_id",
+        "option_kind",
+        "decided_by"
+      ],
+      "properties": {
+        "request_id": {
+          "type": "string",
+          "description": "Identifier of the permission request that was resolved.",
+          "minLength": 1
+        },
+        "option_id": {
+          "type": "string",
+          "description": "Option that was chosen.",
+          "minLength": 1
+        },
+        "option_kind": {
+          "type": "string",
+          "description": "Effect of the chosen option.",
+          "enum": [
+            "allow_once",
+            "allow_always",
+            "reject_once",
+            "reject_always"
+          ]
+        },
+        "decided_by": {
+          "type": "string",
+          "description": "Who chose the option: the authority policy or the parent.",
+          "enum": [
+            "authority_policy",
+            "parent"
+          ]
+        }
+      }
+    },
+    "usage_payload": {
+      "type": "object",
+      "description": "Token counts and cost reported by the harness. A null value means the harness did not report it; zero means it reported zero.",
+      "additionalProperties": false,
+      "required": [
+        "input_tokens",
+        "output_tokens",
+        "cost"
+      ],
+      "properties": {
+        "input_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Input tokens, or null when not reported.",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Output tokens, or null when not reported.",
+          "minimum": 0
+        },
+        "cost": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Cost with its currency, or null when not reported.",
+          "additionalProperties": false,
+          "required": [
+            "amount",
+            "currency"
+          ],
+          "properties": {
+            "amount": {
+              "type": "number",
+              "description": "Amount in the currency of the cost.",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "description": "ISO 4217 currency code, three uppercase letters.",
+              "pattern": "^[A-Z]{3}$"
+            }
+          }
+        }
+      }
+    },
+    "diagnostic_payload": {
+      "type": "object",
+      "description": "Line of child output that is not a valid protocol message.",
+      "additionalProperties": false,
+      "required": [
+        "stream",
+        "line"
+      ],
+      "properties": {
+        "stream": {
+          "type": "string",
+          "description": "Stream the line came from.",
+          "enum": [
+            "stdout",
+            "stderr"
+          ]
+        },
+        "line": {
+          "type": "string",
+          "description": "Raw line, not interpreted."
+        }
+      }
+    }
+  }
+}

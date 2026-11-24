@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "run_id": "run-0001",
+  "state": "failed",
+  "pause": null,
+  "reason": "idle_timeout",
+  "detail": "No activity for 120000 ms.",
+  "harness": "opencode",
+  "limits": {
+    "first_event_timeout": 60000,
+    "idle_timeout": 120000,
+    "wall_timeout": 1800000
+  },
+  "last_activity_at": "2026-11-23T20:00:08Z",
+  "last_activity_source": "agent_update",
+  "active_limits": [],
+  "last_cursor": 12
+}

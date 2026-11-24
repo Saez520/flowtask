@@ -1,0 +1,12 @@
+{
+  "error": {
+    "code": "validation_error",
+    "message": "The request is invalid.",
+    "fields": [
+      {
+        "field": "cwd",
+        "problem": "must be an absolute path"
+      }
+    ]
+  }
+}

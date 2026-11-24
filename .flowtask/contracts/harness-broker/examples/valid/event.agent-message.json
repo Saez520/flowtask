@@ -1,0 +1,9 @@
+{
+  "run_id": "run-0001",
+  "cursor": 3,
+  "timestamp": "2026-11-23T20:00:05Z",
+  "type": "agent_message",
+  "payload": {
+    "text": "Reading the plan."
+  }
+}

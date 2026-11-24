@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "invalid_cursor",
+    "message": "The cursor is beyond the last event.",
+    "last_valid_cursor": 4
+  }
+}

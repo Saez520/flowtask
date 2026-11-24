@@ -1,0 +1,28 @@
+{
+  "name": "exit-zero-in-flight",
+  "description": "A child that exits with code 0 when its standard input closes, without resolving the prompt.",
+  "session_id": "session-1",
+  "behavior": {
+    "on_cancel": "ignore",
+    "on_stdin_end": "exit_0",
+    "start_after_stdin_end": false,
+    "record_messages_to": null
+  },
+  "new_session_error": null,
+  "steps": [
+    {
+      "emit_update": {
+        "update": {
+          "sessionUpdate": "agent_message_chunk",
+          "content": {
+            "type": "text",
+            "text": "Starting"
+          }
+        }
+      }
+    },
+    {
+      "hang": true
+    }
+  ]
+}

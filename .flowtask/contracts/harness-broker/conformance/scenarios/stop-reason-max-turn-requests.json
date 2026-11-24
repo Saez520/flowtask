@@ -1,0 +1,20 @@
+{
+  "name": "stop-reason-max-turn-requests",
+  "description": "A turn that closes with the max_turn_requests stop reason.",
+  "session_id": "session-1",
+  "behavior": {
+    "on_cancel": "ignore",
+    "on_stdin_end": "ignore",
+    "start_after_stdin_end": false,
+    "record_messages_to": null
+  },
+  "new_session_error": null,
+  "steps": [
+    {
+      "end_turn": {
+        "stop_reason": "max_turn_requests",
+        "usage": null
+      }
+    }
+  ]
+}
