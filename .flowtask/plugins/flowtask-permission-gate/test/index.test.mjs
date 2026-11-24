@@ -1556,3 +1556,212 @@ test("context-budget: helpers preventivos puros (edge cases)", () => {
     "file part V2 de imagen",
   );
 });
+
+// --- Host shell and Code Mode transport ---
+
+// gap: G1 — the host shell must reproduce bash decisions for allowed, denied and authority-only commands (AC1.1-AC1.5)
+test("host shell reproduces the bash command policy and the authority bypass", async () => {
+  const root = makeLayeredRoot("flowtask-gate-shell-");
+  const build = path.join(root, "build");
+  fs.mkdirSync(build);
+  fs.writeFileSync(path.join(build, "artifact.txt"), "intact\n");
+  const gate = await createGate(root);
+
+  const decide = async (tool, command) => {
+    try {
+      await gate.before({ tool, sessionID: "s-shell", agent: "flowtask-runner", input: { command, workdir: root } });
+      return { allowed: true, message: "" };
+    } catch (error) {
+      return { allowed: false, message: error instanceof Error ? error.message : String(error) };
+    }
+  };
+
+  for (const command of ["git status -s", "git status --short"]) {
+    const bash = await decide("bash", command);
+    const shell = await decide("shell", command);
+    assert.equal(bash.allowed, true, `bash must allow ${command}`);
+    assert.equal(shell.allowed, true, `shell must allow ${command}`);
+  }
+
+  for (const command of [
+    "rm -rf build",
+    "touch out.txt",
+    "npm install",
+    "python3 script.py",
+    "git clean -fd",
+    "git status; git diff",
+  ]) {
+    const bash = await decide("bash", command);
+    const shell = await decide("shell", command);
+    assert.equal(bash.allowed, false, `bash must deny ${command}`);
+    assert.equal(shell.allowed, false, `shell must deny ${command}`);
+    assert.equal(shell.message, RUNNER_DELEGATION_MESSAGE, `shell must deny ${command} with the delegation message`);
+    assert.equal(bash.message, shell.message, `both shell names must return the same message for ${command}`);
+  }
+  assert.equal(
+    fs.existsSync(path.join(build, "artifact.txt")),
+    true,
+    "a denied destructive command must leave the fixture intact",
+  );
+  assert.equal(fs.existsSync(path.join(root, "out.txt")), false, "a denied write must not create the file");
+
+  const blockedRoot = makeTemp("flowtask-gate-shell-authority-");
+  writeLayers(blockedRoot, { autonomy: { version: 1, profile: "autonomous-dev" } });
+  const blockedGate = await createGate(blockedRoot);
+  const blocked = (tool, input) =>
+    blockedGate.before({ tool, sessionID: "s-shell-authority", agent: "flowtask-runner", input });
+
+  for (const tool of ["bash", "shell"]) {
+    await blocked(tool, { command: "flowtask authority status --json", workdir: blockedRoot });
+    await blocked(tool, { command: "node .flowtask/bin/flowtask.js repair", workdir: blockedRoot });
+    for (const command of [
+      "git status -s",
+      "flowtask authority status --json && git status -s",
+      "flowtask repair --force",
+    ]) {
+      await assert.rejects(
+        blocked(tool, { command, workdir: blockedRoot }),
+        (error) => error instanceof Error && error.message.includes("Missing or invalid permissions layer"),
+        `${tool} must deny ${command} when the permissions layer is invalid`,
+      );
+    }
+  }
+  await assert.rejects(
+    blocked("read", { file: "package.json", limit: 5 }),
+    (error) => error instanceof Error && error.message.includes("Missing or invalid permissions layer"),
+    "the authority bypass stays exclusive to authority commands issued through a shell",
+  );
+});
+
+// gap: G2 — execute must authorize only literal MCP invocations of the runner surface and reject the whole script otherwise (AC3.1-AC3.8)
+test("execute authorizes literal MCP invocations and rejects every other script whole", async () => {
+  const gate = await createGate(makeLayeredRoot("flowtask-gate-execute-"));
+  const execute = (code) =>
+    gate.before({ tool: "execute", sessionID: "s-execute", agent: "flowtask-runner", input: { code } });
+  const rejectsWithDelegation = (promise, label) =>
+    assert.rejects(
+      promise,
+      (error) => error instanceof Error && error.message === RUNNER_DELEGATION_MESSAGE,
+      label,
+    );
+
+  const authorized = [
+    'await tools.engram.mem_search({ query: "project testing" })',
+    'return tools["engram"].mem_search({ query: "x" })',
+    'await tools.engram["mem_save"]({ type: "discovery" })',
+    'await tools.graphify.query_graph({ question: "x" })',
+    'await tools["worktree_manager"]["worktree_status"]({ repo: "/tmp/repo", work_id: "w" })',
+    'await tools.engram.mem_search({ query: "fetch" })',
+    '// fetch("x")\nawait tools.engram.mem_save({ type: "discovery" })',
+    'const s = "tools.opencode.session_move"; await tools.engram.mem_save({ type: "discovery" })',
+  ];
+  for (const capability of [
+    "worktree_create",
+    "worktree_complete",
+    "worktree_cleanup",
+    "worktree_recover",
+    "worktree_list",
+    "worktree_prune",
+    "worktree_status",
+  ]) {
+    authorized.push(`await tools.worktree_manager.${capability}({ repo: "/tmp/repo" })`);
+    authorized.push(`await tools["worktree_manager"].${capability}({ repo: "/tmp/repo" })`);
+  }
+  for (const script of authorized) await execute(script);
+
+  const denied = [
+    'await tools.graphify.get_node({ label: "x" })',
+    'await tools["ferris-search"].fetch_csdn_article({ url: "https://x" })',
+    'await tools.opencode.session_move({ directory: "/tmp" })',
+    'await tools.worktree_manager.delete({ repo: "/tmp/repo" })',
+    'const k = "mem_search"; await tools.engram[k]({})',
+    'const t = tools.engram; await t.mem_search({})',
+    'const x = 1;',
+    'const f = tools.engram.mem_search;',
+    'await tools.engram.mem_search.call(null, {})',
+    'eval("1")',
+    'new Function("return 1")',
+    'require("node:fs")',
+    'process.exit(0)',
+  ];
+  for (const script of denied) await rejectsWithDelegation(execute(script), script);
+
+  for (const input of [{}, { code: 42 }, { code: "" }, { code: null }]) {
+    await rejectsWithDelegation(
+      gate.before({ tool: "execute", sessionID: "s-execute-shape", agent: "flowtask-runner", input }),
+      JSON.stringify(input),
+    );
+  }
+
+  const requests = [];
+  const invoked = [];
+  const originalFetch = globalThis.fetch;
+  const originalTools = globalThis.tools;
+  globalThis.fetch = (...args) => {
+    requests.push(args);
+    return Promise.resolve({ ok: true });
+  };
+  globalThis.tools = {
+    engram: {
+      mem_search: () => {
+        invoked.push("mem_search");
+        return Promise.resolve({});
+      },
+    },
+  };
+  try {
+    for (const script of [
+      'await fetch("http://127.0.0.1:9/denied")',
+      'await tools.engram.mem_search({}); await fetch("/mixed")',
+    ]) {
+      await rejectsWithDelegation(execute(script), script);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalTools === undefined) delete globalThis.tools;
+    else globalThis.tools = originalTools;
+  }
+  assert.deepEqual(requests, [], "a rejected script must not emit the request");
+  assert.deepEqual(invoked, [], "a rejected script must not run its authorized part");
+});
+
+// gap: G3 — commits issued through the host shell must reach the review gate with the same stamp rules (AC4.1-AC4.2)
+test("the commit gate sees commits issued through the host shell", async () => {
+  const root = makeRepo(makeTemp("flowtask-gate-shell-commit-"));
+  const stampPath = writeConfig(root, "opencode");
+  const gate = await createGate(root);
+  const commit = (command, agent = "flowtask-runner") =>
+    gate.before({ tool: "shell", sessionID: "s-shell-commit", agent, input: { command, workdir: root } });
+
+  for (const [agent, command] of [
+    ["flowtask-runner", 'git commit -m "x"'],
+    ["flowtask-runner", 'cd . && git commit -m "compound"'],
+    ["flowtask-ca-writer", 'git -C . commit -m "global option"'],
+  ]) {
+    await assert.rejects(
+      commit(command, agent),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes("Cause: missing stamp") &&
+        error.message.includes(`Stamp looked up at: ${stampPath}`),
+      `${command} through the host shell must reach the review gate`,
+    );
+  }
+
+  writeStamp(stampPath, "main");
+  await commit('git commit -m "valid"');
+  fs.writeFileSync(path.join(root, "seed.txt"), "seed\nedit\n");
+  await commit('git commit --no-verify -m "trivial"', "flowtask-ca-writer");
+  await commit('git commit --no-review -m "trivial"', "flowtask-ca-writer");
+
+  fs.writeFileSync(path.join(root, "big.txt"), "line\n".repeat(10));
+  execFileSync("git", ["add", "big.txt"], { cwd: root, encoding: "utf8" });
+  await assert.rejects(
+    commit('git commit --no-verify -m "big"', "flowtask-ca-writer"),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes("Commit blocked") &&
+      error.message.includes("flowtask-review-orchestrator"),
+    "a non-trivial bypass through the host shell stays blocked",
+  );
+});

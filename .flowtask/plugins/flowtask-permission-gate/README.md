@@ -27,10 +27,18 @@ without the marker is preserved.
 
 ## What it enforces
 
-- **Runner allowlist.** Authorized inspection and management commands run;
-  destructive, writing, installing, and ambiguous commands are denied with the
-  delegation message. Only the enumerated subagents, MCP tools, and Graphify
-  queries are authorized.
+- **Runner allowlist.** The runner's shell tool is `shell`, and `bash` receives
+  exactly the same command analysis with the same result for the same command.
+  Authorized inspection and management commands run; destructive, writing,
+  installing, and ambiguous commands are denied with the delegation message.
+  Only the enumerated subagents, MCP tools, and Graphify queries are authorized.
+- **Code Mode transport.** An `execute` script is authorized only when it
+  reaches the MCP surface through literal calls — `tools.engram.<tool>`,
+  `tools.graphify.query_graph`, and `tools.worktree_manager.<capability>` — with
+  at least one invocation. `fetch`, `eval`, `Function`, `require`, `process`,
+  any other namespace, a tool outside the surface, a non-literal reference, or a
+  mixed script rejects the whole script with the delegation message and no
+  effect.
 - **Permissions layer.** The Runner does not execute with expanded limits when
   the autonomy or permissions layer is missing or invalid. The denial names the
   layer, the file, the cause, and the action.
@@ -83,6 +91,8 @@ Both files are read from `.opencode/flowtask/config/` first and from
 - Commit detection covers `git commit`, `git -C`, `git -c`, `--git-dir`, and
   `cd ... && git commit`. It does not inspect commits started by the worktree
   manager or through nested shells.
+- The `execute` script analysis is static: a reference that is not literal (a
+  computed name, an intermediate alias, or a third segment) is rejected.
 - The plugin does not restart OpenCode; a new version is loaded on the next
   restart.
 

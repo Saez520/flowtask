@@ -1,5 +1,13 @@
 export const RUNNER_DELEGATION_MESSAGE = "Remember that you must delegate this operation to the corresponding subagent.";
 
+/** Host shell names that share one command analysis and one result per command. */
+export const RUNNER_SHELL_TOOLS = Object.freeze(["bash", "shell"] as const);
+
+/** Both host shell names receive exactly the same command analysis. */
+export function isRunnerShellTool(tool: unknown): boolean {
+  return typeof tool === "string" && RUNNER_SHELL_TOOLS.some((name) => name === tool);
+}
+
 export const WORKTREE_MANAGER_MCP_SERVER = "worktree_manager";
 export const WORKTREE_MANAGER_MCP_TOOLS = Object.freeze([
   "worktree_create", "worktree_complete", "worktree_cleanup",
@@ -10,6 +18,17 @@ export const WORKTREE_MANAGER_MCP_TOOLS = Object.freeze([
 export function isWorktreeManagerMcpTool(tool: unknown): boolean {
   return typeof tool === "string"
     && WORKTREE_MANAGER_MCP_TOOLS.some((name) => tool === `${WORKTREE_MANAGER_MCP_SERVER}_${name}`);
+}
+
+/**
+ * The MCP surface the runner may invoke: the seven worktree-manager
+ * capabilities, Engram tools with the `engram_` prefix, and the single Graphify
+ * query. Any other MCP server or tool stays outside the surface.
+ */
+export function isAuthorizedRunnerMcpTool(tool: unknown): boolean {
+  return isWorktreeManagerMcpTool(tool)
+    || (typeof tool === "string" && tool.startsWith("engram_"))
+    || tool === "graphify_query_graph";
 }
 
 export const FLOWTASK_SUBAGENTS = new Set([
