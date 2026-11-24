@@ -14,7 +14,7 @@ const OPTION_KINDS = new Set(["allow_once", "allow_always", "reject_once", "reje
 const LOG_DECISIONS = { allow: "allowed", deny: "denied", ask_parent: "asked" };
 const DURATION = /^\d+[smhd]?$/;
 const INTERPRETER_FLAG = /^-[A-Za-z]*c[A-Za-z]*$/;
-const IPV4 = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+const NUMERIC_HOST = /^(?:0x[0-9a-f]+|\d+)(?:\.(?:0x[0-9a-f]+|\d+)){0,3}$/;
 const HEX_ONLY = /^[0-9a-f]+$/;
 const LITERAL_HOST_MARKERS = /[:[]/;
 const ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*=/;
@@ -346,7 +346,7 @@ function decideNetwork(profile, action) {
   const { host, port } = action;
   if (typeof host !== "string") throw new TypeError("network host must be a string");
   const name = host.toLowerCase().replace(/\.$/, "");
-  if (IPV4.test(name) || LITERAL_HOST_MARKERS.test(name) || HEX_ONLY.test(name)) {
+  if (NUMERIC_HOST.test(name) || LITERAL_HOST_MARKERS.test(name) || HEX_ONLY.test(name)) {
     return verdict("deny", null, "numeric_destination");
   }
   if (!Number.isInteger(port) || port < 1 || port > 65535) {

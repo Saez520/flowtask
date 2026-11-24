@@ -246,6 +246,13 @@ describe("network decisions", () => {
     }
   });
 
+  it("denies alternative numeric spellings even when uncovered destinations are asked of the parent", () => {
+    assert.equal(ASK_PARENT.on_uncovered.network, "ask_parent");
+    for (const host of ["127.1", "0x7f.1", "0177.0.0.1", "0x7f000001", "2130706433", "10.0.0.1", "[::1]"]) {
+      assert.deepEqual(net(ASK_PARENT, host), { decision: "deny", rule: null, reason: "numeric_destination" }, host);
+    }
+  });
+
   it("matches a wildcard entry for subdomains and not for the apex", () => {
     const wildcard = { ...STANDARD, network: { allow: ["*.example.com"] } };
     assert.equal(net(wildcard, "a.example.com").decision, "allow");
