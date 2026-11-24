@@ -7,9 +7,11 @@ import { spawnSync } from "node:child_process";
 import { afterEach, test } from "node:test";
 import {
   AUTONOMY_PROMPT,
+  PERSONA_PROMPT,
   installManifestPlugins,
   migrateProfileLocation,
   renderAutonomyPromptLines,
+  renderPersonaPromptLines,
   syncTargetConfig,
   regenerateCanonicalTui,
   regenerateCanonicalCli,
@@ -1189,6 +1191,59 @@ test("installs the minimum autonomy without asking and publishes the initiative 
     fs.readFileSync(path.join(projectDir, ".flowtask", "agents", "runner.md"), "utf8"),
     /Current autonomy: assistant \(source: project\)\./,
   );
+});
+
+test("the personality question offers three levels and a way to continue without one", () => {
+  assert.deepEqual(PERSONA_PROMPT.options.map((option) => option.value), ["training", "mid", "senior", null]);
+  const text = renderPersonaPromptLines(3).join("\n");
+  assert.match(text, /^ {2}Training/m);
+  assert.match(text, /^> Continue without a personality/m);
+  assert.match(text, /↑\/↓: navigate, Enter: confirm, Ctrl\+C: cancel/);
+  assert.equal(PERSONA_PROMPT.options.some((option) => option.value === "custom"), false);
+});
+
+function findFiles(directory, name) {
+  const found = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) found.push(...findFiles(absolute, name));
+    else if (entry.name === name) found.push(absolute);
+  }
+  return found;
+}
+
+test("an installation without a terminal never opens the personality question", () => {
+  const { root, projectDir, env } = createCliFixture("flowtask-persona-notty-");
+  const result = spawnSync(process.execPath, [FLOWTASK_CLI, "install", "--target", "standalone"], {
+    cwd: projectDir,
+    env,
+    input: "n\n",
+    encoding: "utf8",
+    timeout: 180000,
+  });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /continuing without persona/);
+  assert.doesNotMatch(result.stdout, /Which personality should the FlowTask runner use/);
+  assert.deepEqual(findFiles(path.join(root, "xdg"), "profile.json"), []);
+});
+
+test("an explicit personality flag writes the profile without any question", () => {
+  const { root, projectDir, env } = createCliFixture("flowtask-persona-flag-");
+  const result = spawnSync(process.execPath, [FLOWTASK_CLI, "install", "--target", "standalone", "--persona", "mid"], {
+    cwd: projectDir,
+    env,
+    input: "n\n",
+    encoding: "utf8",
+    timeout: 180000,
+  });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.doesNotMatch(result.stdout, /Which personality should the FlowTask runner use/);
+  const profiles = [...findFiles(path.join(root, "xdg"), "profile.json"), ...findFiles(projectDir, "profile.json")];
+  assert.ok(profiles.some((file) => readJson(file).persona === "tutor-mid"), profiles.join(", "));
 });
 
 // gap: G2 — un fallo a mitad de escritura deja configuración/marcador y sale 0.
