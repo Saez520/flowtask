@@ -573,7 +573,7 @@
     },
     {
       "id": "AUTH-DIRECT-HARNESS-MODEL",
-      "title": "Direct harness invocation is denied under every profile, including one that lists it",
+      "title": "Direct harness invocation is denied under every profile, including one that lists it; the check is a best-effort lexical match, not a security boundary",
       "level": "contract",
       "requires": "none",
       "capability": null,
