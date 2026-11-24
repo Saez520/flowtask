@@ -1,0 +1,252 @@
+{
+  "schema_version": 1,
+  "operations": [
+    {
+      "name": "capabilities",
+      "description": "Declares, before any launch, the harness name and version and which capabilities the adapter supports.",
+      "inputs": [],
+      "emits": [],
+      "required_behaviors": [
+        {
+          "id": "capabilities.declare-before-launch",
+          "statement": "The adapter declares its capabilities before launching a child. A capability the request requires and the adapter does not declare is rejected at validation or ends the run in launch_failed; it is never ignored silently.",
+          "cases": [
+            "REQ-GATE-NO-LAUNCH",
+            "LAUNCH-FAILED-TERMINAL"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "launch",
+      "description": "Starts the child and opens a session with an absolute working directory and an explicit model.",
+      "inputs": [
+        {
+          "name": "cwd",
+          "type": "abs_path",
+          "required": true
+        },
+        {
+          "name": "agent",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "model",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "provider",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "emits": [
+        "state_changed",
+        "diagnostic"
+      ],
+      "required_behaviors": [
+        {
+          "id": "launch.stdin-not-inherited",
+          "statement": "The standard input of the child is never inherited from the parent. It is either controlled by the adapter or ignored.",
+          "cases": [
+            "ADAPTER-STDIN-NOT-INHERITED"
+          ]
+        },
+        {
+          "id": "launch.own-process-group",
+          "statement": "The child runs in its own process group, so that the whole group can be terminated.",
+          "cases": [
+            "CANCEL-LIVE-NO-ORPHANS"
+          ]
+        },
+        {
+          "id": "launch.agent-per-launch-without-persisting",
+          "statement": "The agent is selected per launch. The persistent configuration of the user is not modified, and it stays byte for byte equal after the run.",
+          "cases": [
+            "ADAPTER-AGENT-OVERRIDE-NO-PERSIST"
+          ]
+        },
+        {
+          "id": "launch.invalid-lines-as-diagnostic",
+          "statement": "A line of child output that is not a valid protocol message is recorded as a diagnostic event and is never interpreted as a message.",
+          "cases": [
+            "LIVE-NO-FIRST-EVENT"
+          ]
+        },
+        {
+          "id": "launch.two-session-identifiers",
+          "statement": "The protocol session identifier and the native harness identifier are stored in their two separate fields.",
+          "cases": [
+            "ADAPTER-EQUIVALENCE"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prompt",
+      "description": "Sends the turn to the child and emits the events it produces.",
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "emits": [
+        "state_changed",
+        "agent_message",
+        "agent_thought",
+        "tool_call",
+        "tool_call_update",
+        "permission_requested",
+        "usage",
+        "diagnostic"
+      ],
+      "required_behaviors": [
+        {
+          "id": "prompt.one-live-turn-per-session",
+          "statement": "A session has at most one live turn at a time.",
+          "cases": [
+            "CANCEL-LATE-NOT-SENT"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "cancel",
+      "description": "Requests the cancellation of the live turn of a run.",
+      "inputs": [
+        {
+          "name": "canceled_by",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "emits": [
+        "state_changed"
+      ],
+      "required_behaviors": [
+        {
+          "id": "cancel.only-against-live-turn",
+          "statement": "A cancellation is sent to the child only when its turn is live. A late cancellation is never sent, so it cannot abort the next prompt.",
+          "cases": [
+            "CANCEL-LATE-NOT-SENT"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "respond_permission",
+      "description": "Forwards the chosen option of a permission request to the child.",
+      "inputs": [
+        {
+          "name": "request_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "option_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "decided_by",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "emits": [
+        "permission_resolved",
+        "state_changed"
+      ],
+      "required_behaviors": [
+        {
+          "id": "respond-permission.leaves-a-trace",
+          "statement": "Every answer to a permission request is recorded as a permission_resolved event with the chosen option and its decider.",
+          "cases": [
+            "PERM-TRACE"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "liveness",
+      "description": "Exposes the observed activity of a run for the liveness derivation.",
+      "inputs": [],
+      "emits": [],
+      "required_behaviors": [
+        {
+          "id": "liveness.no-invented-heartbeats",
+          "statement": "Liveness is derived from observed activity only: child updates, end of output and process exit. The adapter never invents a heartbeat and never accepts one from the child as its own signal.",
+          "cases": [
+            "LIVE-DERIVED-NOT-COOPERATIVE"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "terminate",
+      "description": "Ends the child and its whole process group.",
+      "inputs": [],
+      "emits": [
+        "state_changed"
+      ],
+      "required_behaviors": [
+        {
+          "id": "terminate.kills-the-group",
+          "statement": "Terminating a run ends the child and every process of its group.",
+          "cases": [
+            "CANCEL-GRACE-EXPIRY"
+          ]
+        },
+        {
+          "id": "terminate.stdin-close-is-not-cancel",
+          "statement": "Closing the standard input of the child is not a cancellation. A turn in flight that is left unresolved ends in exit_without_result.",
+          "cases": [
+            "ADAPTER-STDIN-CLOSE-NOT-CANCEL"
+          ]
+        }
+      ]
+    }
+  ],
+  "stop_reason_mapping": [
+    {
+      "stop_reason": "end_turn",
+      "origin": "any",
+      "state": "completed",
+      "reason": null
+    },
+    {
+      "stop_reason": "cancelled",
+      "origin": "parent_cancel",
+      "state": "canceled",
+      "reason": null
+    },
+    {
+      "stop_reason": "cancelled",
+      "origin": "reject_once",
+      "state": "failed",
+      "reason": "permission_rejected"
+    },
+    {
+      "stop_reason": "refusal",
+      "origin": "any",
+      "state": "failed",
+      "reason": "refusal"
+    },
+    {
+      "stop_reason": "max_tokens",
+      "origin": "any",
+      "state": "failed",
+      "reason": "max_tokens"
+    },
+    {
+      "stop_reason": "max_turn_requests",
+      "origin": "any",
+      "state": "failed",
+      "reason": "max_turn_requests"
+    }
+  ]
+}
