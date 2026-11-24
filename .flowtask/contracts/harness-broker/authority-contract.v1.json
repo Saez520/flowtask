@@ -48,7 +48,19 @@
     "npx",
     "bunx",
     "pnpx",
-    "xargs"
+    "xargs",
+    "stdbuf",
+    "setsid",
+    "builtin",
+    "coproc",
+    "!",
+    "if",
+    "then",
+    "else",
+    "elif",
+    "while",
+    "until",
+    "do"
   ],
   "command_interpreters": [
     "sh",

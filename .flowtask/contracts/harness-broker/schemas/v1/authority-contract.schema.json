@@ -153,11 +153,11 @@
     },
     "command_wrappers": {
       "type": "array",
-      "description": "Programs that run another command given as their argument; the reference model looks through them.",
+      "description": "Programs and shell reserved words that run the command given after them; the reference model looks through them.",
       "uniqueItems": true,
       "items": {
         "type": "string",
-        "pattern": "^[a-z][a-z0-9_-]*$"
+        "pattern": "^(?:!|[a-z][a-z0-9_-]*)$"
       }
     },
     "command_interpreters": {

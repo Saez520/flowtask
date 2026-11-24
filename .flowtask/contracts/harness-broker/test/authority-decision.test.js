@@ -294,6 +294,80 @@ describe("direct harness invocation", () => {
     }
   });
 
+  it("denies a harness name that a shell prefix or a process wrapper runs", () => {
+    const commands = [
+      "! claude -p z",
+      "then claude -p z",
+      "do opencode run x",
+      "else claude -p z",
+      "elif claude -p z",
+      "while claude -p z",
+      "until claude -p z",
+      "if claude -p z",
+      "builtin claude -p z",
+      "coproc claude -p z",
+      "stdbuf -o0 claude -p z",
+      "setsid claude -p z"
+    ];
+    for (const command of commands) {
+      assert.equal(shell(command, ASK_PARENT).reason, "direct_harness_invocation", command);
+    }
+  });
+
+  it("treats a dynamic word after a shell prefix or a process wrapper as ambiguous syntax", () => {
+    const commands = ["stdbuf -o0 $C", "setsid $C -p z", "! $C -p z", "then $C -p z", "if $C", "builtin $C", "coproc $C"];
+    for (const command of commands) {
+      const verdict = shell(command, ASK_PARENT);
+      assert.equal(verdict.decision, "deny", command);
+      assert.equal(verdict.reason, "ambiguous_syntax", command);
+    }
+  });
+
+  it("never allows a harness spelling under an allow pattern that starts with an assignment", () => {
+    const permissive = { ...STANDARD, shell: { allow: ["A=* *"], deny: [] } };
+    const names = [
+      "claude",
+      "CLAUDE",
+      "Claude",
+      "claude.exe",
+      "/usr/bin/claude",
+      "./CLAUDE",
+      "opencode",
+      "OPENCODE",
+      "$'claude'",
+      '$"claude"',
+      "cl''aude",
+      "$'\\x63laude'",
+      "$C",
+      "cl*ude",
+      "[c]laude",
+      '$"opencode"'
+    ];
+    const prefixes = [
+      "A=1 ",
+      "A='x y' ",
+      'A="x y" ',
+      "A=1 env ",
+      "A=1 env -S",
+      "A=1 nohup ",
+      "A=1 ! ",
+      "A=1 then ",
+      "A=1 if ",
+      "A=1 stdbuf -o0 ",
+      "A=1 timeout 5 ",
+      "A=1 sudo -u u "
+    ];
+    const suffixes = [" -p z", " run x", ""];
+    for (const name of names) {
+      for (const prefix of prefixes) {
+        for (const suffix of suffixes) {
+          const command = `${prefix}${name}${suffix}`;
+          assert.notEqual(shell(command, permissive).decision, "allow", command);
+        }
+      }
+    }
+  });
+
   it("lists the always denied executables from the contract", () => {
     assert.deepEqual(CONTRACT.always_denied_executables, ["opencode", "claude"]);
   });
