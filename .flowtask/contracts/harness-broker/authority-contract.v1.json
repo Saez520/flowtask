@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "profile_document_version": 1,
+  "categories": [
+    "filesystem",
+    "shell",
+    "network",
+    "tools"
+  ],
+  "uncovered_policies": [
+    "deny",
+    "ask_parent"
+  ],
+  "default_uncovered_policy": "deny",
+  "resolution": {
+    "order": [
+      "project",
+      "user",
+      "team"
+    ],
+    "file_name_template": "authority-profile.{name}.yaml",
+    "directories": {
+      "project": ".flowtask/config",
+      "user": "~/.config/flowtask/config",
+      "team": null
+    },
+    "merge": "none",
+    "invalid_falls_back": false
+  },
+  "placeholders": [
+    "${run_cwd}",
+    "${home}"
+  ],
+  "default_network_port": 443,
+  "always_denied_executables": [
+    "opencode",
+    "claude"
+  ],
+  "command_wrappers": [
+    "env",
+    "command",
+    "exec",
+    "nohup",
+    "time",
+    "sudo",
+    "nice",
+    "timeout",
+    "npx",
+    "bunx",
+    "pnpx",
+    "xargs"
+  ],
+  "command_interpreters": [
+    "sh",
+    "bash",
+    "zsh",
+    "fish",
+    "dash",
+    "ksh"
+  ],
+  "implicit_denials": [
+    "authority_layer_files",
+    "harness_credentials",
+    "main_repository_outside_run_cwd"
+  ],
+  "layers": {
+    "permissions": {
+      "version": 1,
+      "envelopes": [
+        "standard"
+      ]
+    },
+    "autonomy": {
+      "version": 1,
+      "profiles": [
+        "assistant",
+        "autonomous-dev"
+      ],
+      "explicit_order_required_for": [
+        "assistant"
+      ]
+    }
+  },
+  "rejection_reasons": [
+    "authority_layers_missing",
+    "authority_layers_invalid",
+    "authority_explicit_order_required",
+    "authority_rule_unenforceable"
+  ],
+  "required_enforcement": [
+    "filesystem",
+    "shell",
+    "network",
+    "tools",
+    "direct_harness_denial"
+  ]
+}

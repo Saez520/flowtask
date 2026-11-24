@@ -1,0 +1,9 @@
+{
+  "run_id": "run-0001",
+  "timestamp": "2026-11-23T20:00:05Z",
+  "cwd": "/Users/example/project",
+  "command": "curl https://example.com",
+  "decision": "asked",
+  "rule": null,
+  "exit_code": null
+}

@@ -1,0 +1,9 @@
+{
+  "run_id": "run-0001",
+  "timestamp": "2026-11-23T20:00:03Z",
+  "cwd": "project",
+  "command": "git status",
+  "decision": "allowed",
+  "rule": "shell.allow[0]",
+  "exit_code": 0
+}

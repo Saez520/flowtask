@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:authority-contract",
+  "title": "AuthorityContract",
+  "description": "Data of the authority contract: the closed vocabularies, the resolution order, the placeholders and the command and network conventions that the reference model and every enforcement layer share.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile_document_version",
+    "categories",
+    "uncovered_policies",
+    "default_uncovered_policy",
+    "resolution",
+    "placeholders",
+    "default_network_port",
+    "always_denied_executables",
+    "command_wrappers",
+    "command_interpreters",
+    "implicit_denials",
+    "layers",
+    "rejection_reasons",
+    "required_enforcement"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/schema_version",
+      "description": "Contract version of the data. Must be 1."
+    },
+    "profile_document_version": {
+      "type": "integer",
+      "description": "Version of the authority profile document this data describes. Must be 1.",
+      "const": 1
+    },
+    "categories": {
+      "type": "array",
+      "description": "Authority categories a profile governs.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
+    },
+    "uncovered_policies": {
+      "type": "array",
+      "description": "Policies a category may use for a request no rule covers.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
+    },
+    "default_uncovered_policy": {
+      "type": "string",
+      "description": "Policy used when a profile does not state one. Deny is the value of version 1.",
+      "minLength": 1
+    },
+    "resolution": {
+      "type": "object",
+      "description": "How a profile is located and selected among the sources.",
+      "additionalProperties": false,
+      "required": [
+        "order",
+        "file_name_template",
+        "directories",
+        "merge",
+        "invalid_falls_back"
+      ],
+      "properties": {
+        "order": {
+          "type": "array",
+          "description": "Sources in precedence order: the first source that defines the profile governs it.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        },
+        "file_name_template": {
+          "type": "string",
+          "description": "File name of a profile, with the profile name in place of the placeholder.",
+          "minLength": 1
+        },
+        "directories": {
+          "type": "object",
+          "description": "Directory of each source. A null value means the directory is located by the same mechanism as the other layers of the team source.",
+          "additionalProperties": false,
+          "required": [
+            "project",
+            "user",
+            "team"
+          ],
+          "properties": {
+            "project": {
+              "type": "string",
+              "description": "Directory of the project source, relative to the project root.",
+              "minLength": 1
+            },
+            "user": {
+              "type": "string",
+              "description": "Directory of the user source, relative to the home directory.",
+              "minLength": 1
+            },
+            "team": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Directory of the team source, or null when it is located by the mechanism of the other layers.",
+              "minLength": 1
+            }
+          }
+        },
+        "merge": {
+          "type": "string",
+          "description": "Merge behaviour between sources. Must be none: a profile replaces the whole source it comes from.",
+          "const": "none"
+        },
+        "invalid_falls_back": {
+          "type": "boolean",
+          "description": "Whether an invalid profile falls back to the next source. Must be false.",
+          "const": false
+        }
+      }
+    },
+    "placeholders": {
+      "type": "array",
+      "description": "Placeholders a path may start with. They are expanded before any path is compared.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^\\$\\{[a-z_]+\\}$"
+      }
+    },
+    "default_network_port": {
+      "type": "integer",
+      "description": "Port assumed for a network destination that names none.",
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "always_denied_executables": {
+      "type": "array",
+      "description": "Harness executables a child may never invoke directly, whatever the profile says.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*$"
+      }
+    },
+    "command_wrappers": {
+      "type": "array",
+      "description": "Programs that run another command given as their argument; the reference model looks through them.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*$"
+      }
+    },
+    "command_interpreters": {
+      "type": "array",
+      "description": "Shell interpreters whose inline script argument makes the syntax ambiguous.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*$"
+      }
+    },
+    "implicit_denials": {
+      "type": "array",
+      "description": "Denials every profile carries without listing them: the authority documents, the harness credentials and the main repository outside the run.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
+    },
+    "layers": {
+      "type": "object",
+      "description": "Versions and vocabularies of the layers a delegation depends on.",
+      "additionalProperties": false,
+      "required": [
+        "permissions",
+        "autonomy"
+      ],
+      "properties": {
+        "permissions": {
+          "type": "object",
+          "description": "Permissions layer the delegation requires.",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "envelopes"
+          ],
+          "properties": {
+            "version": {
+              "type": "integer",
+              "description": "Version of the permissions layer this contract reads. Must be 1.",
+              "const": 1
+            },
+            "envelopes": {
+              "type": "array",
+              "description": "Permission envelopes the layer may name.",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              }
+            }
+          }
+        },
+        "autonomy": {
+          "type": "object",
+          "description": "Autonomy layer the delegation requires.",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "profiles",
+            "explicit_order_required_for"
+          ],
+          "properties": {
+            "version": {
+              "type": "integer",
+              "description": "Version of the autonomy layer this contract reads. Must be 1.",
+              "const": 1
+            },
+            "profiles": {
+              "type": "array",
+              "description": "Autonomy profiles the layer may name.",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              }
+            },
+            "explicit_order_required_for": {
+              "type": "array",
+              "description": "Autonomy profiles that delegate only on an explicit order from the operator.",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              }
+            }
+          }
+        }
+      }
+    },
+    "rejection_reasons": {
+      "type": "array",
+      "description": "Closed reasons a run can be rejected with, in snake_case.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
+    },
+    "required_enforcement": {
+      "type": "array",
+      "description": "Authority rules an adapter must declare it can make effective before a run that uses a profile may start.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      }
+    }
+  }
+}

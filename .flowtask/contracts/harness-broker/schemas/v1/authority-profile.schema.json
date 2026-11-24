@@ -1,0 +1,268 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:authority-profile",
+  "title": "AuthorityProfile",
+  "description": "Authority profile document: what a delegated child may do, one document per profile. The document is written in YAML 1.2 and is equivalent to the JSON document this schema describes. Rules that a schema cannot express are checked by the reference model.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "name",
+    "description",
+    "filesystem",
+    "shell",
+    "network",
+    "tools",
+    "on_uncovered"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Version of the profile document. Must be 1."
+    },
+    "name": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/authority_profile_name",
+      "description": "Name of the profile. It must equal the name the request references and the file name without its prefix and extension."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable purpose of the profile.",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "filesystem": {
+      "type": "object",
+      "description": "Filesystem rules: at most one writable root, readable roots and a denylist.",
+      "additionalProperties": false,
+      "required": [
+        "writable_roots",
+        "readable_roots",
+        "deny"
+      ],
+      "properties": {
+        "writable_roots": {
+          "type": "array",
+          "description": "Writable root: zero or one absolute path or placeholder. An empty list makes the child read-only.",
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/root_path"
+          }
+        },
+        "readable_roots": {
+          "type": "array",
+          "description": "Readable roots in addition to the writable root, which is always readable and need not be repeated.",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/root_path"
+          }
+        },
+        "deny": {
+          "type": "array",
+          "description": "Paths or patterns that can be neither read nor written, even inside a permitted root.",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/path_pattern"
+          }
+        }
+      }
+    },
+    "shell": {
+      "type": "object",
+      "description": "Shell rules over whole commands. Ambiguous syntax is always denied.",
+      "additionalProperties": false,
+      "required": [
+        "allow",
+        "deny"
+      ],
+      "properties": {
+        "allow": {
+          "type": "array",
+          "description": "Command patterns the child may run. Every command not listed is denied.",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/command_pattern"
+          }
+        },
+        "deny": {
+          "type": "array",
+          "description": "Command patterns denied even when another entry allows them.",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/command_pattern"
+          }
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "description": "Network rules. An empty list means the child has no network.",
+      "additionalProperties": false,
+      "required": [
+        "allow"
+      ],
+      "properties": {
+        "allow": {
+          "type": "array",
+          "description": "Destinations the child may reach, each with an optional port.",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/destination"
+          }
+        }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "description": "Native tools and MCP tools the child may use.",
+      "additionalProperties": false,
+      "required": [
+        "allow",
+        "deny",
+        "mcp_allow",
+        "mcp_deny"
+      ],
+      "properties": {
+        "allow": {
+          "type": "array",
+          "description": "Native tool names the child may use.",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/tool_name"
+          }
+        },
+        "deny": {
+          "type": "array",
+          "description": "Native tool names denied even when allowed.",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/tool_name"
+          }
+        },
+        "mcp_allow": {
+          "type": "array",
+          "description": "MCP server and tool pairs the child may use. The tool `*` stands for every tool of the server.",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/mcp_tool"
+          }
+        },
+        "mcp_deny": {
+          "type": "array",
+          "description": "MCP server and tool pairs denied even when allowed.",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/mcp_tool"
+          }
+        }
+      }
+    },
+    "on_uncovered": {
+      "type": "object",
+      "description": "Policy for each category when no rule covers a request.",
+      "additionalProperties": false,
+      "required": [
+        "filesystem",
+        "shell",
+        "network",
+        "tools"
+      ],
+      "properties": {
+        "filesystem": {
+          "type": "string",
+          "description": "Policy for an uncovered filesystem request.",
+          "enum": [
+            "deny",
+            "ask_parent"
+          ]
+        },
+        "shell": {
+          "type": "string",
+          "description": "Policy for an uncovered shell request.",
+          "enum": [
+            "deny",
+            "ask_parent"
+          ]
+        },
+        "network": {
+          "type": "string",
+          "description": "Policy for an uncovered network request.",
+          "enum": [
+            "deny",
+            "ask_parent"
+          ]
+        },
+        "tools": {
+          "type": "string",
+          "description": "Policy for an uncovered tool request.",
+          "enum": [
+            "deny",
+            "ask_parent"
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "path_pattern": {
+      "type": "string",
+      "description": "Absolute path, or a path that starts with a placeholder. Relative paths, parent segments and doubled separators are invalid.",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))(?:\\$\\{run_cwd\\}|\\$\\{home\\})?(?:/[^/\\u0000\\n]+)*/?$"
+    },
+    "root_path": {
+      "description": "Path pattern that names a single location: it carries no glob character.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/path_pattern"
+        },
+        {
+          "not": {
+            "type": "string",
+            "pattern": "[*?\\[]"
+          }
+        }
+      ]
+    },
+    "command_pattern": {
+      "type": "string",
+      "description": "Command pattern: `*` matches any text and `?` matches one character. It is matched against one whole command segment.",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[^\\n\\r]+$"
+    },
+    "destination": {
+      "type": "string",
+      "description": "Network destination: a host name with at least one dot, an optional leading `*.` wildcard and an optional port. IP addresses and localhost are not valid.",
+      "pattern": "^(?!\\d{1,3}(?:\\.\\d{1,3}){3}(?::|$))(?:\\*\\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+(?::[0-9]{1,5})?$"
+    },
+    "tool_name": {
+      "type": "string",
+      "description": "Native tool name.",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+    },
+    "mcp_tool": {
+      "type": "object",
+      "description": "MCP server and tool pair.",
+      "additionalProperties": false,
+      "required": [
+        "server",
+        "tool"
+      ],
+      "properties": {
+        "server": {
+          "type": "string",
+          "description": "Name of the MCP server.",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$"
+        },
+        "tool": {
+          "type": "string",
+          "description": "Name of the tool on that server, or `*` for every tool of the server.",
+          "pattern": "^(\\*|[A-Za-z][A-Za-z0-9_.-]*)$"
+        }
+      }
+    }
+  }
+}

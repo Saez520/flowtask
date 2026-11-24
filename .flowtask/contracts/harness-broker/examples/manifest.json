@@ -496,5 +496,44 @@
     "error_paths": [
       "network"
     ]
+  },
+  {
+    "file": "valid/terminal-log-entry.allowed.json",
+    "schema": "terminal-log-entry",
+    "valid": true
+  },
+  {
+    "file": "valid/terminal-log-entry.denied.json",
+    "schema": "terminal-log-entry",
+    "valid": true
+  },
+  {
+    "file": "valid/terminal-log-entry.asked.json",
+    "schema": "terminal-log-entry",
+    "valid": true
+  },
+  {
+    "file": "invalid/terminal-log-entry.denied-with-exit-code.json",
+    "schema": "terminal-log-entry",
+    "valid": false,
+    "error_paths": [
+      "exit_code"
+    ]
+  },
+  {
+    "file": "invalid/terminal-log-entry.relative-cwd.json",
+    "schema": "terminal-log-entry",
+    "valid": false,
+    "error_paths": [
+      "cwd"
+    ]
+  },
+  {
+    "file": "invalid/terminal-log-entry.unknown-decision.json",
+    "schema": "terminal-log-entry",
+    "valid": false,
+    "error_paths": [
+      "decision"
+    ]
   }
 ]
