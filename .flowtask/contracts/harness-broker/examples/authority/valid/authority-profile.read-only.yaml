@@ -1,6 +1,6 @@
 version: 1
 name: read-only
-description: Read the run worktree and change nothing.
+description: Read the run working directory and change nothing.
 filesystem:
   writable_roots: []
   readable_roots:

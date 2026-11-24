@@ -85,7 +85,7 @@ describe("filesystem decisions", () => {
     assert.deepEqual(verdict, { decision: "deny", rule: "contract.implicit_denial", reason: "protected_path" });
   });
 
-  it("denies a main repository outside the run worktree and allows it inside", () => {
+  it("denies a main repository outside the run working directory and allows it inside", () => {
     const outside = write("/repo/main/x", { ...CONTEXT, main_repository: "/repo/main" });
     assert.equal(outside.reason, "protected_path");
     const inside = write("/work/run/sub/x", { ...CONTEXT, main_repository: "/work/run/sub" });

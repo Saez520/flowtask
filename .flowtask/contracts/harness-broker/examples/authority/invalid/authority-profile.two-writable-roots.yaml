@@ -1,6 +1,6 @@
 version: 1
 name: standard
-description: Work inside the run worktree with the shell and the registry the plan needs.
+description: Work inside the run working directory with the shell and the registry the plan needs.
 filesystem:
   writable_roots:
     - "${run_cwd}"
