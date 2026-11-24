@@ -40,19 +40,43 @@ function readJsonObject(filePath) {
   return value;
 }
 
-/** Resolve the user-level OpenCode configuration directory. */
+/**
+ * Resolve the user-level OpenCode configuration directory. OpenCode reads
+ * `$XDG_CONFIG_HOME/opencode` or `~/.config/opencode` on every platform,
+ * Windows included.
+ */
 export function resolveOpencodeUserPaths(options = {}) {
   const homeDir = options.homeDir ?? os.homedir();
-  const configDir = options.configDir ?? (process.platform === "win32"
-    ? path.join(process.env.APPDATA || path.join(homeDir, "AppData", "Roaming"), "opencode")
-    : process.env.XDG_CONFIG_HOME
-      ? path.join(process.env.XDG_CONFIG_HOME, "opencode")
-      : path.join(homeDir, ".config", "opencode"));
+  const configDir = options.configDir ?? (process.env.XDG_CONFIG_HOME
+    ? path.join(process.env.XDG_CONFIG_HOME, "opencode")
+    : path.join(homeDir, ".config", "opencode"));
   return {
     configDir,
     configPath: path.join(configDir, "opencode.json"),
     jsoncPath: path.join(configDir, "opencode.jsonc"),
   };
+}
+
+/**
+ * Path of the file an earlier Windows installer wrote under `%APPDATA%`, or
+ * null outside Windows or when no such location is known.
+ */
+function legacyWindowsConfigPath() {
+  if (process.platform !== "win32" || !process.env.APPDATA) return null;
+  const appData = process.env.APPDATA;
+  return path.join(appData, "opencode", "opencode.json");
+}
+
+/** True when the file exists, parses as a JSON object and holds a FlowTask entry. */
+function hasFlowTaskEntries(filePath) {
+  if (!fileExists(filePath)) return false;
+  try {
+    const config = readJsonObject(filePath);
+    return ["agents", "mcp"].some((key) => isPlainObject(config[key])
+      && Object.keys(config[key]).some((name) => name.startsWith(FLOWTASK_AGENT_PREFIX)));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -285,6 +309,10 @@ export function ensureOpencodeGlobalSurface({
 } = {}) {
   const root = runtimeRoot ?? resolveUserRuntimePaths().runtimeRoot;
   const userPaths = resolveOpencodeUserPaths();
+  const legacyPath = legacyWindowsConfigPath();
+  if (legacyPath && hasFlowTaskEntries(legacyPath)) {
+    logInfo(`The OpenCode configuration now lives at ${userPaths.configPath}; the earlier file at ${legacyPath} was left untouched.`);
+  }
   const read = readOpencodeGlobalConfig({ configDir: userPaths.configDir });
   if (read.status === "jsonc_unmanaged" || read.status === "invalid") {
     return {

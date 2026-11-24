@@ -566,15 +566,12 @@ export function renderAutonomyPromptLines(cursor) {
   ];
 }
 
-async function promptAutonomySelection(readline) {
-  if (!process.stdin.isTTY) {
-    throw new Error("No TTY available to answer the initiative question. Pass --autonomy <assistant|autonomous-dev> or run in an interactive terminal.");
-  }
+async function promptListSelection(readline, { step, stepTitle, title, options, renderLines, missingTtyMessage }) {
+  if (!process.stdin.isTTY) throw new Error(missingTtyMessage);
 
-  logStep("P", "Initiative");
-  logInfo(AUTONOMY_PROMPT.title);
+  logStep(step, stepTitle);
+  logInfo(title);
 
-  const options = AUTONOMY_PROMPT.options;
   let cursor = 0;
   let lastRenderLines = 0;
 
@@ -587,7 +584,7 @@ async function promptAutonomySelection(readline) {
       readline.moveCursor(process.stdout, 0, -lastRenderLines);
       readline.clearScreenDown(process.stdout);
     }
-    const output = renderAutonomyPromptLines(cursor).join("\n");
+    const output = renderLines(cursor).join("\n");
     process.stdout.write(output + "\n");
     lastRenderLines = output.split("\n").length;
   };
@@ -623,6 +620,50 @@ async function promptAutonomySelection(readline) {
     };
 
     process.stdin.on("keypress", onKeypress);
+  });
+}
+
+async function promptAutonomySelection(readline) {
+  return promptListSelection(readline, {
+    step: "P",
+    stepTitle: "Initiative",
+    title: AUTONOMY_PROMPT.title,
+    options: AUTONOMY_PROMPT.options,
+    renderLines: renderAutonomyPromptLines,
+    missingTtyMessage: "No TTY available to answer the initiative question. Pass --autonomy <assistant|autonomous-dev> or run in an interactive terminal.",
+  });
+}
+
+export const PERSONA_PROMPT = Object.freeze({
+  title: "Which personality should the FlowTask runner use?",
+  options: Object.freeze([
+    Object.freeze({ value: "training", label: "Training", description: "Explains each step and teaches as it works." }),
+    Object.freeze({ value: "mid", label: "Mid", description: "Balanced guidance with less explanation." }),
+    Object.freeze({ value: "senior", label: "Senior", description: "Concise and direct." }),
+    Object.freeze({ value: null, label: "Continue without a personality", description: "You can set one later with --persona." }),
+  ]),
+});
+
+/** Plain text lines of the personality question for a given cursor position. */
+export function renderPersonaPromptLines(cursor) {
+  return [
+    ...PERSONA_PROMPT.options.map((option, index) => {
+      const cursorMark = index === cursor ? ">" : " ";
+      return `${cursorMark} ${option.label}    ${option.description}`;
+    }),
+    "",
+    "↑/↓: navigate, Enter: confirm, Ctrl+C: cancel",
+  ];
+}
+
+async function promptPersonaSelection(readline) {
+  return promptListSelection(readline, {
+    step: "P",
+    stepTitle: "Personality",
+    title: PERSONA_PROMPT.title,
+    options: PERSONA_PROMPT.options,
+    renderLines: renderPersonaPromptLines,
+    missingTtyMessage: "No TTY available to answer the personality question. Pass --persona <training|mid|senior|custom> or run in an interactive terminal.",
   });
 }
 
@@ -1701,10 +1742,6 @@ ${COLORS.blue}╔═════════════════════
     const nonClaudeTargets = targets.filter(({ id }) => id !== "claude");
     const claudeSelected = targets.some(({ id }) => id === "claude");
 
-    // ── Step P: Agent Personality ─────────────────────────────────
-    const personaChoice = options.persona ? mapping[levelToChoice[options.persona]] : null;
-    const personaContent = personaChoice ? resolvePersonaContent(flowtaskDir, personaChoice) : null;
-
     const projectDir = process.cwd();
     const preflight = nonClaudeTargets.some(({ id }) => id === "opencode")
       ? await prepareInstallation(flowtaskDir, projectDir, "install", { targets: nonClaudeTargets, worktreeManager }) : null;
@@ -1718,6 +1755,15 @@ ${COLORS.blue}╔═════════════════════
     if (claudeSelected) migrateLegacyClaudeProjectConfig(projectDir);
     const userLayerPreflight = preflightUserRuntimeConfig(userRuntimePaths.configDir);
     const claudePaths = resolveClaudePaths(projectDir);
+
+    // ── Step P: Agent Personality ─────────────────────────────────
+    const selectedPersona = !options.persona && process.stdin.isTTY
+      && userLayerPreflight.resolution.layers.persona.status === "missing"
+      ? await promptPersonaSelection(readline)
+      : null;
+    const personaLevel = options.persona ?? selectedPersona;
+    const personaChoice = personaLevel ? mapping[levelToChoice[personaLevel]] : null;
+    const personaContent = personaChoice ? resolvePersonaContent(flowtaskDir, personaChoice) : null;
 
     const requestedAutonomy = normalizeAutonomyChoice(options.autonomy);
     const missingOperationalLayers = userLayerPreflight.missing.length > 0;

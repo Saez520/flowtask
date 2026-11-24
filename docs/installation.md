@@ -29,8 +29,12 @@ flowtask install --target claude --autonomy autonomous-dev
 
 `--target` selects the target explicitly and accepts a repeated flag or a
 comma-separated list. Without a TTY, `install` fails unless `--target` is
-provided. `--persona` accepts `training`, `mid`, `senior`, or `custom`; it is
-optional and there is no tone question.
+provided. `--persona` accepts `training`, `mid`, `senior`, or `custom`. Without
+the flag, an interactive install that finds no persona profile asks which
+personality to use (training, mid, senior, or continue without one); `custom`
+is only available through the flag because it needs its own text. A valid
+profile is never asked again, a run without a TTY continues without a
+personality, and `update` never asks.
 
 `--autonomy` accepts `assistant` or `autonomous-dev`. It is the only explicit
 choice that raises the installation default; without the flag, a valid layer is
@@ -470,6 +474,12 @@ context checkpoint plugin, the FlowTask commands, the default agent only when
 absent, and the Engram MCP only when absent. A consumer's own agents, skills,
 plugins, commands, MCP servers, and settings are preserved. A JSONC OpenCode
 configuration fails closed without writing.
+
+The OpenCode global configuration is `$XDG_CONFIG_HOME/opencode/opencode.json`
+or `~/.config/opencode/opencode.json` on every platform, Windows included
+(`C:\Users\<user>\.config\opencode\opencode.json`). An earlier Windows install
+may have written `%APPDATA%\opencode\opencode.json`; that file is left
+untouched and the install reports it once when it holds FlowTask entries.
 
 The permission gate is registered as the npm package
 `flowtask-permission-gate@^2.0.0`; OpenCode resolves and caches it on the first
