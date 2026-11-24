@@ -288,5 +288,140 @@
     "error_paths": [
       "last_activity_source"
     ]
+  },
+  {
+    "file": "valid/result.completed.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.completed.native-session-null.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.completed.adapter-a.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.completed.adapter-b.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.usage-null-vs-zero.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.no_first_event.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.idle_timeout.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.wall_timeout.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.exit_nonzero.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.exit_without_result.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.permission_rejected.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.refusal.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.max_tokens.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.max_turn_requests.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.launch_failed.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.failed.supervisor_lost.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.canceled.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "valid/result.rejected.json",
+    "schema": "result",
+    "valid": true
+  },
+  {
+    "file": "invalid/result.missing-field.json",
+    "schema": "result",
+    "valid": false,
+    "error_paths": [
+      "telemetry"
+    ]
+  },
+  {
+    "file": "invalid/result.harness-extra-field.json",
+    "schema": "result",
+    "valid": false,
+    "error_paths": [
+      "adapter_pid"
+    ]
+  },
+  {
+    "file": "invalid/result.failed-without-reason.json",
+    "schema": "result",
+    "valid": false,
+    "error_paths": [
+      "reason"
+    ]
+  },
+  {
+    "file": "invalid/result.completed-with-reason.json",
+    "schema": "result",
+    "valid": false,
+    "error_paths": [
+      "reason"
+    ]
+  },
+  {
+    "file": "valid/result-response.not-terminal.json",
+    "schema": "result-response",
+    "valid": true
+  },
+  {
+    "file": "invalid/result-response.partial-result.json",
+    "schema": "result-response",
+    "valid": false,
+    "error_paths": [
+      "final_text"
+    ]
   }
 ]

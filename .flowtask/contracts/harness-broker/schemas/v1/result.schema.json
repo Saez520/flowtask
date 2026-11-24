@@ -1,0 +1,492 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:flowtask:harness-broker:v1:result",
+  "title": "Result",
+  "description": "Normalized outcome of a terminal run. Its structure is the same for every harness and every outcome; no field depends on free text produced by the child. Fields without data are null, never absent and never zero.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "state",
+    "reason",
+    "detail",
+    "canceled_by",
+    "stop_reason",
+    "final_text",
+    "parent_run_id",
+    "harness",
+    "harness_version",
+    "acp_session_id",
+    "harness_native_session_id",
+    "parent_harness",
+    "parent_session_id",
+    "model",
+    "provider",
+    "agent",
+    "submitted_at",
+    "started_at",
+    "ended_at",
+    "duration_ms",
+    "time_to_first_event_ms",
+    "limits",
+    "process",
+    "usage",
+    "permissions",
+    "telemetry",
+    "last_cursor"
+  ],
+  "properties": {
+    "schema_version": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/schema_version",
+      "description": "Contract version. Must be 1."
+    },
+    "run_id": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id",
+      "description": "Run the result belongs to."
+    },
+    "state": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/terminal_state",
+      "description": "Terminal state of the run."
+    },
+    "reason": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+      "description": "Reason of the outcome: a failed_reason for failed, a snake_case identifier for rejected, null otherwise."
+    },
+    "detail": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+      "description": "Human-readable detail of the outcome: required for failed and rejected, null otherwise."
+    },
+    "canceled_by": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+      "description": "Who requested the cancellation. Required for canceled, null otherwise."
+    },
+    "stop_reason": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+      "description": "Native stop reason of the harness turn, kept as reported. Null when no turn was closed."
+    },
+    "final_text": {
+      "type": "string",
+      "description": "Last message of the agent. May be an empty string."
+    },
+    "parent_run_id": {
+      "description": "Run of the parent that requested this delegation, or null.",
+      "anyOf": [
+        {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "harness": {
+      "type": "string",
+      "description": "Harness that ran the delegation.",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "harness_version": {
+      "type": "string",
+      "description": "Version of the harness that ran the delegation.",
+      "minLength": 1
+    },
+    "acp_session_id": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+      "description": "Session identifier of the protocol, or null when no session was opened."
+    },
+    "harness_native_session_id": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+      "description": "Session identifier of the harness itself, or null when it is not available. May equal acp_session_id."
+    },
+    "parent_harness": {
+      "description": "Harness of the parent, or null.",
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "parent_session_id": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+      "description": "Session identifier of the parent, or null."
+    },
+    "model": {
+      "type": "string",
+      "description": "Model the run used.",
+      "minLength": 1
+    },
+    "provider": {
+      "type": "string",
+      "description": "Provider of the model the run used.",
+      "minLength": 1
+    },
+    "agent": {
+      "type": "string",
+      "description": "Agent the run executed.",
+      "minLength": 1
+    },
+    "submitted_at": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/timestamp",
+      "description": "Instant the request was accepted."
+    },
+    "started_at": {
+      "description": "Instant the child was launched, or null when it never was.",
+      "anyOf": [
+        {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ended_at": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/timestamp",
+      "description": "Instant the run reached its terminal state."
+    },
+    "duration_ms": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Milliseconds from start to end, or null when the run never started.",
+      "minimum": 0
+    },
+    "time_to_first_event_ms": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Milliseconds from start to the first valid event, or null when there was none.",
+      "minimum": 0
+    },
+    "limits": {
+      "type": "object",
+      "description": "Limits the run used, in milliseconds, as resolved from the request or the broker configuration.",
+      "additionalProperties": false,
+      "required": [
+        "first_event_timeout",
+        "idle_timeout",
+        "wall_timeout"
+      ],
+      "properties": {
+        "first_event_timeout": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/limit_ms",
+          "description": "Milliseconds allowed until the first valid event."
+        },
+        "idle_timeout": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/limit_ms",
+          "description": "Milliseconds allowed without activity after the first event, outside pauses."
+        },
+        "wall_timeout": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/limit_ms",
+          "description": "Milliseconds allowed for the whole run, pauses included."
+        }
+      }
+    },
+    "process": {
+      "type": "object",
+      "description": "Child process outcome.",
+      "additionalProperties": false,
+      "required": [
+        "exit_code",
+        "signal",
+        "terminated_by_broker"
+      ],
+      "properties": {
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Exit code of the child, or null when it did not exit normally."
+        },
+        "signal": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+          "description": "Signal that ended the child, or null."
+        },
+        "terminated_by_broker": {
+          "type": "boolean",
+          "description": "True when the broker ended the child group because a limit or a cancellation expired."
+        }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "description": "Token usage and cost. A null value means the harness did not report it; zero means it reported zero.",
+      "additionalProperties": false,
+      "required": [
+        "input_tokens",
+        "output_tokens",
+        "cost"
+      ],
+      "properties": {
+        "input_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Input tokens, or null when not reported.",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Output tokens, or null when not reported.",
+          "minimum": 0
+        },
+        "cost": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Cost with its currency, or null when not reported.",
+          "additionalProperties": false,
+          "required": [
+            "amount",
+            "currency"
+          ],
+          "properties": {
+            "amount": {
+              "type": "number",
+              "description": "Amount in the currency of the cost.",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "description": "ISO 4217 currency code, three uppercase letters.",
+              "pattern": "^[A-Z]{3}$"
+            }
+          }
+        }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "description": "Permission requests of the run.",
+      "additionalProperties": false,
+      "required": [
+        "requested",
+        "granted",
+        "rejected"
+      ],
+      "properties": {
+        "requested": {
+          "type": "integer",
+          "description": "Permission requests the child made.",
+          "minimum": 0
+        },
+        "granted": {
+          "type": "integer",
+          "description": "Permission requests answered with an allow option.",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "description": "Permission requests answered with a reject option.",
+          "minimum": 0
+        }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "description": "Trace identity of the run and the attributes exported with it.",
+      "additionalProperties": false,
+      "required": [
+        "trace_id",
+        "span_id",
+        "parent_span_id",
+        "attributes"
+      ],
+      "properties": {
+        "trace_id": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/trace_id",
+          "description": "Trace identifier of the run."
+        },
+        "span_id": {
+          "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/span_id",
+          "description": "Span identifier of the run."
+        },
+        "parent_span_id": {
+          "description": "Span identifier of the parent operation, or null.",
+          "anyOf": [
+            {
+              "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/span_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attributes": {
+          "type": "object",
+          "description": "Attributes exported with the run.",
+          "additionalProperties": false,
+          "required": [
+            "flowtask.ca_id",
+            "flowtask.run_id",
+            "flowtask.agent"
+          ],
+          "properties": {
+            "flowtask.ca_id": {
+              "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/nullable_string",
+              "description": "Work item identifier, or null when the request had none."
+            },
+            "flowtask.run_id": {
+              "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/run_id",
+              "description": "Run identifier."
+            },
+            "flowtask.agent": {
+              "type": "string",
+              "description": "Agent the run executed.",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "last_cursor": {
+      "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/cursor",
+      "description": "Cursor of the last event of the run, to continue reading the log."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "const": "completed",
+            "description": "Condition: the run completed."
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "stop_reason": {
+            "const": "end_turn",
+            "description": "A completed run closed its turn with end_turn."
+          },
+          "reason": {
+            "type": "null",
+            "description": "A completed run has no reason."
+          },
+          "detail": {
+            "type": "null",
+            "description": "A completed run has no detail."
+          },
+          "canceled_by": {
+            "type": "null",
+            "description": "A completed run was not canceled."
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "const": "failed",
+            "description": "Condition: the run failed."
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "reason",
+          "detail"
+        ],
+        "properties": {
+          "reason": {
+            "$ref": "urn:flowtask:harness-broker:v1:common#/$defs/failed_reason",
+            "description": "Closed failure reason."
+          },
+          "detail": {
+            "type": "string",
+            "description": "Human-readable detail of the failure.",
+            "minLength": 1
+          },
+          "canceled_by": {
+            "type": "null",
+            "description": "A failed run was not canceled."
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "const": "rejected",
+            "description": "Condition: the authority gate rejected the run."
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "reason",
+          "detail"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Rejection reason, a snake_case identifier defined by the authority contract.",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Human-readable reason for the rejection.",
+            "minLength": 1
+          },
+          "canceled_by": {
+            "type": "null",
+            "description": "A rejected run was not canceled."
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "const": "canceled",
+            "description": "Condition: the run was canceled."
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "then": {
+        "required": [
+          "canceled_by"
+        ],
+        "properties": {
+          "canceled_by": {
+            "type": "string",
+            "description": "Identifier of who requested the cancellation.",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ]
+}
