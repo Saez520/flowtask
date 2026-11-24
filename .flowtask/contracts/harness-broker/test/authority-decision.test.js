@@ -49,6 +49,17 @@ describe("filesystem decisions", () => {
     });
   });
 
+  it("denies a case variant of a denylisted path, while allow decisions stay case sensitive", () => {
+    const upper = { run_cwd: "/repo/.worktrees/run", home: "/home/u" };
+    assert.deepEqual(write("/repo/.worktrees/run/.FLOWTASK/config/x", upper), {
+      decision: "deny",
+      rule: "filesystem.deny[3]",
+      reason: "denied_by_rule"
+    });
+    assert.equal(write("/repo/.worktrees/run/src/a.js", upper).decision, "allow");
+    assert.deepEqual(write("/repo/.worktrees/RUN/src/a.js", upper), { decision: "deny", rule: null, reason: "uncovered" });
+  });
+
   it("expands the home placeholder before comparing the denylist", () => {
     assert.deepEqual(decide(STANDARD, { category: "filesystem", operation: "read", path: "/home/u/.ssh/id" }, CONTEXT), {
       decision: "deny",

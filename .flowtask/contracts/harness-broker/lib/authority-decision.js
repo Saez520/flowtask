@@ -69,13 +69,14 @@ function decideFilesystem(profile, action, context) {
 
   const mainRepository = context.main_repository ?? null;
   const outsideRun = !isWithin(context.run_cwd, path);
+  const folded = path.toLowerCase();
   const protectedHit =
-    (context.protected_paths ?? []).some((root) => isWithin(root, path)) ||
-    (mainRepository !== null && isWithin(mainRepository, path) && outsideRun);
+    (context.protected_paths ?? []).some((root) => isWithin(root.toLowerCase(), folded)) ||
+    (mainRepository !== null && isWithin(mainRepository.toLowerCase(), folded) && outsideRun);
   if (protectedHit) return verdict("deny", "contract.implicit_denial", "protected_path");
 
   const denyIndex = profile.filesystem.deny.findIndex((entry) =>
-    matchPath(expandPlaceholders(entry, context), path)
+    matchPath(expandPlaceholders(entry, context).toLowerCase(), folded)
   );
   if (denyIndex >= 0) return verdict("deny", `filesystem.deny[${denyIndex}]`, "denied_by_rule");
 
