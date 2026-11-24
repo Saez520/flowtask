@@ -124,6 +124,16 @@ function splitSegments(command) {
       if (char === "'") quote = null;
       continue;
     }
+    if (quote === "$") {
+      if (char === "\\" && next !== undefined) {
+        current += char + next;
+        i++;
+        continue;
+      }
+      current += char;
+      if (char === "'") quote = null;
+      continue;
+    }
     if (char === "\\" && next !== undefined && next !== "\n" && next !== "\r") {
       current += char + next;
       i++;
@@ -134,6 +144,12 @@ function splitSegments(command) {
       if (char === '"') quote = null;
       else if (char === "`" || (char === "$" && next === "(")) return null;
       current += char;
+      continue;
+    }
+    if (char === "$" && next === "'") {
+      quote = "$";
+      current += "$'";
+      i++;
       continue;
     }
     if (char === "'" || char === '"') {
@@ -162,19 +178,129 @@ function splitSegments(command) {
   return trimmed.some((segment) => segment === "") ? null : trimmed;
 }
 
+function splitWords(segment) {
+  const words = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < segment.length; i++) {
+    const char = segment[i];
+    const next = segment[i + 1];
+    if (quote === "'") {
+      current += char;
+      if (char === "'") quote = null;
+      continue;
+    }
+    if (quote === "$") {
+      if (char === "\\" && next !== undefined) {
+        current += char + next;
+        i++;
+        continue;
+      }
+      current += char;
+      if (char === "'") quote = null;
+      continue;
+    }
+    if (quote === '"') {
+      if (char === "\\" && next !== undefined) {
+        current += char + next;
+        i++;
+        continue;
+      }
+      current += char;
+      if (char === '"') quote = null;
+      continue;
+    }
+    if (char === "\\" && next !== undefined) {
+      current += char + next;
+      i++;
+      continue;
+    }
+    if (char === " ") {
+      if (current !== "") words.push(current);
+      current = "";
+      continue;
+    }
+    if (char === "$" && next === "'") {
+      quote = "$";
+      current += "$'";
+      i++;
+      continue;
+    }
+    if (char === "'" || char === '"') quote = char;
+    current += char;
+  }
+  if (current !== "") words.push(current);
+  return words;
+}
+
+function decodeWord(raw) {
+  let out = "";
+  let i = 0;
+  while (i < raw.length) {
+    const char = raw[i];
+    if (char === "'") {
+      const end = raw.indexOf("'", i + 1);
+      const stop = end === -1 ? raw.length : end;
+      out += raw.slice(i + 1, stop);
+      i = stop + 1;
+    } else if (char === '"') {
+      i++;
+      while (i < raw.length && raw[i] !== '"') {
+        if (raw[i] === "\\" && i + 1 < raw.length && '\\"$`'.includes(raw[i + 1])) {
+          out += raw[i + 1];
+          i += 2;
+        } else {
+          out += raw[i];
+          i++;
+        }
+      }
+      i++;
+    } else if (char === "$" && raw[i + 1] === "'") {
+      i += 2;
+      while (i < raw.length && raw[i] !== "'") {
+        if (raw[i] === "\\" && i + 1 < raw.length) {
+          const [decoded, consumed] = decodeAnsiEscape(raw.slice(i + 1));
+          out += decoded;
+          i += 1 + consumed;
+        } else {
+          out += raw[i];
+          i++;
+        }
+      }
+      i++;
+    } else if (char === "\\" && i + 1 < raw.length) {
+      out += raw[i + 1];
+      i += 2;
+    } else {
+      out += char;
+      i++;
+    }
+  }
+  return out;
+}
+
+const ANSI_SIMPLE = { n: "\n", t: "\t", r: "\r", a: "\x07", b: "\b", e: "\x1b", E: "\x1b", f: "\f", v: "\v" };
+
+function decodeAnsiEscape(rest) {
+  const hex = /^x([0-9a-fA-F]{1,2})/.exec(rest) ?? /^u([0-9a-fA-F]{1,4})/.exec(rest) ?? /^U([0-9a-fA-F]{1,8})/.exec(rest);
+  if (hex !== null) return [String.fromCodePoint(parseInt(hex[1], 16)), hex[0].length];
+  const octal = /^[0-7]{1,3}/.exec(rest);
+  if (octal !== null) return [String.fromCharCode(parseInt(octal[0], 8)), octal[0].length];
+  return [ANSI_SIMPLE[rest[0]] ?? rest[0], 1];
+}
+
 function effectiveWords(segment, wrappers) {
-  const tokens = segment.split(" ");
+  const raw = splitWords(segment);
+  const values = raw.map(decodeWord);
   let index = 0;
-  let wrapped = false;
-  while (index < tokens.length) {
-    if (isEnvAssignment(tokens[index])) {
+  while (index < raw.length) {
+    if (isEnvAssignment(raw[index])) {
       index++;
-    } else if (wrappers.includes(commandName(tokens[index]))) {
-      wrapped = true;
+    } else if (wrappers.includes(commandName(values[index]))) {
       index++;
       while (
-        index < tokens.length &&
-        (tokens[index].startsWith("-") || isEnvAssignment(tokens[index]) || DURATION.test(tokens[index]))
+        index < raw.length &&
+        (values[index].startsWith("-") || isEnvAssignment(raw[index]) || DURATION.test(values[index]))
       ) {
         index++;
       }
@@ -182,17 +308,18 @@ function effectiveWords(segment, wrappers) {
       break;
     }
   }
-  return { words: tokens.slice(index), tokens, wrapped };
+  return { words: values.slice(index), values };
 }
 
 function decideSegment(profile, text) {
   const contract = readAuthorityContract();
-  const { words, tokens, wrapped } = effectiveWords(text, contract.command_wrappers);
+  const { words, values } = effectiveWords(text, contract.command_wrappers);
   const executable = words.length > 0 ? commandName(words[0]) : "";
 
-  const invokesHarness =
-    contract.always_denied_executables.includes(executable) ||
-    (wrapped && tokens.some((token) => contract.always_denied_executables.includes(commandName(token))));
+  const naiveWords = text.split(" ");
+  const invokesHarness = [...values, ...naiveWords].some((value) =>
+    contract.always_denied_executables.includes(commandName(value))
+  );
   if (invokesHarness) {
     return segmentVerdict(text, "deny", "contract.direct_harness_denial", "direct_harness_invocation");
   }

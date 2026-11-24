@@ -173,7 +173,14 @@ describe("direct harness invocation", () => {
     "sudo -u u claude",
     "timeout 5 opencode run x",
     "git status && opencode run x",
-    '"opencode" run x'
+    '"opencode" run x',
+    "A='x y' claude -p z",
+    'A="x y" opencode run',
+    "A='x y' env claude",
+    "$'claude' -p",
+    "$'\\x63laude' -p",
+    "cl''aude -p z",
+    "claude\\ -p"
   ];
 
   for (const command of INVOCATIONS) {
@@ -197,6 +204,18 @@ describe("direct harness invocation", () => {
     document.shell.allow = ['"opencode" run *'];
     const verdict = validateProfile(document);
     assert.deepEqual(verdict.fields, [{ field: "shell.allow.0", problem: "direct_harness_not_allowed" }]);
+  });
+
+  it("denies a harness name that a quoted assignment value hides from the word split", () => {
+    const verdict = shell("A='x y' claude -p z", ASK_PARENT);
+    assert.equal(verdict.decision, "deny");
+    assert.equal(verdict.reason, "direct_harness_invocation");
+  });
+
+  it("denies a harness name written with ANSI-C or concatenated quoting", () => {
+    for (const command of ["$'claude' -p", "$'\\x63laude' -p", "cl''aude -p z"]) {
+      assert.equal(shell(command).reason, "direct_harness_invocation", command);
+    }
   });
 
   it("lists the always denied executables from the contract", () => {
