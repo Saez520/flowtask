@@ -4,7 +4,7 @@
 
 Aceptado por decisión delegada (modo autónomo) el 2026-11-23; pendiente de ratificación del desarrollador.
 
-Origen: tarea F0.3 del roadmap Harness Sandbox (Engram #11503). Se apoya en el spike ACP de F0.2 (Engram #11696) y en la investigación de la ejecución (Engram `hotfix/hf-harness-broker-adr/artifact/investigacion`, #11697).
+Origen: tarea F0.3 del roadmap Harness Sandbox (Engram #11503). Se apoya en el spike ACP de F0.2 (Engram #11696) y en la investigación de soporte (Engram #11697).
 
 ## Contexto
 
@@ -40,14 +40,14 @@ Razones, contrastadas con los criterios de #11503 §9:
 
 | Criterio (§9) | Rust | Node/TS |
 |---|---|---|
-| SDK oficial de ACP | Crate `agent-client-protocol` 5.5.1 (VR-003) | `@agentclientprotocol/sdk` 2.9.1 (VR-003) |
+| SDK oficial de ACP | Crate `agent-client-protocol` 5.5.1 (VR-003; prevalece sobre 0.9.3 citado en #11503 §8) | `@agentclientprotocol/sdk` 2.9.1 (VR-003) |
 | Adaptador de Claude Code | Proceso externo | `claude-agent-acp` 0.110.1 es Node (VR-003) |
 | Convenciones de test de FlowTask | Nuevas | `node:test`, ya vigente |
 | Encaje con instalador y distribución | Binarios por plataforma, firma en macOS arm64 [Inferencia] | Mismo runtime que el instalador |
-| SQLite | Dependencia adicional | `node:sqlite` disponible en Node v26.12.1 (VR-003) |
+| SQLite como dependencia adicional | Dependencia adicional [No verificado: crate concreto no evaluado] | `node:sqlite` disponible en Node v26.12.1 (VR-003) |
 | Verificación automática (compilador, enums exhaustivos) | Más fuerte | TypeScript con `strict` cubre uniones discriminadas exhaustivas |
 | Supervisión en Windows | Job Objects | Sin Job Objects nativos; ver Riesgos |
-| Costo de iteración de adaptadores | Mayor | Menor |
+| Costo de iteración de adaptadores | Mayor [Inferencia] | Menor [Inferencia] |
 
 Rust sigue siendo reevaluable si se exige un supervisor sin runtime Node. El contrato (esquema SQLite, JSON schemas, superficie CLI, suite de conformidad) es independiente del lenguaje (#11503 §4.5), de modo que un cambio de lenguaje no invalida los consumidores.
 
@@ -77,7 +77,7 @@ El `sessionId` de ACP coincide con el id nativo en ambos harnesses (OpenCode `se
 - **OpenCode:** `session/new` solo lista agentes `primary`/`all` en `configOptions.mode`; `flowtask-constructor` es `subagent` y falla con `-32602`. Se lanza `opencode acp` con `OPENCODE_CONFIG_CONTENT='{"agent":{"flowtask-constructor":{"mode":"primary"}}}'` (o `all`), por lanzamiento, y queda seleccionable. No se modifica la configuración persistente del usuario. [No verificado] que corra con su system prompt y permisos reales.
 - **Claude Code:** la opción `agent` nativa lista los agentes de `~/.claude/agents`.
 
-Nota de nomenclatura: el spike usó la clave `agent` en el override; el instalador ya migró a `agents` (HF-opencode-agent-config-conflict, f5b8d33). Qué clave respeta el override de `OPENCODE_CONFIG_CONTENT` en la versión vigente es [No verificado]; debe confirmarse en F1.
+Nota de nomenclatura: el spike usó la clave `agent` en el override; el instalador ya migró a `agents` (commit f5b8d33). Qué clave respeta el override de `OPENCODE_CONFIG_CONTENT` en la versión vigente es [No verificado]; debe confirmarse en F1.
 
 ### 6. Estados
 
@@ -116,7 +116,7 @@ Combina la ausencia de servicio residente de A con la consulta asíncrona de B. 
 
 ## Riesgos
 
-- **Windows.** Node no ofrece Job Objects nativos; el kill de grupo de `kill(-pgid)` no existe allí. Opciones: `taskkill /T` o una dependencia mínima. [No verificado]. Hay usuarios Windows (HF-instalacion-windows-python #11051). `srt` en Windows es alfa según un espejo (#11503 §8).
+- **Windows.** Node no ofrece Job Objects nativos; el kill de grupo de `kill(-pgid)` no existe allí. Opciones: `taskkill /T` o una dependencia mínima. [No verificado]. Hay usuarios Windows (Engram #11051). `srt` en Windows es alfa según un espejo (#11503 §8).
 - **ACP v2 en Preview.** La especificación sigue evolucionando y los métodos de session-modes "se retirarán en una versión futura". Mitigación: aislar ACP tras la interfaz de adaptador y fijar versiones del SDK y de los adaptadores.
 - **Gate de permisos.** Los permisos ACP solo cubren lo que el agente pide aprobar [Inferencia]; en el spike, en el cwd de FlowTask los writes se ejecutaron sin permiso por defecto, y el comportamiento del gate bajo ACP es [No verificado]. Hace falta la capa de sandbox de SO (F2.2).
 - **Broker como punto único.** Mitigación: suite de conformidad en F1.
@@ -146,8 +146,8 @@ Fuente: spike #11696 e investigación #11697.
 
 - Roadmap Harness Sandbox: Engram #11503 (§4, §5, §6, §8, §9, §11, §12).
 - Spike ACP (F0.2): Engram #11696.
-- Investigación de esta ejecución: Engram #11697 (`hotfix/hf-harness-broker-adr/artifact/investigacion`).
-- Plan de esta ejecución: Engram #11698.
+- Investigación de soporte: Engram #11697.
+- Plan de la decisión: Engram #11698.
 - Diagnóstico del cuelgue de sesión 73d24de7: Engram #11583.
-- Hotfix del conflicto `agent`/`agents` del instalador: commit f5b8d33 (HF-opencode-agent-config-conflict).
+- Hotfix del conflicto `agent`/`agents` del instalador: commit f5b8d33.
 - Versiones observadas (2026-11-23): OpenCode 2.0.29, `claude-agent-acp` 0.110.1, `@agentclientprotocol/sdk` 2.9.1, Node v26.12.1.
