@@ -47,7 +47,7 @@
     "span_id": "00f067aa0ba902b7",
     "parent_span_id": "1111111111111111",
     "attributes": {
-      "flowtask.ca_id": "CA-example",
+      "flowtask.ca_id": "example-item",
       "flowtask.run_id": "run-0001",
       "flowtask.agent": "flowtask-constructor"
     }

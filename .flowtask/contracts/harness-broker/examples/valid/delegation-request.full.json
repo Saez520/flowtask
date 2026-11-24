@@ -12,7 +12,7 @@
   "parent_harness": "claude-code",
   "parent_session_id": "session-42",
   "parent_run_id": "run-0001",
-  "ca_id": "CA-example",
+  "ca_id": "example-item",
   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
   "parent_span_id": "00f067aa0ba902b7"
 }

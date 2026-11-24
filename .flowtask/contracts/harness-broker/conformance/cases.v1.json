@@ -1,0 +1,465 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "REQ-VALIDATION-NAMES-FIELDS",
+      "title": "An invalid delegation request is rejected naming each invalid field",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C2"],
+      "scenario": null,
+      "check": "test/schemas-valid.test.js: invalid delegation-request and error examples name their fields"
+    },
+    {
+      "id": "REQ-NONBLOCKING",
+      "title": "Delegate returns the run identifier without waiting for the child",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["C1"],
+      "scenario": "silent",
+      "check": "Delegate against a child that takes 60 s to start: the run exists in submitted before the child starts"
+    },
+    {
+      "id": "REQ-NO-RUN-ON-INVALID",
+      "title": "An invalid request creates no run and launches no process",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["C2"],
+      "scenario": null,
+      "check": "Each invalid request leaves the ledger without new runs and without child processes"
+    },
+    {
+      "id": "REQ-GATE-NO-LAUNCH",
+      "title": "A request denied by the authority gate is rejected without launching a child",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["C3"],
+      "scenario": null,
+      "check": "With a denying gate the run is rejected and no child process exists"
+    },
+    {
+      "id": "RESULT-REJECTED-SHAPE",
+      "title": "A rejected run carries a reason, a detail and no process data",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C3"],
+      "scenario": null,
+      "check": "test/result-outcomes.test.js: rejected result has reason, detail and null process fields; test/state-machine.test.js: rejected is reached only from submitted"
+    },
+    {
+      "id": "STATE-TRANSITIONS-EXHAUSTIVE",
+      "title": "Only the fifteen allowed transitions are accepted out of the 64 state pairs",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C4"],
+      "scenario": null,
+      "check": "test/state-machine.test.js: every state pair is compared with the allowed list; terminal states have no exit"
+    },
+    {
+      "id": "RESULT-COMPLETED-END-TURN",
+      "title": "A turn that ends with end_turn completes with its stop reason and final text",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C5"],
+      "scenario": "end-turn",
+      "check": "test/result-outcomes.test.js: end_turn maps to completed; test/fake-child.test.js: the end-turn scenario closes with end_turn"
+    },
+    {
+      "id": "RESULT-STOP-REASON-FAILURES",
+      "title": "Refusal, max_tokens and max_turn_requests fail with their own reason",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C6"],
+      "scenario": "stop-reason-refusal",
+      "check": "test/result-outcomes.test.js: each of the three stop reasons maps to failed with the same reason; test/fake-child.test.js: the three stop-reason scenarios report their native reason"
+    },
+    {
+      "id": "LAUNCH-ERROR-SCENARIO",
+      "title": "A harness that rejects the requested agent reports the protocol error",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C7"],
+      "scenario": "launch-error-agent-not-found",
+      "check": "test/fake-child.test.js: session/new answers error -32602; test/result-outcomes.test.js: failed launch_failed is a valid result"
+    },
+    {
+      "id": "LAUNCH-FAILED-TERMINAL",
+      "title": "A child that does not start or does not offer the agent ends the run in launch_failed",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["C7"],
+      "scenario": "launch-error-agent-not-found",
+      "check": "The run leaves submitted or working for failed with reason launch_failed and the harness detail"
+    },
+    {
+      "id": "CHILD-NOISE-SCENARIOS",
+      "title": "A silent child and a child that prints help are never taken for valid events",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C8"],
+      "scenario": "help-on-stdout",
+      "check": "test/fake-child.test.js: the silent and help-on-stdout scenarios emit no valid protocol message"
+    },
+    {
+      "id": "LIVE-NO-FIRST-EVENT",
+      "title": "A child with no valid event is cut at the first-event timeout with its group terminated",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["C8"],
+      "scenario": "silent",
+      "check": "The run ends failed with no_first_event, non-protocol lines are diagnostics, and no process of the group survives"
+    },
+    {
+      "id": "LIVE-IDLE-TIMEOUT",
+      "title": "A child that stops after one event is cut at the idle timeout without the parent acting",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["C9"],
+      "scenario": "first-event-then-silent",
+      "check": "The run ends failed with idle_timeout and the child is terminated, with no cancel sent by the parent"
+    },
+    {
+      "id": "LIVE-WALL-TIMEOUT",
+      "title": "Constant activity does not stop the wall timeout",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["C10"],
+      "scenario": "constant-activity",
+      "check": "The run ends failed with wall_timeout while the child keeps emitting updates"
+    },
+    {
+      "id": "LIVE-PAUSE-CLOCKS",
+      "title": "The inactivity clock is suspended while the run waits for input, and the wall clock keeps running",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["C11"],
+      "scenario": "permission-request",
+      "check": "In input_required the idle clock does not expire and the wall clock expires with wall_timeout"
+    },
+    {
+      "id": "PAUSE-CLOCK-TABLE",
+      "title": "The clocks of each state match the state machine data",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C11"],
+      "scenario": null,
+      "check": "test/state-machine.test.js: input_required and auth_required run no idle clock and keep the wall clock"
+    },
+    {
+      "id": "LIVE-CHILD-DEATH-FAST",
+      "title": "A child that is killed ends the run within five seconds",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["C12"],
+      "scenario": "exit-signal-sigkill",
+      "check": "The run reaches failed with exit_nonzero within 5 s of the death, with the signal recorded"
+    },
+    {
+      "id": "EXIT-CODE-SCENARIOS",
+      "title": "A child that dies by signal or exits with a code reports it",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C12"],
+      "scenario": "exit-code-1",
+      "check": "test/fake-child.test.js: SIGKILL and exit code 1 scenarios end with their signal or code; test/result-outcomes.test.js: failed exit_nonzero is valid"
+    },
+    {
+      "id": "EXIT-ZERO-IN-FLIGHT-SCENARIO",
+      "title": "A child that exits with code 0 while a turn is in flight does not complete it",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C13"],
+      "scenario": "exit-zero-in-flight",
+      "check": "test/fake-child.test.js: the child exits 0 when stdin closes and no turn result is emitted; test/result-outcomes.test.js: failed exit_without_result is valid"
+    },
+    {
+      "id": "ADAPTER-STDIN-CLOSE-NOT-CANCEL",
+      "title": "Closing the child input is not a cancellation",
+      "level": "contract",
+      "requires": "adapter",
+      "capability": null,
+      "criteria": ["C13"],
+      "scenario": "exit-zero-in-flight",
+      "check": "The adapter maps a stdin close with a turn in flight to failed exit_without_result, never to canceled or completed"
+    },
+    {
+      "id": "RECON-SUPERVISOR-LOST",
+      "title": "A run left working by a dead supervisor is reconciled as supervisor_lost",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["C14"],
+      "scenario": null,
+      "check": "After the supervisor is killed, a status query reconciles the run to failed with supervisor_lost and the orphan child ends"
+    },
+    {
+      "id": "STATUS-LIVENESS-FIELDS",
+      "title": "The status exposes the last activity, its source and the limits running now",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C15"],
+      "scenario": null,
+      "check": "test/schemas-valid.test.js: run-status examples validate and an unknown activity source is rejected"
+    },
+    {
+      "id": "LIVE-DERIVED-NOT-COOPERATIVE",
+      "title": "Liveness is derived from observation, not from a field the child writes",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["C15"],
+      "scenario": null,
+      "check": "A child that writes a fake heartbeat does not change last_activity_source or the liveness of the run"
+    },
+    {
+      "id": "CANCEL-LIVE-NO-ORPHANS",
+      "title": "Cancelling a live turn leaves no process of the run alive",
+      "level": "contract",
+      "requires": "broker",
+      "capability": "cancellation",
+      "criteria": ["C16"],
+      "scenario": "cancel-live-turn-spawns-child",
+      "check": "After cancel the run is canceled and no process of its group, including subprocesses, remains"
+    },
+    {
+      "id": "CANCEL-POLICY-TERMINAL-NOOP",
+      "title": "Cancelling a terminal run changes nothing and repeats the same result",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C17"],
+      "scenario": null,
+      "check": "test/reference-model.test.js: cancelPolicy returns noop_return_terminal and no child message for every terminal state"
+    },
+    {
+      "id": "CANCEL-LATE-NOT-SENT",
+      "title": "A cancellation that arrives after the turn ended is not sent to the child",
+      "level": "contract",
+      "requires": "broker",
+      "capability": "cancellation",
+      "criteria": ["C18"],
+      "scenario": "late-cancel-aborts-next-prompt",
+      "check": "The cancel is not forwarded when the turn is not live, and the next prompt completes with end_turn"
+    },
+    {
+      "id": "CANCEL-LATE-POLICY",
+      "title": "The cancellation policy does not send a late cancel to the child",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C18"],
+      "scenario": "late-cancel-aborts-next-prompt",
+      "check": "test/reference-model.test.js: cancelPolicy returns sendToChild false when no turn is live; test/fake-child.test.js: a late cancel makes the next prompt cancelled"
+    },
+    {
+      "id": "CANCEL-GRACE-EXPIRY",
+      "title": "A child that ignores cancellation is terminated after the grace period",
+      "level": "contract",
+      "requires": "broker",
+      "capability": "cancellation",
+      "criteria": ["C19"],
+      "scenario": "ignore-cancel",
+      "check": "After the grace period the group is terminated and the run ends canceled"
+    },
+    {
+      "id": "PERM-TRACE",
+      "title": "A permission request and its answer leave a complete trace",
+      "level": "contract",
+      "requires": "broker",
+      "capability": "interactive_permissions",
+      "criteria": ["C20"],
+      "scenario": "permission-request",
+      "check": "The log holds permission_requested with its options, input_required, permission_resolved and working, in that order"
+    },
+    {
+      "id": "PERMISSION-EVENTS-SHAPE",
+      "title": "Permission events and their pause transitions are well formed",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C20"],
+      "scenario": "permission-request",
+      "check": "test/schemas-valid.test.js: permission event examples validate; test/reference-model.test.js: the full permission cycle log satisfies the invariants"
+    },
+    {
+      "id": "PERM-REJECT-ONCE-OPENCODE",
+      "title": "A reject_once answer from the OpenCode harness fails the run as permission_rejected",
+      "level": "harness",
+      "requires": "adapter",
+      "capability": "interactive_permissions",
+      "criteria": ["C21"],
+      "scenario": "permission-reject-once-aborts-turn",
+      "check": "With the real OpenCode harness, reject_once ends the turn with stop reason cancelled and the run fails with permission_rejected"
+    },
+    {
+      "id": "PERMISSION-REJECT-ONCE-MAPPING",
+      "title": "A reject_once cancellation maps to failed, not to canceled",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C21"],
+      "scenario": "permission-reject-once-aborts-turn",
+      "check": "test/result-outcomes.test.js: cancelled from reject_once maps to failed permission_rejected; test/fake-child.test.js: the scenario answers cancelled after reject_once"
+    },
+    {
+      "id": "EVT-CURSOR-SEMANTICS",
+      "title": "Reading the event log from a cursor is ordered, gap-free and repeatable",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C22"],
+      "scenario": null,
+      "check": "test/reference-model.test.js: reads from 0, an intermediate cursor and N return the defined pages and repeat identically"
+    },
+    {
+      "id": "EVT-CONCURRENT-READ",
+      "title": "A reader that follows a writing run sees each event exactly once",
+      "level": "contract",
+      "requires": "broker",
+      "capability": null,
+      "criteria": ["C23"],
+      "scenario": "constant-activity",
+      "check": "A reader that continues from next_cursor receives every event once while the child writes"
+    },
+    {
+      "id": "EVT-CURSOR-ERRORS",
+      "title": "Invalid cursors and unknown runs are reported as errors",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C24"],
+      "scenario": null,
+      "check": "test/reference-model.test.js: negative, non-numeric and past-the-end cursors give invalid_cursor; a missing log gives unknown_run; test/schemas-valid.test.js: error examples validate"
+    },
+    {
+      "id": "RESULT-TERMINAL-FIELDS",
+      "title": "A terminal result carries every normalized field, with null where data is missing",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C25"],
+      "scenario": null,
+      "check": "test/result-outcomes.test.js and test/schemas-valid.test.js: every outcome validates; usage distinguishes null from zero; an absent field is rejected"
+    },
+    {
+      "id": "RESULT-NON-TERMINAL",
+      "title": "A result query on a live run reports its state and no partial result",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C26"],
+      "scenario": null,
+      "check": "test/schemas-valid.test.js: the not-terminal response validates and a partial result is rejected"
+    },
+    {
+      "id": "RESULT-SAME-SHAPE",
+      "title": "Two adapters reporting the same outcome produce the same normalized shape",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C27"],
+      "scenario": null,
+      "check": "test/result-outcomes.test.js: the completed examples of two adapters share their key structure and a harness-specific field is rejected"
+    },
+    {
+      "id": "ADAPTER-EQUIVALENCE",
+      "title": "The same scenario yields the same normalized result in every adapter",
+      "level": "harness",
+      "requires": "adapter",
+      "capability": null,
+      "criteria": ["C27"],
+      "scenario": "end-turn",
+      "check": "Run the same battery against each adapter and compare the normalized results field by field, except ids, times and model"
+    },
+    {
+      "id": "ADAPTER-STDIN-NOT-INHERITED",
+      "title": "A child launched with an open standard input still answers in normal time",
+      "level": "contract",
+      "requires": "adapter",
+      "capability": null,
+      "criteria": ["C28"],
+      "scenario": "mute-unless-stdin-closed",
+      "check": "The adapter launches the child with stdin not inherited; the child answers before the input is closed"
+    },
+    {
+      "id": "STDIN-NOT-INHERITED-SCENARIO",
+      "title": "A child that answers only after its input closes is handled by the scenario contract",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C28"],
+      "scenario": "mute-unless-stdin-closed",
+      "check": "test/fake-child.test.js: the child answers nothing until stdin closes, then answers end_turn"
+    },
+    {
+      "id": "ADAPTER-AGENT-OVERRIDE-NO-PERSIST",
+      "title": "Selecting an agent per launch leaves the user configuration byte for byte equal",
+      "level": "harness",
+      "requires": "adapter",
+      "capability": "agent_selection",
+      "criteria": ["C29"],
+      "scenario": null,
+      "check": "Hash the user configuration before and after a launch with an agent override; the hashes match and the agent is selected"
+    },
+    {
+      "id": "RESULT-NULLABLE-SESSION-IDS",
+      "title": "A missing native session identifier does not prevent completion",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C30"],
+      "scenario": null,
+      "check": "test/result-outcomes.test.js: the completed result with a null native session identifier validates"
+    },
+    {
+      "id": "CONFORMANCE-REPORT-COMPLETE",
+      "title": "Every case is reported as passed, failed or skipped with a reason",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C31"],
+      "scenario": null,
+      "check": "test/conformance-catalogue.test.js: every case runs or carries a non-empty skip reason"
+    },
+    {
+      "id": "NO-NETWORK-CONTRACT-LEVEL",
+      "title": "The contract level never depends on the network or on a paid service",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C32"],
+      "scenario": null,
+      "check": "test/conformance-catalogue.test.js: no network module import or fetch call appears in lib, conformance or test"
+    },
+    {
+      "id": "SCHEMAS-LEGIBLE-AND-COMPILE",
+      "title": "Every schema compiles in strict mode and documents each property",
+      "level": "contract",
+      "requires": "none",
+      "capability": null,
+      "criteria": ["C33"],
+      "scenario": null,
+      "check": "test/schemas-valid.test.js: every schema compiles and every declared property has a description"
+    }
+  ]
+}
